@@ -1,0 +1,278 @@
+
+
+#basics
+import numpy as np
+import time
+
+#pytroch
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+
+#hotam
+from hotam.nn.layers.lstm import LSTM_LAYER
+import hotam.utils as u
+
+
+class LSTM_DIST(nn.Module):
+
+    """
+
+    Implementation of an LSTM-Minus-based span representation network
+    for Argument Structre Parsing / Argument Mining
+
+    paper:
+    https://www.aclweb.org/anthology/P19-1464/
+
+    More on LSTM-Minus
+    https://www.aclweb.org/anthology/P16-1218/
+
+
+    
+    For AM+AC:
+
+        1) Concatenate features BoW, Word embs and Doc Positions
+
+        2) pass concatenated features to an LSTM, get hidden reps H.
+
+
+    If distinction between AC and AM:
+
+        3) create LSTM-minus represnetation for AC and AM
+    
+    else:
+
+        3) create LSTM-minus represnetation for AM+AC
+    
+
+    4) pass AM+AC or AM anc AC to 2 BiLSTMS
+
+
+    IF distinction between AC and AM:
+
+        5) concatenate preceding AM with AC (matching AMs and ACs)
+
+
+    output layer:
+
+        dense layer where output dim == num classes
+
+
+
+
+    """
+    def __init__(self,  hyperparamaters:dict, task2labels:dict, feature2dim:dict):
+        super().__init__()
+
+        self.BATCH_SIZE = hyperparamaters["batch_size"]
+        self.OPT = hyperparamaters["optimizer"]
+        self.LR = hyperparamaters["lr"]
+        self.HIDDEN_DIM = hyperparamaters["hidden_dim"]
+        self.NUM_LAYERS = hyperparamaters["num_layers"]
+        self.BI_DIR = hyperparamaters["bidir"]
+        
+        self.WORD_FEATURE_DIM = feature2dim["word_embs"]
+        self.DOC_FEATURE_DIM = feature2dim["doc_embs"]
+        self.FEATURE_DIM = self.WORD_FEATURE_DIM + self.DOC_FEATURE_DIM
+
+        # if this is true we will make a distinction between ams and acs
+        self.DISTICTION = hyperparamaters["bidir"]
+
+
+        criterion = nn.CrossEntropyLoss(reduction="sum")
+
+        self.word_lstm = LSTM_LAYER(  
+                                input_size = self.WORD_EMB_DIM,
+                                hidden_size=self.HIDDEN_DIM,
+                                num_layers= self.NUM_LAYERS,
+                                bidirectional=self.BI_DIR,
+                                )
+
+
+        self.adu_lstm = LSTM_LAYER(  
+                                input_size = self.WORD_EMB_DIM,
+                                hidden_size=self.HIDDEN_DIM,
+                                num_layers= self.NUM_LAYERS,
+                                bidirectional=self.BI_DIR,
+                                )
+
+        if self.DIST:
+
+            self.ac_lstm = LSTM_LAYER(  
+                                    input_size = self.WORD_EMB_DIM,
+                                    hidden_size=self.HIDDEN_DIM,
+                                    num_layers= self.NUM_LAYERS,
+                                    bidirectional=self.BI_DIR,
+                                    )
+
+            self.am_lstm = LSTM_LAYER(  
+                                    input_size = self.WORD_EMB_DIM,
+                                    hidden_size=self.HIDDEN_DIM,
+                                    num_layers= self.NUM_LAYERS,
+                                    bidirectional=self.BI_DIR,
+                                    )
+
+
+        self.relation_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), len(task2labels["relation"]))
+
+        self.stance_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), len(task2labels["stance"]))
+
+        self.ac_clf_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), len(task2labels["ac"]))
+    
+
+    @classmethod
+    def name(self):
+        return "LSTM_DIST"
+
+
+    def __minus_span(self, bidir_lstm_output, spans):
+
+        """
+        based on paper:
+        https://www.aclweb.org/anthology/P19-1464.pdf
+        (above paper refers to: https://www.aclweb.org/anthology/P16-1218.pdf)
+
+        Minus based representations are away to represent segments given a representations
+        of the segment as a set of e.g. tokens. We subtract LSTM hidden vectors to create a 
+        vector representation of a segment.
+
+        NOTE! in https://www.aclweb.org/anthology/P19-1464.pdf:
+        "Each ADU span is denoted as (i, j), where i and j are word indices (1 ≤ i ≤ j ≤ T)."
+        but for to make the spans more pythonic we define them as  (0 ≤ i ≤ j < T)
+
+        (NOTE!  φ(wi:j), whihc is included in the forumla i the paper,  is added later because of Distiction between AM and AC)
+
+        minus span reps are following:
+            h(i,j) = [
+                        →hj − →hi-1;
+                        ←hi − ←hj+1; 
+                        →hi-1;← hj+1    
+                        ]
+
+        NOTE! we assume that ←h is aligned with →h, i.e.  ←h[i] == →[i] (the same word)
+        
+        So, if we have the following hidden outputs; 
+
+            fh (forward_hidden)   = [word0, word1, word2, word3, word4]
+            bh (backwards hidden) = [word0, word1, word2, word3, word4] 
+        
+        h(2,4) = [
+                    word4 - word1;
+                    word2 - word5;
+                    word1 - word5
+                    ]
+
+        NOTE! word5 will be all zeros
+
+        So, essentially we take previous and next segments from and subtract them from the current segment to create 
+        a representation that include information about previous and next segments :D
+
+        """
+
+        batch_size, nr_seq, *_ = bidir_lstm_output.shape
+        hidden_dim = bidir_lstm_output/2
+        feature_dim = hidden_dim*3
+
+        forward = bidir_lstm_output[:,:,:hidden_dim]
+        backward = bidir_lstm_output[:,:,hidden_dim:]
+
+        minus_reps = torch.zeros((batch_size, nr_seq, feature_dim))
+        
+        for idx in range(batch_size):
+            for sidx,(i,j) in enumerate(spans[idx]):
+
+                if i==0 and j == 0:
+                    continue
+
+                if i-1 == -1:
+                    f_pre = torch.zeros(feature_dim)
+                else:
+                    f_pre = forward[idx][i-1]
+
+
+                if j+1 > backward.shape[1]:
+                    b_post = torch.zeros(feature_dim)
+                else:
+                    b_post = backward[idx][j+1]
+
+                f_end = forward[idx][j]
+                b_start = backward[idx][i]
+
+                minus_reps[idx][sidx] = torch.cat(
+                                                    f_end - f_pre,
+                                                    b_start - b_post,
+                                                    f_pre - b_post
+                                                    )
+
+        return minus_reps
+
+
+    def forward(self,batch):
+
+        word_embs = batch["word_embs"]
+        lengths  = batch["lengths"]
+
+        # input (Batch_dize, nr_tokens, word_emb_dim)
+        # output (Batch_dize, nr_tokens, word_emb_dim)
+        lstm_out, _ = self.word_lstm(word_embs, lengths)
+        
+        # Wi:j
+        W = batch["doc_embs"]
+
+        if self.DISTICTION:
+
+            am_minus_embs = self.__minus_span(lstm_out, batch["am_spans"])
+            ac_minus_embs = self.__minus_span(lstm_out, batch["ac_spans"])
+
+            am_lstm_out, _ = am_lstm(am_minus_embs)
+            ac_lstm_out, _ = ac_lstm(ac_minus_embs)
+
+            contex_emb = torch.cat(am_lstm_out, ac_lstm_out, W, dim=-1)
+
+            final_out, _ = self.adu_lstm(contex_emb)
+
+        else:
+            adu_minus_embs = torch.cat(self.__minus_span(lstm_out, batch["am_spans"]), W, dim=-1)
+            final_out, _ = self.adu_lstm(adu_minus_embs)
+        
+
+        relations_out = self.relation_layer(final_out)
+        stance_out = self.stance_layer(final_out)
+        ac_out = self.ac_layer(final_out)
+
+
+        relations_probs = F.softmax(relations_out, dim=-1)
+        stance_probs = F.softmax(stance_out, dim=-1)
+        ac_probs = F.softmax(ac_out, dim=-1)
+
+        relations_preds = torch.argmax(relations_out, dim=-1)
+        stance_preds = torch.argmax(stance_out, dim=-1)
+        ac_preds = torch.argmax(ac_out, dim=-1)
+
+    
+        # we want to ignore -1  in the loss function so we set pad_values to -1, default is 0
+        batch.change_pad_value(-1)
+
+        relation_loss = criterion(relations_out, batch["relation"], ignore_index=-1)
+        stance_loss = criterion(stance_out, batch["stance"], ignore_index=-1)
+        ac_loss = criterion(ac_out, batch["ac"], ignore_index=-1)
+
+        total_loss = (self.alpha * relation_loss) + (self.beta * stance_loss) + ( (1 - (self.alpha-self.beta)) * ac_loss) 
+
+
+        return {    
+                    "loss": {   
+                                "total": total_loss,
+                                }, 
+                    "preds": {
+                                "ac": ac_preds, 
+                                "relation": stance_preds,
+                                "stance": stance_preds
+                            },
+                    "probs": {
+                                "ac": ac_probs, 
+                                "relation": relation_probs,
+                                "stance": stance_probs
+                            },
+                }
