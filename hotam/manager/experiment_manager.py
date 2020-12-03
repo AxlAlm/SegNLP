@@ -15,12 +15,18 @@ import numpy as np
 import random
 from copy import deepcopy
 import webbrowser
+from multiprocessing import Process
+import time
 
 #hotam
 from hotam.manager.ptl_trainer_setup import Trainer
 from hotam.manager.evaluator import Evaluator
 from hotam.utils import get_timestamp
+from hotam.dashboard import DummyDash
+from hotam.database import DummyDB  
+from hotam.loggers import DummyLogger
 from hotam import get_logger
+from hotam.trainer.metrics import Metrics
 
 #pytroch
 import torch
@@ -49,9 +55,21 @@ def ensure_config():
 
 class ExperimentManager(Evaluator, Trainer):
 
-    def __init__(self, exp_logger=None):
-        self.exp_logger = exp_logger
+    def __init__(self, exp_logger=None, db=None):
+        self.db = DummyDB() if db is None else db
+        self.exp_logger = DummyLogger(db=self.db) if exp_logger is None else exp_logger
+        assert self.exp_logger.db == self.db, "Logger.db and db is not the same"
+        self.__dashboard_off = True
+
     
+    def start_dashboard(self, debug_mode):
+        dashboard = DummyDash(db=self.db) if self.exp_logger.name() == "DummyLogger" else None #FullDash()
+        webbrowser.open("http://127.0.0.1:8050/")
+        dashboard.run_server(
+                                port=8050,
+                                debug=debug_mode
+                                )
+
 
     def __get_test_model_choice(self, trainer_args:dict):
         """we need to know, when testing, if we are selecting the last model or teh best model
@@ -75,6 +93,7 @@ class ExperimentManager(Evaluator, Trainer):
             test_model_choice = "best"
         
         return test_model_choice
+
 
 
     def __create_hyperparam_sets(self, hyperparamaters:Dict[str,Union[str, int, float, list]]) -> Union[dict,List[dict]]:
@@ -116,9 +135,11 @@ class ExperimentManager(Evaluator, Trainer):
                 debug_mode:bool=False,
                 ):
 
-        if debug_mode: #or trainer_args.get("overfit_batches", False):
-            self.exp_logger = None     
-        
+        if debug_mode:
+            self.db = DummyDB()
+            self.exp_logger = DummyLogger(db=self.db)
+            self.dashboard = DummyDash(db=self.db)
+    
         self.dataset = dataset
         self.evaluation_method = eval_method
             
@@ -139,9 +160,7 @@ class ExperimentManager(Evaluator, Trainer):
                             using_gpu=True if hyperparamaters.get("gpus", None) else False,
                             )
             
-            if self.exp_logger:
-                self.exp_logger.set_exp_id(experiment_id)
-
+            self.exp_logger.set_exp_id(experiment_id)
 
             #setup Pytroch Lightning Trainer
             trainer_args_copy = deepcopy(trainer_args)
@@ -153,19 +172,10 @@ class ExperimentManager(Evaluator, Trainer):
                                                 model_save_path= model_save_path,
                                                 run_test=run_test
                                                 )
-
-
-            # scorer = Metrics(
-            #                 dataset=self.dataset,
-            #                 metrics=metrics_configs, 
-            #                 monitor_metric=monitor_metric, 
-            #                 progress_bar_metrics=progress_bar_metrics
-            #                 )
             
             save_model_choice = None
             if run_test:
                 save_model_choice = self.__get_test_model_choice(trainer_args_copy)
-
 
             exp_config = {}
             exp_config["project"] = project
@@ -180,45 +190,53 @@ class ExperimentManager(Evaluator, Trainer):
             exp_config["experiment_id"] = experiment_id
             exp_config["start_timestamp"] = start_ts
             exp_config["model_selection"] = save_model_choice
-            exp_config["metrics"] = scorer.metric_names
+            exp_config["metrics"] = Metrics.metrics()[1]
             exp_config["progress_bar_metrics"] = progress_bar_metrics
             exp_config["model_save_path"] = model_save_path
             exp_config["hyperparamaters"]["monitor_metric"] = monitor_metric
             exp_config["hyperparamaters"]["random_seed"] = random_seed
             exp_config["trainer_args"] = trainer_args
-
             self.dataset.batch_size = hyperparamaters["batch_size"]
-
-            if self.exp_logger:
-                self.exp_logger.log_experiment(exp_config)
-
-
-            # starting dashboard app
-            dashboard_app.run_server(
-                                    port=8050,
-                                    debug=debug_mode
-                                    )
-            webbrowser.open("http://127.0.0.1:8050/")
-
+            self.exp_logger.log_experiment(exp_config)
 
 
             #run training
-            self._get_eval_method()(
-                                    trainer=trainer, 
-                                    model=model,
-                                    hyperparamaters=hyperparamaters,
-                                    metrics=metrics_configs, 
-                                    monitor_metric=monitor_metric, 
-                                    progress_bar_metrics=progress_bar_metrics,
-                                    save_model_choice=save_model_choice,
-                                    run_test=run_test,
+            # exp = Process(
+            #             target=self._get_eval_method(), 
+            #             args=dict(  
+            #                         trainer=trainer, 
+            #                         model=model,
+            #                         hyperparamaters=hyperparamaters,
+            #                         metrics=metrics_configs, 
+            #                         monitor_metric=monitor_metric, 
+            #                         progress_bar_metrics=progress_bar_metrics,
+            #                         save_model_choice=save_model_choice,
+            #                         run_test=run_test
+            #                     )
+            #             )
+            # exp.start()
+            #time.sleep(10)
+
+            if self.__dashboard_off:
+                dashboard = Process(
+                                        target=self.start_dashboard, 
+                                        args=(debug_mode, )
                                     )
-    
+                dashboard.start()
+                self.__dashboard_off = False
 
-            #exp_config["end_timestamp"] = get_timestamp()
 
-        logger.info("Experiments done")
-
+            # self._get_eval_method()(
+            #                         trainer=trainer, 
+            #                         model=model,
+            #                         hyperparamaters=hyperparamaters,
+            #                         metrics=metrics_configs, 
+            #                         monitor_metric=monitor_metric, 
+            #                         progress_bar_metrics=progress_bar_metrics,
+            #                         save_model_choice=save_model_choice,
+            #                         run_test=run_test,
+            #                         )
+                
 
         if hasattr(self.db, "close"):
             self.db.close()

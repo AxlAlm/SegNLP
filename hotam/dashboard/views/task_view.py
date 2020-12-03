@@ -16,11 +16,9 @@ import plotly
 import plotly.express as px
 import plotly.graph_objs as go
 
-#import app and mongodb
-from src.servers import app, db
-
-from src.utils import get_filter, dropdown_filter, fig_layout
-from src.visuals import *
+#utils
+from hotam.dashboard.utils import get_filter, dropdown_filter, fig_layout
+from hotam.dashboard.views.visuals import *
 
 
 filters  = html.Div(  

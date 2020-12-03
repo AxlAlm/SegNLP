@@ -29,28 +29,10 @@ from hotam import get_logger
 
 
 class Metrics:
-
-    # def __init__(   self,  
-    #                 dataset:DataSet, 
-    #                 metrics:List[dict],
-    #                 monitor_metric:str, 
-    #                 progress_bar_metrics:list,
-    #                 ):
-    #     self.dataset = dataset
-    #     self.monitor_metric = monitor_metric
-    #     self.progress_bar_metrics = progress_bar_metrics
-    #     self._setup_metrics(metrics=metrics)
     
-
-    def _setup_metrics(self, metrics:List[dict]=[]):
-        """sets up metrics to be used.
-
-        Parameters
-        ----------
-        metrics : List[dict], optional
-            list of metrics to be added to the metrics which are to be use, by default []
-        """
-        base_metrics = [
+    @classmethod
+    def metrics(self):
+        metrics = [
                         { 
                             "name": "precision",
                             "function": precision_score,
@@ -73,13 +55,6 @@ class Metrics:
                             "probs": False,
                             "per_class": True
                         },
-                        # { 
-                        #     "name": "accuracy",
-                        #     "function": accuracy_score,
-                        #     "args": {},
-                        #     "probs": False,
-                        #     "per_class": False
-                        # },
                         { 
                             "name": "confusion_matrix",
                             "function": confusion_matrix,
@@ -94,13 +69,17 @@ class Metrics:
                         #     "probs": False,
                         #     "per_class": False,
                         # },
+                        # { 
+                        #     "name": "accuracy",
+                        #     "function": accuracy_score,
+                        #     "args": {},
+                        #     "probs": False,
+                        #     "per_class": False
+                        # },
                         ]
-    
-        self.metrics  = base_metrics + metrics
-        self.metric_names = [m["name"] for m in base_metrics]
-        self.class_metric_names = [m["name"] for m in base_metrics if m["per_class"]]
 
-
+        return metrics, [m["name"] for m in metrics], [m["name"] for m in metrics if m["per_class"]]
+  
     def _get_progress_bar_metrics(self, log:dict) -> dict:
         """
         will extract the metrics which should be monitored either by progress bar or callbacks, 

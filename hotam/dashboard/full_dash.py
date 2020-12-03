@@ -67,3 +67,13 @@ def render_content(tab):
 # Run the app
 if __name__ == '__main__':
     app.run_server(debug=True)
+
+
+import dash
+from data.mongo_data import MongoData
+
+#init the mongo db
+db = MongoData()
+
+# Initialise the app
+app = dash.Dash(__name__)

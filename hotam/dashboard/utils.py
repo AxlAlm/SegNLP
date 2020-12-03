@@ -1,8 +1,5 @@
 
 
-from src.servers import db
-
-
 def get_filter(dataset=None, project=None, model=None, experiment=None):
     filter_by = {}
 
@@ -19,11 +16,6 @@ def get_filter(dataset=None, project=None, model=None, experiment=None):
         filter_by["experiment_id"] = experiment
     
     return filter_by
-
-
-def dropdown_filter(name, dataset=None, project=None, model=None):
-    filter_by = get_filter(dataset=dataset, project=project, model=model)
-    return db.get_dropdown_options(name, filter_by=filter_by)
 
 
 def fig_layout(fig):

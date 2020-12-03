@@ -25,8 +25,6 @@ from hotam.preprocessing.preprocessor import Preprocessor
 from hotam.preprocessing.labler import Labler
 from hotam.preprocessing.split_utils import SplitUtils
 
-
-
 #pytorch lightning
 import pytorch_lightning as ptl
 
@@ -495,7 +493,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             raise NotImplementedError("Not supported yet")
             
         fm._init_feature_save(
-                                feature_name = fm.name
+                                feature_name = fm.name,
                                 #memmap_file=self._feature2memmap[feature], 
                                 shape = shape,
                                 dtype = fm.dtype,

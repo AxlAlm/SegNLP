@@ -34,15 +34,15 @@ class DummyLogger(LightningLoggerBase):
         return self.name()
 
     def name(self):
-        return "MongoLogger"
+        return "DummyLogger"
 
 
     def version(self):
         return 0.1
     
 
-    def log_experiment( self, experiment_config:dict):
-        self.db["experiments"] = [experiment_config]
+    def log_experiment(self, experiment_config:dict):
+        self.db.experiments = [experiment_config]
 
 
     @rank_zero_only
@@ -51,7 +51,7 @@ class DummyLogger(LightningLoggerBase):
         split = [k for k in metrics.keys() if "epoch" not in k and "id" not in k][-1].split("-",1)[0]
         metrics["split"] = split
         scores = copy_and_vet_dict(metrics, filter_key=split+"-")
-        self.db["scores"] = [scores]
+        self.db.scores = [scores]
         
 
     def set_exp_id(self, experiment_id:str):

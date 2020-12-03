@@ -3,7 +3,6 @@
 import re
 import numpy as np
 import pandas as pd
-import swifter
 from typing import Dict, List
 from tqdm import tqdm
 
@@ -91,7 +90,5 @@ class Labler:
 
         #label tokens
         tqdm.pandas(desc=f"labeling Tokens")
-        #logger.info(f"labeling tokens with {span_name}")
-        #token_labels = t_df.swifter.apply(self._label, axis=1,  args=args)
         rows = self.level_dfs["token"].progress_apply(self._label, axis=1,  args=args)
         self.level_dfs["token"] = pd.concat([self.level_dfs["token"], pd.DataFrame(list(rows))], axis=1)

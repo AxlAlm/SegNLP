@@ -1,5 +1,5 @@
 
-
+#
 import math
 import numpy as np
 
@@ -8,9 +8,8 @@ import plotly
 import plotly.express as px
 import plotly.graph_objs as go
 
-
-from src.utils import fig_layout
-
+#hotam
+from hotam.dashboard.utils import fig_layout
 
 
 def make_lineplot(data, columns, title):

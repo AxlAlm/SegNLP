@@ -6,8 +6,8 @@ import plotly
 import plotly.express as px
 import plotly.graph_objs as go
 
-
-from src.utils import fig_layout
+#hotam
+from hotam.dashboard.utils import fig_layout
 
 
 def make_table(data, title):
