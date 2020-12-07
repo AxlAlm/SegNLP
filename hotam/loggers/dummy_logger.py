@@ -52,11 +52,25 @@ class DummyLogger(LightningLoggerBase):
         metrics["split"] = split
         scores = copy_and_vet_dict(metrics, filter_key=split+"-")
         self.db.scores = [scores]
+
+        #also logs the stack of outputs for the epoch
+        if split in ["val", "test"]:
+            self.db.outputs = [{ 
+                                "experiment_id": self.experiment_id,
+                                "epoch": metrics["epoch"],
+                                "split": split,
+                                "data": self.output_stack
+                                }]
+            self.output_stack = {}
         
 
     def set_exp_id(self, experiment_id:str):
         self.experiment_id = experiment_id
     
+
+    def log_outputs(self, outputs):
+        self.output_stack.update(outputs)
+
 
     def experiment(self):
         pass

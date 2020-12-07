@@ -31,6 +31,7 @@ class MongoLogger(LightningLoggerBase):
         super().__init__()
         self.db = db
         self.current_epoch = 0
+        self.output_stack = {}
     
     def __repr__(self):
         return self.name()
@@ -55,10 +56,25 @@ class MongoLogger(LightningLoggerBase):
         metrics["split"] = split
         self.db.scores.insert_one(copy_and_vet_dict(metrics, filter_key=split+"-"))
         
+        #also logs the stack of outputs for the epoch
+        if split in ["val", "test"]:
+            self.outputs.insert_one({ 
+                                        "experiment_id": self.experiment_id,
+                                        "epoch": metrics["epoch"],
+                                        "split": split,
+                                        "data": self.output_stack
+                                        })
+            self.output_stack = {}
+
 
     def set_exp_id(self, experiment_id:str):
         self.experiment_id = experiment_id
     
+
+    def log_outputs(self, outputs):
+        self.output_stack.update(outputs)
+    
+
     def experiment(self):
         pass
 

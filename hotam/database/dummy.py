@@ -14,10 +14,16 @@ class DummyDB:
         self.db["scores"] = []
         self.experiments = self.db["experiments"]
         self.scores = self.db["scores"]
+        self.outputs = self.db["outputs"]
     
     
     def close(self):
         self.db.close()
+
+    
+    def get_exp(self, experiment_id):
+        print("GET EXP", self.get_last_exp())
+        return self.get_last_exp()
     
 
     def get_last_exp(self):

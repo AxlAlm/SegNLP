@@ -6,6 +6,7 @@ import os
 import pandas as pd
 from typing import List, Dict, Union, Tuple
 import re
+from copy import deepcopy
 
 #pytorch lightning
 import pytorch_lightning as ptl
@@ -105,7 +106,7 @@ class PTLBase(ptl.LightningModule, Metrics):
         output_dict = self.model.forward(batch)
     
         if self.logger and split in ["val", "test"]:
-            self.logger.log_output(self.reformat_outputs(output_dict), self.current_epoch)
+            self.logger.log_output(self.reformat_outputs(output_dict))
         
         if "total" in output_dict["loss"]:
             total_loss = output_dict["loss"]["total"]
@@ -187,63 +188,65 @@ class PTLBase(ptl.LightningModule, Metrics):
         else:
             return opt
 
+    
+    def __BIO_decode(self, bio_labels):
+        
+        #bio_labels_str = "-".join(bio_labels.astype(str))
+        bio_labels_str = "-".join(bio_labels)
 
-    def reformat_outputs(self,output_dict):
+        ID = 0
+        def repl(m):
+            global ID
+            c = f'SPAN_{ID}-' * len(m.group())
+            ID += 1
+            return c
 
-        lengths = ensure_numpy(self.batch["ids"])
-        id2idx = {id_:idx for idx, id_ in enumerate(ensure_numpy(self.batch["ids"]))}
-        pred_tabel = {str(i):{} for i in id2idx.keys()}
-        prob_tabels = {str(i):{} for i in id2idx.keys()}
-
-        get_probs = False
-        for task in self.dataset.subtasks:
-            labels = self.dataset.task2labels[task] 
-
-            if output_dict["probs"]:
-                if task in output_dict["probs"]:
-                    get_probs = True
-
-            task_preds = ensure_numpy(output_dict["preds"][task])
+        m = re.sub(fr"B-(I-)*", repl, l)
+        return m.split("-")
             
-            for ID, i in id2idx.items():
-                pred_tabel[str(ID)][task] = self.dataset.decode_list(task_preds[i][:lengths[i]], task).tolist()
 
-                if get_probs:
-                    task_probs = ensure_numpy(output_dict["preds"][task])
-                    prob_tabels[str(ID)][task] = {"columns":labels, "data": task_probs[i][:lengths[i]].tolist()}
+    def __reformat_outputs(self, output_dict):
 
-        return {"preds": pred_tabel, "probs": prob_tabels}
+        ids_to_log = self.dataset.splits[0]["val"][:15]
+        id2idx = {  
+                    str(ID):(i, length) for i, (ID, length) in 
+                    enumerate(zip(ensure_numpy(self.batch["ids"]), ensure_numpy(self.batch["lengths"])))
+                    if ID in ids_to_log
+                    }
+
+        if not ids_to_log:
+            return {}
+
+        outputs = {ID:{"preds":{}, "probs":{}, "gold":{}, "text":{}} for ID in id2idx.keys()}
 
 
-    # def reformat_outputs(self,output_dict):
-    #     mask = ensure_numpy(self.batch["mask"])
-    #     ids = ensure_numpy(self.batch["id"])
-    #     lengths = ensure_numpy(self.batch["id"])
-    #     sample_seq_ids = ensure_flat(ensure_numpy([[i]*l for i,l in zip(ids,lengths)]))
-    #     pred_tabel = {"sample_id":sample_seq_ids}
-    #     prob_tabels = {}
+        for ID, (i, length) in id2idx.items():
+            outputs[ID]["text"] = self.batch["text"][i].tolist()
 
-    #     for task in self.dataset.subtasks:
+            spans_added = False
+
+            for task in self.dataset.subtasks:
+                task_preds = ensure_numpy(output_dict["preds"][task])
+
+                outputs[ID]["preds"][task] = self.dataset.decode_list(task_preds[i][:length], task).tolist()
+                outputs[ID]["gold"][task] = self.dataset.decode_list(self.batch[task][i][:length], task).tolist()
+
+                if task == "seg" and not spans_added:
+                    outputs[ID]["preds"]["span_ids"] = self.__BIO_decode(outputs[ID]["preds"][task])
+                    outputs[ID]["gold"]["span_ids"] = self.__BIO_decode(outputs[ID]["gold"][task])
+                    spans_added = True
+
+                if not output_dict["probs"]:
+                    continue
+
+                if task not in output_dict["probs"]:
+                    continue
+
+                task_probs = ensure_numpy(output_dict["preds"][task])
+                outputs[ID]["probs"][task] = {"columns":self.dataset.task2labels[task], "data": task_probs[i][:length].tolist()}
             
-    #         task_preds = ensure_flat(ensure_numpy(output_dict["preds"][task]), mask)
-    #         preds_str = list(self.dataset.decode_list(task_preds,task))
 
-    #         print( len(sample_seq_ids), len(preds_str))
-    #         assert len(sample_seq_ids) == len(preds_str)
-    #         pred_tabel[task] = preds_str
-
-    #         if output_dict["probs"]:
-    #             if task in output_dict["probs"]:
-
-    #                 task_probs = ensure_flat(ensure_numpy(output_dict["preds"][task]), mask)
-
-    #                 assert len(task_probs) == len(sample_seq_ids)
-
-    #                 labels = self.dataset.task2labels[task]
-    #                 prob_tabels[task] = {"columns":labels, "data":task_probs}
-
-
-    #     return {"preds": pred_tabel, "probs": prob_tabels}
+        return outputs
 
 
  

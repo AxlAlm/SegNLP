@@ -9,6 +9,8 @@ import json
 import imgkit
 import base64
 import os
+import math
+
 
 #dash
 import dash
@@ -22,9 +24,14 @@ import plotly
 import plotly.express as px
 import plotly.graph_objs as go
 
+#hotviz
+import hotviz
+
+
 #utils
 from hotam.dashboard.utils import get_filter, fig_layout
 from hotam.dashboard.views.visuals import *
+
 
 th_path  = "/tmp/text_highlight.png"
 
@@ -251,43 +258,9 @@ class ExpView:
                         )
 
 
-    def __create_box_row(self, id_start):
-        i = id_start
-        i2 = id_start+1
-        visuals = ["loss", "tree", "highlight", "task_metric", "class_metric"]
-        row = html.Div(
-                        className="row flex-display",
-                        children=[
-                                    html.Div(
-                                        className="pretty_container six columns",
-                                        children=[
-                                                    dcc.Dropdown(
-                                                                id=f'box{i}-dropdown',
-                                                                options=[{"label":v, "value":v} for v in visuals],
-                                                                value=[],
-                                                                className="dcc_control",
-                                                                ),
-                                                    html.Div(id=f"box{i}")
-                                                ]
-                                                ),
-                                    html.Div(
-                                        className="pretty_container six columns",
-                                        children=[ 
-                                                    dcc.Dropdown(
-                                                                id=f'box{i2}-dropdown',
-                                                                options=[{"label":v, "value":v} for v in visuals],
-                                                                value=[],
-                                                                className="dcc_control",
-                                                                ),
-                                                    html.Div(id=f"box{i2}")
-                                                ],
-                                    ),
-                                ],
-                    )
-        return row
-
 
     def __setup_view(self, info_row):
+        visuals = ["loss", "tree", "highlight", "task_metric", "class_metric"]
         return  html.Div(   
                                 #className='row',  # Define the row element
                                 className="row flex-display",
@@ -302,13 +275,52 @@ class ExpView:
                                                                 ),
                                                     ]),
                                             info_row,
-                                            self.__create_box_row(1),
-                                            self.__create_box_row(3),
+                                            html.Div(
+                                                        id="visuals"
+                                                        ),
+                                            # self.__create_box_row(1),
+                                            # self.__create_box_row(3),
                                             html.Div(id='data-cache', children=dict(), style={'display': 'none'}),
                                         ],
                                 style={"display": "flex", "flex-direction": "column"},
                             )
         
+
+
+    # def __create_box_row(self, id_start):
+    #     i = id_start
+    #     i2 = id_start+1
+    #     visuals = ["loss", "tree", "highlight", "task_metric", "class_metric"]
+    #     row = html.Div(
+    #                     className="row flex-display",
+    #                     children=[
+    #                                 html.Div(
+    #                                     className="pretty_container six columns",
+    #                                     children=[
+    #                                                 dcc.Dropdown(
+    #                                                             id=f'box{i}-dropdown',
+    #                                                             options=[{"label":v, "value":v} for v in visuals],
+    #                                                             value=[],
+    #                                                             className="dcc_control",
+    #                                                             ),
+    #                                                 html.Div(id=f"box{i}")
+    #                                             ]
+    #                                             ),
+    #                                 html.Div(
+    #                                     className="pretty_container six columns",
+    #                                     children=[ 
+    #                                                 dcc.Dropdown(
+    #                                                             id=f'box{i2}-dropdown',
+    #                                                             options=[{"label":v, "value":v} for v in visuals],
+    #                                                             value=[],
+    #                                                             className="dcc_control",
+    #                                                             ),
+    #                                                 html.Div(id=f"box{i2}")
+    #                                             ],
+    #                                 ),
+    #                             ],
+    #                 )
+    #     return row
 
     def update_output(self, value):
         if value:
@@ -363,19 +375,22 @@ class ExpView:
                 return dash.no_update
 
         exp_config = self.db.get_exp(experiment_id)
-        #exp_config = self.db.experiments.find_one(filter={"experiment_id":experiment_id})
+        exp_config.pop("_id")
 
         filter_by["epoch"] =  { "$lte": last_epoch}
         scores = self.db.get_scores(filter_by)
         current_epoch = scores.epoch.max()
         scores.pop("_id")
-        exp_config.pop("_id")
+
+        outputs = self.db.get_outputs(filter_by)
+        outputs.pop("_id")
 
         return {
                 "exp_config": exp_config,
                 "experiment_id": experiment_id,
                 "epoch": current_epoch,
                 "scores": scores.to_dict(),
+                "outputs": outputs
                 }
 
 
@@ -452,51 +467,78 @@ class ExpView:
         return graph
 
 
-    def highlight_text(self, data_cache):
+    def highlight_text(self, data_cache, sample_id):
 
-        exp_config = data_cache["exp_config"]
-        dataset = data_cache["exp_config"]["dataset"]
-        sample_level = exp_config["dataset_config"]["sample_level"]
-        epoch = data_cache["epoch"]
+        outputs = data_cache["outputs"]
+        task2labels = data_cache["exp_config"]["task2label"]
+        sample_out = outputs[sample_id]
 
-        sample_id = 6798
+        # if "seg-ac" in sample_out["preds"]:
+        #     task = "seg-ac" 
+        if "ac" in sample_out["preds"]:
+            task = "ac"
+        else:
+            task = "seg"
 
-        gold_df = pd.DataFrame(db.datasets.find(filter={"dataset":dataset, f"{sample_level}_id":sample_id}))
+
+
+        data = []
+        for i,token in enumerate(sample_out["text"]):
+
+            """
+            EXAMPLE DATA for one token
+            {
+                    "token": "that",
+                    "pred": {
+                                "span_id": None,
+                                "label": "X",
+                                "score": 0.1,
+
+                                },
+                    "gold": {
+                                "span_id": "X_1",
+                                "label": "X",
+                            }
+
+                },
+            """
+
+            pred_span = sample_out["preds"]["span_ids"][i] if "span" in sample_out["preds"]["span_ids"][i] else None
+            gold_span = sample_out["gold"]["span_ids"][i] if "span" in sample_out["gold"]["span_ids"][i] else None
+
+            if pred_span:
+                pred_label = sample_out["preds"][task][i]
+
+            if task in sample_out["probs"]:
+                scores = sample_out["probs"][task][i]
+                idx = np.argmax(scores)
+                score = scores[idx]
+                #will be the same as pred_label
+                pred_label = task2labels[task][idx]
+
+            token_data = {
+                            "token": token,
+                            "pred":{
+                                    "span_id": pred_span,
+                                    "label": pred_label,
+                                    "score": score,
+
+                                        }
+                            }
+            
+            if gold_span:
+                pred_label = sample_out["gold"][tasks]
+                token_data["gold"] ={
+                                    "span_id":gold_span,
+                                    "label":pred_label
+                                    }
+
+
+            data.append(token_data)
+
+
+        src = hotviz.hot_text(data, labels=task2labels[task])
         
-        tokens = gold_df["text"].to_numpy()
-        preds_dict = data_cache["outputs"]["data"]["preds"]["6798"]
-
-        label_preds = ["_".join(x) for x in zip(preds_dict["seg"], preds_dict["ac"])]
-        
-        class_scores = {}
-
-        # if "seg_ac" in output["preds"]:
-        #     task = "seg_ac"
-        # else:
-        #     task = "seg"
-
-        # label_preds = output["preds"][task]
-
-        # if task == "seg_ac" and task in output["probs"]:
-        #     pass
-        # else:
-        #     class_scores = {}
-
-        #tokens = ["this", "is", "a", "claim", "sentence", "and", "this", "is", "a", "premise", "sentence","."]
-        # class_scores = {
-        #                 "claim":[0.2,0.8,0.9,0.9,0.7,0.4,0.3,0.1,0.0,0.1,0.2,0.1],
-        #                 "premise":[0.1,0.1,0.2,0.2,0.1,0.1,0.2,0.0,0.7,0.8,0.7,0.1],
-        #             }
-        #preds = ["O","B-claim","I-claim","I-claim","I-claim","O","O","O","B-premise","I-premise","I-premise","O"]
-
-        src =  mark_text( 
-                            tokens,
-                            class_scores, 
-                            label_preds, 
-                            [],
-                            th_path
-                        )
-
         img =  html.Img(   
                         id="text-highlight",
                         src=src
@@ -505,56 +547,94 @@ class ExpView:
         return img
 
 
-    def tree_graph(self, data_cache):
+    def tree_graph(self, data_cache, sample_id):
 
-        exp_config = data_cache["exp_config"]
-        dataset = exp_config["dataset"]
-        sample_level = exp_config["dataset_config"]["sample_level"]
-        prediction_level = exp_config["dataset_config"]["prediction_level"]
-        epoch = data_cache["epoch"]
+        def extract_data(df):
+            spans = df.groupby("span_ids")
+            data = []
+            for i, span in spans:
+                span_data.append({
+                                    "label":span["ac"].unique()[0],
+                                    "link": span["relation"].unique()[0],
+                                    "link_label": span["stance"].unique()[0],
+                                    "text": " ".join(span["text"].tolist()),
+                                    })
+            
+            return data
 
-        sample_id = 4
-        sample_level = "document"
+        outputs = data_cache["outputs"]
+        sample_out = outputs[sample_id]
 
-        gold_df = pd.DataFrame(db.datasets.find(filter={"dataset":dataset, f"{sample_level}_id":sample_id}))
+        pred_df = pd.DataFrame(sample_out["pred"])
+        gold_df = pd.DataFrame(sample_out["gold"])
 
-        gold = {"ac": [], "relation": [], "text": []}
+        if "span_ids" in pred_df.columns:
+            pred_data = extract_data(pred_df)
+            gold_data = extract_data(pred_df)
+      
+        else:
+            rename_dict = {"ac": "label", "relation": "link", "stance":"link_label"}
+            pred_df.rename(columns={"ac": "label", "relation": "link", "stance":"link_label"})
+            gold_df.rename(columns={"ac": "label", "relation": "link", "stance":"link_label"})
+            pred_data = pred_df.loc[:,[list(rename_dict.values())+["text"]]].to_dict()
+            gold_data = gold_df.loc[:,[list(rename_dict.values())]+["text"]].to_dict()
 
-        #for i, group in grouped:
-        acs = gold_df.groupby("ac_id")
-        for i, ac in acs:
-            gold["ac"].append(ac["ac"].unique()[0])
-            gold["relation"].append(ac["relation"].unique()[0])
-            gold["text"].append(" ".join(ac["text"].to_numpy()))
 
+        # example input:
+        """
+            [{   
+            'label': 'MajorClaim',
+            'link': 1,
+            'link_label': '',
+            'text': 'one who studies overseas will gain many skills throughout this '
+                    'experience'
+                    },]
+        """
 
-        gold["relation"] = [i + int(item) for i,item in enumerate(gold["relation"])]
-        #preds = data_cache["outputs"]["data"][str(sample_id)]["preds"]
-        #preds = {"ac": preds["ac"], "relation": preds["relation"]}
-        #print(gold)
-        #print(preds)
-
-        print(gold)
-        pred = gold
-
-        figure  = make_tree_plot(gold, pred)
+        fig = hotviz.hot_tree(pred_data, gold_data=gold_data)
         graph =  dcc.Graph(
                         id="tree-graph",
                         figure = fig_layout(figure)
                         )
+
         return graph
 
 
     def get_visual_box(self, key, cache, tasks, metrics):
         
         if key == "loss":
-            return [self.loss_graph(cache, tasks)]
+            graph =  [self.loss_graph(cache, tasks)]
         elif key == "task_metric":
-            return [self.task_metric_graph(cache, tasks, metrics)]
+            graph = [self.task_metric_graph(cache, tasks, metrics)]
         elif key == "class_metric":
-            return [self.class_metric_graph(cache, tasks, metrics)]
+            graph = [self.class_metric_graph(cache, tasks, metrics)]
         elif key == "tree":
-            return [self.tree_graph(cache)]
+            graph = [self.tree_graph(cache)]
         elif key == "highlight":
-            return [self.highlight_text(cache)]
+            graph = [self.highlight_text(cache)]
 
+        box = html.Div(
+                    className="pretty_container six columns",
+                    children=graph)
+        return box
+
+
+def update_visuals(self, data_cache, tasks, metrics):
+
+    visuals = ["task_metric", "class_metric", "loss"] #, "confusion_matrix"]
+
+    tasks  = data_cache["exp_config"]["tasks"]
+    if "seg" in tasks:
+       visuals.append("highlight")
+    
+    if "ac" in tasks and "relation" in tasks and "stance" in tasks:
+        visuals.append("tree")
+
+    nr_rows = math.ceil(len(visuals)/2)
+    rows = []
+    for i in range(rows):
+        rows.append(html.Div(
+                            className="row flex-display",
+                            children=[self.get_visual_box(visuals.pop(0), cache, tasks, metrics) for visual in range(2)]        
+                        ))
+    return rows

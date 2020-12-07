@@ -4,51 +4,56 @@ from hotam.datasets import PE
 from hotam.nn.models import LSTM_CRF
 from hotam.database import DummyDB
 
-pe = PE()
-pe.setup(
-        tasks=["seg"],
-        multitasks=[], 
-        sample_level="sentence",
-        prediction_level="token",
-        encodings=[],
-        features=[],
-        remove_duplicates=False,
-        )
 
 
-hp =  {
-        "optimizer": "sgd",
-        "lr": 0.001,
-        "hidden_dim": 256,
-        "num_layers": 2,
-        "bidir": True,
-        "fine_tune_embs": False,
-        "batch_size": 32,
-        }
+if __name__ == "__main__":
+	pe = PE()
+	pe.setup(
+			tasks=["seg"],
+			multitasks=[], 
+			sample_level="sentence",
+			prediction_level="token",
+			encodings=[],
+			features=[],
+			remove_duplicates=False,
+			)
+	
+	print(dir(pe))
 
-ta = {
-        "logger":None,
-        "checkpoint_callback":False,
-        "early_stop_callback":False,
-        "progress_bar_refresh_rate":1,
-        "check_val_every_n_epoch":1,
-        "gpus":None,
-        #"gpus": [1],
-        "num_sanity_val_steps":1,  
-        #"overfit_batches":0.1
-        }
 
-M = ExperimentManager()
-M.run( 
-        project="seg",
-        dataset=pe,
-        model=LSTM_CRF,
-        hyperparamaters=hp,
-        trainer_args=ta,
-        monitor_metric="seg-f1",
-        progress_bar_metrics=["seg-f1"],
-        debug_mode=True,
-        )
+	# hp =  {
+	# 		"optimizer": "sgd",
+	# 		"lr": 0.001,
+	# 		"hidden_dim": 256,
+	# 		"num_layers": 2,
+	# 		"bidir": True,
+	# 		"fine_tune_embs": False,
+	# 		"batch_size": 32,
+	# 		}
+
+	# ta = {
+	# 		"logger":None,
+	# 		"checkpoint_callback":False,
+	# 		"early_stop_callback":False,
+	# 		"progress_bar_refresh_rate":1,
+	# 		"check_val_every_n_epoch":1,
+	# 		"gpus":None,
+	# 		#"gpus": [1],
+	# 		"num_sanity_val_steps":1,  
+	# 		#"overfit_batches":0.1
+	# 		}
+
+	# M = ExperimentManager()
+	# M.run( 
+	# 		project="seg",
+	# 		dataset=pe,
+	# 		model=LSTM_CRF,
+	# 		hyperparamaters=hp,
+	# 		trainer_args=ta,
+	# 		monitor_metric="seg-f1",
+	# 		progress_bar_metrics=["seg-f1"],
+	# 		debug_mode=True,
+	# 		)
 
 # import dash
 # import dash_html_components as html
