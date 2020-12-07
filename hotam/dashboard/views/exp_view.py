@@ -473,14 +473,10 @@ class ExpView:
         task2labels = data_cache["exp_config"]["task2label"]
         sample_out = outputs[sample_id]
 
-        # if "seg-ac" in sample_out["preds"]:
-        #     task = "seg-ac" 
         if "ac" in sample_out["preds"]:
             task = "ac"
         else:
             task = "seg"
-
-
 
         data = []
         for i,token in enumerate(sample_out["text"]):
@@ -537,8 +533,12 @@ class ExpView:
             data.append(token_data)
 
 
-        src = hotviz.hot_text(data, labels=task2labels[task])
-        
+        hotviz.hot_text(data, labels=task2labels[task], save_path=th_path)
+
+        with open(th_path, "rb") as f:
+            enc_img = base64.b64encode(f.read())
+            src = f"data:image/png;base64,{enc_img.decode()}"
+
         img =  html.Img(   
                         id="text-highlight",
                         src=src
