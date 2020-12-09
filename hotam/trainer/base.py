@@ -78,7 +78,7 @@ class PTLBase(ptl.LightningModule, Metrics):
         #prog_dict = super().get_progress_bar_dict()
         #prog_dict.pop("v_num", None)
         
-        for metric in self.scorer.progress_bar_metrics+[self.scorer.monitor_metric]:
+        for metric in self.progress_bar_metrics+[self.monitor_metric]:
 
             if metric not in metrics:
                 continue
@@ -106,7 +106,7 @@ class PTLBase(ptl.LightningModule, Metrics):
         output_dict = self.model.forward(batch)
     
         if self.logger and split in ["val", "test"]:
-            self.logger.log_output(self.reformat_outputs(output_dict))
+            self.logger.log_outputs(self.__reformat_outputs(output_dict))
         
         if "total" in output_dict["loss"]:
             total_loss = output_dict["loss"]["total"]
@@ -135,8 +135,8 @@ class PTLBase(ptl.LightningModule, Metrics):
     def validation_step(self, batch_ids, batch_idx):
         loss, metrics = self._step(batch_ids, "val")
         result = ptl.EvalResult(
-                                    early_stop_on=torch.Tensor([metrics[self.scorer.monitor_metric]]), 
-                                    checkpoint_on=torch.Tensor([metrics[self.scorer.monitor_metric]])
+                                    early_stop_on=torch.Tensor([metrics[self.monitor_metric]]), 
+                                    checkpoint_on=torch.Tensor([metrics[self.monitor_metric]])
                                 )
         self.log_progress_bar(result, metrics)
         result.log_dict(metrics, on_epoch=True, reduce_fx=my_mean, tbptt_reduce_fx=my_mean)
@@ -193,15 +193,13 @@ class PTLBase(ptl.LightningModule, Metrics):
         
         #bio_labels_str = "-".join(bio_labels.astype(str))
         bio_labels_str = "-".join(bio_labels)
-
-        ID = 0
+        self.__span_id = 0
         def repl(m):
-            global ID
-            c = f'SPAN_{ID}-' * len(m.group())
-            ID += 1
+            c = f'SPAN_{self.__span_id}-' * len(m.group())
+            self.__span_id += 1
             return c
-
-        m = re.sub(fr"B-(I-)*", repl, l)
+            
+        m = re.sub(fr"B-(I(-|))*", repl, bio_labels_str)
         return m.split("-")
             
 
@@ -214,11 +212,10 @@ class PTLBase(ptl.LightningModule, Metrics):
                     if ID in ids_to_log
                     }
 
-        if not ids_to_log:
+        if ids_to_log.shape[0] == 0:
             return {}
 
         outputs = {ID:{"preds":{}, "probs":{}, "gold":{}, "text":{}} for ID in id2idx.keys()}
-
 
         for ID, (i, length) in id2idx.items():
             outputs[ID]["text"] = self.batch["text"][i].tolist()
@@ -227,9 +224,10 @@ class PTLBase(ptl.LightningModule, Metrics):
 
             for task in self.dataset.subtasks:
                 task_preds = ensure_numpy(output_dict["preds"][task])
+                task_gold = ensure_numpy(self.batch[task])
 
                 outputs[ID]["preds"][task] = self.dataset.decode_list(task_preds[i][:length], task).tolist()
-                outputs[ID]["gold"][task] = self.dataset.decode_list(self.batch[task][i][:length], task).tolist()
+                outputs[ID]["gold"][task] = self.dataset.decode_list(task_gold[i][:length], task).tolist()
 
                 if task == "seg" and not spans_added:
                     outputs[ID]["preds"]["span_ids"] = self.__BIO_decode(outputs[ID]["preds"][task])

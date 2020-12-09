@@ -90,50 +90,57 @@ class ExpView:
                 Input('experiment-dropdown', 'value')])(self.get_class_checklist)
 
 
-        #plots
+        #data table
         app.callback(
                     Output('data-table', 'figure'),
                     [Input('data-cache', 'children')]
                     )(self.get_data_table)
 
-
-        app.callback(Output('box1', 'children'),
+        #visuals
+        app.callback(Output('visuals', 'children'),
                     [
-                        Input('box1-dropdown', 'value'),
                         Input('data-cache', 'children'),
-
                         Input("task-checklist", 'value'),
                         Input("metric-checklist", 'value')
-                        ])(self.get_visual_box)
+                        ])(self.update_visuals)
 
-        app.callback(Output('box2', 'children'),
-                    [
-                        Input('box2-dropdown', 'value'),
-                        Input('data-cache', 'children'),
+        # app.callback(Output('box1', 'children'),
+        #             [
+        #                 Input('box1-dropdown', 'value'),
+        #                 Input('data-cache', 'children'),
 
-                        Input("task-checklist", 'value'),
-                        Input("metric-checklist", 'value'),
-                        ])(self.get_visual_box)
+        #                 Input("task-checklist", 'value'),
+        #                 Input("metric-checklist", 'value')
+        #                 ])(self.get_visual_box)
+
+        # app.callback(Output('box2', 'children'),
+        #             [
+        #                 Input('box2-dropdown', 'value'),
+        #                 Input('data-cache', 'children'),
+
+        #                 Input("task-checklist", 'value'),
+        #                 Input("metric-checklist", 'value'),
+        #                 ])(self.get_visual_box)
 
 
-        app.callback(Output('box3', 'children'),
-                    [
-                        Input('box3-dropdown', 'value'),
-                        Input('data-cache', 'children'),
+        # app.callback(Output('box3', 'children'),
+        #             [
+        #                 Input('box3-dropdown', 'value'),
+        #                 Input('data-cache', 'children'),
 
-                        Input("task-checklist", 'value'),
-                        Input("metric-checklist", 'value'),
+        #                 Input("task-checklist", 'value'),
+        #                 Input("metric-checklist", 'value'),
 
-                        ])(self.get_visual_box)
+        #                 ])(self.get_visual_box)
 
-        app.callback(Output('box4', 'children'),
-                    [
-                        Input('box4-dropdown', 'value'),
-                        Input('data-cache', 'children'),
+        # app.callback(Output('box4', 'children'),
+        #             [
+        #                 Input('box4-dropdown', 'value'),
+        #                 Input('data-cache', 'children'),
 
-                        Input("task-checklist", 'value'),
-                        Input("metric-checklist", 'value'),
-                        ])(self.get_visual_box)
+        #                 Input("task-checklist", 'value'),
+        #                 Input("metric-checklist", 'value'),
+        #                 ])(self.get_visual_box)
 
 
     def __get_settings(self):
@@ -258,9 +265,7 @@ class ExpView:
                         )
 
 
-
     def __setup_view(self, info_row):
-        visuals = ["loss", "tree", "highlight", "task_metric", "class_metric"]
         return  html.Div(   
                                 #className='row',  # Define the row element
                                 className="row flex-display",
@@ -278,8 +283,6 @@ class ExpView:
                                             html.Div(
                                                         id="visuals"
                                                         ),
-                                            # self.__create_box_row(1),
-                                            # self.__create_box_row(3),
                                             html.Div(id='data-cache', children=dict(), style={'display': 'none'}),
                                         ],
                                 style={"display": "flex", "flex-direction": "column"},
@@ -369,27 +372,38 @@ class ExpView:
 
         filter_by = get_filter(experiment=experiment_id)
         last_epoch = self.db.get_latest_epoch(filter_by)
+        print("SCORES FOUND", self.db.scores)
 
+        print("UPDATE", last_epoch, current_epoch)
         if experiment_id == current_exp:
             if last_epoch == current_epoch:
                 return dash.no_update
 
         exp_config = self.db.get_exp(experiment_id)
-        exp_config.pop("_id")
+    
 
         filter_by["epoch"] =  { "$lte": last_epoch}
-        scores = self.db.get_scores(filter_by)
-        current_epoch = scores.epoch.max()
-        scores.pop("_id")
 
+        scores = self.db.get_scores(filter_by)
         outputs = self.db.get_outputs(filter_by)
-        outputs.pop("_id")
+
+        current_epoch = last_epoch
+
+        if "_id" in exp_config:
+            exp_config.pop("_id")
+        
+        if "_id" in scores:
+            scores.pop("_id")
+            scores = scores.to_dict()
+
+        if "_id" in outputs:
+            outputs.pop("_id")
 
         return {
                 "exp_config": exp_config,
                 "experiment_id": experiment_id,
                 "epoch": current_epoch,
-                "scores": scores.to_dict(),
+                "scores": scores,
                 "outputs": outputs
                 }
 
@@ -470,6 +484,10 @@ class ExpView:
     def highlight_text(self, data_cache, sample_id):
 
         outputs = data_cache["outputs"]
+
+        if not outputs:
+            return []
+
         task2labels = data_cache["exp_config"]["task2label"]
         sample_out = outputs[sample_id]
 
@@ -563,6 +581,10 @@ class ExpView:
             return data
 
         outputs = data_cache["outputs"]
+
+        if not outputs:
+            return []
+
         sample_out = outputs[sample_id]
 
         pred_df = pd.DataFrame(sample_out["pred"])
@@ -600,18 +622,18 @@ class ExpView:
         return graph
 
 
-    def get_visual_box(self, key, cache, tasks, metrics):
+    def get_visual_box(self, key, data_cache, tasks, metrics):
         
         if key == "loss":
-            graph =  [self.loss_graph(cache, tasks)]
+            graph =  [self.loss_graph(data_cache, tasks)]
         elif key == "task_metric":
-            graph = [self.task_metric_graph(cache, tasks, metrics)]
+            graph = [self.task_metric_graph(data_cache, tasks, metrics)]
         elif key == "class_metric":
-            graph = [self.class_metric_graph(cache, tasks, metrics)]
+            graph = [self.class_metric_graph(data_cache, tasks, metrics)]
         elif key == "tree":
-            graph = [self.tree_graph(cache)]
+            graph = [self.tree_graph(data_cache, 200)]
         elif key == "highlight":
-            graph = [self.highlight_text(cache)]
+            graph = [self.highlight_text(data_cache, 200)]
 
         box = html.Div(
                     className="pretty_container six columns",
@@ -619,22 +641,28 @@ class ExpView:
         return box
 
 
-def update_visuals(self, data_cache, tasks, metrics):
+    def update_visuals(self, data_cache, tasks, metrics):
+        
+        if not data_cache:
+            return []
 
-    visuals = ["task_metric", "class_metric", "loss"] #, "confusion_matrix"]
+        visuals = ["task_metric", "class_metric", "loss"] #, "confusion_matrix"]
 
-    tasks  = data_cache["exp_config"]["tasks"]
-    if "seg" in tasks:
-       visuals.append("highlight")
-    
-    if "ac" in tasks and "relation" in tasks and "stance" in tasks:
-        visuals.append("tree")
+        tasks  = data_cache["exp_config"]["tasks"]
+        if "seg" in tasks:
+            visuals.append("highlight")
+        
+        if "ac" in tasks and "relation" in tasks and "stance" in tasks:
+            visuals.append("tree")
 
-    nr_rows = math.ceil(len(visuals)/2)
-    rows = []
-    for i in range(rows):
-        rows.append(html.Div(
-                            className="row flex-display",
-                            children=[self.get_visual_box(visuals.pop(0), cache, tasks, metrics) for visual in range(2)]        
-                        ))
-    return rows
+        nr_rows = math.ceil(len(visuals)/2) * 2
+        rows = []
+        for i in range(0, nr_rows, 2):
+            rows.append(html.Div(
+                                className="row flex-display",
+                                children=[
+                                            self.get_visual_box(v, data_cache, tasks, metrics) 
+                                            for v in visuals[i:i+2]
+                                            ]        
+                            ))
+        return rows

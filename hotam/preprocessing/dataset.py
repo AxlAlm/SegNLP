@@ -54,7 +54,7 @@ class Batch(dict):
             except ValueError as e:
                 h = [s[k] for s in input_dicts]
 
-            print(k,h)
+            #print(k,h)
             data = to_tensor(h, dtype=k2dtype[k])
             self[k] = data
 
@@ -307,7 +307,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
             shape = self.__get_shape(
                                     ac=self.prediction_level == "ac" and self.tokens_per_sample,
-                                    token=fm.level != "word",
+                                    token=fm.level == "word",
                                     #char=enc == "chars",
                                     feature_dim=fm.feature_dim
                                     )
@@ -493,6 +493,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             raise NotImplementedError("Not supported yet")
             
         fm._init_feature_save(
+                                dataset_name = self.name,
                                 feature_name = fm.name,
                                 #memmap_file=self._feature2memmap[feature], 
                                 shape = shape,

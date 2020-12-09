@@ -29,6 +29,7 @@ class DummyLogger(LightningLoggerBase):
         super().__init__()
         self.db = db
         self.current_epoch = 0
+        self.output_stack = {}
     
     def __repr__(self):
         return self.name()
@@ -51,8 +52,9 @@ class DummyLogger(LightningLoggerBase):
         split = [k for k in metrics.keys() if "epoch" not in k and "id" not in k][-1].split("-",1)[0]
         metrics["split"] = split
         scores = copy_and_vet_dict(metrics, filter_key=split+"-")
-        self.db.scores = [scores]
+        self.db.scores = self.db.scores + [scores]
 
+        print("SCORES LOGGED", self.db.scores)
         #also logs the stack of outputs for the epoch
         if split in ["val", "test"]:
             self.db.outputs = [{ 

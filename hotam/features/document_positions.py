@@ -1,5 +1,5 @@
 
-from hotam.features.base import FeatureModel, save_load_system
+from hotam.features.base import FeatureModel, feature_memory
 from hotam.preprocessing import DataSet
 import pandas as pd
 import numpy as np
@@ -30,7 +30,7 @@ class DocPos(FeatureModel):
         self._level = "doc"
         self._dtype = np.uint8
 
-    @save_load_system
+    @feature_memory
     def extract(self, df):
         """
         extracts document position for paragraphs. 

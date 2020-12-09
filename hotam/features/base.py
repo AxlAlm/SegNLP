@@ -6,6 +6,7 @@ import os
 from typing import List, Dict, Tuple
 import re
 import copy
+from pathlib import Path
 
 
 # axl nlp
@@ -66,7 +67,7 @@ class FeatureModel(ABC):
 
     def _init_feature_save(self, dataset_name:str, feature_name:str, shape:tuple, dtype:str): # memmap_file:str,
 
-        dir_name = f"{str(Path.home())}/.hotam/features/{dataset_name}"
+        dir_path = f"{str(Path.home())}/.hotam/features/{dataset_name}"
         os.makedirs(dir_path, exist_ok=True)
 
         # to keep track on which ids we have saved
@@ -104,7 +105,7 @@ class FeatureModel(ABC):
             self.__saved_ids = set(json.load(f))
 
     
-    def _all_saved(self)
+    def _all_saved(self):
 
         if len(self.__saved_ids) == self._mem_data.shape[0]-1:
             #logger.info("All Features are saved")

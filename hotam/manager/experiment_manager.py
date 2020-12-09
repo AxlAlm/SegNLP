@@ -200,7 +200,6 @@ class ExperimentManager(Evaluator, Trainer):
             self.exp_logger.log_experiment(exp_config)
 
 
-            print("MANAGER", self.db.experiments)
             #run training
             # exp = Process(
             #             target=self._get_eval_method(), 
@@ -219,25 +218,25 @@ class ExperimentManager(Evaluator, Trainer):
             #time.sleep(10)
 
             if self.__dashboard_off:
-                self.start_dashboard(debug_mode=debug_mode)
-                # dashboard = Process(
-                #                         target=self.start_dashboard, 
-                #                         args=(debug_mode, )
-                #                     )
-                # dashboard.start()
+                #self.start_dashboard(debug_mode=debug_mode)
+                dashboard = Process(
+                                        target=self.start_dashboard, 
+                                        args=(debug_mode, )
+                                    )
+                dashboard.start()
                 self.__dashboard_off = False
 
 
-            # self._get_eval_method()(
-            #                         trainer=trainer, 
-            #                         model=model,
-            #                         hyperparamaters=hyperparamaters,
-            #                         metrics=metrics_configs, 
-            #                         monitor_metric=monitor_metric, 
-            #                         progress_bar_metrics=progress_bar_metrics,
-            #                         save_model_choice=save_model_choice,
-            #                         run_test=run_test,
-            #                         )
+            self._get_eval_method()(
+                                    trainer=trainer, 
+                                    model=model,
+                                    hyperparamaters=hyperparamaters,
+                                    metrics=metrics_configs, 
+                                    monitor_metric=monitor_metric, 
+                                    progress_bar_metrics=progress_bar_metrics,
+                                    save_model_choice=save_model_choice,
+                                    run_test=run_test,
+                                    )
                 
 
         if hasattr(self.db, "close"):
