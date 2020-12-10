@@ -39,8 +39,8 @@ class ExpView:
 
     def __init__(self, app, db):
         self.db = db
-        settings = self.__get_settings()
-        info_row = self.__get__info_row(settings=settings)
+        #settings = self.__get_settings()
+        info_row = self.__get__info_row() #settings=settings
         self.layout = self.__setup_view(info_row)
 
 
@@ -61,34 +61,39 @@ class ExpView:
                 Input('data-cache', 'children')])(self.get_config)
 
 
-        ## Dropdowns
-        app.callback(
-                Output('project-dropdown', 'options'),
-                [Input('dataset-dropdown', 'value')])(self.update_project_dropdown)
+        # ## Dropdowns
+        # app.callback(
+        #         Output('project-dropdown', 'options'),
+        #         [Input('dataset-dropdown', 'value')])(self.update_project_dropdown)
 
-        app.callback(
-                Output('dataset-dropdown', 'options'),
-                [Input('project-dropdown', 'value')])(self.update_dataset_dropdown)
+        # app.callback(
+        #         Output('dataset-dropdown', 'options'),
+        #         [Input('project-dropdown', 'value')])(self.update_dataset_dropdown)
         
-        app.callback(
-                Output('model-dropdown', 'options'),
-                [Input('dataset-dropdown', 'value'),
-                Input('project-dropdown', 'value')])(self.update_model_dropdown)
+        # app.callback(
+        #         Output('model-dropdown', 'options'),
+        #         [Input('dataset-dropdown', 'value'),
+        #         Input('project-dropdown', 'value')])(self.update_model_dropdown)
 
-        #checklist
-        app.callback(
-                Output("metric-checklist", 'options'),
-                [Input('experiment-dropdown', 'value')])(self.get_metric_checklist)
+        # app.callback(
+        #         Output('model-dropdown', 'options'),
+        #         [Input('dataset-dropdown', 'value'),
+        #         Input('project-dropdown', 'value')
+        #         Input('model-dropdown', 'options')])(self.update_experiment_dropdown)
 
-        app.callback(
-                Output("task-checklist", 'options'),
-                [Input('experiment-dropdown', 'value')])(self.get_task_checklist)
+        # #checklist
+        # app.callback(
+        #         Output("metric-checklist", 'options'),
+        #         [Input('experiment-dropdown', 'value')])(self.get_metric_checklist)
 
-        app.callback(
-                Output("class-checklist", 'options'),
-                [Input("task-checklist", 'value'),  
-                Input('experiment-dropdown', 'value')])(self.get_class_checklist)
+        # app.callback(
+        #         Output("task-checklist", 'options'),
+        #         [Input('experiment-dropdown', 'value')])(self.get_task_checklist)
 
+        # app.callback(
+        #         Output("class-checklist", 'options'),
+        #         [Input("task-checklist", 'value'),  
+        #         Input('experiment-dropdown', 'value')])(self.get_class_checklist)
 
         #data table
         app.callback(
@@ -332,20 +337,20 @@ class ExpView:
             return {'display': 'block'}
 
 
-    def update_project_dropdown(self, v):
-        return self.update_dropdown("project", dataset=v)
+    # def update_project_dropdown(self, v):
+    #     return self.update_dropdown("project", dataset=v)
 
 
-    def update_dataset_dropdown(self, v):
-        return self.update_dropdown("dataset", project=v)
+    # def update_dataset_dropdown(self, v):
+    #     return self.update_dropdown("dataset", project=v)
 
 
-    def update_model_dropdown(self, v, v1):
-        return self.update_dropdown("model", dataset=v, project=v1)
+    # def update_model_dropdown(self, v, v1):
+    #     return self.update_dropdown("model", dataset=v, project=v1)
 
 
-    def update_experiment_dropdown(self, v, v1, v2):
-        return self.update_dropdown("experiment_id", dataset=v, project=v1, model=v2)
+    # def update_experiment_dropdown(self, v, v1, v2):
+    #     return self.update_dropdown("experiment_id", dataset=v, project=v1, model=v2)
 
 
     def update_dropdown(self, search_for, dataset=None, project=None, model=None):
@@ -367,42 +372,40 @@ class ExpView:
 
     def update_data_cache(self, experiment_id, n, cache_state):
 
-        current_epoch = cache_state.get("epoch", -1)
+        prev_epoch = cache_state.get("epoch", -1)
         current_exp = cache_state.get("experiment_id")
 
         filter_by = get_filter(experiment=experiment_id)
-        last_epoch = self.db.get_latest_epoch(filter_by)
-        print("SCORES FOUND", self.db.scores)
+        print(filter_by)
+        last_epoch = self.db.get_last_epoch(filter_by)
 
-        print("UPDATE", last_epoch, current_epoch)
+        print(prev_epoch, last_epoch)
         if experiment_id == current_exp:
-            if last_epoch == current_epoch:
+            if last_epoch == prev_epoch:
                 return dash.no_update
 
-        exp_config = self.db.get_exp(experiment_id)
+        exp_config = self.db.get_exp_config(filter_by)
     
-
         filter_by["epoch"] =  { "$lte": last_epoch}
-
         scores = self.db.get_scores(filter_by)
-        outputs = self.db.get_outputs(filter_by)
+        scores = scores.to_dict()
 
-        current_epoch = last_epoch
-
+        filter_by["epoch"] = last_epoch
+        outputs = self.db.get_outputs(filter_by).get("data", {})
+        
         if "_id" in exp_config:
             exp_config.pop("_id")
         
         if "_id" in scores:
             scores.pop("_id")
-            scores = scores.to_dict()
-
+        
         if "_id" in outputs:
             outputs.pop("_id")
 
         return {
                 "exp_config": exp_config,
                 "experiment_id": experiment_id,
-                "epoch": current_epoch,
+                "epoch": last_epoch,
                 "scores": scores,
                 "outputs": outputs
                 }

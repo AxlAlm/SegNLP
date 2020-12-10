@@ -1,7 +1,7 @@
 
 
-from hotam.database.dummy import DummyDB
+from hotam.database.mongo import MongoDB
 
 __all__ = [
-            "DummyDB"
+            "MongoDB"
             ]

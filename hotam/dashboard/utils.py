@@ -34,3 +34,12 @@ def fig_layout(fig):
     fig.update_yaxes(automargin=True)
 
     return fig
+
+def get_visible_info(fig):
+    visible_info = {}
+    fig.for_each_trace(lambda trace: visible_info.update({trace.name:trace.visible})) 
+    return visible_info
+
+
+def update_visible_info(fig, visible_info):
+    fig.for_each_trace(lambda trace: trace.update(visible=visible_info[trace.name])) 

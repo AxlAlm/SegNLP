@@ -6,17 +6,21 @@ import os
 import pandas as pd
 
 
-class MongoDataBase:
+class MongoDB:
 
 
     def __init__(self):
         # Database
-        client = pymongo.MongoClient(os.environ['MONGO_KEY'])
-        db = client[os.environ['DB_NAME']]
+        if 'MONGO_KEY' in os.environ:
+            client = pymongo.MongoClient(os.environ['MONGO_KEY'])
+            db = client[os.environ['DB_NAME']]
+        else:
+            client = pymongo.MongoClient()
+            db = client["dummy_db"]
+
         self.experiments = db["experiments"]
         self.outputs = db["outputs"]
         self.scores = db["scores"]
-        self.datasets = db["datasets"]
 
     
     def get_last_exp(self):
@@ -29,21 +33,31 @@ class MongoDataBase:
         return [{'label': e, 'value': e} for e in unique_items]
     
 
-    def get_latest_epoch(self, filter_by):
-        #result = self.scores.find_one(filter_by, sort=[('epoch', pymongo.DESCENDING)]))
-        return self.scores.find_one(filter_by, sort=[('epoch', pymongo.DESCENDING)])["epoch"]
+    def get_last_epoch(self, filter_by):
+        try:
+            return self.scores.find_one(filter_by, sort=[('epoch', pymongo.DESCENDING)])["epoch"]
+        except TypeError:
+            return -1
 
 
     def get_scores(self,filter_by):
-        
         if "experiment_id" not in filter_by:
             return pd.DataFrame([])
 
         return pd.DataFrame(list(self.scores.find(filter_by)))
+    
 
+    def get_outputs(self,filter_by):
 
-    def get_experiments(self, filter_by):
-        return list(self.experiments.find(filter_by))
+        if "experiment_id" not in filter_by:
+            return {}
+
+        output =  self.outputs.find_one(filter_by)
+        return {} if output is None else output
+    
+
+    def get_exp_config(self, filter_by):
+        return self.experiments.find_one(filter_by)
 
 
     def get_metrics(self, filter_by):
@@ -69,3 +83,6 @@ class MongoDataBase:
                 task_classes.append({"label":c, "value":c})
 
         return task_classes
+    
+    def get_live_exps(self):
+        return list(self.experiments.find({"status":"ongoing"}))

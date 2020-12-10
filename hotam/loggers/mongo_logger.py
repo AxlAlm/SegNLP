@@ -45,9 +45,12 @@ class MongoLogger(LightningLoggerBase):
     
 
     def log_experiment( self, experiment_config:dict):
-        logger.info("Saving Config to MongoDB ...")
+
+        print("WE SCOULD HAVE NONE", self.db.experiments.find_one())
+
         self.db.experiments.insert_one(copy_and_vet_dict(experiment_config))
 
+        print("HELLO WE FUCKIN HAVE ONE", self.db.experiments.find_one())
 
     @rank_zero_only
     def log_metrics(self, metrics, step):
@@ -55,10 +58,11 @@ class MongoLogger(LightningLoggerBase):
         split = [k for k in metrics.keys() if "epoch" not in k and "id" not in k][-1].split("-",1)[0]
         metrics["split"] = split
         self.db.scores.insert_one(copy_and_vet_dict(metrics, filter_key=split+"-"))
+
         
         #also logs the stack of outputs for the epoch
         if split in ["val", "test"]:
-            self.outputs.insert_one({ 
+            self.db.outputs.insert_one({ 
                                         "experiment_id": self.experiment_id,
                                         "epoch": metrics["epoch"],
                                         "split": split,
@@ -73,7 +77,15 @@ class MongoLogger(LightningLoggerBase):
 
     def log_outputs(self, outputs):
         self.output_stack.update(outputs)
+
     
+    def update_config(self, experiment_id, key, value):
+        newvalues = { "$set": { key: value} }
+        self.db.experiments.update_one({"experiment_id":experiment_id}, newvalues)
+    
+    # def delete(self, experiment_id):
+    #     filter_by = {"experiment_id":experiment_id}
+    #     self.db.experiments.delete_many(filter_by)
 
     def experiment(self):
         pass

@@ -205,7 +205,8 @@ class PTLBase(ptl.LightningModule, Metrics):
 
     def __reformat_outputs(self, output_dict):
 
-        ids_to_log = self.dataset.splits[0]["val"][:15]
+        #ids_to_log = ensure_numpy(self.dataset.splits[0]["val"][:15]) 
+        ids_to_log = ensure_numpy(self.batch["ids"])
         id2idx = {  
                     str(ID):(i, length) for i, (ID, length) in 
                     enumerate(zip(ensure_numpy(self.batch["ids"]), ensure_numpy(self.batch["lengths"])))
