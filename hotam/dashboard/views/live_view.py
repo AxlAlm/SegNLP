@@ -40,148 +40,285 @@ class LiveView:
 
     def __init__(self, app, db):
         self.db = db
+
+        # button_menu = html.Div(
+        #                         id='exp-dropdown',
+        #                         #children = []
+        #                         )
+
+        info = html.Div(
+                        className="row flex-display",
+                        children=[
+                                    html.Div(  
+                                        className="pretty_container six columns",
+                                        children=[
+                                                    dcc.Dropdown(
+                                                                id='exp-config-dropdown',
+                                                                options=[
+                                                                            {"label": "hyperparamaters", "value":"hyperparamaters"},
+                                                                            {"label": "exp config", "value":"dataset_config"},
+                                                                            {"label": "trainer_args", "value":"trainer_args"}
+                                                                        ],
+                                                                value="hyperparamaters",
+                                                                className="dcc_control",
+                                                                ),
+                                                    html.Div( 
+                                                            className="pretty_container six columns",
+                                                            children=[
+                                                                        html.Pre(
+                                                                                id="exp-config",
+                                                                                children=""
+                                                                                )
+                                                                        ],
+                                                            style={
+                                                                    "maxHeight": "500px", 
+                                                                    "maxWidth": "300px",
+                                                                    "overflow": "scroll",
+                                                                    }
+                                                            )
+                                                    ]       
+                                        ),
+                                    html.Div( 
+                                            className="pretty_container six columns",
+                                            children=[
+                                                        dcc.Graph(
+                                                                    id='data-table',
+                                                                    figure = go.Figure(data=[]),
+                                                            )
+                                                        
+                                                    ]
+                                                )
+
+                                ]
+                            )
+    
+
         
-
-        self.id2exp = dict(enumerate(db.get_live_exps()))
-
-        buttons = html.Div([
-                            html.Button(
-                                        id='exp-btn-{}',
-                                        children=exp["experiment_id"],
-                                        n_clicks=0
-                                        ) 
-                            for i,exp in self.id2exp.items()
-                            ]
-                            +
-                            [ html.Div(
-                                        id='experiment-id',
-                                        children=''
-                                        )
-                            ]
-                            )
-                            #html.Div(id='container-button-timestamp')
-
-        self.layout =   html.Div(   
-                                className="row flex-display",
-                                children=[
-                                            html.Div(
-                                                    children=[
-                                                            daq.ToggleSwitch(
-                                                                            id='my-toggle-switch',
-                                                                            label="Hide Stats",
-                                                                            #vertical=True,
-                                                                            value=False
-                                                                            ),
-                                                             ]),
-                                            self.__stats(),
-                                            html.Div(
-                                                        id="visuals"
+        visuals =  html.Div(
+                            children=[
+                                html.Div(
+                                    className="row flex-display",
+                                    children=[
+                                                html.Div(
+                                                        id="loss-graph-con",
+                                                        className="pretty_container six columns",
+                                                        children=[dcc.Graph(
+                                                                            id="loss-graph",
+                                                                            figure = go.Figure([])
+                                                                            )
+                                                                    ],
+                                                        style={'display': 'none'}
                                                         ),
-                                            html.Div(id='data-cache', children=dict(), style={'display': 'none'}),
+                                                html.Div(
+                                                        id="task-metric-graph-con",
+                                                        className="pretty_container six columns",
+                                                        children=[dcc.Graph(
+                                                                            id="task-metric-graph",
+                                                                            figure = go.Figure([])
+                                                                            )
+                                                                    ],                                                    
+                                                        style={'display': 'none'}
+                                                        ),
+                                                ]
+                                        ),
+                                html.Div(
+                                    className="row flex-display",
+                                    children=[
+                                                html.Div(
+                                                        id="class-metric-graph-con",
+                                                        className="pretty_container six columns",
+                                                        children=[dcc.Graph(
+                                                                            id="class-metric-graph",
+                                                                            figure = go.Figure([])
+                                                                            )
+                                                                            ],                                                      
+                                                        style={'display': 'none'}
+                                                        ),
+                                                html.Div(
+                                                        id="conf-matrix-con",
+                                                        className="pretty_container six columns",
+                                                        children=[
+                                                                    dcc.Dropdown(
+                                                                                id='conf-dropdown',
+                                                                                options=[],
+                                                                                value=None,
+                                                                                className="dcc_control",
+                                                                                ),
+                                                                    dcc.Graph(
+                                                                                id="conf-matrix",
+                                                                                figure = go.Figure([])
+                                                                                )
+                                                                    ],                                                       
+                                                        style={'display': 'none'}
+                                                        ),
+                                                ]
+                                        ),
+                                html.Div(
+                                    className="row flex-display",
+                                    children=[
+
+                                                html.Div(
+                                                        id="text-highlight-con",
+                                                        className="pretty_container six columns",
+                                                        children=[ 
+                                                                    dcc.Dropdown(
+                                                                                id='sample-id-dropdown1',
+                                                                                options=[],
+                                                                                value=None,
+                                                                                className="dcc_control",
+                                                                                ),
+                                                                    html.Img(   
+                                                                            id="text-highlight",
+                                                                            src=""
+                                                                            ),
+                                                                    ],
+                                                        style={'display': 'none'}
+                                                        ),
+                                                html.Div(
+                                                        id="tree-graph-con",
+                                                        className="pretty_container six columns",
+                                                        children=[
+                                                                    dcc.Dropdown(
+                                                                                id='sample-id-dropdown2',
+                                                                                options=[],
+                                                                                value=None,
+                                                                                className="dcc_control",
+                                                                                ),
+                                                                    dcc.Graph(
+                                                                            id="tree-graph",
+                                                                            figure = go.Figure([])
+                                                                            )
+                                                                ],                                                         
+                                                        style={'display': 'none'}
+                                                        ),
+                                                ]
+                                        )
+                                ]
+                            )
+            
+        live_view = html.Div(   
+                            id="live-view",
+                            #className="row flex-display",
+                            children=[
+                                        info,
+                                        visuals
                                         ],
-                                style={"display": "flex", "flex-direction": "column"},
+                            style={'display': 'none'}
+                            #style={"display": "flex", "flex-direction": "column"},
                             )
 
-        ### CALLBACKS
+
+        self.layout = html.Div(
+                                children=[
+                                            dcc.Dropdown(
+                                                        id='exp-dropdown',
+                                                        options=[],
+                                                        value=None,
+                                                        className="dcc_control",
+                                                        #clearable=False,
+                                                        ),
+                                            live_view,
+                                            html.Div(id='data-cache', children=dict(), style={'display': 'none'}),
+
+                                          ]
+                                
+                                )
+
+        
+        app.callback(Output('exp-dropdown', 'options'),
+                    Input('interval-component', 'n_intervals'),
+                    State('exp-dropdown', 'value'))(self.update_exp_dropdown)
+
+
         app.callback(
                     Output('data-cache', 'children'),
-                    Input('interval-component', 'n_intervals')],
+                    Output('live-view', 'style'),
+                    [Input('interval-component', 'n_intervals'),
+                    Input('exp-dropdown','value')
+                    ],
                     [State('data-cache', 'children')])(self.update_data_cache)
 
-
-        app.callback(Output('experiment-id', 'children'),
-                    [Input(f'exp-btn-{}', 'n_clicks')
-                    for i in self.live_exps.keys() ])(self.get_exp)
-
-                        
-        app.callback(
-                Output('exp-config', 'children'),
-                [Input("config-dropdown2", "value"),
-                Input('data-cache', 'children')])(self.get_config)
-
-
-        #data table
-        app.callback(
-                    Output('data-table', 'figure'),
-                    [Input('data-cache', 'children')]
-                    )(self.get_data_table)
-
-        #visuals
-        app.callback(Output('visuals', 'children'),
-                    [
-                        Input('data-cache', 'children'),
-                        #Input("task-checklist", 'value'),
-                        #Input("metric-checklist", 'value')
-                        ])(self.update_visuals)
-
-
-    def __stats(self, settings=None):
-        return html.Div(
-                        className="pretty_container fourteen columns",
-                        id="stats",
-                        children=[
-                                    #html.Button('Hide', id='hide-settings-info', n_clicks=0),
-                                    html.Div(
-                                            className="row flex-display",
-                                            children=[
-                                                        html.Div(  
-                                                            className="pretty_container",
-                                                            children=[
-                                                                        dcc.Dropdown(
-                                                                                    id='config-dropdown2',
-                                                                                    options=[
-                                                                                                {"label": "hyperparamaters", "value":"hyperparamaters"},
-                                                                                                {"label": "exp config", "value":"dataset_config"},
-                                                                                                {"label": "trainer_args", "value":"trainer_args"}
-                                                                                            ],
-                                                                                    value="hyperparamaters",
-                                                                                    className="dcc_control",
-                                                                                    ),
-                                                                        html.Div( 
-                                                                                className="pretty_container",
-                                                                                children=[
-                                                                                            html.Pre(
-                                                                                                    id="exp-config2",
-                                                                                                    children=""
-                                                                                                    )
-                                                                                            ],
-                                                                                style={
-                                                                                        "maxHeight": "500px", 
-                                                                                        "maxWidth": "300px",
-                                                                                        "overflow": "scroll",
-                                                                                        }
-                                                                                )
-                                                                        ]       
-                                                            ),
             
-                                                        html.Div( 
-                                                                className="pretty_container five columns",
-                                                                children=[
-                                                                            dcc.Graph(
-                                                                                        id='data-table',
-                                                                                        figure = fig_layout(go.Figure(data=[])),
-                                                                                )
-                                                                            
-                                                                        ]
-                                                                    ),
+        app.callback(Output('exp-config', 'children'),
+                    [Input("exp-config-dropdown", "value"),
+                    Input('data-cache', 'children')])(self.get_config)
 
-                                                    ]
-                                            ),
-                                ]
-                        )
+        app.callback(Output('data-table', 'figure'),
+                    [Input('data-cache', 'children')])(self.get_data_table)
 
 
 
-    def get_exp(self,*args):
+        app.callback(
+                    Output('loss-graph', 'figure'),
+                    Output('loss-graph-con', 'style'),
+                    [Input('data-cache', 'children')],
+                    [State('loss-graph', 'figure')])(self.update_loss_graph)
 
-        for i, click in enumerate(args):
+
+        app.callback(
+                    Output('task-metric-graph', 'figure'),
+                    Output('task-metric-graph-con', 'style'),
+                    [Input('data-cache', 'children')],
+                    [State('task-metric-graph', 'figure')])(self.update_task_metric_graph)
+
+
+        app.callback(
+                    Output('class-metric-graph', 'figure'),
+                    Output('class-metric-graph-con', 'style'),
+                    [Input('data-cache', 'children')],
+                    [State('class-metric-graph', 'figure')])(self.update_class_metric_graph)
+
+
+        app.callback(Output('conf-dropdown', 'options'),
+                    Output('conf-dropdown', 'value'),
+                    Input('exp-dropdown','value')
+                    )(self.update_conf_dropdown)
+
+
+        app.callback(
+                    Output('conf-matrix', 'figure'),
+                    Output('conf-matrix-con', 'style'),
+                    [
+                    Input('conf-dropdown', 'value'),
+                    Input('data-cache', 'children')
+                    ])(self.update_conf_matrix)
+
         
-            if click == 1:
-                return self.
+        app.callback(Output('sample-id-dropdown1', 'options'),
+                    Output('sample-id-dropdown1', 'value'),
+                    Input('exp-dropdown','value')
+                    )(self.update_sample_id_dropdown)
 
 
+        app.callback(
+                    Output('text-highlight', 'src'),
+                    Output('text-highlight-con', 'style'),
+                    [
+                    Input('sample-id-dropdown1', 'value'),
+                    Input('data-cache', 'children')
+                    ])(self.update_highlight_text)
 
 
+        app.callback(Output('sample-id-dropdown2', 'options'),
+                    Output('sample-id-dropdown2', 'value'),
+                    Input('exp-dropdown','value')
+                    )(self.update_sample_id_dropdown)
+
+        app.callback(
+                    Output('tree-graph', 'figure'),
+                    Output('tree-graph-con', 'style'),
+                    [
+                    Input('sample-id-dropdown2', 'value'),
+                    Input('data-cache', 'children')
+                    ],
+                    [State('tree-graph', 'figure')])(self.update_tree_graph)
+
+
+    def update_exp_dropdown(self, n):
+        exps = sorted(self.db.get_live_exps_ids())
+        return [{"label":e, "value":e} for e in exps]
+
+        
     def update_output(self, value):
         if value:
             return {'display': 'none'}
@@ -189,14 +326,17 @@ class LiveView:
             return {'display': 'block'}
 
 
-    def update_data_cache(self, experiment_id, n, cache_state):
+    def update_data_cache(self, n, experiment_id,  cache_state):
+   
+        if experiment_id is None and not cache_state:
+            return dash.no_update
 
-        
         prev_epoch = cache_state.get("epoch", -1)
         current_exp = cache_state.get("experiment_id")
 
         filter_by = get_filter(experiment=experiment_id)
         last_epoch = self.db.get_last_epoch(filter_by)
+
 
         if experiment_id == current_exp:
             if last_epoch == prev_epoch:
@@ -220,30 +360,15 @@ class LiveView:
         if "_id" in outputs:
             outputs.pop("_id")
 
-        plot_info = {
-                    "class-metric-graph":{
-                                            "visibility":{}
-                                            }, 
-                    "task-metric-graph":{
-                                            "visibility":{}
-                                            }, 
-                    "loss-graph":{
-                                            "visibility":{}
-                                            }, 
-                    }
-        if last_epoch != 0:
-            plot_info["class-metric-graph"]["visibility"] = get_visible_info(State("class-metric-graph", "figure"))
-            plot_info["task-metric-graph"]["visibility"] = get_visible_info(State("task-metric-graph", "figure"))
-            plot_info["loss-graph"]["visibility"] = get_visible_info(State("loss-graph", "figure"))
-
-        return {
+        data_cache = {
                 "exp_config": exp_config,
                 "experiment_id": experiment_id,
                 "epoch": last_epoch,
                 "scores": scores,
                 "outputs": outputs,
-                "plot_info":plot_info,
                 }
+        
+        return data_cache, {"display":"block"}
 
 
     def get_data_table(self, data_cache):
@@ -264,8 +389,14 @@ class LiveView:
             return json.dumps(exp_config.get(config_value,{}), indent=4)
 
 
-    def loss_graph(self, data_cache):
-        
+    def update_loss_graph(self, data_cache, fig_state):
+
+        fig_state = go.Figure(fig_state)
+
+        if not data_cache["scores"]:
+            return fig_state, {"display":"none"}
+
+
         data = pd.DataFrame(data_cache["scores"])
         experiment_id = data_cache["experiment_id"]
         tasks = data_cache["exp_config"]["tasks"]
@@ -274,24 +405,30 @@ class LiveView:
 
         figure = make_lineplot(data, task_loss, "Loss")
 
-        visible_info = data_cache["plot_info"]["loss-graph"]["visibility"]
-        if visible_info:
-            update_visible_info(figure, visible_info)
+        last_vis_state = get_visible_info(fig_state)
+        current_vis_state = get_visible_info(figure)
+        if last_vis_state.keys() == current_vis_state.keys():
+            update_visible_info(figure, last_vis_state)
 
-        graph =  dcc.Graph(
-                        id="loss-graph",
-                        figure = fig_layout(figure)
-                        )
-        return graph
+        return figure, {"display":"block"}
 
 
-    def task_metric_graph(self, data_cache):
+    def update_task_metric_graph(self, data_cache, fig_state):
+
+
+        fig_state = go.Figure(fig_state)
+
+        if not data_cache["scores"]:
+            return fig_state, {"display":"none"}
+
 
         data = pd.DataFrame(data_cache["scores"])
         experiment_id = data_cache["experiment_id"]
         
         tasks = data_cache["exp_config"]["tasks"]
-        metrics = data_cache["exp_config"]["metrics"]
+        metrics = data_cache["exp_config"]["metrics"].copy()
+        metrics.remove("confusion_matrix")       
+
 
         task_metrics = []
         for task in tasks:
@@ -300,26 +437,33 @@ class LiveView:
     
         figure = make_lineplot(data, task_metrics, "Task Scores")
 
-        visible_info = data_cache["plot_info"]["task-metric-graph"]["visibility"]
-        if visible_info:
-            update_visible_info(figure, visible_info)
+
+        last_vis_state = get_visible_info(fig_state)
+
+        if data_cache["epoch"] == 0:
+            last_vis_state = {k:False for k in task_metrics if "f1" not in k}
+
+        current_vis_state = get_visible_info(figure)
+        if last_vis_state.keys() == current_vis_state.keys():
+            update_visible_info(figure, last_vis_state)
+
+        return figure, {"display":"block"}
 
 
-        graph =  dcc.Graph(
-                        id="task-metric-graph",
-                        figure = fig_layout(figure)
-                        )
+    def update_class_metric_graph(self, data_cache, fig_state):
         
-        return graph
+        fig_state = go.Figure(fig_state)
 
+        if not data_cache["scores"]:
+            return fig_state, {"display":"none"}
 
-    def class_metric_graph(self, data_cache):
 
         data = pd.DataFrame(data_cache["scores"])
         experiment_id = data_cache["experiment_id"]
 
         tasks = data_cache["exp_config"]["tasks"]
-        metrics = data_cache["exp_config"]["metrics"]        
+        metrics = data_cache["exp_config"]["metrics"].copy()
+        metrics.remove("confusion_matrix")
         task2labels = data_cache["exp_config"]["dataset_config"]["task_labels"]
 
         filter_columns = []
@@ -329,29 +473,50 @@ class LiveView:
                 for metric in metrics:
                     filter_columns.append("-".join([task, c, metric]).lower())
 
-        
-
+    
         figure =  make_lineplot(data, filter_columns, "Class Scores")
 
-        visible_info = data_cache["plot_info"]["class-metric-graph"]["visibility"]
-        if visible_info:
-            update_visible_info(figure, visible_info)
-
-        graph =  dcc.Graph(
-                        id="class-metric-graph",
-                        figure = fig_layout(figure)
-                        )
-        return graph
+        last_vis_state = get_visible_info(fig_state)
 
 
-    def highlight_text(self, data_cache, sample_id):
+        if data_cache["epoch"] == 0:
+            last_vis_state = {k:False for k in filter_columns if "f1" not in k}
 
-        outputs = data_cache["outputs"]
+        current_vis_state = get_visible_info(figure)
+        if last_vis_state.keys() == current_vis_state.keys():
+            update_visible_info(figure, last_vis_state)
 
-        if not outputs:
-            return []
+
+        return figure, {"display":"block"}
+
+
+    def update_sample_id_dropdown(self, experiment_id):
+        exp_config = self.db.get_exp_config({"experiment_id":experiment_id})
+
+        if exp_config is None:
+            return [], None
+
+        options = [{"label":t, "value":t} for t in exp_config["dataset_config"]["tracked_sample_ids"]]
+        value = options[0]["value"]
+        print("SAMPLE ID")
+        return options, value
+
+
+    def update_highlight_text(self, sample_id, data_cache):
+
+        if not data_cache or sample_id is None:
+            return "", {'display': 'none'}
+
+        if not data_cache["outputs"]:
+            return "", {'display': 'none'}
+
+        tasks  = data_cache["exp_config"]["tasks"]
+        if "seg" not in tasks:
+            return "", {'display': 'none'}
 
         task2labels = data_cache["exp_config"]["task2label"]
+        outputs = data_cache["outputs"]
+
         sample_out = outputs[sample_id]
 
         if "ac" in sample_out["preds"]:
@@ -413,7 +578,6 @@ class LiveView:
 
             data.append(token_data)
 
-
         hotviz.hot_text(data, labels=task2labels[task], save_path=th_path)
 
         with open(th_path, "rb") as f:
@@ -425,10 +589,19 @@ class LiveView:
                         src=src
                         )
 
-        return img
+        return img, {'display': 'block'}
 
 
-    def tree_graph(self, data_cache, sample_id):
+    def update_tree_graph(self, sample_id, data_cache, fig_state):
+
+        fig_state = go.Figure(fig_state)
+
+        if not data_cache or sample_id is None:
+            return fig_state, {'display': 'none'}
+
+        if not data_cache["scores"]:
+            return fig_state, {"display":"none"}
+
 
         def extract_data(df):
             spans = df.groupby("span_ids")
@@ -442,6 +615,10 @@ class LiveView:
                                     })
             
             return data
+
+
+        if "relation" not in data_cache["exp_config"]["tasks"]:
+            return go.Figure([]), {'display': 'none'}
 
         outputs = data_cache["outputs"]
 
@@ -477,55 +654,42 @@ class LiveView:
         """
 
         fig = hotviz.hot_tree(pred_data, gold_data=gold_data)
-        graph =  dcc.Graph(
-                        id="tree-graph",
-                        figure = fig_layout(figure)
-                        )
-
-        return graph
 
 
-    def get_visual_box(self, key, data_cache):
+        last_vis_state = get_visible_info(fig_state)
+        current_vis_state = get_visible_info(figure)
+        if last_vis_state.keys() == current_vis_state.keys():
+            update_visible_info(figure, last_vis_state)
+
+
+        return fig, {'display': 'block'}
+
+
+    def update_conf_dropdown(self, experiment_id):
+        exp_config = self.db.get_exp_config({"experiment_id":experiment_id})
+
+        if exp_config is None:
+            return [], None
+
+        options = [{"label":t, "value":t} for t in exp_config["tasks"]]
+        value = options[0]["value"]
+
+
+        return options, value
+
+
+    def update_conf_matrix(self, task, data_cache):
+
+        if not data_cache or task is None:
+            return {}, {"display":"none"}
         
-        if key == "loss":
-            graph =  [self.loss_graph(data_cache)]
-        elif key == "task_metric":
-            graph = [self.task_metric_graph(data_cache)]
-        elif key == "class_metric":
-            graph = [self.class_metric_graph(data_cache)]
-        elif key == "tree":
-            graph = [self.tree_graph(data_cache, 200)]
-        elif key == "highlight":
-            graph = [self.highlight_text(data_cache, 200)]
+        if not data_cache["scores"]:
+            return {}, {"display":"none"}
 
-        box = html.Div(
-                    className="pretty_container six columns",
-                    children=graph)
-        return box
+        last_epoch_data = [d for d  in data_cache["scores"] if d["epoch"] == data_cache["epoch"]][0]
+        conf_data = last_epoch_data["confusion_matrix"][task]
 
+        print(conf_data)
 
-    def update_visuals(self, data_cache):
-        
-        if not data_cache:
-            return []
-
-        visuals = ["task_metric", "class_metric", "loss"] #, "confusion_matrix"]
-
-        tasks  = data_cache["exp_config"]["tasks"]
-        if "seg" in tasks:
-            visuals.append("highlight")
-        
-        if "ac" in tasks and "relation" in tasks and "stance" in tasks:
-            visuals.append("tree")
-
-        nr_rows = math.ceil(len(visuals)/2) * 2
-        rows = []
-        for i in range(0, nr_rows, 2):
-            rows.append(html.Div(
-                                className="row flex-display",
-                                children=[
-                                            self.get_visual_box(v, data_cache) 
-                                            for v in visuals[i:i+2]
-                                            ]        
-                            ))
-        return rows
+        fig = make_table(df, "Confusion Matrix")
+        return fig, {'display': 'block'}

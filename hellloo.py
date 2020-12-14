@@ -39,7 +39,7 @@ if __name__ == "__main__":
 			"bidir": True,
 			"fine_tune_embs": False,
 			"batch_size": 10,
-			"max_epochs":10,
+			"max_epochs":100,
 			}
 
 	ta = {

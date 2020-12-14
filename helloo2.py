@@ -1,28 +1,33 @@
 
 
 
-import plotly.express as px
-countries_to_hide = ["Australia"]
-df = px.data.gapminder().query("continent=='Oceania'")
-fig = px.line(df, x="year", y="lifeExp", color='country')
+# import plotly.express as px
+# countries_to_hide = ["Australia"]
+# df = px.data.gapminder().query("continent=='Oceania'")
+# fig = px.line(df, x="year", y="lifeExp", color='country')
+
+# print(fig.legends)
 
 # fig.for_each_trace(lambda trace: trace.update(visible="legendonly") 
 #                    if trace.name in countries_to_hide else ())
 
 
-k = {}
-fig.for_each_trace(lambda trace: k.update({trace.name:trace.visible}))
+# k = {}
+# fig.for_each_trace(lambda trace: k.update({trace.name:trace.visible}))
 
-print(k)
+# print(k)
 
-fig.show()
+# fig.show()
 
 
 
-# import pymongo
+import pymongo
 
-# client = pymongo.MongoClient()
-# client.drop_database('dummy_db')
+client = pymongo.MongoClient()
+db = client['dummy_db']
+for e in list(db["experiments"].find()):
+    print(e["experiment_id"], e["status"])
+client.drop_database('dummy_db')
 
 
 #db = client["dummy_db"]

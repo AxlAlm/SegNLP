@@ -884,7 +884,8 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                         "encodings": encodings,
                         "features": self.features,
                         "remove_duplicates": remove_duplicates,
-                        "task_labels": self.task2labels
+                        "task_labels": self.task2labels,
+                        "tracked_sample_ids": {str(s): ids["val"][:20].tolist() for s, ids in self.splits.items()}
                     }
 
         if hotam.preprocessing.settings["CACHE_SAMPLES"]:

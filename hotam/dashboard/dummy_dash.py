@@ -16,12 +16,12 @@ class DummyDash:
     def __init__(self, db):
         self.app = dash.Dash("Dummy Dash Board")    
         self.app.layout = html.Div([  
-                                    ExpView(self.app, db).layout,
+                                    LiveView(self.app, db).layout,
                                     dcc.Interval(
                                                     id='interval-component',
-                                                    interval=1*5000, # in milliseconds
+                                                    interval=1000, # in milliseconds
                                                     n_intervals=0,
-                                                    max_intervals=-1,
+                                                    max_intervals=-1,   
                                                 )
                                      ])
 

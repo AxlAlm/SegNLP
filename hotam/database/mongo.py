@@ -83,6 +83,7 @@ class MongoDB:
                 task_classes.append({"label":c, "value":c})
 
         return task_classes
-    
-    def get_live_exps(self):
-        return list(self.experiments.find({"status":"ongoing"}))
+
+    def get_live_exps_ids(self):
+        exp_ids = [exp["experiment_id"] for exp in list(self.experiments.find({"status":"ongoing"}))]
+        return exp_ids

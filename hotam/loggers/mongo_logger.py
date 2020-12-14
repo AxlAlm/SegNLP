@@ -45,12 +45,8 @@ class MongoLogger(LightningLoggerBase):
     
 
     def log_experiment( self, experiment_config:dict):
-
-        print("WE SCOULD HAVE NONE", self.db.experiments.find_one())
-
         self.db.experiments.insert_one(copy_and_vet_dict(experiment_config))
 
-        print("HELLO WE FUCKIN HAVE ONE", self.db.experiments.find_one())
 
     @rank_zero_only
     def log_metrics(self, metrics, step):

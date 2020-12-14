@@ -134,9 +134,9 @@ class ExperimentManager(Evaluator, Trainer):
             start_ts = get_timestamp()
 
             model_name = model.name()
-            experiment_id = "_".join([model_name, str(uuid.uuid4())[:10]])
-            logger.info(f"Current Experiment ID : {experiment_id}")
+            experiment_id = "_".join([model_name, str(uuid.uuid4())[:8]])
 
+            logger.info(f"Current Experiment ID : {experiment_id}")
             random_seed = hyperparamaters.get("random_seed", default_seed)
             set_random_seed(    
                             random_seed, 
@@ -201,16 +201,10 @@ class ExperimentManager(Evaluator, Trainer):
                                         run_test=run_test,
                                         )
             
-            except Exception as e:
-                error = e
+            except BaseException as e:
+                exp_logger.update_config(experiment_id, key="status", value="broken")
+                raise e
 
             if exp_logger:
-                exp_logger.update_config(experiment_id, key="status", value="ongoing")
-            
-            
-            if error is not None:
+                exp_logger.update_config(experiment_id, key="status", value="done")
 
-                # if exp_logger:
-                #     exp_logger.delete(experiment_id)
-
-                raise error
