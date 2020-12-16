@@ -2,7 +2,11 @@
 from hotam import ExperimentManager
 from hotam.datasets import PE
 from hotam.nn.models import LSTM_CRF
-from hotam.features import Embeddings
+from hotam.nn.models import LSTM_CNN_CRF
+from hotam.nn.models import JointPN
+
+
+from hotam.features import Embeddings, DocPos
 from hotam.dashboard import DummyDash
 from hotam.database import MongoDB
 from hotam.loggers import MongoLogger
@@ -20,48 +24,24 @@ if __name__ == "__main__":
 
 	pe = PE()
 	pe.setup(
-			tasks=["seg"],
+			tasks=["ac", "relation"],
 			multitasks=[], 
-			sample_level="sentence",
-			prediction_level="token",
+			sample_level="paragraph",
+			prediction_level="ac",
 			encodings=[],
 			features=[
+						DocPos(pe, prediction_level="sentence"),
 						Embeddings("glove")
 						],
 			remove_duplicates=False,
 			)
-	
-	hp =  {
-			"optimizer": "sgd",
-			"lr": 0.001,
-			"hidden_dim": 256,
-			"num_layers": 2,
-			"bidir": True,
-			"fine_tune_embs": False,
-			"batch_size": 10,
-			"max_epochs":100,
-			}
-
-	ta = {
-			"logger":None,
-			"checkpoint_callback":False,
-			"early_stop_callback":False,
-			"progress_bar_refresh_rate":1,
-			"check_val_every_n_epoch":1,
-			"gpus":None,
-			#"gpus": [1],
-			"num_sanity_val_steps":1,  
-			"overfit_batches":0.01
-			}
 
 
 	M = ExperimentManager()
 	M.run( 
-			project="seg",
+			project="ac-relation",
 			dataset=pe,
-			model=LSTM_CRF,
-			hyperparamaters=hp,
-			trainer_args=ta,
+			model=JointPN,
 			monitor_metric="val-seg-f1",
 			progress_bar_metrics=["val-seg-f1"],
 			exp_logger=exp_logger,

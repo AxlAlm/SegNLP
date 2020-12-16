@@ -79,9 +79,6 @@ class LSTM_DIST(nn.Module):
         # if this is true we will make a distinction between ams and acs
         self.DISTICTION = hyperparamaters["bidir"]
 
-
-        criterion = nn.CrossEntropyLoss(reduction="sum")
-
         self.word_lstm = LSTM_LAYER(  
                                 input_size = self.WORD_EMB_DIM,
                                 hidden_size=self.HIDDEN_DIM,
@@ -120,6 +117,8 @@ class LSTM_DIST(nn.Module):
 
         self.ac_clf_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), len(task2labels["ac"]))
     
+        self.loss = nn.CrossEntropyLoss(reduction="sum")
+
 
     @classmethod
     def name(self):
@@ -254,9 +253,9 @@ class LSTM_DIST(nn.Module):
         # we want to ignore -1  in the loss function so we set pad_values to -1, default is 0
         batch.change_pad_value(-1)
 
-        relation_loss = criterion(relations_out, batch["relation"], ignore_index=-1)
-        stance_loss = criterion(stance_out, batch["stance"], ignore_index=-1)
-        ac_loss = criterion(ac_out, batch["ac"], ignore_index=-1)
+        relation_loss = self.loss(relations_out, batch["relation"], ignore_index=-1)
+        stance_loss = self.loss(stance_out, batch["stance"], ignore_index=-1)
+        ac_loss = self.loss(ac_out, batch["ac"], ignore_index=-1)
 
         total_loss = (self.alpha * relation_loss) + (self.beta * stance_loss) + ( (1 - (self.alpha-self.beta)) * ac_loss) 
 

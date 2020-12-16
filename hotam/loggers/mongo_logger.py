@@ -50,6 +50,9 @@ class MongoLogger(LightningLoggerBase):
 
     @rank_zero_only
     def log_metrics(self, metrics, step):
+
+        # print("HELLO", metrics.keys())
+        # print(metrics['val-seg-confusion_matrix'])
         metrics["experiment_id"] = self.experiment_id
         split = [k for k in metrics.keys() if "epoch" not in k and "id" not in k][-1].split("-",1)[0]
         metrics["split"] = split

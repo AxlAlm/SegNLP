@@ -388,7 +388,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             # we get the word embeddings then we index the span we want, e.g. Argumnet Discourse Unit
             # as these are assumed to be within a sentence
             if fm.level == "word":
-                sent_word_embs = fm.extract(sent)[:sent.shape[0]]                
+                sent_word_embs = fm.extract(sent)[:sent.shape[0]]  
                 acs = sent.groupby("ac_id")
 
                 for ac_id , ac in acs:
@@ -407,9 +407,6 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                     ac_mask_matrix[ac_i][:adu_len] = ac_mask.astype(np.int8)
                     am_mask_matrix[ac_i][:adu_len] = am_mask.astype(np.int8)
                     ac_i += 1
-
-
-
                 
             # for features such as bow we want to pass only the Argument Discourse Unit
             else:
@@ -481,10 +478,12 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         if fm.level == "word":
             nr_sentence = len(self.level_dfs["token"]["sentence_id"].unique())
             shape = (nr_sentence, self.__get_nr_tokens("sentence"), fm.feature_dim)
+            feature_name = fm.name
         
         elif self.prediction_level == "ac":
-            body, suffix = self._feature2memmap[feature].rsplit(".",1)
-            self._feature2memmap[feature] = body + "_ac_" + suffix
+            #body, suffix = self._feature2memmap[feature].rsplit(".",1)
+            #self._feature2memmap[feature] = body + "_ac_" + suffix
+            feature_name = fm.name + "_ac"
 
             nr_acs = int(self.level_dfs["token"]["ac_id"].max())
             shape = (nr_acs, fm.feature_dim)
@@ -494,11 +493,11 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             
         fm._init_feature_save(
                                 dataset_name = self.name,
-                                feature_name = fm.name,
-                                #memmap_file=self._feature2memmap[feature], 
+                                feature_name = feature_name,
                                 shape = shape,
                                 dtype = fm.dtype,
                                 )
+
 
     def stats(self):
     
@@ -803,7 +802,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                 features:list,
                 encodings:list,
                 remove_duplicates:bool=True,
-                tokens_per_sample:bool=False
+                tokens_per_sample:bool=True
                 ):
         """prepares the data for an experiemnt on a set task.
 

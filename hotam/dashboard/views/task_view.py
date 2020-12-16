@@ -137,7 +137,7 @@ exp_plot = html.Div(
                     className="pretty_container ten columns",
                     children=[dcc.Graph(
                                         id='exp_plot', 
-                                        clickData={},
+                                        x={},
                                         figure = fig_layout(go.Figure(data=[]))
                                         )],
                     )

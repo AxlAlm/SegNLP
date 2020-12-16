@@ -61,39 +61,39 @@ class ExpView:
                 Input('data-cache', 'children')])(self.get_config)
 
 
-        # ## Dropdowns
-        # app.callback(
-        #         Output('project-dropdown', 'options'),
-        #         [Input('dataset-dropdown', 'value')])(self.update_project_dropdown)
+        ## Dropdowns
+        app.callback(
+                Output('project-dropdown', 'options'),
+                [Input('dataset-dropdown', 'value')])(self.update_project_dropdown)
 
-        # app.callback(
-        #         Output('dataset-dropdown', 'options'),
-        #         [Input('project-dropdown', 'value')])(self.update_dataset_dropdown)
+        app.callback(
+                Output('dataset-dropdown', 'options'),
+                [Input('project-dropdown', 'value')])(self.update_dataset_dropdown)
         
-        # app.callback(
-        #         Output('model-dropdown', 'options'),
-        #         [Input('dataset-dropdown', 'value'),
-        #         Input('project-dropdown', 'value')])(self.update_model_dropdown)
+        app.callback(
+                Output('model-dropdown', 'options'),
+                [Input('dataset-dropdown', 'value'),
+                Input('project-dropdown', 'value')])(self.update_model_dropdown)
 
-        # app.callback(
-        #         Output('model-dropdown', 'options'),
-        #         [Input('dataset-dropdown', 'value'),
-        #         Input('project-dropdown', 'value')
-        #         Input('model-dropdown', 'options')])(self.update_experiment_dropdown)
+        app.callback(
+                Output('model-dropdown', 'options'),
+                [Input('dataset-dropdown', 'value'),
+                Input('project-dropdown', 'value')
+                Input('model-dropdown', 'options')])(self.update_experiment_dropdown)
 
-        # #checklist
-        # app.callback(
-        #         Output("metric-checklist", 'options'),
-        #         [Input('experiment-dropdown', 'value')])(self.get_metric_checklist)
+        #checklist
+        app.callback(
+                Output("metric-checklist", 'options'),
+                [Input('experiment-dropdown', 'value')])(self.get_metric_checklist)
 
-        # app.callback(
-        #         Output("task-checklist", 'options'),
-        #         [Input('experiment-dropdown', 'value')])(self.get_task_checklist)
+        app.callback(
+                Output("task-checklist", 'options'),
+                [Input('experiment-dropdown', 'value')])(self.get_task_checklist)
 
-        # app.callback(
-        #         Output("class-checklist", 'options'),
-        #         [Input("task-checklist", 'value'),  
-        #         Input('experiment-dropdown', 'value')])(self.get_class_checklist)
+        app.callback(
+                Output("class-checklist", 'options'),
+                [Input("task-checklist", 'value'),  
+                Input('experiment-dropdown', 'value')])(self.get_class_checklist)
 
         #data table
         app.callback(
@@ -271,6 +271,10 @@ class ExpView:
 
 
     def __setup_view(self, info_row):
+        
+
+
+
         return  html.Div(   
                                 #className='row',  # Define the row element
                                 className="row flex-display",

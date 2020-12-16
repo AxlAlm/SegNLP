@@ -22,7 +22,13 @@ class DummyDash:
                                                     interval=1000, # in milliseconds
                                                     n_intervals=0,
                                                     max_intervals=-1,   
-                                                )
+                                                ),
+                                    # dcc.Interval(
+                                    #                 id='interval-component_slow',
+                                    #                 interval=100000, # in milliseconds
+                                    #                 n_intervals=0,
+                                    #                 max_intervals=-1,   
+                                    #             )
                                      ])
 
 

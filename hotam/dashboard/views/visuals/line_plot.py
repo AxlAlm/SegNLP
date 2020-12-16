@@ -17,6 +17,9 @@ def make_lineplot(data, columns, title):
     if data.shape[0] == 0:
         return go.Figure(data=[])
 
+    if "train" not in data["split"].to_numpy():
+        return go.Figure()
+
     grouped = data.groupby("split")
     max_y = 0
     max_x = max(grouped.get_group("val")['epoch'])+1

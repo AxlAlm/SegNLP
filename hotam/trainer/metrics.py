@@ -242,6 +242,7 @@ class Metrics:
             scores.update(task_scores)
             scores.update(task_class_scores)
 
+
             # for main tasks we want to know the average score
             # so we add these to a list, which we easiliy can turn into an
             # DataFrame and average
@@ -252,12 +253,15 @@ class Metrics:
                 rn_scores = {re.sub(r"-\w+-", f"-{comb_task_name}-", k):v for k,v in task_scores.items() if "confusion_matrix" not in k}
 
                 main_task_values.append(rn_scores)
-        
+            
 
         if len(self.dataset.tasks) > 1:
             average_main_task_scores = pd.DataFrame(main_task_values).mean().to_dict()
             scores.update(average_main_task_scores)
 
+        
+        # print(scores.keys())
+        # print("SCORES", scores[f"{self.split}-seg-confusion_matrix"])
         return scores
 
 

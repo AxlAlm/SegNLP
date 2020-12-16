@@ -1,5 +1,5 @@
-
-
+import torch
+import numpy as np
 
 def masked_mean(m, mask):
     """
@@ -47,7 +47,7 @@ def multiply_mask_matrix(matrix, mask):
     matrix_f = torch.flatten(matrix, end_dim=-2)
     
     ## 2 flatten mask to 2D, last value needs to be [0] or [1]
-    mask_f = ac_word_mask.view((np.prod([mask.shape[:-1]]), 1))
+    mask_f = mask.view((np.prod([matrix.shape[:-1]]), 1))
 
     ## 3 turn embs into 0 where mask is 0
     matrix_f_masked = matrix_f * mask_f

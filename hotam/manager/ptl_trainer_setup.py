@@ -16,6 +16,18 @@ from hotam.utils import timer
 #set up logger
 logger = get_logger("TRAINER")
 
+default_trainer_args = {
+                            "logger":None,
+                            "checkpoint_callback":False,
+                            "early_stop_callback":False,
+                            "progress_bar_refresh_rate":1,
+                            "check_val_every_n_epoch":1,
+                            "gpus":None,
+                            #"gpus": [1],
+                            "num_sanity_val_steps":1,  
+                            "overfit_batches":0.01
+                            }
+
 
 class Trainer:
 
@@ -23,7 +35,7 @@ class Trainer:
 
     """
     def _setup_ptl_trainer(self, experiment_id, trainer_args, hyperparamaters, model_save_path:str=None, run_test:bool=True, verbose=1):
-           
+        
 
         if trainer_args.get("checkpoint_callback",False) == True:
             trainer_args["checkpoint_callback"] = ModelCheckpoint(

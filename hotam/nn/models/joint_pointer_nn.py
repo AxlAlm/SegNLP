@@ -7,7 +7,7 @@ import torch.nn.functional as F
 #hotam
 from hotam.nn.layers.lstm import LSTM_LAYER
 from hotam.nn.layers.attention import CONTENT_BASED_ATTENTION
-from hotam.nn.utils import masked_mean
+from hotam.nn.utils import masked_mean, multiply_mask_matrix
 
 
 class JointPN(nn.Module):
@@ -106,8 +106,6 @@ class JointPN(nn.Module):
     
     def __init__(self, hyperparamaters:dict, task2labels:dict, feature2dim:dict):
         super().__init__()
-
-        self.BATCH_SIZE = hyperparamaters["batch_size"]
         self.OPT = hyperparamaters["optimizer"]
         self.LR = hyperparamaters["lr"]
         self.ENCODER_INPUT_DIM = hyperparamaters["encoder_input_dim"]
@@ -125,7 +123,6 @@ class JointPN(nn.Module):
         # α∈[0,1], will specify how much to weight the two task in the loss function
         self.TASK_WEIGHT = hyperparamaters["task_weight"]
 
-        self.criterion = nn.NLLLOSS(reduction="sum")
 
         if self.DECODER_HIDDEN_DIM != self.ENCODER_HIDDEN_DIM*self.ENCODER_NUM_LAYERS:
             raise RuntimeError("Encoder - Decoder dimension missmatch. As the decoder is initialized by the encoder states the decoder dimenstion has to be encoder_dim * num_encoder_layers")
@@ -153,7 +150,9 @@ class JointPN(nn.Module):
 
         nr_ac_labels = len(task2labels["ac"])
         self.ac_clf_layer = nn.Linear(self.ENCODER_HIDDEN_DIM*(2 if self.ENCODER_BIDIR else 1), nr_ac_labels)
-    
+
+        self.loss = nn.CrossEntropyLoss(reduction="sum")
+
 
     @classmethod
     def name(self):
@@ -173,13 +172,13 @@ class JointPN(nn.Module):
         lengths = batch["lengths"]
 
         # turn all work embeddigns that are not ACs to 0s (e.g. all words beloning to Argument Markers are turn to 0)
-        masked_ac_word_embs =  multiply_mask_matrix(adu_embs,ac_word_mask)
+        masked_ac_word_embs =  multiply_mask_matrix(adu_embs, ac_word_mask)
 
         # aggregating word embeddings while taking masked values into account
         agg_ac_embs = masked_mean(masked_ac_word_embs, batch["ac_mask"])
         
         #combining features
-        X = torch.cat((agg_ac_embs, batch["docpos"]), dim=-1)
+        X = torch.cat((agg_ac_embs, batch["doc_embs"]), dim=-1)
         
         if self.use_feature_dropout:
             X = self.feature_dropout(X)
@@ -196,13 +195,14 @@ class JointPN(nn.Module):
         batch.change_pad_value(-1)
 
         #8
-        relation_loss = self.TASK_WEIGHT * self.criterion(torch.log(pointer_probs), batch["relation"], ingore_index=-1)
+        print("RELATIONS", batch["relation"])
+        relation_loss = self.TASK_WEIGHT * self.loss(pointer_probs, batch["relation"], ingore_index=-1)
         relation_preds = torch.argmax(pointer_probs,dim=-1)
 
         #9
         #(BATCH_SIZE, SEQ_LEN, NUM_LABELS)
         ac_probs =  F.softmax(self.ac_clf_layer(encoder_out),dim=-1)
-        ac_loss = (1-self.TASK_WEIGHT) * self.criterion(torch.log(ac_probs), batch["ac"], ingore_index=-1)
+        ac_loss = (1-self.TASK_WEIGHT) * self.loss(ac_probs, batch["ac"], ingore_index=-1)
         ac_preds = torch.argmax(ac_probs, dim=-1)
 
         #10

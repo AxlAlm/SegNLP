@@ -40,8 +40,11 @@ def my_mean(scores):
 
     if torch.is_tensor(scores):
         return torch.mean(scores)
-
-    return np.mean(scores)
+    
+    if len(scores.shape) > 1:
+        return np.mean(scores, axis=0)
+    else:
+        return np.mean(scores)
     
 
 class PTLBase(ptl.LightningModule, Metrics):

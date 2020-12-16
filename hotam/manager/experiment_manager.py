@@ -26,7 +26,8 @@ from hotam.loggers import MongoLogger
 from hotam.database import MongoDB
 from hotam import get_logger
 from hotam.trainer.metrics import Metrics
-
+from hotam.default_hyperparamaters import get_default_hps
+from hotam.manager.ptl_trainer_setup import default_trainer_args
 #pytroch
 import torch
 
@@ -107,10 +108,10 @@ class ExperimentManager(Evaluator, Trainer):
                 project:str,
                 dataset:None,
                 model:None,
-                hyperparamaters:dict,
-                trainer_args:dict,
                 monitor_metric:str,
                 progress_bar_metrics:list,
+                hyperparamaters:dict={},
+                trainer_args:dict={},
                 exp_logger=None,
                 metrics_configs:list=[],
                 eval_method:str="default",
@@ -125,15 +126,20 @@ class ExperimentManager(Evaluator, Trainer):
     
         self.dataset = dataset
         self.evaluation_method = eval_method
-            
+
+        model_name = model.name()
+        if not hyperparamaters:
+            hyperparamaters = get_default_hps(model_name)
+
+        if not trainer_args:
+            trainer_args = default_trainer_args
+
         set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
         logger.info(f"Generated {len(set_hyperparamaters)} hyperparamater sets.")
 
         for hyperparamaters in set_hyperparamaters:
             
             start_ts = get_timestamp()
-
-            model_name = model.name()
             experiment_id = "_".join([model_name, str(uuid.uuid4())[:8]])
 
             logger.info(f"Current Experiment ID : {experiment_id}")
@@ -145,7 +151,6 @@ class ExperimentManager(Evaluator, Trainer):
             
             if exp_logger:
                 exp_logger.set_exp_id(experiment_id)
-
                 assert exp_logger.experiment_id == experiment_id
 
             #setup Pytroch Lightning Trainer

@@ -215,6 +215,7 @@ class LiveView:
                                                         options=[],
                                                         value=None,
                                                         className="dcc_control",
+                                                        #persistence=True,
                                                         #clearable=False,
                                                         ),
                                             live_view,
@@ -226,8 +227,7 @@ class LiveView:
 
         
         app.callback(Output('exp-dropdown', 'options'),
-                    Input('interval-component', 'n_intervals'),
-                    State('exp-dropdown', 'value'))(self.update_exp_dropdown)
+                    Input('interval-component', 'n_intervals'))(self.update_exp_dropdown)
 
 
         app.callback(
@@ -686,10 +686,15 @@ class LiveView:
         if not data_cache["scores"]:
             return {}, {"display":"none"}
 
-        last_epoch_data = [d for d  in data_cache["scores"] if d["epoch"] == data_cache["epoch"]][0]
-        conf_data = last_epoch_data["confusion_matrix"][task]
+        df = pd.DataFrame(data_cache["scores"])
+        
+        cond1 = df["epoch"] == data_cache["epoch"]
+        cond2 = df["split"] == "val"
+        conf_m = np.array(df[cond1 & cond2][f"{task}-confusion_matrix"].to_numpy()[0])
 
-        print(conf_data)
+        conf_m = np.round(conf_m / np.sum(conf_m), 2)
+        labels = data_cache["exp_config"]["dataset_config"]["task_labels"][task]
 
-        fig = make_table(df, "Confusion Matrix")
+        fig = conf_matrix(conf_m, labels)
+
         return fig, {'display': 'block'}

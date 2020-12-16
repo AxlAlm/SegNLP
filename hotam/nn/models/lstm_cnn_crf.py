@@ -70,7 +70,6 @@ class LSTM_CNN_CRF(nn.Module):
 
     def __init__(self, hyperparamaters:dict, task2labels:dict, feature2dim:dict):
         super().__init__()
-        self.BATCH_SIZE = hyperparamaters["batch_size"]
         self.OPT = hyperparamaters["optimizer"]
         self.LR = hyperparamaters["lr"]
         #self.DROPOUT = hyperparamaters["dropout"]
