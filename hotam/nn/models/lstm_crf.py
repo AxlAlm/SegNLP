@@ -90,7 +90,7 @@ class LSTM_CRF(nn.Module):
 
     def forward(self, batch):
 
-        lengths = batch["lengths"]
+        lengths = batch["lengths_word"]
         mask = batch["mask"]
         word_embs = batch["word_embs"].float()
 

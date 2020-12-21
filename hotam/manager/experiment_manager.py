@@ -16,6 +16,7 @@ import random
 from copy import deepcopy
 #import webbrowser
 import time
+import sys
 
 #hotam
 from hotam.manager.ptl_trainer_setup import Trainer
@@ -188,6 +189,7 @@ class ExperimentManager(Evaluator, Trainer):
             exp_config["hyperparamaters"]["random_seed"] = random_seed
             exp_config["trainer_args"] = trainer_args
             exp_config["status"] = "ongoing"
+
             self.dataset.batch_size = hyperparamaters["batch_size"]
 
             if exp_logger:

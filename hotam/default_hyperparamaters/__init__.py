@@ -43,12 +43,19 @@ joint_pointer_nn_hps = {
                         "encoder_dropout": 0.8,
                         "decoder_dropout": 0.8,
                         "task_weight":0.5,
-                        "batch_size": 10,
+                        "batch_size": 20,
                         "max_epochs":10,
                         }
 
-lstm_dist_hps = {}
-
+lstm_dist_hps = {
+                "optimizer": "sgd",
+                "lr": 0.001,
+                "hidden_dim": 256,
+                "num_layers": 1,
+                "bidir": True,
+                "batch_size": 10,
+                "max_epochs":10,
+                }
 
 
 def get_default_hps(model_name):

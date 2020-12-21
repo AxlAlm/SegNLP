@@ -74,13 +74,29 @@ class LSTM_DIST(nn.Module):
         
         self.WORD_FEATURE_DIM = feature2dim["word_embs"]
         self.DOC_FEATURE_DIM = feature2dim["doc_embs"]
-        self.FEATURE_DIM = self.WORD_FEATURE_DIM + self.DOC_FEATURE_DIM
 
         # if this is true we will make a distinction between ams and acs
-        self.DISTICTION = hyperparamaters["bidir"]
+        #self.DISTICTION = hyperparamaters["distinction"]
 
         self.word_lstm = LSTM_LAYER(  
-                                input_size = self.WORD_EMB_DIM,
+                                input_size = self.WORD_FEATURE_DIM,
+                                hidden_size=self.HIDDEN_DIM,
+                                num_layers= self.NUM_LAYERS,
+                                bidirectional=self.BI_DIR,
+                                )
+
+
+        #if self.DISTICTION:
+        self.ac_lstm = LSTM_LAYER(  
+                                input_size = self.HIDDEN_DIM*3,
+                                hidden_size=self.HIDDEN_DIM,
+                                num_layers= self.NUM_LAYERS,
+                                bidirectional=self.BI_DIR,
+                                )
+
+
+        self.am_lstm = LSTM_LAYER(  
+                                input_size = self.HIDDEN_DIM*3,
                                 hidden_size=self.HIDDEN_DIM,
                                 num_layers= self.NUM_LAYERS,
                                 bidirectional=self.BI_DIR,
@@ -88,27 +104,11 @@ class LSTM_DIST(nn.Module):
 
 
         self.adu_lstm = LSTM_LAYER(  
-                                input_size = self.WORD_EMB_DIM,
+                                input_size = self.HIDDEN_DIM*(2 if self.BI_DIR else 1) + self.DOC_FEATURE_DIM,
                                 hidden_size=self.HIDDEN_DIM,
                                 num_layers= self.NUM_LAYERS,
                                 bidirectional=self.BI_DIR,
                                 )
-
-        if self.DIST:
-
-            self.ac_lstm = LSTM_LAYER(  
-                                    input_size = self.WORD_EMB_DIM,
-                                    hidden_size=self.HIDDEN_DIM,
-                                    num_layers= self.NUM_LAYERS,
-                                    bidirectional=self.BI_DIR,
-                                    )
-
-            self.am_lstm = LSTM_LAYER(  
-                                    input_size = self.WORD_EMB_DIM,
-                                    hidden_size=self.HIDDEN_DIM,
-                                    num_layers= self.NUM_LAYERS,
-                                    bidirectional=self.BI_DIR,
-                                    )
 
 
         self.relation_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), len(task2labels["relation"]))
@@ -117,7 +117,7 @@ class LSTM_DIST(nn.Module):
 
         self.ac_clf_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), len(task2labels["ac"]))
     
-        self.loss = nn.CrossEntropyLoss(reduction="sum")
+        self.loss = nn.CrossEntropyLoss(reduction="sum", ignore_index=-1)
 
 
     @classmethod
@@ -149,7 +149,7 @@ class LSTM_DIST(nn.Module):
                         →hi-1;← hj+1    
                         ]
 
-        NOTE! we assume that ←h is aligned with →h, i.e.  ←h[i] == →[i] (the same word)
+        NOTE! we assume that ←h is aligned with →h, i.e.  ←h[i] == →h[i] (the same word)
         
         So, if we have the following hidden outputs; 
 
@@ -169,8 +169,8 @@ class LSTM_DIST(nn.Module):
 
         """
 
-        batch_size, nr_seq, *_ = bidir_lstm_output.shape
-        hidden_dim = bidir_lstm_output/2
+        batch_size, nr_seq, bidir_hidden_dim = bidir_lstm_output.shape
+        hidden_dim = int(bidir_hidden_dim/2)
         feature_dim = hidden_dim*3
 
         forward = bidir_lstm_output[:,:,:hidden_dim]
@@ -181,28 +181,29 @@ class LSTM_DIST(nn.Module):
         for idx in range(batch_size):
             for sidx,(i,j) in enumerate(spans[idx]):
 
+
                 if i==0 and j == 0:
                     continue
 
                 if i-1 == -1:
-                    f_pre = torch.zeros(feature_dim)
+                    f_pre = torch.zeros(hidden_dim)
                 else:
                     f_pre = forward[idx][i-1]
 
 
                 if j+1 > backward.shape[1]:
-                    b_post = torch.zeros(feature_dim)
+                    b_post = torch.zeros(hidden_dim)
                 else:
                     b_post = backward[idx][j+1]
 
                 f_end = forward[idx][j]
                 b_start = backward[idx][i]
 
-                minus_reps[idx][sidx] = torch.cat(
+                minus_reps[idx][sidx] = torch.cat((
                                                     f_end - f_pre,
                                                     b_start - b_post,
                                                     f_pre - b_post
-                                                    )
+                                                    ))
 
         return minus_reps
 
@@ -210,30 +211,38 @@ class LSTM_DIST(nn.Module):
     def forward(self,batch):
 
         word_embs = batch["word_embs"]
-        lengths  = batch["lengths"]
+        lengths_tok  = batch["lengths_tok"]
+        lengths_seq = batch["lengths_seq"]
+        
+        # batch is sorted by length of prediction level which is Argument Components
+        # so we need to sort the word embeddings for the sample, pass to lstm then return to 
+        # original order
+        sorted_lengths_tok, sorted_indices = torch.sort(lengths_tok, descending=True)
+        _ , original_indices = torch.sort(sorted_indices, descending=False)
 
         # input (Batch_dize, nr_tokens, word_emb_dim)
         # output (Batch_dize, nr_tokens, word_emb_dim)
-        lstm_out, _ = self.word_lstm(word_embs, lengths)
-        
+        lstm_out, _ = self.word_lstm(word_embs[sorted_indices], sorted_lengths_tok)
+        lstm_out = lstm_out[original_indices]
+
         # Wi:j
         W = batch["doc_embs"]
 
-        if self.DISTICTION:
+        #if self.DISTICTION:
 
-            am_minus_embs = self.__minus_span(lstm_out, batch["am_spans"])
-            ac_minus_embs = self.__minus_span(lstm_out, batch["ac_spans"])
+        am_minus_embs = self.__minus_span(lstm_out, batch["am_spans"])
+        ac_minus_embs = self.__minus_span(lstm_out, batch["ac_spans"])
 
-            am_lstm_out, _ = am_lstm(am_minus_embs)
-            ac_lstm_out, _ = ac_lstm(ac_minus_embs)
+        am_lstm_out, _ = self.am_lstm(am_minus_embs, lengths_seq)
+        ac_lstm_out, _ = self.ac_lstm(ac_minus_embs, lengths_seq)
 
-            contex_emb = torch.cat(am_lstm_out, ac_lstm_out, W, dim=-1)
+        contex_emb = torch.cat(am_lstm_out, ac_lstm_out, W, dim=-1)
 
-            final_out, _ = self.adu_lstm(contex_emb)
+        final_out, _ = self.adu_lstm(contex_emb, lengths_seq)
 
-        else:
-            adu_minus_embs = torch.cat(self.__minus_span(lstm_out, batch["am_spans"]), W, dim=-1)
-            final_out, _ = self.adu_lstm(adu_minus_embs)
+        # else:
+        #     adu_minus_embs = torch.cat(self.__minus_span(lstm_out, batch["am_spans"]), W, dim=-1)
+        #     final_out, _ = self.adu_lstm(adu_minus_embs, lengths_seq)
         
 
         relations_out = self.relation_layer(final_out)
@@ -253,9 +262,9 @@ class LSTM_DIST(nn.Module):
         # we want to ignore -1  in the loss function so we set pad_values to -1, default is 0
         batch.change_pad_value(-1)
 
-        relation_loss = self.loss(relations_out, batch["relation"], ignore_index=-1)
-        stance_loss = self.loss(stance_out, batch["stance"], ignore_index=-1)
-        ac_loss = self.loss(ac_out, batch["ac"], ignore_index=-1)
+        relation_loss = self.loss(relations_out, batch["relation"])
+        stance_loss = self.loss(stance_out, batch["stance"])
+        ac_loss = self.loss(ac_out, batch["ac"])
 
         total_loss = (self.alpha * relation_loss) + (self.beta * stance_loss) + ( (1 - (self.alpha-self.beta)) * ac_loss) 
 

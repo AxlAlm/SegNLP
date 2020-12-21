@@ -81,7 +81,7 @@ class PE_Dataset:
         self.splits = self.__splits()
 
 
-    def __download_data(self) -> str:
+    def __download_data(self, force=False) -> str:
         """downloads the data from sourse website
 
         Returns
@@ -94,7 +94,7 @@ class PE_Dataset:
         expected_data_folder_path = os.path.join(data_path, "ArgumentAnnotatedEssays-2.0/brat-project-final")
         self.dump_path = data_path 
 
-        if os.path.exists(expected_data_folder_path):
+        if os.path.exists(expected_data_folder_path) and not force:
             #brat_zip_file = str(list(Path(data_path).rglob("brat-project-final.zip"))[0])
             #final_data_dir = brat_zip_file.rsplit(".",1)[0]
             return expected_data_folder_path
@@ -195,12 +195,13 @@ class PE_Dataset:
         stance, arg1, arg2 = annotation_line.split()
 
         arg1_AC_ID = arg1.split(":")[1]
-        arg2_AC_ID = arg2.split(":")[1]
+        arg2_AC_ID = arg2.split(":")[1] 
 
-        #get difference in number of AC's
-        diff_in_acs = int(arg2_AC_ID[1:]) - int(arg1_AC_ID[1:]) 
+        #get difference in number of AC's 
+        #diff_in_acs = int(arg2_AC_ID[1:]) - int(arg1_AC_ID[1:]) 
 
-        return str(diff_in_acs), stance, arg1_AC_ID
+        #return str(diff_in_acs), stance, arg1_AC_ID
+        return stance, arg1_AC_ID, arg2_AC_ID
 
 
     def __parse_ann_file(self, ann:str, text_len:int) -> Tuple[dict, dict, dict, dict]:
@@ -242,9 +243,10 @@ class PE_Dataset:
 
             # for MajorClaim, Premise, Claim
             if segment_ID.startswith("T"):
+                AC_ID = segment_ID
                 ac, start_idx, end_idx = self.__get_ac(annotation_line)
-                ac_id2span[segment_ID] = (start_idx,end_idx)
-                ac_id2ac[segment_ID] = ac
+                ac_id2span[AC_ID] = (start_idx,end_idx)
+                ac_id2ac[AC_ID] = ac
 
             #for Stance
             elif segment_ID.startswith("A"):
@@ -253,13 +255,18 @@ class PE_Dataset:
 
             # for relations + stance
             else:
-                relation, stance, AC_ID = self.__get_relation(annotation_line)
+                #relation, stance, AC_ID = self.__get_relation(annotation_line)
+                stance, AC_ID, AC_REL_ID = self.__get_relation(annotation_line)
                 ac_id2stance[AC_ID] = stance
-                ac_id2relation[AC_ID] = relation
-
+                ac_id2relation[AC_ID] = AC_REL_ID
 
         # sort the span
         ac_id2span_storted = sorted(ac_id2span.items(),key= lambda x:x[1][0])
+        ac_id2idx = {AC_ID:i for i, (AC_ID, *_) in enumerate(ac_id2span_storted)}
+
+        # encode relation so that its an idx for the related AC. (in original PE paper they keep the difference of of acs as
+        # relation, however we have decided that his is more fitting and easier to deal with in (e.g. Pointer Networks))
+        ac_id2relation = {AC_ID:ac_id2idx[AC_REL_ID]  for AC_ID, AC_REL_ID in ac_id2relation.items()}
 
         # fill in some spans
         prev_span_end = 0
@@ -269,11 +276,10 @@ class PE_Dataset:
                 ac_id2span_storted.append((f"None_{start-1}",(prev_span_end,start-1)))
 
             prev_span_end = end
-        
 
+        #add last Dummy span
         if prev_span_end != text_len:
             ac_id2span_storted.append(("None_LAST",(prev_span_end,999999)))
-
 
         # sort again when added the missing spans
         ac_id2span = dict(sorted(ac_id2span_storted,key=lambda x:x[1][0]))
@@ -309,12 +315,12 @@ class PE_Dataset:
         """
 
         span2label = RangeDict()
-        for ac_id, span in ac_id2span.items():
+        for i, (ac_id, span) in enumerate(ac_id2span.items()):
             label = {   
                         "seg":"O",
                         "ac": ac_id2ac.get(ac_id,"None"), 
                         "stance": ac_id2stance.get(ac_id,"None"), 
-                        "relation": ac_id2relation.get(ac_id, "0")
+                        "relation": ac_id2relation.get(ac_id, i)
                         }
             
             span2label[span] = [label, ac_id]
@@ -352,7 +358,13 @@ class PE_Dataset:
        	train_set = []
        	test_set = []
 
-        split_path = str(list(Path(self.dump_path).rglob("train-test-split.csv"))[0])
+        try:
+            split_path = str(list(Path(self.dump_path).rglob("train-test-split.csv"))[0])
+        except IndexError as e:
+            logger.info("Failed to find data, will download PE.")
+            self._dataset_path = self.__download_data(force=True)
+            split_path = str(list(Path(self.dump_path).rglob("train-test-split.csv"))[0])
+
 
        	with open(split_path, "r") as f:
        		for i,line in enumerate(f):
@@ -412,7 +424,7 @@ class PE_Dataset:
         dataset.add_splits(self.splits)
 
         if not hasattr(dataset, "level_dfs"):
-
+            
             ann_files = sorted(glob(self._dataset_path+"/*.ann"))
             text_files = sorted(glob(self._dataset_path+"/*.txt"))
             number_files = len(ann_files) + len(text_files)
@@ -443,6 +455,7 @@ class PE_Dataset:
             
             dataset.add_samples(samples)
             dataset.label_spans(sample_span_labels)
+            #dataset.level_dfs["token"]["ac_id"] = dataset.level_dfs["token"]["ac_id"].astype(int)
             dataset.create_ams()
             dataset.save(dump_path)
 

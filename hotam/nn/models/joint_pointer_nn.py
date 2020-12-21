@@ -151,7 +151,7 @@ class JointPN(nn.Module):
         nr_ac_labels = len(task2labels["ac"])
         self.ac_clf_layer = nn.Linear(self.ENCODER_HIDDEN_DIM*(2 if self.ENCODER_BIDIR else 1), nr_ac_labels)
 
-        self.loss = nn.CrossEntropyLoss(reduction="sum")
+        self.loss = nn.CrossEntropyLoss(reduction="sum", ignore_index=-1)
 
 
     @classmethod
@@ -169,7 +169,7 @@ class JointPN(nn.Module):
         #3D mask, mask over acs in each input
         ac_mask = batch["mask"]
 
-        lengths = batch["lengths"]
+        lengths = batch["lengths_seq"]
 
         # turn all work embeddigns that are not ACs to 0s (e.g. all words beloning to Argument Markers are turn to 0)
         masked_ac_word_embs =  multiply_mask_matrix(adu_embs, ac_word_mask)
@@ -195,14 +195,19 @@ class JointPN(nn.Module):
         batch.change_pad_value(-1)
 
         #8
-        print("RELATIONS", batch["relation"])
-        relation_loss = self.TASK_WEIGHT * self.loss(pointer_probs, batch["relation"], ingore_index=-1)
+        #(BATCH_SIZE * SEQ_LEN, NUM_LABELS)   
+        pointer_probs_2d = torch.flatten(pointer_probs, end_dim=-2)
+
+        relation_loss = self.TASK_WEIGHT * self.loss(pointer_probs_2d, batch["relation"].view(-1))
         relation_preds = torch.argmax(pointer_probs,dim=-1)
 
         #9
         #(BATCH_SIZE, SEQ_LEN, NUM_LABELS)
         ac_probs =  F.softmax(self.ac_clf_layer(encoder_out),dim=-1)
-        ac_loss = (1-self.TASK_WEIGHT) * self.loss(ac_probs, batch["ac"], ingore_index=-1)
+
+        #(BATCH_SIZE * SEQ_LEN, NUM_LABELS)    
+        ac_probs_2d = torch.flatten(ac_probs, end_dim=-2)
+        ac_loss = (1-self.TASK_WEIGHT) * self.loss(ac_probs_2d, batch["ac"].view(-1))
         ac_preds = torch.argmax(ac_probs, dim=-1)
 
         #10

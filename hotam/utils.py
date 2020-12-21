@@ -158,6 +158,9 @@ def copy_and_vet_dict(input_dict:dict, filter_key:str=None):
     output_dict = {}
     for k,v in input_dict.items():
 
+        if isinstance(k, int):
+            k = str(k)
+
         if isinstance(v, (str, int, float, bool)):
             pass
         elif isinstance(v, np.ndarray):

@@ -46,17 +46,9 @@ class DatasetEncoder:
 
     @one_tqdm(desc="Creating Label Encoders")
     def _create_label_encoders(self):
-
+        
         for task in self.all_tasks:
-            labels = self.task2labels[task]
-
-            #if task == "ac" and self.prediction_level == "ac" and "None" in labels:
-                #labels.remove("None")
-
-            if task == "relation" and self.name == "pe":
-                self.encoders[task] = PeLinkEncoder(name=task, labels=labels)
-            else:
-                self.encoders[task] = LabelEncoder(name=task, labels=labels)
+            self.encoders[task] = LabelEncoder(name=task, labels=self.task2labels[task])
 
     @one_tqdm(desc="Encoding Labels")
     def _encode_labels(self):

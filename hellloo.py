@@ -4,6 +4,7 @@ from hotam.datasets import PE
 from hotam.nn.models import LSTM_CRF
 from hotam.nn.models import LSTM_CNN_CRF
 from hotam.nn.models import JointPN
+from hotam.nn.models import LSTM_DIST
 
 
 from hotam.features import Embeddings, DocPos
@@ -24,26 +25,27 @@ if __name__ == "__main__":
 
 	pe = PE()
 	pe.setup(
-			tasks=["ac", "relation"],
+			tasks=["ac", "relation", "stance"],
 			multitasks=[], 
 			sample_level="paragraph",
-			prediction_level="ac",
+			prediction_level="ac",	
 			encodings=[],
 			features=[
 						DocPos(pe, prediction_level="sentence"),
 						Embeddings("glove")
 						],
 			remove_duplicates=False,
+			tokens_per_sample=True,
 			)
 
 
 	M = ExperimentManager()
 	M.run( 
-			project="ac-relation",
+			project="ac-relation-stance",
 			dataset=pe,
-			model=JointPN,
-			monitor_metric="val-seg-f1",
-			progress_bar_metrics=["val-seg-f1"],
+			model=LSTM_DIST,
+			monitor_metric="val-relation-f1",
+			progress_bar_metrics=["val-relation-f1"],
 			exp_logger=exp_logger,
 			debug_mode=False,
 			)

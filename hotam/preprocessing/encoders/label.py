@@ -13,19 +13,21 @@ class LabelEncoder(Encoder):
         #TODO better way to do this ?
         zero_label = False
         for label in labels:
+
+            if isinstance(label, int):
+                break
+
             if "None" in label or "O" in label:
                 zero_label = label
                 break
-        
+                
         if zero_label:
             labels.remove(zero_label)
             labels.insert(0,zero_label)
-            self.id2label = {0:zero_label}
-            self.id2label = dict(enumerate(labels, start=0))
-        else:
-            self.id2label = dict(enumerate(labels))
-
+        
+        self.id2label = dict(enumerate(labels))
         self.label2id = {l:i for i,l in self.id2label.items()}
+        
         #self.pad_value = pad_value
 
 
