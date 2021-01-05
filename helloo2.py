@@ -22,12 +22,23 @@
 
 
 import pymongo
+import os
 
-client = pymongo.MongoClient()
-db = client['dummy_db']
-for e in list(db["experiments"].find()):
-    print(e["experiment_id"], e["status"])
-client.drop_database('dummy_db')
+#client = pymongo.MongoClient()
+client = pymongo.MongoClient(os.environ['MONGO_KEY'])
+
+for db in client.list_databases():
+    print(db)
+
+my_db = client["xalmax"]
+for c in my_db.collection_names():
+    print(c)
+    my_db.drop_collection(c)
+
+# db = client['dummy_db']
+# for e in list(db["experiments"].find()):
+#     print(e["experiment_id"], e["status"])
+#client.drop_database('dummy_db')
 
 
 #db = client["dummy_db"]

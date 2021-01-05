@@ -264,6 +264,7 @@ class PE_Dataset:
         ac_id2span_storted = sorted(ac_id2span.items(),key= lambda x:x[1][0])
         ac_id2idx = {AC_ID:i for i, (AC_ID, *_) in enumerate(ac_id2span_storted)}
 
+
         # encode relation so that its an idx for the related AC. (in original PE paper they keep the difference of of acs as
         # relation, however we have decided that his is more fitting and easier to deal with in (e.g. Pointer Networks))
         ac_id2relation = {AC_ID:ac_id2idx[AC_REL_ID]  for AC_ID, AC_REL_ID in ac_id2relation.items()}
@@ -284,6 +285,7 @@ class PE_Dataset:
         # sort again when added the missing spans
         ac_id2span = dict(sorted(ac_id2span_storted,key=lambda x:x[1][0]))
         
+
         return ac_id2span, ac_id2ac, ac_id2stance, ac_id2relation
 
     
@@ -454,7 +456,7 @@ class PE_Dataset:
                 sample_span_labels.append((file_id,span2label))
             
             dataset.add_samples(samples)
-            dataset.label_spans(sample_span_labels)
+            dataset.charspan2label(sample_span_labels)
             #dataset.level_dfs["token"]["ac_id"] = dataset.level_dfs["token"]["ac_id"].astype(int)
             dataset.create_ams()
             dataset.save(dump_path)

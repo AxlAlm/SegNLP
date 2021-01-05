@@ -24,11 +24,11 @@ class LabelEncoder(Encoder):
         if zero_label:
             labels.remove(zero_label)
             labels.insert(0,zero_label)
+
         
         self.id2label = dict(enumerate(labels))
         self.label2id = {l:i for i,l in self.id2label.items()}
         
-        #self.pad_value = pad_value
 
 
     def __len__(self):
@@ -44,11 +44,6 @@ class LabelEncoder(Encoder):
     def name(self):
         return self._name
 
-
-    # @property
-    # def max_sample_length(self):
-    #     return self._max_sample_length
-    
 
     def encode(self, label):
         return self.label2id.get(label, -1)

@@ -20,10 +20,10 @@ from copy import deepcopy
 import hotam
 from hotam.utils import ensure_numpy, load_pickle_data, pickle_data, to_tensor, one_tqdm
 from hotam import get_logger
-from hotam.preprocessing.encoder import DatasetEncoder
-from hotam.preprocessing.preprocessor import Preprocessor
-from hotam.preprocessing.labler import Labler
-from hotam.preprocessing.split_utils import SplitUtils
+from .encoder import DatasetEncoder
+from .preprocessor import Preprocessor
+from .labler import Labler
+from .split_utils import SplitUtils
 
 #pytorch lightning
 import pytorch_lightning as ptl
@@ -41,9 +41,10 @@ import warnings
 class Batch(dict):
 
 
-    def __init__(self, input_dict, tasks:list):
+    def __init__(self, input_dict, tasks:list, prediction_level:str):
         super().__init__(input_dict)
         self.tasks = tasks
+        self.prediction_level = prediction_level
 
     def to(self, device):
         self.device = device
@@ -56,8 +57,8 @@ class Batch(dict):
 
     def change_pad_value(self, new_value):
         for task in self.tasks:
-            self[task][~self["mask"].type(torch.bool)] = -1
-
+            self[task][~self[f"{self.prediction_level}_mask"].type(torch.bool)] = -1
+     
 
 class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, SplitUtils):    
 
@@ -85,7 +86,6 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                                 }
         self.encoders = {}
         self.__cutmap = {"doc_embs":"seq"}
-
 
 
     def __getitem__(self, key):
@@ -125,8 +125,6 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                         h = h[:, :max_seq]
 
                     elif len(h.shape) > 2:
-
-                        print(k, max_seq, max_seq_tok)
                         h = h[:, :max_seq, :max_seq_tok]
 
                 elif cut == "tok":
@@ -141,7 +139,8 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         # return samples_data
         return Batch(
                         deepcopy(unpacked_data), 
-                        tasks=self.tasks
+                        tasks=self.tasks,
+                        prediction_level=self.prediction_level
                     )
     
 
@@ -320,14 +319,19 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         doc_embeddings = []
         masks_not_added = True
 
-        if self.prediction_level == "ac" and not self.tokens_per_sample:
-            feature_dict["am_mask"] = np.zeros((self.max_seq, self.max_seq_tok))
-            feature_dict["ac_mask"] = np.zeros((self.max_seq, self.max_seq_tok))
-        else:
-            feature_dict["mask"] = np.zeros(self.max_tok)
+        if self.prediction_level == "ac":
+            feature_dict["am_token_mask"] = np.zeros((self.max_seq, self.max_seq_tok))
+            feature_dict["ac_token_mask"] = np.zeros((self.max_seq, self.max_seq_tok))
+            feature_dict["ac_mask"] = np.zeros(self.max_seq)
+    
+        if self.tokens_per_sample:
+            feature_dict["token_mask"] = np.zeros(self.max_tok)
 
-        masks_added = False
-        
+        if self.prediction_level == "token":
+            #feature_dict["token_mask"] = np.zeros(self.max_tok)
+            feature_dict["token_mask"] = feature_dict["token_mask"]
+
+    
         for feature, fm in self.feature2model.items():
             
             if hotam.preprocessing.settings["STORE_FEATURES"]:
@@ -356,16 +360,20 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
             sample_length = sample.shape[0]
 
+            
             if self.prediction_level == "ac" and ac:
                     
                 feature_matrix, am_mask, ac_mask = self.__extract_ADU_features(fm, sample, sample_shape=feature_matrix.shape)
-                
-                if self.__word_features:
-                    if feature in self.__word_features and not masks_added:
-                        feature_dict["am_mask"] = am_mask
-                        feature_dict["ac_mask"] = ac_mask 
-                        feature_dict["mask"] = np.max(ac_mask, axis=-1)
-                        masks_added = True
+
+
+                if feature in self.__word_features and not sum(feature_dict["ac_token_mask"]):
+                    feature_dict["am_token_mask"] = am_mask
+                    feature_dict["ac_token_mask"] = ac_mask
+
+                    if not sum(feature_dict["ac_mask"]):
+                        feature_dict["ac_mask"] = np.max(ac_mask, axis=-1)
+                else:
+                    feature_dict["ac_mask"] = ac_mask
            
             else:
 
@@ -386,7 +394,8 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                 else:
                     feature_matrix[:sample_length] = fm.extract(sample)[:sample_length]
                 
-                feature_dict["mask"][:sample_length] = np.ones(sample_length)
+
+                feature_dict["token_mask"][:sample_length] = np.ones(sample_length)
 
 
             if fm.level == "word":
@@ -450,6 +459,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                 
             # for features such as bow we want to pass only the Argument Discourse Unit
             else:
+
                 acs = sent.groupby("ac_id")
                 for ac_id, ac in acs:
                     sent.index = sent["id"]
@@ -458,6 +468,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                     adu = pd.concat((am,ac))
                     adu.index = adu.pop("ac_id")
                     sample_matrix[ac_i] = fm.extract(adu)
+                    ac_mask_matrix[ac_i] = 1
                     ac_i += 1
 
         return sample_matrix, am_mask_matrix, ac_mask_matrix
@@ -538,6 +549,17 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
 
     def stats(self):
+
+        """
+
+        Returns
+        -------
+        [type]
+            [description]
+
+        TODO:   Fix a special count for relations that counts relations back (-) or forward (+) in AC instead of idx pointers
+                as this might be more useful for visulizing the distribution
+        """
     
         column_data = {"type":[], "train": [], "val":[], "test": []}
 
@@ -566,8 +588,10 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                         label_counts = {self.decode(l,task):c for l,c in label_counts.items()}
                     else:
                         label_counts = {self.decode(l,task):int(c/len(ids)) for l,c in label_counts.items()}
+                        label_counts.pop("None")
 
                     label_counts.update({l:0 for l in self.task2labels[task] if l not in label_counts.keys()})
+
                     label_counts = dict(sorted(list(label_counts.items()), key=lambda x:x[0]))
 
                     for l,nr in label_counts.items():
@@ -726,8 +750,11 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
     def __get_task2labels(self):
         self.task2labels = {}
         for task in self.all_tasks:
-            print("TASKS", list(self.level_dfs["token"][task].unique()))
-            self.task2labels[task] = sorted(list(self.level_dfs["token"][task].unique()))
+
+            if task == "relation" and self.prediction_level == "ac":
+                self.task2labels[task] = range(self.max_relation+1)
+            else:
+                self.task2labels[task] = sorted(list(self.level_dfs["token"][task].unique()))
 
             if isinstance(self.task2labels[task][0], (np.int, np.int64, np.int32, np.int16)):
                 self.task2labels[task] = [int(i) for i in self.task2labels[task]]
@@ -765,18 +792,20 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
 
     @one_tqdm(desc="Removing cross-paragraph-relational Arugment Components")
-    def __fix_paragraphs(self):
+    def __relation_paragraph_norm(self):
         """
         Some datasets might have Argument Relations that spans over the sample level (e.g. paragraph),
         these will be removed.
 
-        #TODO! IS REMOVING THE RIGHT THING?
         """
+        
         paragraphs = self.level_dfs["token"].groupby("paragraph_id")
 
-        for p_id, df in tqdm(paragraphs, desc="removing acs"): 
+        all_max_acs = set()
+        for p_id, df in tqdm(paragraphs, desc="removing acs with relations across paragraphs"): 
             acs = df.groupby("ac_id")
             max_acs = len(acs)
+            all_max_acs.add(max_acs)
             for ac_id, ac_df in acs:
                 relation = ac_df["relation"].unique()[0]
 
@@ -788,14 +817,17 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                 self.level_dfs["token"].loc[cond, "ac"] = "None"
                 self.level_dfs["token"].loc[cond, "relation"] = 0
 
+
                 if "stance" in self.all_tasks:
                     self.level_dfs["token"].loc[cond, "stance"] = "None"
 
                 #self.level_dfs["token"].loc[cond, self.all_tasks] = np.nan
-        
+
                 self.level_dfs["token"].loc[self.level_dfs["token"]["am_id"] == ac_id, "am_id"] = np.nan
                 self.level_dfs["token"].loc[cond,"ac_id"] = np.nan
 
+        self.max_relation = max(all_max_acs)
+        
 
     @one_tqdm(desc="Removing Duplicates")
     def remove_duplicates(self):
@@ -879,7 +911,8 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                 features:list,
                 encodings:list,
                 remove_duplicates:bool=True,
-                tokens_per_sample:bool=False
+                tokens_per_sample:bool=False,
+                override:bool=False,
                 ):
         """prepares the data for an experiemnt on a set task.
 
@@ -907,13 +940,12 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         self.features = list(self.feature2model.keys())
         self.feature2dim = {fm.name:fm.feature_dim for fm in features}
         self.feature2dim["word_embs"] = sum(fm.feature_dim for fm in features if fm.level == "word")
-        self.feature2dim["doc_embs"] = sum(fm.feature_dim for fm in features if fm.level == "word")
+        self.feature2dim["doc_embs"] = sum(fm.feature_dim for fm in features if fm.level == "doc")
         self.__word_features = [fm.name for fm in self.feature2model.values() if fm.level == "word"]
 
         # to later now how we cut some of the padding for each batch
         if self.tokens_per_sample:
             self.__cutmap.update({k:"tok" for k in  encodings + ["word_embs"]})
-
 
         #create a hash encoding for the exp config
         #self._exp_hash = self.__create_exp_hash()
@@ -929,7 +961,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
         
         enc_data_exit = os.path.exists(self._enc_file_name)
-        if enc_data_exit:
+        if enc_data_exit and not override:
             self.__load_enc_state()
             self._create_data_encoders()
             self._create_label_encoders()
@@ -938,7 +970,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             self.__fix_tasks()
 
             if self.sample_level == "paragraph" and "relation" in self.all_tasks:
-                self.__fix_paragraphs()
+                self.__relation_paragraph_norm()
 
             self._create_data_encoders()
             self._encode_data() 
@@ -948,6 +980,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             self._encode_labels()
             self.__save_enc_state()
         
+        print("RELATIONS", self.encoders["relation"].id2label)
         
         self.level_dfs["token"].index = self.level_dfs["token"][f"{sample_level}_id"].to_numpy() #.pop(f"{sample_level}_id")
 

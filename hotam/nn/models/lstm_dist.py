@@ -71,6 +71,8 @@ class LSTM_DIST(nn.Module):
         self.HIDDEN_DIM = hyperparamaters["hidden_dim"]
         self.NUM_LAYERS = hyperparamaters["num_layers"]
         self.BI_DIR = hyperparamaters["bidir"]
+        self.ALPHA = hyperparamaters["alpha"]
+        self.BETA = hyperparamaters["beta"]
         
         self.WORD_FEATURE_DIM = feature2dim["word_embs"]
         self.DOC_FEATURE_DIM = feature2dim["doc_embs"]
@@ -86,15 +88,6 @@ class LSTM_DIST(nn.Module):
                                 )
 
 
-        #if self.DISTICTION:
-        self.ac_lstm = LSTM_LAYER(  
-                                input_size = self.HIDDEN_DIM*3,
-                                hidden_size=self.HIDDEN_DIM,
-                                num_layers= self.NUM_LAYERS,
-                                bidirectional=self.BI_DIR,
-                                )
-
-
         self.am_lstm = LSTM_LAYER(  
                                 input_size = self.HIDDEN_DIM*3,
                                 hidden_size=self.HIDDEN_DIM,
@@ -102,20 +95,26 @@ class LSTM_DIST(nn.Module):
                                 bidirectional=self.BI_DIR,
                                 )
 
-
-        self.adu_lstm = LSTM_LAYER(  
-                                input_size = self.HIDDEN_DIM*(2 if self.BI_DIR else 1) + self.DOC_FEATURE_DIM,
+        self.ac_lstm = LSTM_LAYER(  
+                                input_size = self.HIDDEN_DIM*3,
                                 hidden_size=self.HIDDEN_DIM,
                                 num_layers= self.NUM_LAYERS,
                                 bidirectional=self.BI_DIR,
                                 )
 
+        # input to adu_lstm is the am + ac + doc features 
+        adu_shape = ((self.HIDDEN_DIM*(2 if self.BI_DIR else 1)) * 2 ) + self.DOC_FEATURE_DIM
 
+        self.adu_lstm = LSTM_LAYER(  
+                                    input_size = adu_shape,
+                                    hidden_size=self.HIDDEN_DIM,
+                                    num_layers= self.NUM_LAYERS,
+                                    bidirectional=self.BI_DIR,
+                                    )
+        
         self.relation_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), len(task2labels["relation"]))
-
         self.stance_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), len(task2labels["stance"]))
-
-        self.ac_clf_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), len(task2labels["ac"]))
+        self.ac_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), len(task2labels["ac"]))
     
         self.loss = nn.CrossEntropyLoss(reduction="sum", ignore_index=-1)
 
@@ -236,7 +235,7 @@ class LSTM_DIST(nn.Module):
         am_lstm_out, _ = self.am_lstm(am_minus_embs, lengths_seq)
         ac_lstm_out, _ = self.ac_lstm(ac_minus_embs, lengths_seq)
 
-        contex_emb = torch.cat(am_lstm_out, ac_lstm_out, W, dim=-1)
+        contex_emb = torch.cat((am_lstm_out, ac_lstm_out, W), dim=-1)
 
         final_out, _ = self.adu_lstm(contex_emb, lengths_seq)
 
@@ -244,17 +243,16 @@ class LSTM_DIST(nn.Module):
         #     adu_minus_embs = torch.cat(self.__minus_span(lstm_out, batch["am_spans"]), W, dim=-1)
         #     final_out, _ = self.adu_lstm(adu_minus_embs, lengths_seq)
         
-
-        relations_out = self.relation_layer(final_out)
+        relation_out = self.relation_layer(final_out)
         stance_out = self.stance_layer(final_out)
         ac_out = self.ac_layer(final_out)
 
 
-        relations_probs = F.softmax(relations_out, dim=-1)
+        relation_probs = F.softmax(relation_out, dim=-1)
         stance_probs = F.softmax(stance_out, dim=-1)
         ac_probs = F.softmax(ac_out, dim=-1)
 
-        relations_preds = torch.argmax(relations_out, dim=-1)
+        relations_preds = torch.argmax(relation_out, dim=-1)
         stance_preds = torch.argmax(stance_out, dim=-1)
         ac_preds = torch.argmax(ac_out, dim=-1)
 
@@ -262,11 +260,12 @@ class LSTM_DIST(nn.Module):
         # we want to ignore -1  in the loss function so we set pad_values to -1, default is 0
         batch.change_pad_value(-1)
 
-        relation_loss = self.loss(relations_out, batch["relation"])
-        stance_loss = self.loss(stance_out, batch["stance"])
-        ac_loss = self.loss(ac_out, batch["ac"])
-
-        total_loss = (self.alpha * relation_loss) + (self.beta * stance_loss) + ( (1 - (self.alpha-self.beta)) * ac_loss) 
+        #flat_shape = np.prod(relation_out.shape[:2])
+        
+        relation_loss = self.loss(torch.flatten(relation_out, end_dim=-2), batch["relation"].view(-1))
+        stance_loss = self.loss(torch.flatten(stance_out, end_dim=-2), batch["stance"].view(-1))
+        ac_loss = self.loss(torch.flatten(ac_out, end_dim=-2), batch["ac"].view(-1))
+        total_loss = (self.ALPHA * relation_loss) + (self.BETA * stance_loss) + ( (1 - (self.ALPHA-self.BETA)) * ac_loss) 
 
 
         return {    

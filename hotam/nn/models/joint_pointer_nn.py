@@ -164,18 +164,18 @@ class JointPN(nn.Module):
         adu_embs = batch["word_embs"]
         
         #4D mask, mask over the words in each ac in each input
-        ac_word_mask = batch["ac_mask"]
+        ac_token_mask = batch["ac_token_mask"]
         
         #3D mask, mask over acs in each input
-        ac_mask = batch["mask"]
+        ac_mask = batch["ac_mask"]
 
         lengths = batch["lengths_seq"]
 
         # turn all work embeddigns that are not ACs to 0s (e.g. all words beloning to Argument Markers are turn to 0)
-        masked_ac_word_embs =  multiply_mask_matrix(adu_embs, ac_word_mask)
+        masked_ac_word_embs =  multiply_mask_matrix(adu_embs, ac_token_mask)
 
         # aggregating word embeddings while taking masked values into account
-        agg_ac_embs = masked_mean(masked_ac_word_embs, batch["ac_mask"])
+        agg_ac_embs = masked_mean(masked_ac_word_embs, ac_token_mask)
         
         #combining features
         X = torch.cat((agg_ac_embs, batch["doc_embs"]), dim=-1)

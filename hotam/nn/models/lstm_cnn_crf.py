@@ -117,7 +117,7 @@ class LSTM_CNN_CRF(nn.Module):
     def forward(self, batch):
 
         lengths = batch["lengths_word"]
-        mask = batch["mask"]
+        mask = batch["token_mask"]
 
         #1
         word_embs = batch["word_embs"]

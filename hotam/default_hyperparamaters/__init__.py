@@ -55,6 +55,8 @@ lstm_dist_hps = {
                 "bidir": True,
                 "batch_size": 10,
                 "max_epochs":10,
+                "alpha": 0.5,
+                "beta": 0.5
                 }
 
 

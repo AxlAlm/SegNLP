@@ -21,7 +21,7 @@ class Labler:
     class for labeling the heirarchially structured data created from Preprocessor.
     """
     
-    def _label(self, row:dict, char_spans:RangeDict) -> dict:
+    def __label(self, row:dict, char_spans:RangeDict) -> dict:
         """label a token unit with label and with BIO
 
         Parameters
@@ -67,7 +67,7 @@ class Labler:
         return label
 
 
-    def label_spans(self, sample_labels:List[dict]):
+    def charspan2label(self, sample_labels:List[dict]):
         """label tokens based on labels attached to character spans. E.g. if character 100-150 is attached to a label X
         all tokens that are between will be labled with X.
 
@@ -89,6 +89,6 @@ class Labler:
         self.__prev_label_id = None
 
         #label tokens
-        tqdm.pandas(desc=f"labeling Tokens")
-        rows = self.level_dfs["token"].progress_apply(self._label, axis=1,  args=args)
+        tqdm.pandas(desc=f"Adding labels from charspans (+BIO encodings)")
+        rows = self.level_dfs["token"].progress_apply(self.__label, axis=1,  args=args)
         self.level_dfs["token"] = pd.concat([self.level_dfs["token"], pd.DataFrame(list(rows))], axis=1)
