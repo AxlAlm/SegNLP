@@ -19,21 +19,28 @@
 
 # fig.show()
 
+from hotam.database import MongoDB
+
+# import pymongo
+# import os
+
+# #client = pymongo.MongoClient()
+# client = pymongo.MongoClient(os.environ['MONGO_KEY'])
+
+# for db in client.list_databases():
+#     print(db)
+
+db = MongoDB()
+
+print(db.get_projects())
+print(db.get_live_exps_ids())
+print(db.get_done_exps_ids())
 
 
-import pymongo
-import os
-
-#client = pymongo.MongoClient()
-client = pymongo.MongoClient(os.environ['MONGO_KEY'])
-
-for db in client.list_databases():
-    print(db)
-
-my_db = client["xalmax"]
-for c in my_db.collection_names():
-    print(c)
-    my_db.drop_collection(c)
+# my_db = client["xalmax"]
+# for c in my_db.collection_names():
+#     print(c)
+#     my_db.drop_collection(c)
 
 # db = client['dummy_db']
 # for e in list(db["experiments"].find()):

@@ -13,8 +13,8 @@ lstm_crf_hps =  {
                     "num_layers": 2,
                     "bidir": True,
                     "fine_tune_embs": False,
-                    "batch_size": 10,
-                    "max_epochs":100,
+                    "batch_size": 32,
+                    "max_epochs":150,
                     }
             
 

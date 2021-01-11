@@ -112,7 +112,14 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
         #unpack and turn to tensors
         unpacked_data = {}
-        k2dtype = {"word_embs":torch.float, "doc_embs": torch.float, "mask":torch.uint8}
+        k2dtype = { 
+                    "word_embs":torch.float, 
+                    "doc_embs": torch.float, 
+                    "ac_mask":torch.uint8,
+                    "token_mask":torch.uint8,
+                    "am_token_mask":torch.uint8,
+                    "am_token_mask":torch.uint8,
+                    }
 
         for k in samples_data[0].keys():
             try:
@@ -128,11 +135,17 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                         h = h[:, :max_seq, :max_seq_tok]
 
                 elif cut == "tok":
+                    #print(k, h , h.shape, max_tok)
                     h = h[:, :max_tok]
                 
             except ValueError as e:
                 h = [s[k] for s in samples_data]
+            
+            except IndexError as e:
+                h = h 
 
+
+            #print(k, h, type(h), k2dtype.get(k, torch.long))
             unpacked_data[k] = to_tensor(h, dtype=k2dtype.get(k, torch.long))
 
 
@@ -234,7 +247,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             for _, ac in acs:
                 text.append(ac["text"].to_numpy())
 
-            sample_text["text"] = text
+            sample_text["text"] = np.array(text)
         else:
             sample_text["text"] = sample["text"].to_numpy()
         
@@ -328,8 +341,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             feature_dict["token_mask"] = np.zeros(self.max_tok)
 
         if self.prediction_level == "token":
-            #feature_dict["token_mask"] = np.zeros(self.max_tok)
-            feature_dict["token_mask"] = feature_dict["token_mask"]
+            feature_dict["token_mask"] = np.zeros(self.max_tok)
 
     
         for feature, fm in self.feature2model.items():
@@ -694,7 +706,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         state_dict = {}
         state_dict["data"] = self.level_dfs["token"].to_dict()
         state_dict["all_tasks"] = self.all_tasks
-        #state_dict["subtasks"] = self.subtasks
+        state_dict["subtasks"] = self.subtasks
         state_dict["main_tasks"] = self.main_tasks
         state_dict["task2subtasks"] = self.task2subtasks
         state_dict["task2labels"] = self.task2labels
@@ -710,7 +722,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
         self.level_dfs["token"] = pd.DataFrame(state_dict["data"])
         self.all_tasks = state_dict["all_tasks"]
-        #self.subtasks = state_dict["subtasks"]
+        self.subtasks = state_dict["subtasks"]
         self.task2subtasks = state_dict["task2subtasks"]
         self.task2labels = state_dict["task2labels"]
         self.main_tasks = state_dict["main_tasks"]
@@ -743,7 +755,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
         
         self.all_tasks = sorted(list(all_task))
-        #self.subtasks = sorted(list(subtasks_set))
+        self.subtasks = [t for t in all_task if "_" not in t]
 
 
     @one_tqdm(desc="Getting task labels")
@@ -805,26 +817,27 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         for p_id, df in tqdm(paragraphs, desc="removing acs with relations across paragraphs"): 
             acs = df.groupby("ac_id")
             max_acs = len(acs)
-            all_max_acs.add(max_acs)
-            for ac_id, ac_df in acs:
+            for i, (ac_id, ac_df) in enumerate(acs):
                 relation = ac_df["relation"].unique()[0]
 
+                #print(relation < max_acs, relation, max_acs)
                 if relation < max_acs:
                     continue
                 
                 cond = self.level_dfs["token"]["ac_id"] == ac_id
 
-                self.level_dfs["token"].loc[cond, "ac"] = "None"
-                self.level_dfs["token"].loc[cond, "relation"] = 0
-
+                # self.level_dfs["token"].loc[cond, "ac"] = "None"
+                self.level_dfs["token"].loc[cond, "relation"] = i
 
                 if "stance" in self.all_tasks:
                     self.level_dfs["token"].loc[cond, "stance"] = "None"
 
-                #self.level_dfs["token"].loc[cond, self.all_tasks] = np.nan
-
-                self.level_dfs["token"].loc[self.level_dfs["token"]["am_id"] == ac_id, "am_id"] = np.nan
-                self.level_dfs["token"].loc[cond,"ac_id"] = np.nan
+                # #self.level_dfs["token"].loc[cond, self.all_tasks] = np.nan
+                # self.level_dfs["token"].loc[self.level_dfs["token"]["am_id"] == ac_id, "am_id"] = np.nan
+                # self.level_dfs["token"].loc[cond,"ac_id"] = np.nan
+                #max_acs -= 1
+        
+            all_max_acs.add(max_acs)
 
         self.max_relation = max(all_max_acs)
         
@@ -879,7 +892,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         self.duplicate_ids = duplicate_ids
 
         if hasattr(self, "splits"):
-            self.update_splits()
+            self._update_splits()
 
         logger.info(f"Removed {len(duplicate_ids)} duplicates from dataset. Duplicates: {duplicate_sets}")
 
@@ -910,7 +923,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                 sample_level:str, 
                 features:list,
                 encodings:list,
-                remove_duplicates:bool=True,
+                remove_duplicates:bool=False,
                 tokens_per_sample:bool=False,
                 override:bool=False,
                 ):
@@ -959,6 +972,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             if self.duplicate_ids.any():
                 self.update_splits()
 
+  
         
         enc_data_exit = os.path.exists(self._enc_file_name)
         if enc_data_exit and not override:
@@ -980,7 +994,6 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             self._encode_labels()
             self.__save_enc_state()
         
-        print("RELATIONS", self.encoders["relation"].id2label)
         
         self.level_dfs["token"].index = self.level_dfs["token"][f"{sample_level}_id"].to_numpy() #.pop(f"{sample_level}_id")
 

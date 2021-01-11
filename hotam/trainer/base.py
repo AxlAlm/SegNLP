@@ -209,9 +209,11 @@ class PTLBase(ptl.LightningModule, Metrics):
     def __reformat_outputs(self, output_dict):
 
         ids_to_log = np.array(self.dataset.config["tracked_sample_ids"]["0"])
+        
+        length_type = "lengths_seq" if self.batch.prediction_level == "ac" else "lengths_tok"
         id2idx = {  
                     str(ID):(i, length) for i, (ID, length) in 
-                    enumerate(zip(ensure_numpy(self.batch["ids"]), ensure_numpy(self.batch["lengths"])))
+                    enumerate(zip(ensure_numpy(self.batch["ids"]), ensure_numpy(self.batch[length_type])))
                     if ID in ids_to_log
                     }
 
@@ -221,7 +223,13 @@ class PTLBase(ptl.LightningModule, Metrics):
         outputs = {ID:{"preds":{}, "probs":{}, "gold":{}, "text":{}} for ID in id2idx.keys()}
 
         for ID, (i, length) in id2idx.items():
-            outputs[ID]["text"] = self.batch["text"][i].tolist()
+            
+            #NOTE! this should not be needed.. fix the origin problem thx
+            if self.batch.prediction_level == "ac":
+                outputs[ID]["text"] = [t.tolist() if isinstance(t, np.ndarray) else t for t in self.batch["text"][i].tolist()]
+            else:
+                outputs[ID]["text"] = self.batch["text"][i].tolist()
+
 
             spans_added = False
 

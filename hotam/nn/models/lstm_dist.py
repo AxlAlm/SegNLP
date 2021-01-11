@@ -112,6 +112,7 @@ class LSTM_DIST(nn.Module):
                                     bidirectional=self.BI_DIR,
                                     )
         
+        #self.max_rel = len(task2labels["relation"])
         self.relation_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), len(task2labels["relation"]))
         self.stance_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), len(task2labels["stance"]))
         self.ac_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), len(task2labels["ac"]))
@@ -212,7 +213,10 @@ class LSTM_DIST(nn.Module):
         word_embs = batch["word_embs"]
         lengths_tok  = batch["lengths_tok"]
         lengths_seq = batch["lengths_seq"]
-        
+        ac_mask = batch["ac_mask"]
+        batch_size = ac_mask.shape[0]
+        max_nr_acs = ac_mask.shape[1]
+
         # batch is sorted by length of prediction level which is Argument Components
         # so we need to sort the word embeddings for the sample, pass to lstm then return to 
         # original order
@@ -243,12 +247,40 @@ class LSTM_DIST(nn.Module):
         #     adu_minus_embs = torch.cat(self.__minus_span(lstm_out, batch["am_spans"]), W, dim=-1)
         #     final_out, _ = self.adu_lstm(adu_minus_embs, lengths_seq)
         
+
         relation_out = self.relation_layer(final_out)
         stance_out = self.stance_layer(final_out)
         ac_out = self.ac_layer(final_out)
 
+        relation_out_new = torch.zeros((*ac_mask.shape, ac_mask.shape[-1]))
+        relation_probs = torch.zeros((*ac_mask.shape, ac_mask.shape[-1]))
+        print("BATCH SIZE", batch_size)
+        for i in range(batch_size):
+            # print(i)
+            sample_mask = ac_mask[i]
+            sample_m_mask = sample_mask.repeat(max_nr_acs,1)
+            # print(ac_mask[i])
+            # print(sample_m_mask)
+            # print(relation_out[i,:, :6].shape, ac_mask.shape)
+            out = relation_out[i,:, :max_nr_acs] * sample_m_mask
+            
+            out_copy = out.detach().clone()
+            sample_m_mask = sample_m_mask.type(torch.bool)
+            out_copy[~sample_m_mask] = float('-inf')
+            # print("INF OUT", out_copy)
+            out_softmax = F.softmax(out_copy, dim=-1)
 
-        relation_probs = F.softmax(relation_out, dim=-1)
+            # print("SOFTMAX", out_softmax)
+            # print("OUT", out)
+            relation_probs[i] = out_softmax
+            relation_out_new[i] = out
+
+        # print(relation_probs)
+        # print(relation_out_new)
+        # print(relation_probs.shape,relation_out_new.shape )
+
+        relation_out = relation_out_new
+
         stance_probs = F.softmax(stance_out, dim=-1)
         ac_probs = F.softmax(ac_out, dim=-1)
 
@@ -256,11 +288,13 @@ class LSTM_DIST(nn.Module):
         stance_preds = torch.argmax(stance_out, dim=-1)
         ac_preds = torch.argmax(ac_out, dim=-1)
 
-    
         # we want to ignore -1  in the loss function so we set pad_values to -1, default is 0
         batch.change_pad_value(-1)
 
         #flat_shape = np.prod(relation_out.shape[:2])
+        #print(batch["ids"])
+        #print("TARGET", batch["relation"].view(-1))
+        #print("INPUT", torch.flatten(relation_out, end_dim=-2))
         
         relation_loss = self.loss(torch.flatten(relation_out, end_dim=-2), batch["relation"].view(-1))
         stance_loss = self.loss(torch.flatten(stance_out, end_dim=-2), batch["stance"].view(-1))

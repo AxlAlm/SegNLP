@@ -25,7 +25,7 @@ default_trainer_args = {
                             "gpus":None,
                             #"gpus": [1],
                             "num_sanity_val_steps":1,  
-                            #"overfit_batches":0.1
+                            #"overfit_batches":0.7
                             }
 
 

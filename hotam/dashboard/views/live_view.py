@@ -32,11 +32,12 @@ import hotviz
 #utils
 from hotam.dashboard.utils import get_filter, fig_layout, get_visible_info, update_visible_info
 from hotam.dashboard.views.visuals import *
+from .base import ViewBase
 
 
 th_path  = "/tmp/text_highlight.png"
 
-class LiveView:
+class LiveView(ViewBase):
 
     def __init__(self, app, db):
         self.db = db
@@ -56,7 +57,8 @@ class LiveView:
                                                                 id='exp-config-dropdown',
                                                                 options=[
                                                                             {"label": "hyperparamaters", "value":"hyperparamaters"},
-                                                                            {"label": "exp config", "value":"dataset_config"},
+                                                                            {"label": "exp config", "value":"exp config"},
+                                                                            {"label": "dataset_config", "value":"dataset_config"},
                                                                             {"label": "trainer_args", "value":"trainer_args"}
                                                                         ],
                                                                 value="hyperparamaters",
@@ -227,21 +229,21 @@ class LiveView:
 
         
         app.callback(Output('exp-dropdown', 'options'),
-                    Input('interval-component', 'n_intervals'))(self.update_exp_dropdown)
+                    Input('interval-component', 'n_intervals'))(self.update_live_exp_dropdown)
 
 
         app.callback(
                     Output('data-cache', 'children'),
                     Output('live-view', 'style'),
                     [Input('interval-component', 'n_intervals'),
-                    Input('exp-dropdown','value')
-                    ],
+                    Input('exp-dropdown','value')],
                     [State('data-cache', 'children')])(self.update_data_cache)
 
             
         app.callback(Output('exp-config', 'children'),
                     [Input("exp-config-dropdown", "value"),
                     Input('data-cache', 'children')])(self.get_config)
+
 
         app.callback(Output('data-table', 'figure'),
                     [Input('data-cache', 'children')])(self.get_data_table)
@@ -314,17 +316,6 @@ class LiveView:
                     [State('tree-graph', 'figure')])(self.update_tree_graph)
 
 
-    def update_exp_dropdown(self, n):
-        exps = sorted(self.db.get_live_exps_ids())
-        return [{"label":e, "value":e} for e in exps]
-
-        
-    def update_output(self, value):
-        if value:
-            return {'display': 'none'}
-        else:
-            return {'display': 'block'}
-
 
     def update_data_cache(self, n, experiment_id,  cache_state):
    
@@ -337,364 +328,8 @@ class LiveView:
         filter_by = get_filter(experiment=experiment_id)
         last_epoch = self.db.get_last_epoch(filter_by)
 
-
         if experiment_id == current_exp:
             if last_epoch == prev_epoch:
                 return dash.no_update
 
-        exp_config = self.db.get_exp_config(filter_by)
-    
-        filter_by["epoch"] =  { "$lte": last_epoch}
-        scores = self.db.get_scores(filter_by)
-        scores = scores.to_dict()
-
-        filter_by["epoch"] = last_epoch
-        outputs = self.db.get_outputs(filter_by).get("data", {})
-        
-        if "_id" in exp_config:
-            exp_config.pop("_id")
-        
-        if "_id" in scores:
-            scores.pop("_id")
-        
-        if "_id" in outputs:
-            outputs.pop("_id")
-
-        data_cache = {
-                "exp_config": exp_config,
-                "experiment_id": experiment_id,
-                "epoch": last_epoch,
-                "scores": scores,
-                "outputs": outputs,
-                }
-        
-        return data_cache, {"display":"block"}
-
-
-    def get_data_table(self, data_cache):
-        data = data_cache["exp_config"]["dataset_stats"]
-        df = pd.DataFrame(data)
-        return make_table(df, "Dataset Statistics")
-
-
-    def get_config(self, config_value, data_cache):
-        exp_config = data_cache.get("exp_config", {})
-
-        if config_value == "exp config":
-            # exp_config.pop("trainer_args")
-            # exp_config.pop("hyperparamaters")
-            # exp_config.pop("_id")
-            return json.dumps(exp_config.get("dataset_config",{}), indent=4)
-        else:
-            return json.dumps(exp_config.get(config_value,{}), indent=4)
-
-
-    def update_loss_graph(self, data_cache, fig_state):
-
-        fig_state = go.Figure(fig_state)
-
-        if not data_cache["scores"]:
-            return fig_state, {"display":"none"}
-
-
-        data = pd.DataFrame(data_cache["scores"])
-        experiment_id = data_cache["experiment_id"]
-        tasks = data_cache["exp_config"]["tasks"]
-        
-        task_loss = [task+"-loss" for task in tasks]
-
-        figure = make_lineplot(data, task_loss, "Loss")
-
-        last_vis_state = get_visible_info(fig_state)
-        current_vis_state = get_visible_info(figure)
-        if last_vis_state.keys() == current_vis_state.keys():
-            update_visible_info(figure, last_vis_state)
-
-        return figure, {"display":"block"}
-
-
-    def update_task_metric_graph(self, data_cache, fig_state):
-
-
-        fig_state = go.Figure(fig_state)
-
-        if not data_cache["scores"]:
-            return fig_state, {"display":"none"}
-
-
-        data = pd.DataFrame(data_cache["scores"])
-        experiment_id = data_cache["experiment_id"]
-        
-        tasks = data_cache["exp_config"]["tasks"]
-        metrics = data_cache["exp_config"]["metrics"].copy()
-        metrics.remove("confusion_matrix")       
-
-
-        task_metrics = []
-        for task in tasks:
-            for metric in metrics:
-                task_metrics.append("-".join([task,metric]))
-    
-        figure = make_lineplot(data, task_metrics, "Task Scores")
-
-
-        last_vis_state = get_visible_info(fig_state)
-
-        if data_cache["epoch"] == 0:
-            last_vis_state = {k:False for k in task_metrics if "f1" not in k}
-
-        current_vis_state = get_visible_info(figure)
-        if last_vis_state.keys() == current_vis_state.keys():
-            update_visible_info(figure, last_vis_state)
-
-        return figure, {"display":"block"}
-
-
-    def update_class_metric_graph(self, data_cache, fig_state):
-        
-        fig_state = go.Figure(fig_state)
-
-        if not data_cache["scores"]:
-            return fig_state, {"display":"none"}
-
-
-        data = pd.DataFrame(data_cache["scores"])
-        experiment_id = data_cache["experiment_id"]
-
-        tasks = data_cache["exp_config"]["tasks"]
-        metrics = data_cache["exp_config"]["metrics"].copy()
-        metrics.remove("confusion_matrix")
-        task2labels = data_cache["exp_config"]["dataset_config"]["task_labels"]
-
-        filter_columns = []
-        for task in tasks:
-            classes = task2labels[task]
-            for c in classes:
-                for metric in metrics:
-                    filter_columns.append("-".join([task, c, metric]).lower())
-
-    
-        figure =  make_lineplot(data, filter_columns, "Class Scores")
-
-        last_vis_state = get_visible_info(fig_state)
-
-
-        if data_cache["epoch"] == 0:
-            last_vis_state = {k:False for k in filter_columns if "f1" not in k}
-
-        current_vis_state = get_visible_info(figure)
-        if last_vis_state.keys() == current_vis_state.keys():
-            update_visible_info(figure, last_vis_state)
-
-
-        return figure, {"display":"block"}
-
-
-    def update_sample_id_dropdown(self, experiment_id):
-        exp_config = self.db.get_exp_config({"experiment_id":experiment_id})
-
-        if exp_config is None:
-            return [], None
-
-        options = [{"label":t, "value":t} for t in exp_config["dataset_config"]["tracked_sample_ids"]]
-        value = options[0]["value"]
-        print("SAMPLE ID")
-        return options, value
-
-
-    def update_highlight_text(self, sample_id, data_cache):
-
-        if not data_cache or sample_id is None:
-            return "", {'display': 'none'}
-
-        if not data_cache["outputs"]:
-            return "", {'display': 'none'}
-
-        tasks  = data_cache["exp_config"]["tasks"]
-        if "seg" not in tasks:
-            return "", {'display': 'none'}
-
-        task2labels = data_cache["exp_config"]["task2label"]
-        outputs = data_cache["outputs"]
-
-        sample_out = outputs[sample_id]
-
-        if "ac" in sample_out["preds"]:
-            task = "ac"
-        else:
-            task = "seg"
-
-        data = []
-        for i,token in enumerate(sample_out["text"]):
-
-            """
-            EXAMPLE DATA for one token
-            {
-                    "token": "that",
-                    "pred": {
-                                "span_id": None,
-                                "label": "X",
-                                "score": 0.1,
-
-                                },
-                    "gold": {
-                                "span_id": "X_1",
-                                "label": "X",
-                            }
-
-                },
-            """
-
-            pred_span = sample_out["preds"]["span_ids"][i] if "span" in sample_out["preds"]["span_ids"][i] else None
-            gold_span = sample_out["gold"]["span_ids"][i] if "span" in sample_out["gold"]["span_ids"][i] else None
-
-            if pred_span:
-                pred_label = sample_out["preds"][task][i]
-
-            if task in sample_out["probs"]:
-                scores = sample_out["probs"][task][i]
-                idx = np.argmax(scores)
-                score = scores[idx]
-                #will be the same as pred_label
-                pred_label = task2labels[task][idx]
-
-            token_data = {
-                            "token": token,
-                            "pred":{
-                                    "span_id": pred_span,
-                                    "label": pred_label,
-                                    "score": score,
-
-                                        }
-                            }
-            
-            if gold_span:
-                pred_label = sample_out["gold"][tasks]
-                token_data["gold"] ={
-                                    "span_id":gold_span,
-                                    "label":pred_label
-                                    }
-
-
-            data.append(token_data)
-
-        hotviz.hot_text(data, labels=task2labels[task], save_path=th_path)
-
-        with open(th_path, "rb") as f:
-            enc_img = base64.b64encode(f.read())
-            src = f"data:image/png;base64,{enc_img.decode()}"
-
-        img =  html.Img(   
-                        id="text-highlight",
-                        src=src
-                        )
-
-        return img, {'display': 'block'}
-
-
-    def update_tree_graph(self, sample_id, data_cache, fig_state):
-
-        fig_state = go.Figure(fig_state)
-
-        if not data_cache or sample_id is None:
-            return fig_state, {'display': 'none'}
-
-        if not data_cache["scores"]:
-            return fig_state, {"display":"none"}
-
-
-        def extract_data(df):
-            spans = df.groupby("span_ids")
-            data = []
-            for i, span in spans:
-                span_data.append({
-                                    "label":span["ac"].unique()[0],
-                                    "link": span["relation"].unique()[0],
-                                    "link_label": span["stance"].unique()[0],
-                                    "text": " ".join(span["text"].tolist()),
-                                    })
-            
-            return data
-
-
-        if "relation" not in data_cache["exp_config"]["tasks"]:
-            return go.Figure([]), {'display': 'none'}
-
-        outputs = data_cache["outputs"]
-
-        if not outputs:
-            return []
-
-        sample_out = outputs[sample_id]
-
-        pred_df = pd.DataFrame(sample_out["pred"])
-        gold_df = pd.DataFrame(sample_out["gold"])
-
-        if "span_ids" in pred_df.columns:
-            pred_data = extract_data(pred_df)
-            gold_data = extract_data(pred_df)
-      
-        else:
-            rename_dict = {"ac": "label", "relation": "link", "stance":"link_label"}
-            pred_df.rename(columns={"ac": "label", "relation": "link", "stance":"link_label"})
-            gold_df.rename(columns={"ac": "label", "relation": "link", "stance":"link_label"})
-            pred_data = pred_df.loc[:,[list(rename_dict.values())+["text"]]].to_dict()
-            gold_data = gold_df.loc[:,[list(rename_dict.values())]+["text"]].to_dict()
-
-
-        # example input:
-        """
-            [{   
-            'label': 'MajorClaim',
-            'link': 1,
-            'link_label': '',
-            'text': 'one who studies overseas will gain many skills throughout this '
-                    'experience'
-                    },]
-        """
-
-        fig = hotviz.hot_tree(pred_data, gold_data=gold_data)
-
-
-        last_vis_state = get_visible_info(fig_state)
-        current_vis_state = get_visible_info(figure)
-        if last_vis_state.keys() == current_vis_state.keys():
-            update_visible_info(figure, last_vis_state)
-
-
-        return fig, {'display': 'block'}
-
-
-    def update_conf_dropdown(self, experiment_id):
-        exp_config = self.db.get_exp_config({"experiment_id":experiment_id})
-
-        if exp_config is None:
-            return [], None
-
-        options = [{"label":t, "value":t} for t in exp_config["tasks"]]
-        value = options[0]["value"]
-
-
-        return options, value
-
-
-    def update_conf_matrix(self, task, data_cache):
-
-        if not data_cache or task is None:
-            return {}, {"display":"none"}
-        
-        if not data_cache["scores"]:
-            return {}, {"display":"none"}
-
-        df = pd.DataFrame(data_cache["scores"])
-        
-        cond1 = df["epoch"] == data_cache["epoch"]
-        cond2 = df["split"] == "val"
-        conf_m = np.array(df[cond1 & cond2][f"{task}-confusion_matrix"].to_numpy()[0])
-
-        conf_m = np.round(conf_m / np.sum(conf_m), 2)
-        labels = data_cache["exp_config"]["dataset_config"]["task_labels"][task]
-
-        fig = conf_matrix(conf_m, labels)
-
-        return fig, {'display': 'block'}
+        return self.get_exp_data(experiment_id, last_epoch)

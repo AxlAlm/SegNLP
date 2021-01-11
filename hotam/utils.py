@@ -54,6 +54,8 @@ def to_tensor(item, dtype=torch.float):
         return torch.tensor(item, dtype=dtype)
     except ValueError as e:
         return item
+    except TypeError as e:
+        return item
 
 
 

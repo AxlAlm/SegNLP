@@ -110,7 +110,7 @@ class Metrics:
         return scores
 
 
-    def _complex_label_normalization(self, output_dict:dict):
+    def _complex_label_normalization(self, output_dict:dict, mask:np.ndarray):
         """
         given that some labels are complexed, i.e. 2 plus tasks in one, we can break these apart and 
         get the predictions for each of the task so we can get metric for each of them. 
@@ -149,7 +149,7 @@ class Metrics:
             if "_" not in task:
                 continue
             
-            subtask_preds = _get_subtask_preds(task, ensure_flat(ensure_numpy(preds), mask=self.batch["mask"]))
+            subtask_preds = _get_subtask_preds(task, ensure_flat(ensure_numpy(preds), mask=mask))
             output_dict.update(subtask_preds)
            
 
@@ -176,7 +176,7 @@ class Metrics:
         return class_scores_dict
 
 
-    def _get_metrics(self, targets:np.ndarray, output_dict:dict, task:str):
+    def _get_metrics(self, targets:np.ndarray, output_dict:dict, task:str, mask:np.ndarray):
         
         scores = {} 
         class_scores = {}
@@ -188,7 +188,7 @@ class Metrics:
             else:
                 preds = output_dict["preds"][task]
 
-            preds = ensure_flat(ensure_numpy(preds), mask=self.batch["mask"])
+            preds = ensure_flat(ensure_numpy(preds), mask=mask)
 
             assert targets.shape == preds.shape, f"shape missmatch for {task}: Targets:{targets.shape} | Preds: {preds.shape}"
 
@@ -208,7 +208,7 @@ class Metrics:
         return scores, class_scores
             
 
-    def _get_score_log(self, output_dict:dict) -> Tuple[list, list, list, list]:
+    def _get_score_log(self, output_dict:dict, mask:np.ndarray) -> Tuple[list, list, list, list]:
         """
         calculates the score for each metrics for each task and for each class if supported. Also calculates the mean metric scores for 
         the main tasks.
@@ -229,12 +229,12 @@ class Metrics:
         main_task_values = []
         for task in self.dataset.all_tasks:
             
-            targets = ensure_flat(ensure_numpy(self.batch[task]), mask=self.batch["mask"])
+            targets = ensure_flat(ensure_numpy(self.batch[task]), mask=mask)
 
             #targets = self._ensure_numpy(self.batch.get_flat(task, remove=self.dataset.task2padvalue[task])) #.cpu().detach().numpy()  #.cpu().detach().numpy()
 
             # calculates the metrics and the class metrics if wanted
-            task_scores, task_class_scores = self._get_metrics(targets, output_dict, task)
+            task_scores, task_class_scores = self._get_metrics(targets, output_dict, task, mask)
 
             if task in output_dict["loss"]:
                 task_scores["-".join([self.split, task, "loss"]).lower()]  = ensure_numpy(output_dict["loss"][task])
@@ -281,9 +281,9 @@ class Metrics:
         """
         self.batch = batch 
         self.split = split 
+        mask = self.batch[f"{self.batch.prediction_level}_mask"]
 
-        self._complex_label_normalization(output_dict["preds"])
-        scores = self._get_score_log(output_dict)
-
+        self._complex_label_normalization(output_dict["preds"], mask)
+        scores = self._get_score_log(output_dict, mask)
         return scores
 
