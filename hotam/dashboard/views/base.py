@@ -79,6 +79,10 @@ class ViewBase:
     
         exp_config = self.db.get_exp_config(filter_by)
 
+        if exp_config is None:
+            return {}, {"display":"none"}
+
+
         filter_by["epoch"] =  { "$lte": last_epoch}
         scores = self.db.get_scores(filter_by)
         scores = scores.to_dict()
@@ -107,6 +111,10 @@ class ViewBase:
 
 
     def get_data_table(self, data_cache):
+        
+        if not data_cache:
+            return {}
+
         data = data_cache["exp_config"]["dataset_stats"]
         df = pd.DataFrame(data)
         return make_table(df, "Dataset Statistics")
@@ -128,6 +136,9 @@ class ViewBase:
     def update_loss_graph(self, data_cache, fig_state):
 
         fig_state = go.Figure(fig_state)
+
+        if not data_cache:
+            return fig_state, {"display":"none"}
 
         if not data_cache["scores"]:
             return fig_state, {"display":"none"}
@@ -153,6 +164,9 @@ class ViewBase:
 
 
         fig_state = go.Figure(fig_state)
+
+        if not data_cache:
+            return fig_state, {"display":"none"}
 
         if not data_cache["scores"]:
             return fig_state, {"display":"none"}
@@ -189,6 +203,9 @@ class ViewBase:
     def update_class_metric_graph(self, data_cache, fig_state):
         
         fig_state = go.Figure(fig_state)
+
+        if not data_cache:
+            return fig_state, {"display":"none"}
 
         if not data_cache["scores"]:
             return fig_state, {"display":"none"}
@@ -242,27 +259,19 @@ class ViewBase:
     def update_highlight_text(self, sample_id, data_cache):
 
         if not data_cache or sample_id is None:
-            print("COND 1")
             return "", {'display': 'none'}
 
         if not data_cache["outputs"]:
-            print("COND 2")
-            print("SCORES", data_cache["outputs"])
             return "", {'display': 'none'}
 
         tasks  = data_cache["exp_config"]["tasks"]
-        print("HIGHLIFHGT!!!!!", "seg" in data_cache["exp_config"]["tasks"], data_cache["exp_config"]["tasks"])
         if "seg" not in tasks:
             return "", {'display': 'none'}
 
         task2labels = data_cache["exp_config"]["task2label"]
         outputs = data_cache["outputs"]
 
-        print("SAMPLE KEYS", outputs.keys())
-
         sample_out = outputs[sample_id]
-
-        print("SAMPLE OUT HIGHLKIGHT", sample_out)
 
         if "ac" in sample_out["preds"]:
             task = "ac"
@@ -290,31 +299,27 @@ class ViewBase:
                 },
             """
 
-            pred_span = sample_out["preds"]["span_ids"][i] if "span" in sample_out["preds"]["span_ids"][i] else None
-            gold_span = sample_out["gold"]["span_ids"][i] if "span" in sample_out["gold"]["span_ids"][i] else None
-
-            if pred_span:
-                pred_label = sample_out["preds"][task][i]
-
-            if task in sample_out["probs"]:
-                scores = sample_out["probs"][task][i]
-                idx = np.argmax(scores)
-                score = scores[idx]
-                #will be the same as pred_label
-                pred_label = task2labels[task][idx]
+            pred_span = sample_out["preds"]["span_ids"][i] if "SPAN" in sample_out["preds"]["span_ids"][i] else None
+            gold_span = sample_out["gold"]["span_ids"][i] if "SPAN" in sample_out["gold"]["span_ids"][i] else None
 
             token_data = {
                             "token": token,
                             "pred":{
                                     "span_id": pred_span,
-                                    "label": pred_label,
-                                    "score": score,
-
                                         }
                             }
-            
+
+            if pred_span:
+                token_data["pred"]["label"] = sample_out["preds"][task][i]
+
+            if task in sample_out["probs"]:
+                scores = sample_out["probs"][task][i]
+                idx = np.argmax(scores)
+                token_data["pred"]["score"] = scores[idx]
+                token_data["pred"]["label"] = task2labels[task][idx]
+
             if gold_span:
-                pred_label = sample_out["gold"][tasks]
+                pred_label = sample_out["gold"][task]
                 token_data["gold"] ={
                                     "span_id":gold_span,
                                     "label":pred_label
@@ -323,19 +328,13 @@ class ViewBase:
 
             data.append(token_data)
 
-        print("OK WE GOT HERE FOR HIGHLIGHT")
         hotviz.hot_text(data, labels=task2labels[task], save_path=th_path)
 
         with open(th_path, "rb") as f:
             enc_img = base64.b64encode(f.read())
             src = f"data:image/png;base64,{enc_img.decode()}"
 
-        img =  html.Img(   
-                        id="text-highlight",
-                        src=src
-                        )
-
-        return img, {'display': 'block'}
+        return src, {'display': 'block'}
 
 
     def update_tree_graph(self, sample_id, data_cache, fig_state):
@@ -439,10 +438,13 @@ class ViewBase:
         cond2 = df["split"] == "val"
         conf_m = np.array(df[cond1 & cond2][f"{task}-confusion_matrix"].to_numpy()[0])
 
-        conf_m = np.round(conf_m / np.sum(conf_m), 2)
-        labels = data_cache["exp_config"]["dataset_config"]["task_labels"][task]
+        conf_m_probs = []
+        for i in range(conf_m.shape[0]):
+            #print(conf_m[i], np.sum(conf_m[i]), np.round(conf_m[i] / np.sum(conf_m[i])))
+            conf_m_probs.append(list(np.round_(conf_m[i] / np.sum(conf_m[i]), decimals=2)))
 
-        fig = conf_matrix(conf_m, labels)
+        labels = data_cache["exp_config"]["dataset_config"]["task_labels"][task]
+        fig = conf_matrix(conf_m_probs, labels)
 
         return fig, {'display': 'block'}
 
@@ -459,9 +461,9 @@ class ViewBase:
         #dataset_name, project, rank_task, rank_metric, rank_split, top_n = rank_values
 
         filter_by = get_filter(project=project)
-        experiments = pd.DataFrame(db.get_experiments(filter_by))
+        experiments = pd.DataFrame(self.db.get_exp_configs(filter_by))
         experiment_ids = list(experiments["experiment_id"].to_numpy())
-        data = db.get_scores( {"experiment_id":{"$in": experiment_ids}})
+        data = self.db.get_scores({"experiment_id":{"$in": experiment_ids}})
 
         experiment2config = {}
         for i, exp_row in experiments.iterrows():
@@ -520,6 +522,6 @@ class ViewBase:
         top_scores = score_df.head(top_n)
         top_scores.reset_index(drop=True, inplace=True)
 
-        fig = rank_bar(top_scores, [rank_metric], [rank_split], experiment2config, rank_task, top_n, clickData)
-        
+        fig = rank_bar(top_scores, [rank_metric], [rank_split], experiment2config, task, top_n, clickData)
+
         return fig, {'display': 'block'}

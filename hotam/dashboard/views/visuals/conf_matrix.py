@@ -4,18 +4,11 @@ import plotly.figure_factory as ff
 
 def conf_matrix(conf_matrix, labels):
 
-    # z = [[0.1, 0.3, 0.5, 0.2],
-    #     [1.0, 0.8, 0.6, 0.1],
-    #     [0.1, 0.3, 0.6, 0.9],
-    #     [0.6, 0.4, 0.2, 0.2]]
-    x = labels
-    y =  list(reversed(labels))
-
     # change each element of z to type string for annotations
     conf_v_text = [[str(value) for value in row] for row in conf_matrix]
 
     # set up figure 
-    fig = ff.create_annotated_heatmap(conf_matrix, x=x, y=y, annotation_text=conf_v_text, colorscale='tempo')
+    fig = ff.create_annotated_heatmap(conf_matrix, x=labels, y=labels, annotation_text=conf_v_text, colorscale='tempo')
 
     # add title
     fig.update_layout(title_text='<i><b>Confusion matrix</b></i>',

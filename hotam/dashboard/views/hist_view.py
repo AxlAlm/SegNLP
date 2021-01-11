@@ -172,7 +172,7 @@ class HistView(ViewBase):
                                                                     ],
                                                         ),
                                                 html.Div(
-                                                        id="tree-graph-con",
+                                                        id="tree-graph-con-hist",
                                                         className="pretty_container six columns",
                                                         children=[
                                                                     dcc.Dropdown(
@@ -346,7 +346,7 @@ class HistView(ViewBase):
                     Output('conf-matrix-hist', 'figure'),
                     Output('conf-matrix-con-hist', 'style'),
                     [
-                    Input('conf-dropdown', 'value'),
+                    Input('conf-dropdown-hist', 'value'),
                     Input('exp-data', 'children')
                     ])(self.update_conf_matrix)
 

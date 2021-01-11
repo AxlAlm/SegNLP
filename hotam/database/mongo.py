@@ -40,7 +40,7 @@ class MongoDB:
             return -1
 
 
-    def get_scores(self,filter_by):
+    def get_scores(self, filter_by):
         if "experiment_id" not in filter_by:
             return pd.DataFrame([])
 
@@ -60,7 +60,11 @@ class MongoDB:
         return self.experiments.find_one(filter_by)
 
 
-    def get_metrics(self, filter_by):
+    def get_exp_configs(self, filter_by):
+        return list(self.experiments.find(filter_by))
+
+
+    def get_metrics(self, filter_by, many=True):
         exp = self.experiments.find_one(filter_by)
         return [{"label":m, "value":m} for m in exp["metrics"]]
     
