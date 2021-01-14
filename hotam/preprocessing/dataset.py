@@ -5,7 +5,7 @@ import os
 import pandas as pd
 from IPython.display import display
 from typing import Union, List, Dict, Tuple
-from random import random
+import random
 import copy
 import json
 from pathlib import Path
@@ -86,6 +86,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                                 }
         self.encoders = {}
         self.__cutmap = {"doc_embs":"seq"}
+        self._setup_done = False
 
 
     def __getitem__(self, key):
@@ -168,7 +169,8 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
     
     def __extract_sample_data(self, key):
 
-        samples = self.level_dfs["token"].loc[key,].groupby(self.sample_level+"_id")
+        #samples = self.level_dfs["token"].loc[key,].groupby(self.sample_level+"_id")
+        samples = self.data.loc[key,].groupby(self.sample_level+"_id")
         #samples = sorted(samples, key=lambda x:len(x), reverse=True)
 
         sample_data = []
@@ -234,7 +236,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                                             memmap_file, 
                                             dtype="O", 
                                             mode="w+", 
-                                            shape=self.nr_samples
+                                            shape=self.nr_samples + 1
                                             )
 
 
@@ -377,8 +379,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                     
                 feature_matrix, am_mask, ac_mask = self.__extract_ADU_features(fm, sample, sample_shape=feature_matrix.shape)
 
-
-                if feature in self.__word_features and not sum(feature_dict["ac_token_mask"]):
+                if feature in self.__word_features and not np.sum(feature_dict["ac_token_mask"]):
                     feature_dict["am_token_mask"] = am_mask
                     feature_dict["ac_token_mask"] = ac_mask
 
@@ -537,7 +538,8 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
     def __feature_store_setup(self, fm):
             
         if fm.level == "word":
-            nr_sentence = len(self.level_dfs["token"]["sentence_id"].unique())
+            #nr_sentence = len(self.level_dfs["token"]["sentence_id"].unique())
+            nr_sentence = len(self.data["sentence_id"].unique())
             shape = (nr_sentence, self.__get_nr_tokens("sentence"), fm.feature_dim)
             feature_name = fm.name
         
@@ -546,7 +548,8 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             #self._feature2memmap[feature] = body + "_ac_" + suffix
             feature_name = fm.name + "_ac"
 
-            nr_acs = int(self.level_dfs["token"]["ac_id"].max())
+            #nr_acs = int(self.level_dfs["token"]["ac_id"].max())
+            nr_acs = int(self.data["ac_id"].max())
             shape = (nr_acs, fm.feature_dim)
 
         else:
@@ -593,8 +596,8 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
 
                 for task in self.tasks:
-                    df = self.level_dfs["token"]
-                    label_counts = dict(df[df[f"{self.sample_level}_id"].isin(ids)][task].value_counts())
+                    #df = self.level_dfs["token"]
+                    label_counts = dict(self.data[self.data[f"{self.sample_level}_id"].isin(ids)][task].value_counts())
 
                     if self.prediction_level == "token":
                         label_counts = {self.decode(l,task):c for l,c in label_counts.items()}
@@ -628,44 +631,6 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         return df
 
 
-    def show(self, jupyter:bool=False):
-        """
-        prints the dataframes for each level
-
-        Parameters
-        ----------
-        jupyter : bool, optional
-            if you are working in jupyter set True for nicer printing, by default False
-
-        Raises
-        ------
-        RuntimeError
-            if there is no data
-        """
-
-        if not hasattr(self, "level_dfs"):
-            raise RuntimeError("Dataset contain no data. Use add_sample() or add_samples() to populate dataset")
-
-        for level, df in self.level_dfs.items():
-            #df.reset_index(drop=True, inplace=True)
-            if jupyter:
-                display(df.head(5))
-            else:
-                logger.info(f'DataFrame of level {level}- \n{df.head(5)}')
-
-
-        if hasattr(self, "exp_df"):
-            if jupyter:
-                display(self.exp_df.head(5))
-            else:
-                logger.info(f'DataFrame of EXP DF - \n{self.exp_df.head(5)}')
-
-
-    def dataset_as_tokens(self):
-        #return self.level_dfs["token"].T.to_dict()
-       return [dict({"dataset":self.name},**token_dict) for i,token_dict in self.level_dfs["token"].iterrows()]
-
-
     @one_tqdm(desc="Saving Preprocessed Dataset")
     def save(self, pkl_path:str):
         """saves the preprocessed dataset, save dataset_level
@@ -675,7 +640,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         pkl_path : str
             string path
         """
-        pickle_data([self.level_dfs, self.dataset_level], pkl_path)
+        pickle_data([self.data, self.dataset_level], pkl_path)
 
 
     @one_tqdm(desc="Loading Preprocessed Dataset")
@@ -696,15 +661,17 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         if hasattr(self, "level_dfs"):
             raise RuntimeError("data already exist. Overwriting is currently unsupported with load()")
 
-        self.level_dfs, self.dataset_level = load_pickle_data(pkl_path)
-        self.stack_level_data = {l:[] for l in self.level_dfs.keys()}
+        self.data, self.dataset_level = load_pickle_data(pkl_path)
+        # self.stack_level_data = {l:[] for l in self.level_dfs.keys()}
+        self._data_stack = []
 
 
     @one_tqdm(desc="Save Encoded State")
     def __save_enc_state(self):
 
         state_dict = {}
-        state_dict["data"] = self.level_dfs["token"].to_dict()
+        # state_dict["data"] = self.level_dfs["token"].to_dict()
+        state_dict["data"] = self.data.to_dict()
         state_dict["all_tasks"] = self.all_tasks
         state_dict["subtasks"] = self.subtasks
         state_dict["main_tasks"] = self.main_tasks
@@ -720,7 +687,8 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         with open(self._enc_file_name,"r") as f:
             state_dict = json.load(f)
 
-        self.level_dfs["token"] = pd.DataFrame(state_dict["data"])
+        # self.level_dfs["token"] = pd.DataFrame(state_dict["data"])
+        self.data = pd.DataFrame(state_dict["data"])
         self.all_tasks = state_dict["all_tasks"]
         self.subtasks = state_dict["subtasks"]
         self.task2subtasks = state_dict["task2subtasks"]
@@ -763,10 +731,12 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         self.task2labels = {}
         for task in self.all_tasks:
 
-            if task == "relation" and self.prediction_level == "ac":
-                self.task2labels[task] = range(self.max_relation+1)
-            else:
-                self.task2labels[task] = sorted(list(self.level_dfs["token"][task].unique()))
+            # if task == "relation" and self.prediction_level == "ac":
+            #     self.task2labels[task] = range(self.max_relation+1)
+            # else:
+            #     # self.task2labels[task] = sorted(list(self.level_dfs["token"][task].unique()))
+            print(self.data[task].unique())
+            self.task2labels[task] = sorted(self.data[task].unique().tolist())
 
             if isinstance(self.task2labels[task][0], (np.int, np.int64, np.int32, np.int16)):
                 self.task2labels[task] = [int(i) for i in self.task2labels[task]]
@@ -785,8 +755,10 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             if len(subtasks) <= 1:
                 continue
 
-            subtask_labels  = self.level_dfs["token"][subtasks].apply(lambda row: '_'.join([str(x) for x in row]), axis=1)
-            self.level_dfs["token"][task] = subtask_labels
+            # subtask_labels  = self.level_dfs["token"][subtasks].apply(lambda row: '_'.join([str(x) for x in row]), axis=1)
+            # self.level_dfs["token"][task] = subtask_labels
+            subtask_labels  = self.data[subtasks].apply(lambda row: '_'.join([str(x) for x in row]), axis=1)
+            self.data[task] = subtask_labels
 
 
     def __get_nr_tokens(self, level):
@@ -795,52 +767,15 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         sentences, paragraphs.
 
         """
-        return max(len(g) for i,g in self.level_dfs["token"].groupby(level+"_id"))
+        # return max(len(g) for i,g in self.level_dfs["token"].groupby(level+"_id"))
+        return max(len(g) for i,g in self.data.groupby(level+"_id"))
   
 
     def __get_max_nr_seq(self):
-        samples = self.level_dfs["token"].groupby(self.sample_level+"_id")
+        # samples = self.level_dfs["token"].groupby(self.sample_level+"_id")
+        samples = self.data.groupby(self.sample_level+"_id")
         return max(len(sample.groupby(self.prediction_level+"_id")) for i, sample in samples)
 
-
-    @one_tqdm(desc="Removing cross-paragraph-relational Arugment Components")
-    def __relation_paragraph_norm(self):
-        """
-        Some datasets might have Argument Relations that spans over the sample level (e.g. paragraph),
-        these will be removed.
-
-        """
-        
-        paragraphs = self.level_dfs["token"].groupby("paragraph_id")
-
-        all_max_acs = set()
-        for p_id, df in tqdm(paragraphs, desc="removing acs with relations across paragraphs"): 
-            acs = df.groupby("ac_id")
-            max_acs = len(acs)
-            for i, (ac_id, ac_df) in enumerate(acs):
-                relation = ac_df["relation"].unique()[0]
-
-                #print(relation < max_acs, relation, max_acs)
-                if relation < max_acs:
-                    continue
-                
-                cond = self.level_dfs["token"]["ac_id"] == ac_id
-
-                # self.level_dfs["token"].loc[cond, "ac"] = "None"
-                self.level_dfs["token"].loc[cond, "relation"] = i
-
-                if "stance" in self.all_tasks:
-                    self.level_dfs["token"].loc[cond, "stance"] = "None"
-
-                # #self.level_dfs["token"].loc[cond, self.all_tasks] = np.nan
-                # self.level_dfs["token"].loc[self.level_dfs["token"]["am_id"] == ac_id, "am_id"] = np.nan
-                # self.level_dfs["token"].loc[cond,"ac_id"] = np.nan
-                #max_acs -= 1
-        
-            all_max_acs.add(max_acs)
-
-        self.max_relation = max(all_max_acs)
-        
 
     @one_tqdm(desc="Removing Duplicates")
     def remove_duplicates(self):
@@ -850,51 +785,53 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         text filed which is used to check duplicates is the original text.
 
         """
+        raise NotImplementedError(" TO BE IMPLEMENTED")
 
 
-        def __get_duplicate_set(df):
+        # def __get_duplicate_set(df):
 
-            # TODO: solve this with groupby isntead???
-            duplicate_mask_all = df.duplicated(subset="text",  keep=False).to_frame(name="bool")
-            duplicate_ids_all = duplicate_mask_all[duplicate_mask_all["bool"]==True].index.values
+        #     # TODO: solve this with groupby isntead???
+        #     duplicate_mask_all = df.duplicated(subset="text",  keep=False).to_frame(name="bool")
+        #     duplicate_ids_all = duplicate_mask_all[duplicate_mask_all["bool"]==True].index.values
 
-            dup_ids = df.loc[duplicate_ids_all]["id"]
-            dup_items = df.loc[duplicate_ids_all]["text"]
-            dup_dict = dict(enumerate(set(dup_items)))
-            dup_pairs = {i:[] for i in range(len(dup_dict))}
-            for i, item in dup_dict.items():
-                for ID, item_q in zip(dup_ids, dup_items):
-                    if item == item_q:
-                        dup_pairs[i].append(ID)
+        #     dup_ids = df.loc[duplicate_ids_all]["id"]
+        #     dup_items = df.loc[duplicate_ids_all]["text"]
+        #     dup_dict = dict(enumerate(set(dup_items)))
+        #     dup_pairs = {i:[] for i in range(len(dup_dict))}
+        #     for i, item in dup_dict.items():
+        #         for ID, item_q in zip(dup_ids, dup_items):
+        #             if item == item_q:
+        #                 dup_pairs[i].append(ID)
 
-            return list(dup_pairs.values())
+        #     return list(dup_pairs.values())
 
-        target_level = self.dataset_level
-        df = self.level_dfs[target_level]
-        duplicate_sets = __get_duplicate_set(df)
-        duplicate_ids = np.array([i for duplicate_ids in duplicate_sets for i in  duplicate_ids[1:]])
+        # target_level = self.dataset_level
+        # # df = self.level_dfs[target_level]
+        # # df = self.data
+        # duplicate_sets = __get_duplicate_set(df)
+        # duplicate_ids = np.array([i for duplicate_ids in duplicate_sets for i in  duplicate_ids[1:]])
 
-        df = df[~df["id"].isin(duplicate_ids)]
-        df.reset_index(drop=True, inplace=True)
-        self.level_dfs[target_level] = df
+        # df = df[~df["id"].isin(duplicate_ids)]
+        # df.reset_index(drop=True, inplace=True)
+        # self.level_dfs[target_level] = df
 
 
-        for level, df in self.level_dfs.items():
+        # for level, df in self.level_dfs.items():
 
-            if level == target_level:
-                continue
+        #     if level == target_level:
+        #         continue
 
-            df = df[~df[f"{target_level}_id"].isin(duplicate_ids)]
-            df.reset_index(drop=True, inplace=True)
-            self.level_dfs[level] = df
+        #     df = df[~df[f"{target_level}_id"].isin(duplicate_ids)]
+        #     df.reset_index(drop=True, inplace=True)
+        #     self.level_dfs[level] = df
 
         
-        self.duplicate_ids = duplicate_ids
+        # self.duplicate_ids = duplicate_ids
 
-        if hasattr(self, "splits"):
-            self._update_splits()
+        # if hasattr(self, "splits"):
+        #     self._update_splits()
 
-        logger.info(f"Removed {len(duplicate_ids)} duplicates from dataset. Duplicates: {duplicate_sets}")
+        # logger.info(f"Removed {len(duplicate_ids)} duplicates from dataset. Duplicates: {duplicate_sets}")
 
 
     def get_subtask_position(self, task:str, subtask:str) -> int:
@@ -914,6 +851,38 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             
         """
         return self.task2subtasks[task].index(subtask)
+
+
+    def example(self, sample_id="random", level="document"):
+        
+        if sample_id == "random":
+            if self._setup_done:
+                sample_id = random.choice(set(self.data.index.to_numpy()))
+            else:
+                sample_id = random.choice(self.data[level+"_id"].unique())
+        
+        
+        if self._setup_done:
+            example = self.data.loc[sample_id]
+        else:
+            example = self.data.loc[self.data[level+"_id"] == sample_id, :]
+
+
+        acs_grouped = example.groupby("ac_id")
+        relations = [ac_df["relation"].unique()[0] for ac_id, ac_df in acs_grouped]
+        acs = [ac_df["ac"].unique()[0] for ac_id, ac_df in acs_grouped]
+
+        for ac_id, ac_df in acs_grouped:
+            print(" ".join(ac_df["text"]))
+            print(ac_df["ac"].unique()[0])
+
+
+        print("------------ Example -------------")
+        print(f"{self.dataset_level}_id: ", example[self.dataset_level+"_id"].unique()[0])
+        print(f"{level}:\n", " ".join(example["text"]) + "\n\n")
+        print("Relations:", relations)
+        print("ACs:", acs)
+
 
 
     def setup(  self,
@@ -964,16 +933,14 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         #self._exp_hash = self.__create_exp_hash()
         self._enc_file_name = os.path.join("/tmp/", f"{'_'.join(self.tasks+self.encodings)+self.prediction_level}_enc.json")
 
-        if remove_duplicates:
-            self.remove_duplicates()
+        # if remove_duplicates:
+        #     self.remove_duplicates()
 
-        #remove duplicates from splits
-        if remove_duplicates:
-            if self.duplicate_ids.any():
-                self.update_splits()
+        # #remove duplicates from splits
+        # if remove_duplicates:
+        #     if self.duplicate_ids.any():
+        #         self.update_splits()
 
-  
-        
         enc_data_exit = os.path.exists(self._enc_file_name)
         if enc_data_exit and not override:
             self.__load_enc_state()
@@ -983,8 +950,8 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         else:
             self.__fix_tasks()
 
-            if self.sample_level == "paragraph" and "relation" in self.all_tasks:
-                self.__relation_paragraph_norm()
+            # if self.sample_level == "paragraph" and "relation" in self.all_tasks:
+            #     self.__relation_paragraph_norm()
 
             self._create_data_encoders()
             self._encode_data() 
@@ -995,7 +962,8 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             self.__save_enc_state()
         
         
-        self.level_dfs["token"].index = self.level_dfs["token"][f"{sample_level}_id"].to_numpy() #.pop(f"{sample_level}_id")
+        # self.level_dfs["token"].index = self.level_dfs["token"][f"{sample_level}_id"].to_numpy() #.pop(f"{sample_level}_id")
+        self.data.index = self.data[f"{sample_level}_id"].to_numpy() #.pop(f"{sample_level}_id")
 
         if self.prediction_level == "token" or self.tokens_per_sample:
             self.max_tok = self.__get_nr_tokens(self.sample_level)
@@ -1005,7 +973,8 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             self.max_seq_tok = self.__get_nr_tokens(self.prediction_level)
 
         
-        self.nr_samples = self.level_dfs[self.sample_level].shape[0]
+        # self.nr_samples = len(self.level_dfs[self.sample_level].shape[0]
+        self.nr_samples = len(self.data[self.sample_level+"_id"].unique())
 
         if self.sample_level != self.dataset_level:
             self._change_split_level()
@@ -1025,6 +994,8 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
         if hotam.preprocessing.settings["CACHE_SAMPLES"]:
             self.__setup_cache()
+        
+        self._setup_done = True
 
 
     def train_dataloader(self):
@@ -1041,3 +1012,55 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         sampler = BatchSampler(self.splits[self.split_id]["test"], batch_size=self.batch_size, drop_last=False)
         return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0])
 
+
+
+
+    # @one_tqdm(desc="Removing cross-paragraph-relational Arugment Components")
+    # def __relation_paragraph_norm(self):
+    #     """
+    #     Some datasets might have Argument Relations that spans over the sample level (e.g. paragraph),
+    #     these will be removed.
+
+    #     """
+        
+    #     paragraphs = self.level_dfs["token"].groupby("paragraph_id")
+
+    #     all_max_acs = set()
+    #     for p_id, df in tqdm(paragraphs, desc="removing acs with relations across paragraphs"): 
+
+    #         print("_______________________________")
+    #         print(df["document_id"].unique())
+    #         print(" ".join(df["text"]))
+
+    #         acs = df.groupby("ac_id")
+    #         max_acs = len(acs)
+
+    #         print(max_acs)
+
+    #         for i, (ac_id, ac_df) in enumerate(acs):
+    #             relation = ac_df["relation"].unique()[0]
+
+    #             print(ac_df["ac"].unique(), ac_df["stance"].unique(), ac_df["relation"].unique())
+    #             print(ac_id, " ".join(ac_df["text"]))
+
+    #             #print(relation < max_acs, relation, max_acs)
+    #             if relation < max_acs:
+    #                 continue
+                
+    #             cond = self.level_dfs["token"]["ac_id"] == ac_id
+
+    #             # self.level_dfs["token"].loc[cond, "ac"] = "None"
+    #             self.level_dfs["token"].loc[cond, "relation"] = i
+
+    #             if "stance" in self.all_tasks:
+    #                 self.level_dfs["token"].loc[cond, "stance"] = "None"
+
+    #             # #self.level_dfs["token"].loc[cond, self.all_tasks] = np.nan
+    #             # self.level_dfs["token"].loc[self.level_dfs["token"]["am_id"] == ac_id, "am_id"] = np.nan
+    #             # self.level_dfs["token"].loc[cond,"ac_id"] = np.nan
+    #             #max_acs -= 1
+        
+    #         all_max_acs.add(max_acs)
+
+    #     self.max_relation = max(all_max_acs)
+        

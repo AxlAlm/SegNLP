@@ -44,17 +44,40 @@ class DatasetEncoder:
             
             self.enc2padvalue[enc_type] = 0
 
+
     @one_tqdm(desc="Creating Label Encoders")
     def _create_label_encoders(self):
         
         for task in self.all_tasks:
-            self.encoders[task] = LabelEncoder(name=task, labels=self.task2labels[task])
+
+            if task == "relation":
+                self.encoders[task] = RelationEncoder(name=task, labels=self.task2labels[task])
+            else:
+                self.encoders[task] = LabelEncoder(name=task, labels=self.task2labels[task])
+
 
     @one_tqdm(desc="Encoding Labels")
     def _encode_labels(self):
 
         for task in self.all_tasks:
-            self.level_dfs["token"][task] = self.level_dfs["token"][task].apply(lambda x: self.encode(x, task))
+            # self.level_dfs["token"][task] = self.level_dfs["token"][task].apply(lambda x: self.encode(x, task))
+
+            if task == "relation":
+                
+                self.data["_relation"] = self.data["relation"].to_numpy()
+                samples = self.data.groupby(self.sample_level+"_id")
+                for s_id, df in tqdm(samples, desc="encoding relations"):
+                    acs = df.groupby("ac_id")
+                    relations = [ac_df["relation"].unique()[0] for ac_id, ac_df in acs]
+                    enc_relations = self.encode_list(relations, task)
+
+                    for i, (ac_id, ac_df) in enumerate(acs):
+                        self.data.loc[ac_df.index,"_relation"] = enc_relations[i]
+                self.data["relation"] = self.data.pop("_relation")
+
+            else:
+                self.data[task] = self.data[task].apply(lambda x: self.encode(x, task))
+
 
     @one_tqdm(desc="Encoding Data")
     def _encode_data(self):
@@ -66,16 +89,17 @@ class DatasetEncoder:
             else:
                 if enc in ["words", "chars"]:
                     key = "text"
-                    self.level_dfs["token"][enc] = self.level_dfs["token"][key].apply(lambda x: self.encode(x, enc))
-    
+                    # self.level_dfs["token"][enc] = self.level_dfs["token"][key].apply(lambda x: self.encode(x, enc))
+                    self.data[enc] = self.data[key].apply(lambda x: self.encode(x, enc))
+
 
     def __encode_bytepairs(self, enc):
 
 
         new_token_rows = []
         desc = "Encoding to BERT byte-pair encodings"
-        for i, token_row in tqdm(self.level_dfs["token"].iterrows(), total=self.level_dfs["token"].shape[0], desc=desc):
-            
+        # for i, token_row in tqdm(self.level_dfs["token"].iterrows(), total=self.level_dfs["token"].shape[0], desc=desc):
+        for i, token_row in tqdm(self.data.iterrows(), total=self.data.shape[0], desc=desc):   
             token = token_row["text"]
             enc_ids = self.encode(token, enc)
 
@@ -107,7 +131,8 @@ class DatasetEncoder:
                 new_token_rows.append(token_row)
         
 
-        self.level_dfs["token"] = pd.DataFrame(new_token_rows)
+        # self.level_dfs["token"] = pd.DataFrame(new_token_rows)
+        self.data = pd.DataFrame(new_token_rows)
 
 
     def decode(self, item:int, name:str) -> str:

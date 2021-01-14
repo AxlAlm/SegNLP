@@ -210,7 +210,7 @@ class LSTM_DIST(nn.Module):
 
     def forward(self,batch):
 
-        word_embs = batch["word_embs"]
+        word_embs = batch["word_embs"] 
         lengths_tok  = batch["lengths_tok"]
         lengths_seq = batch["lengths_seq"]
         ac_mask = batch["ac_mask"]

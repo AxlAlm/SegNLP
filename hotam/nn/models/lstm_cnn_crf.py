@@ -8,10 +8,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from torch.nn.utils.rnn import pad_sequence
 
 #hotam
 from hotam.nn.layers.char_emb import CHAR_EMB_LAYER
 from hotam.nn.layers.lstm import LSTM_LAYER
+from hotam.utils import zero_pad
 
 # use a torch implementation of CRF
 from torchcrf import CRF
@@ -116,7 +118,7 @@ class LSTM_CNN_CRF(nn.Module):
 
     def forward(self, batch):
 
-        lengths = batch["lengths_word"]
+        lengths = batch["lengths_tok"]
         mask = batch["token_mask"]
 
         #1
@@ -156,9 +158,8 @@ class LSTM_CNN_CRF(nn.Module):
                                 mask=mask
                                 )
 
-            tasks_preds[task] = preds
+            tasks_preds[task] = torch.tensor(zero_pad(preds), dtype=torch.long)
             tasks_loss[task] = loss
-
 
         return {    
                     "loss":tasks_loss, 

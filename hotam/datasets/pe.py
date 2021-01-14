@@ -35,7 +35,11 @@ punctuation += "’‘,`'" + '"'
 logger = get_logger(__name__)
 
 #data example
-''' T1  MajorClaim 503 575  we should attach more importance to cooperation during primary education
+''' 
+
+Data example
+
+T1  MajorClaim 503 575  we should attach more importance to cooperation during primary education
 T2  MajorClaim 2154 2231    a more cooperative attitudes towards life is more profitable in one's success
 T3  Claim 591 714   through cooperation, children can learn about interpersonal skills which are significant in the future life of all students
 A1  Stance T3 For
@@ -55,7 +59,28 @@ A3  Stance T11 For
 R4  supports Arg1:T10 Arg2:T11  
 R5  supports Arg1:T9 Arg2:T11   
 R6  supports Arg1:T8 Arg2:T7
+
+
+Dataset Specs:
+
+1) contain 4 subtasks:
+    seg
+    ac
+    relation
+    stance
+
+2) Each claim is related to the major claims. MajorClaims are paraphrases of the same majorClaim
+
+3) All relations are within paragraphs
+
+
+
 ''' 
+
+
+
+
+
 # # TODO: is this  the cleanest solution to avoid .load() ??
 def PE(dump_path:str="/tmp/"):
     return PE_Dataset(dump_path=dump_path).load()
@@ -261,13 +286,16 @@ class PE_Dataset:
                 ac_id2relation[AC_ID] = AC_REL_ID
 
         # sort the span
-        ac_id2span_storted = sorted(ac_id2span.items(),key= lambda x:x[1][0])
+        ac_id2span_storted = sorted(ac_id2span.items(), key= lambda x:x[1][0])
+        #print("AC_SPAN SORTED", ac_id2span_storted)
+
         ac_id2idx = {AC_ID:i for i, (AC_ID, *_) in enumerate(ac_id2span_storted)}
 
+        #print("AC2IDX", ac_id2idx)
 
-        # encode relation so that its an idx for the related AC. (in original PE paper they keep the difference of of acs as
-        # relation, however we have decided that his is more fitting and easier to deal with in (e.g. Pointer Networks))
-        ac_id2relation = {AC_ID:ac_id2idx[AC_REL_ID]  for AC_ID, AC_REL_ID in ac_id2relation.items()}
+        ac_id2relation = {AC_ID: ac_id2idx[AC_REL_ID] - ac_id2idx[AC_ID]  for AC_ID, AC_REL_ID in ac_id2relation.items()}
+
+        #print("AC_ID2RELATION", ac_id2relation)
 
         # fill in some spans
         prev_span_end = 0
@@ -285,7 +313,6 @@ class PE_Dataset:
         # sort again when added the missing spans
         ac_id2span = dict(sorted(ac_id2span_storted,key=lambda x:x[1][0]))
         
-
         return ac_id2span, ac_id2ac, ac_id2stance, ac_id2relation
 
     
@@ -317,14 +344,18 @@ class PE_Dataset:
         """
 
         span2label = RangeDict()
+        current_ac_idx = 0
         for i, (ac_id, span) in enumerate(ac_id2span.items()):
+            
+
             label = {   
                         "seg":"O",
                         "ac": ac_id2ac.get(ac_id,"None"), 
                         "stance": ac_id2stance.get(ac_id,"None"), 
-                        "relation": ac_id2relation.get(ac_id, i)
+                        "relation": ac_id2relation.get(ac_id, 0)
                         }
             
+
             span2label[span] = [label, ac_id]
 
         return span2label
@@ -425,7 +456,7 @@ class PE_Dataset:
         dataset = DataSet("pe", data_path=dump_path)
         dataset.add_splits(self.splits)
 
-        if not hasattr(dataset, "level_dfs"):
+        if not hasattr(dataset, "data"):
             
             ann_files = sorted(glob(self._dataset_path+"/*.ann"))
             text_files = sorted(glob(self._dataset_path+"/*.txt"))
@@ -439,6 +470,11 @@ class PE_Dataset:
 
                 # -1 one as we want index 0 to be sample 1
                 file_id = int(re.sub(r'[^0-9]', "", ann_file.rsplit("/",1)[-1])) #-1
+
+                # if file_id != 202:
+                #     continue
+
+                # print(f"______________________{file_id}______________________")
 
                 text = self.__read_file(txt_file)
                 ann = self.__read_file(ann_file)
@@ -457,7 +493,6 @@ class PE_Dataset:
             
             dataset.add_samples(samples)
             dataset.charspan2label(sample_span_labels)
-            #dataset.level_dfs["token"]["ac_id"] = dataset.level_dfs["token"]["ac_id"].astype(int)
             dataset.create_ams()
             dataset.save(dump_path)
 

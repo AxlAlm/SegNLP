@@ -222,20 +222,18 @@ class LiveView(ViewBase):
                                                         ),
                                             live_view,
                                             html.Div(id='data-cache', children=dict(), style={'display': 'none'}),
-
                                           ]
-                                
                                 )
 
         
         app.callback(Output('exp-dropdown', 'options'),
-                    Input('interval-component', 'n_intervals'))(self.update_live_exp_dropdown)
+                    Input('interval-component2', 'n_intervals'))(self.update_live_exp_dropdown)
 
 
         app.callback(
                     Output('data-cache', 'children'),
                     Output('live-view', 'style'),
-                    [Input('interval-component', 'n_intervals'),
+                    [Input('interval-component2', 'n_intervals'),
                     Input('exp-dropdown','value')],
                     [State('data-cache', 'children')])(self.update_data_cache)
 
@@ -318,18 +316,24 @@ class LiveView(ViewBase):
 
 
     def update_data_cache(self, n, experiment_id,  cache_state):
-   
-        if experiment_id is None and not cache_state:
+
+        if experiment_id is None:
             return dash.no_update
+        
+        if cache_state:
+            prev_epoch = cache_state.get("epoch", -1)
+            current_exp = cache_state.get("experiment_id")
 
-        prev_epoch = cache_state.get("epoch", -1)
-        current_exp = cache_state.get("experiment_id")
+            filter_by = get_filter(experiment=experiment_id)
+            last_epoch = self.db.get_last_epoch(filter_by)
 
-        filter_by = get_filter(experiment=experiment_id)
-        last_epoch = self.db.get_last_epoch(filter_by)
+            if experiment_id == current_exp:
+                if last_epoch == prev_epoch:
+                    return dash.no_update
 
-        if experiment_id == current_exp:
-            if last_epoch == prev_epoch:
-                return dash.no_update
+            return self.get_exp_data(experiment_id, last_epoch)
 
-        return self.get_exp_data(experiment_id, last_epoch)
+        else:
+            filter_by = get_filter(experiment=experiment_id)
+            last_epoch = self.db.get_last_epoch(filter_by)
+            return self.get_exp_data(experiment_id, last_epoch)

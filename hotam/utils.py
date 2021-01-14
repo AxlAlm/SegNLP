@@ -39,6 +39,13 @@ def ensure_flat(item, mask=None):
     return item
 
 
+def zero_pad(a):
+    b = np.zeros([len(a),len(max(a,key = lambda x: len(x)))])
+    for i,j in enumerate(a):
+        b[i][0:len(j)] = j
+    return b
+
+
 def ensure_numpy(item):
 
     if torch.is_tensor(item):

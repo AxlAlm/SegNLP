@@ -21,7 +21,8 @@ def rank_bar(top_scores, display_metrics, display_splits, experiment2config, ran
     for dm in display_metrics:
         for ds in display_splits:
 
-            dmds = f"{ds}-{rank_task}-{dm}"
+            
+            dmds = f"{ds}-{rank_task}{dm}"
             x = [i for i in range(top_n)]
             y = list(top_scores[dmds].to_numpy())
             text = [experiment2config[exp_id]["model"] for exp_id in top_scores["experiment_id"].to_numpy()]

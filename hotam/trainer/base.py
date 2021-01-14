@@ -107,10 +107,16 @@ class PTLBase(ptl.LightningModule, Metrics):
 
         #pass on the whole batch to the model
         output_dict = self.model.forward(batch)
-    
-        if self.logger and split in ["val", "test"]:
-            self.logger.log_outputs(self.__reformat_outputs(output_dict))
-        
+
+        for task, preds in output_dict["preds"].items():
+            assert torch.is_tensor(preds), f"{task} preds need to be a tensor"
+            assert len(preds.shape) == 2, f"{task} preds need to be a 2D tensor"
+
+        for task, probs in output_dict["probs"].items():
+            assert torch.is_tensor(probs), f"{task} preds need to be a tensor"
+            assert len(probs.shape) == 3, f"{task} preds need to be a 2D tensor"
+
+
         if "total" in output_dict["loss"]:
             total_loss = output_dict["loss"]["total"]
         else:
@@ -119,7 +125,10 @@ class PTLBase(ptl.LightningModule, Metrics):
                 total_loss += loss
             
         metrics = self.score(batch, output_dict, split)
-
+    
+        if self.logger and split in ["val", "test"]:
+            self.logger.log_outputs(self.__reformat_outputs(output_dict))
+        
         return  total_loss, metrics
     
 
@@ -209,7 +218,7 @@ class PTLBase(ptl.LightningModule, Metrics):
     def __reformat_outputs(self, output_dict):
 
         ids_to_log = np.array(self.dataset.config["tracked_sample_ids"]["0"])
-        
+
         length_type = "lengths_seq" if self.batch.prediction_level == "ac" else "lengths_tok"
         id2idx = {  
                     str(ID):(i, length) for i, (ID, length) in 
@@ -236,7 +245,7 @@ class PTLBase(ptl.LightningModule, Metrics):
             for task in self.dataset.subtasks:
                 task_preds = ensure_numpy(output_dict["preds"][task])
                 task_gold = ensure_numpy(self.batch[task])
-
+          
                 outputs[ID]["preds"][task] = self.dataset.decode_list(task_preds[i][:length], task).tolist()
                 outputs[ID]["gold"][task] = self.dataset.decode_list(task_gold[i][:length], task).tolist()
 

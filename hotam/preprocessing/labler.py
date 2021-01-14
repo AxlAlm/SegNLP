@@ -39,6 +39,7 @@ class Labler:
 
         char_span = char_spans[row["document_id"]]
         label, label_id = char_span[row["char_end"]]
+
         label = label.copy() # make a seperate obj for each particular token
 
         if "None" in label_id:
@@ -90,5 +91,8 @@ class Labler:
 
         #label tokens
         tqdm.pandas(desc=f"Adding labels from charspans (+BIO encodings)")
-        rows = self.level_dfs["token"].progress_apply(self.__label, axis=1,  args=args)
-        self.level_dfs["token"] = pd.concat([self.level_dfs["token"], pd.DataFrame(list(rows))], axis=1)
+        # rows = self.level_dfs["token"].progress_apply(self.__label, axis=1,  args=args)
+        # self.level_dfs["token"] = pd.concat([self.level_dfs["token"], pd.DataFrame(list(rows))], axis=1)
+        rows = self.data.progress_apply(self.__label, axis=1,  args=args)
+        self.data = pd.concat([self.data, pd.DataFrame(list(rows))], axis=1)
+

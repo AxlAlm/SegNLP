@@ -124,7 +124,7 @@ class LSTM_CRF(nn.Module):
             preds = crf.decode( emissions=dense_out, 
                                 mask=mask)
 
-            tasks_preds[task] = preds
+            tasks_preds[task] = torch.tensor(zero_pad(preds), dtype=torch.long)
             tasks_loss[task] = loss
 
         return {    

@@ -53,6 +53,7 @@ class ViewBase:
 
     def update_live_exp_dropdown(self, n):
         exps = sorted(self.db.get_live_exps_ids())
+        print(exps)
         return [{"label":e, "value":e} for e in exps]
 
 

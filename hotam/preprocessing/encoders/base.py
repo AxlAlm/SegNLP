@@ -2,6 +2,7 @@
 from typing import List, Union, Dict
 import numpy as np
 
+
 class Encoder:
 
     def __len__(self):

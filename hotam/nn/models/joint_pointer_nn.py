@@ -162,7 +162,7 @@ class JointPN(nn.Module):
     def forward(self, batch):
         
         adu_embs = batch["word_embs"]
-        
+                
         #4D mask, mask over the words in each ac in each input
         ac_token_mask = batch["ac_token_mask"]
         

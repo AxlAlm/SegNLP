@@ -7,6 +7,10 @@ from tqdm import tqdm
 from string import punctuation
 import warnings
 
+import spacy
+from spacy.pipeline import DependencyParser
+from spacy.tokens import Doc
+
 #nltk
 import nltk
 
@@ -26,13 +30,13 @@ strange_characters = {
 
 
 # nltk download checking
-# TODO: move this to a better spot and maybe not where its called upon importing.
-try:
-    nltk.data.find('tokenizers/punkt')
-    nltk.download('tokenizers/averaged_perceptron_tagger')
-except LookupError:
-    nltk.download("punkt")
-    nltk.download('averaged_perceptron_tagger')
+# # TODO: move this to a better spot and maybe not where its called upon importing.
+# try:
+#     nltk.data.find('tokenizers/punkt')
+#     nltk.download('tokenizers/averaged_perceptron_tagger')
+# except LookupError:
+#     nltk.download("punkt")
+#     nltk.download('averaged_perceptron_tagger')
 
 
 class Preprocessor:
@@ -147,8 +151,9 @@ class Preprocessor:
             ID for the current unit on the given level
         """
         try:
-            return self.stack_level_data[level][-1]["id"] +1
-        except IndexError as e:
+            return self._level_row_cache[level]["id"] + 1
+            #return self.stack_level_data[level][-1]["id"] + 1
+        except KeyError as e:
             return 0
 
 
@@ -171,8 +176,10 @@ class Preprocessor:
             
         """
         parents = self.level2parents[level]
-        closest_parent_text = self.stack_level_data[parents[0]][-1]["text"]
-        top_parent_text = self.stack_level_data[parents[-1]][-1]["text"]
+        #closest_parent_text = self.stack_level_data[parents[0]][-1]["text"]
+        #top_parent_text = self.stack_level_data[parents[-1]][-1]["text"]
+        closest_parent_text = self._level_row_cache[parents[0]]["text"]
+        top_parent_text = self._level_row_cache[parents[-1]]["text"]
         return top_parent_text, closest_parent_text
 
 
@@ -199,12 +206,15 @@ class Preprocessor:
         """
         
         parents = self.level2parents[level]
-        top_parent_row = self.stack_level_data[parents[-1]][-1]
+        #top_parent_row = self.stack_level_data[parents[-1]][-1]
+        top_parent_row = self._level_row_cache[parents[-1]]
 
-        if not self.stack_level_data[level]:
+        #if not self.stack_level_data[level]:
+        if level not in self._level_row_cache:
             return  0
-
-        level_row = self.stack_level_data[level][-1]
+        
+        level_row = self._level_row_cache[level]
+        #level_row = self.stack_level_data[level][-1]
 
         if level_row[f"{self.dataset_level}_id"] != top_parent_row["id"]:
             current_idx = 0
@@ -238,7 +248,8 @@ class Preprocessor:
         parents = self.level2parents[level]
         first_parent = parents[0]
         upper_parents = parents[1:]
-        last_parent_row = self.stack_level_data[first_parent][-1]
+        last_parent_row = self._level_row_cache[first_parent]
+        #last_parent_row = self.stack_level_data[first_parent][-1]
 
         #inherent all the ids of the closest parent
         ids ={k:v for k,v in last_parent_row.items() if "id" in k}
@@ -249,8 +260,10 @@ class Preprocessor:
         # for tokens is NOT empty we know the unit is not the first of its kind
         first = True
         current_id_in_parent = -1 # <-- -1 because we are adding 1 later in the the __build_X functions.
-        if self.stack_level_data[level]:
-            last_level_row = self.stack_level_data[level][-1]
+        #if self.stack_level_data[level]:
+        if level in self._level_row_cache:
+            # last_level_row = self.stack_level_data[level][-1]
+            last_level_row = self._level_row_cache[level]
             first = False
 
         for parent in upper_parents:
@@ -345,7 +358,14 @@ class Preprocessor:
 
         tokens = nltk.word_tokenize(sentence)
         token_pos = nltk.pos_tag(tokens)
-        
+
+        # Construction 2
+        doc = Doc(self.nlp.vocab, words=tokens)
+
+        dep_doc = self.nlp(doc)
+        print(dep_doc, "WOWOWOWOW")
+        print(lol)
+
         for i, (token,pos) in enumerate(token_pos):
             token_len = len(token)
 
@@ -372,7 +392,10 @@ class Preprocessor:
 
             row.update(parent_ids)
 
-            self.stack_level_data["token"].append(row)
+            self._level_row_cache["token"] = row
+
+            self._data_stack.append(row)
+
             current_token_idx = end
 
 
@@ -390,7 +413,9 @@ class Preprocessor:
         doc, paragraph = self.__get_parent_text("sentence")
         current_sent_idx = self.__get_char_idx("sentence")
         #paragraph, current_sent_id,  current_sent_idx = self.__get_text_id_idx("sentence")
+
         sentences = nltk.sent_tokenize(paragraph)
+    
 
         for i, sent in enumerate(sentences):
             sent_len = len(sent)
@@ -415,7 +440,9 @@ class Preprocessor:
 
             row.update(parent_ids)
 
-            self.stack_level_data["sentence"].append(row)
+            self._level_row_cache["sentence"] = row
+            
+            #self.stack_level_data["sentence"].append(row)
 
             current_sent_idx = end #sent_len + 1
 
@@ -435,6 +462,7 @@ class Preprocessor:
         parent_ids = self.__get_structure_ids("paragraph")
         doc, _ = self.__get_parent_text("paragraph")
         current_para_idx = self.__get_char_idx("paragraph")
+
 
         paras = self.__paragraph_tokenize(doc)
 
@@ -461,8 +489,8 @@ class Preprocessor:
 
             row.update(parent_ids)
 
-            self.stack_level_data["paragraph"].append(row)
-
+            #self.stack_level_data["paragraph"].append(row)
+            self._level_row_cache["paragraph"] = row
             current_para_idx = end
 
             self.__build_sentences()
@@ -490,11 +518,14 @@ class Preprocessor:
             if a text type that is not of the valid ones an error will be thrown. Text type 
             has to be either document, paragraph or sentence.
         """
-
-        self.stack_level_data[text_type].append({
+        self._level_row_cache[text_type] = {
                                             "id":text_id,
                                             "text":string
-                                            })
+                                            }
+        # #self.stack_level_data[text_type].append({
+        #                                     "id":text_id,
+        #                                     "text":string
+        #                                     })
         
         if text_type == "document":
             self.__build_paragraphs()
@@ -538,9 +569,34 @@ class Preprocessor:
             
         """
         self.dataset_level = level
-        self.stack_level_data = {level:[]}
-        self.stack_level_data.update({l:[] for l in self.parent2children[level]})
-        self.level_dfs = {l:pd.DataFrame() for l in self.stack_level_data.keys()}
+
+        # storing the current row for each level, used to fetch ids etc for lower lever data
+        self._level_row_cache = {}
+        self._data_stack = []
+
+        # self.stack_level_data = {level:[]}
+        # self.stack_level_data.update({l:[] for l in self.parent2children[level]})
+        # self.level_dfs = {l:pd.DataFrame() for l in self.stack_level_data.keys()}
+
+        self.data = pd.DataFrame()
+
+        from spacy.language import Language
+        Language.factories["entity_matcher"] = lambda nlp, **cfg: EntityMatcher(nlp, **cfg)
+        nlp = spacy.load("your_custom_model", terms=["tree kangaroo"], label="ANIMAL")
+        print(nlp("helllo, wtf is this"))
+        
+        self.nlp = spacy.blank("en")
+        d = self.nlp("Hello, wtf is this")
+        print(d, type(d))
+        x = self.nlp.create_pipe(DependencyParser(self.nlp.vocab))
+        print(x(d))
+        # self.nlp.pipeline.append(DependencyParser(self.nlp.vocab))
+        self.nlp.add_pipe(DependencyParser(self.nlp.vocab))#before="first") #"parser")
+        #self.dep_parser = self.nlp.create_pipe("parser")
+        # #self.nlp.add_pipe(wrapped_nltk_sent_tok, first=True)#before="first") #"parser")
+        # self.dep_parser = DependencyParser(self.nlp.vocab)
+        # self.dep_parser.load("en_core_web_sm")
+
         self.__prune_hiers()
     
 
@@ -548,17 +604,26 @@ class Preprocessor:
         """
         Create dataframes from the list of processed units on each level.
         """
+        if self.data.shape == (0,0):
+            self.data = pd.DataFrame(self._data_stack)
+        else:
+            raise NotImplementedError
 
-        for level, stack in self.stack_level_data.items():
-            self.level_dfs[level] = self.level_dfs[level].append(pd.DataFrame(stack))
-        self.stack_level_data = {l:[] for l in self.stack_level_data.keys()}
+        self._data_stack = []
+        del self.nlp
+        # for level, stack in self.stack_level_data.items():
+        #     self.level_dfs[level] = self.level_dfs[level].append(pd.DataFrame(stack))
+        # self.stack_level_data = {l:[] for l in self.stack_level_data.keys()}
     
 
     def create_ams(self, method="pre-ac"):
 
         if method=="pre-ac":
-            self.level_dfs["token"]["am_id"] = np.nan
-            groups = self.level_dfs["token"].groupby("sentence_id")
+            # self.level_dfs["token"]["am_id"] = np.nan
+            # groups = self.level_dfs["token"].groupby("sentence_id")
+
+            self.data["am_id"] = np.nan
+            groups = self.data.groupby("sentence_id")
 
             for sent_id, sent_df in tqdm(groups, desc="labeling tokens with Argumentative Markers"):
                 
@@ -573,8 +638,8 @@ class Preprocessor:
                     cond1 = sent_df["char_start"] >= prev_ac_end 
                     cond2 = sent_df["char_start"] < ac_start
                     idxs = sent_df[cond1 & cond2].index
-                    self.level_dfs["token"]["am_id"].iloc[idxs] = ac_id
-
+                    # self.level_dfs["token"]["am_id"].iloc[idxs] = ac_id
+                    self.data["am_id"].iloc[idxs] = ac_id
                     prev_ac_end = ac_end
 
 

@@ -45,7 +45,7 @@ class CONTENT_BASED_ATTENTION(nn.Module):
             mask = mask.type(torch.bool)
         
         u[~mask] = float('-inf')
-
+    
         # (BATCH_SIZE, SEQ_LEN)
         scores = F.softmax(u)
 

@@ -110,7 +110,7 @@ class Metrics:
         return scores
 
 
-    def _complex_label_normalization(self, output_dict:dict, mask:np.ndarray):
+    def _complex_label2subtasks(self, output_dict:dict, mask:np.ndarray):
         """
         given that some labels are complexed, i.e. 2 plus tasks in one, we can break these apart and 
         get the predictions for each of the task so we can get metric for each of them. 
@@ -126,11 +126,13 @@ class Metrics:
             predictions per task from the batch
         """
 
-        def _get_subtask_preds(task, preds):
+        def get_subtask_preds(task, preds):
             subtasks_predictions = {}
 
             # e.g. "seg_ac"
-            decoded_preds = self.dataset.decode_list(preds,task)
+            original_shape = preds.shape
+            flat_preds = ensure_flat(ensure_numpy(preds))
+            decoded_preds = self.dataset.decode_list(flat_preds, task)
             for subtask in task.split("_"):
 
                 # get the positon of the subtask in the joint label
@@ -139,9 +141,9 @@ class Metrics:
                 subtask_position = self.dataset.get_subtask_position(task, subtask)
 
                 # remake joint labels to subtask labels
-                preds = np.array([self.dataset.encode(p.split("_")[subtask_position],subtask) for p in decoded_preds])
+                subtask_preds = torch.LongTensor(self.dataset.encode_list([p.split("_")[subtask_position] for p in decoded_preds], subtask))
+                subtasks_predictions[subtask] = subtask_preds.view(original_shape)
 
-                subtasks_predictions[subtask] = preds
             return subtasks_predictions
 
         for task, preds in output_dict.copy().items():
@@ -149,7 +151,8 @@ class Metrics:
             if "_" not in task:
                 continue
             
-            subtask_preds = _get_subtask_preds(task, ensure_flat(ensure_numpy(preds), mask=mask))
+            #ensure_flat(ensure_numpy(preds), mask=mask)
+            subtask_preds = get_subtask_preds(task, preds)
             output_dict.update(subtask_preds)
            
 
@@ -182,6 +185,9 @@ class Metrics:
         class_scores = {}
         for metric in self.metrics:
 
+            if metric["name"] == "confusion_matrix" and task == "relation":
+                continue
+
             #decide if we want probabilites or predictions for the metric
             if metric["probs"]:
                 preds = output_dict["probs"][task]
@@ -201,7 +207,7 @@ class Metrics:
 
             scores[score_name] = score
 
-            if metric["per_class"] and not metric["probs"]:
+            if metric["per_class"] and not metric["probs"] and task != "relation":
                 class_metric = self._get_class_metrics(metric, targets, preds, task, self.split)
                 class_scores.update(class_metric)
         
@@ -283,7 +289,7 @@ class Metrics:
         self.split = split 
         mask = self.batch[f"{self.batch.prediction_level}_mask"]
 
-        self._complex_label_normalization(output_dict["preds"], mask)
+        self._complex_label2subtasks(output_dict["preds"], mask)
         scores = self._get_score_log(output_dict, mask)
         return scores
 

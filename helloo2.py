@@ -32,9 +32,9 @@ from hotam.database import MongoDB
 
 db = MongoDB()
 
-print(db.get_projects())
+#print(db.get_projects())
 print(db.get_live_exps_ids())
-print(db.get_done_exps_ids())
+#print(db.get_done_exps_ids())
 
 
 # my_db = client["xalmax"]

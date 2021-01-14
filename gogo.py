@@ -18,27 +18,32 @@ if __name__ == "__main__":
 	exp_logger = MongoLogger(db=db)
 
 	pe = PE()
+	pe.example(sample_id=928, level="paragraph")
+	# pe.example(sample_id=928, level="paragraph")
+
 	pe.setup(
-			tasks=["seg_ac_relation_stance"],
+			tasks=["ac", "relation"],
 			multitasks=[], 
-			sample_level="document",
-			prediction_level="token",	
-			encodings=["chars"],
+			sample_level="paragraph",
+			prediction_level="ac",	
+			encodings=[],
 			features=[
-						Embeddings("glove"),
+						#DocPos(dataset=pe, prediction_level="sentence")
 						],
 			#remove_duplicates=False,
 			#tokens_per_sample=True,
-			#override=True
+			override=True
 			)
+	
+	pe.example(sample_id=928, level="paragraph")
 
-	M = ExperimentManager()
-	M.run( 
-			project="pe_end-to-end",
-			dataset=pe,
-			model=LSTM_CNN_CRF,
-			monitor_metric="val-seg_ac_relation_stance-f1",
-			progress_bar_metrics=["val-seg_ac_relation_stance-f1"],
-			exp_logger=exp_logger,
-			debug_mode=False,
-			)
+	# M = ExperimentManager()
+	# M.run( 
+	# 		project="pe_seg_ac",
+	# 		dataset=pe,
+	# 		model=LSTM_CNN_CRF,
+	# 		monitor_metric="val-seg_ac-f1",
+	# 		progress_bar_metrics=["val-seg_ac-f1"],
+	# 		exp_logger=exp_logger,
+	# 		debug_mode=False,
+	# 		)
