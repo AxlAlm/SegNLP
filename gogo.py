@@ -12,30 +12,32 @@ from hotam.dashboard import FullDash
 from hotam.database import MongoDB
 from hotam.loggers import MongoLogger
 
+from tqdm import tqdm
+
 if __name__ == "__main__":
 
 	db = MongoDB()
 	exp_logger = MongoLogger(db=db)
 
 	pe = PE()
+	#pe.example(sample_id=928, level="paragraph")
 	pe.example(sample_id=928, level="paragraph")
-	# pe.example(sample_id=928, level="paragraph")
 
-	pe.setup(
-			tasks=["ac", "relation"],
-			multitasks=[], 
-			sample_level="paragraph",
-			prediction_level="ac",	
-			encodings=[],
-			features=[
-						#DocPos(dataset=pe, prediction_level="sentence")
-						],
-			#remove_duplicates=False,
-			#tokens_per_sample=True,
-			override=True
-			)
+	# pe.setup(
+	# 		tasks=["ac", "relation"],
+	# 		multitasks=[], 
+	# 		sample_level="paragraph",
+	# 		prediction_level="ac",	
+	# 		encodings=[],
+	# 		features=[
+	# 					#DocPos(dataset=pe, prediction_level="sentence")
+	# 					],
+	# 		#remove_duplicates=False,
+	# 		#tokens_per_sample=True,
+	# 		override=True
+	# 		)
 	
-	pe.example(sample_id=928, level="paragraph")
+	# pe.example(sample_id=928, level="paragraph")
 
 	# M = ExperimentManager()
 	# M.run( 

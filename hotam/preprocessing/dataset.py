@@ -33,6 +33,10 @@ from torch.utils.data import Dataset, DataLoader
 from torch.utils.data import BatchSampler
 import torch
 
+#hotviz
+from hotviz import hot_tree
+
+
 logger = get_logger("DATASET")
 
 import warnings
@@ -855,6 +859,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
     def example(self, sample_id="random", level="document"):
         
+
         if sample_id == "random":
             if self._setup_done:
                 sample_id = random.choice(set(self.data.index.to_numpy()))
@@ -871,18 +876,39 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         acs_grouped = example.groupby("ac_id")
         relations = [ac_df["relation"].unique()[0] for ac_id, ac_df in acs_grouped]
         acs = [ac_df["ac"].unique()[0] for ac_id, ac_df in acs_grouped]
+        
+        print("------------ Example -------------\n")
+        print("Parent ids:")
+        print(f"{self.dataset_level} ID:", example[f"{self.dataset_level}_id"].unique()[0]), 
+    
+        print(f"-------- Text {level} ------")
+        print( " ".join(example["text"]) + "\n\n")
 
-        for ac_id, ac_df in acs_grouped:
-            print(" ".join(ac_df["text"]))
-            print(ac_df["ac"].unique()[0])
+        print("------ AC's ------")
+        tree_data = []
+        for i, (ac_id, ac_df) in enumerate(acs_grouped):
+            text = " ".join(ac_df["text"])
+            ac = ac_df["ac"].unique()[0]
+            relation = int(ac_df["relation"].unique()[0])
+            stance = ac_df["stance"].unique()[0]
+
+            print(f"{i}:", text)
+            print("AC:", ac)
+            print("Relation:", relation)
+            print("Stance:", stance)
+            print("____")
+
+            tree_data.append({
+                                'label': ac,
+                                'link': relation if self._setup_done else i + relation,
+                                'link_label': stance,
+                                'text': text
+                                })
 
 
-        print("------------ Example -------------")
-        print(f"{self.dataset_level}_id: ", example[self.dataset_level+"_id"].unique()[0])
-        print(f"{level}:\n", " ".join(example["text"]) + "\n\n")
-        print("Relations:", relations)
-        print("ACs:", acs)
-
+        print(tree_data)
+        fig = hot_tree(tree_data)
+        fig.show()
 
 
     def setup(  self,

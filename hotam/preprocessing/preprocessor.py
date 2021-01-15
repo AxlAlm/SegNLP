@@ -7,9 +7,8 @@ from tqdm import tqdm
 from string import punctuation
 import warnings
 
+import stanza
 import spacy
-from spacy.pipeline import DependencyParser
-from spacy.tokens import Doc
 
 #nltk
 import nltk
@@ -318,7 +317,7 @@ class Preprocessor:
         return t
 
 
-    def __build_tokens(self):
+    def __build_tokens(self, spacy_sentence):
         """tokenizes and pos-tags a sentence to create rows/processed units for tokens. Adds the processed tokens 
         the token level stack. (see class description)
 
@@ -356,35 +355,36 @@ class Preprocessor:
         doc, sentence = self.__get_parent_text("token")
         current_token_idx = self.__get_char_idx("token")
 
-        tokens = nltk.word_tokenize(sentence)
-        token_pos = nltk.pos_tag(tokens)
-
-        # Construction 2
-        doc = Doc(self.nlp.vocab, words=tokens)
-
-        dep_doc = self.nlp(doc)
-        print(dep_doc, "WOWOWOWOW")
-        print(lol)
-
-        for i, (token,pos) in enumerate(token_pos):
+        #print("HELLO DOC", doc)
+        for i, tok in enumerate(spacy_sentence):
+            token = tok.text
             token_len = len(token)
-
             token = strange_characters.get(token, token)
 
             if current_token_idx == 0:
                 start = 0
             else:
-                start = doc.find(token, max(0, current_token_idx-2))
+                # -2 here is just to start searching from a few characters back 
+                # it allows the tokenizer idxes to be a bit off and we will still find the correct
+                # char index in the origial text. 
+                start = doc.find(token, max(0, current_token_idx-2)) 
 
+            assert tok.i - spacy_sentence.start == i
+            assert tok.head.i - spacy_sentence.start >= 0
+            assert tok.head.i - spacy_sentence.start < len(sentence)
+
+            
             end = start + token_len
-
             row =  {
                     "id": self.__get_global_id("token"),
                     "sentence_token_id": i,
                     "char_start": start,
                     "char_end": end,
                     "text": token.lower(),
-                    "pos": pos,
+                    "pos": tok.pos_,
+                    "dephead": tok.head.i - spacy_sentence.start,
+                    "deprel": tok.dep_
+                    #
                     }
 
             for parent in self.level2parents["token"][1:]:
@@ -393,10 +393,49 @@ class Preprocessor:
             row.update(parent_ids)
 
             self._level_row_cache["token"] = row
-
             self._data_stack.append(row)
 
             current_token_idx = end
+
+
+        # stanza_doc = self.nlp(sentence)
+        # spacy_doc = self.nlp(sentence)
+        # s_toks = [t.text for t in stanza_doc.iter_tokens()]
+        
+        # tokens = nltk.word_tokenize(sentence)
+        # token_pos = nltk.pos_tag(tokens)
+        # for i, (token,pos) in enumerate(token_pos):
+        #     token_len = len(token)
+        #     token = strange_characters.get(token, token)
+
+        #     if current_token_idx == 0:
+        #         start = 0
+        #     else:
+        #         start = doc.find(token, max(0, current_token_idx-2))
+        #     end = start + token_len
+
+        #     row =  {
+        #             "id": self.__get_global_id("token"),
+        #             "sentence_token_id": i,
+        #             "char_start": start,
+        #             "char_end": end,
+        #             "text": token.lower(),
+        #             #"pos": token_dict["xpos"],
+        #             #"dephead": token_dict["head"],
+        #             #"deprel": token_dict["deprel"]
+        #             #
+        #             }
+
+        #     for parent in self.level2parents["token"][1:]:
+        #         parent_ids[f"{parent}_token_id"] += 1
+
+        #     row.update(parent_ids)
+
+        #     self._level_row_cache["token"] = row
+
+        #     self._data_stack.append(row)
+
+        #     current_token_idx = end
 
 
     def __build_sentences(self):
@@ -414,25 +453,21 @@ class Preprocessor:
         current_sent_idx = self.__get_char_idx("sentence")
         #paragraph, current_sent_id,  current_sent_idx = self.__get_text_id_idx("sentence")
 
-        sentences = nltk.sent_tokenize(paragraph)
-    
+        spacy_doc = self.nlp(paragraph)
+        for i, sentence in enumerate(spacy_doc.sents):
 
-        for i, sent in enumerate(sentences):
-            sent_len = len(sent)
-            
             if current_sent_idx == 0:
-                start = 0
+                start_idx = 0
             else:
-                start = doc.find(sent, current_sent_idx) #, current_sent_idx)
+                start_idx = doc.find(str(sentence), current_sent_idx) #, current_sent_idx)
 
-            end = start + sent_len
-      
+            end_idx = start_idx + len(str(sentence)) #sentence[-1].idx + len(sentence[-1])
             row =  {
                     "id": self.__get_global_id("sentence"),
                     "paragraph_sentence_id": i,
-                    "text":sent,
-                    "char_start": start,
-                    "char_end": end,
+                    "text":str(sentence),
+                    "char_start": start_idx,
+                    "char_end": end_idx,
                     }
 
             for parent in self.level2parents["sentence"][1:]:
@@ -441,12 +476,48 @@ class Preprocessor:
             row.update(parent_ids)
 
             self._level_row_cache["sentence"] = row
+            current_sent_idx = end_idx
+            self.__build_tokens(sentence)
+
+        # sd = [s for s in spacy_doc.sents]
+        # print(len(str(sd[0])), sd[0][-1].idx, sd[0][-1].text, sd[1][0].idx, sd[1][0].text, len(sentences[0]))
+        # spacy_sentences = [str(s) for s in spacy_doc.sents]
+        # if sentences != spacy_sentences:
+        #     print(sentences)
+        #     print(spacy_sentences)
+        #     print(lol)
+        
+        # sentences = nltk.sent_tokenize(paragraph)
+        # for i, sent in enumerate(sentences):
+        #     sent_len = len(sent)
             
-            #self.stack_level_data["sentence"].append(row)
+        #     if current_sent_idx == 0:
+        #         start = 0
+        #     else:
+        #         start = doc.find(sent, current_sent_idx) #, current_sent_idx)
 
-            current_sent_idx = end #sent_len + 1
+        #     end = start + sent_len
+      
+        #     row =  {
+        #             "id": self.__get_global_id("sentence"),
+        #             "paragraph_sentence_id": i,
+        #             "text":sent,
+        #             "char_start": start,
+        #             "char_end": end,
+        #             }
 
-            self.__build_tokens()
+        #     for parent in self.level2parents["sentence"][1:]:
+        #         parent_ids[f"{parent}_sentence_id"] += 1
+
+        #     row.update(parent_ids)
+
+        #     self._level_row_cache["sentence"] = row
+            
+        #     #self.stack_level_data["sentence"].append(row)
+
+        #     current_sent_idx = end #sent_len + 1
+
+        #     self.__build_tokens()
 
 
     def __build_paragraphs(self):
@@ -579,24 +650,17 @@ class Preprocessor:
         # self.level_dfs = {l:pd.DataFrame() for l in self.stack_level_data.keys()}
 
         self.data = pd.DataFrame()
+        #self.nlp = stanza.Pipeline(lang='en', processors='tokenize,mwt,pos,lemma,depparse') #'tokenize,mwt,pos,lemma,depparse'
 
-        from spacy.language import Language
-        Language.factories["entity_matcher"] = lambda nlp, **cfg: EntityMatcher(nlp, **cfg)
-        nlp = spacy.load("your_custom_model", terms=["tree kangaroo"], label="ANIMAL")
-        print(nlp("helllo, wtf is this"))
         
-        self.nlp = spacy.blank("en")
-        d = self.nlp("Hello, wtf is this")
-        print(d, type(d))
-        x = self.nlp.create_pipe(DependencyParser(self.nlp.vocab))
-        print(x(d))
-        # self.nlp.pipeline.append(DependencyParser(self.nlp.vocab))
-        self.nlp.add_pipe(DependencyParser(self.nlp.vocab))#before="first") #"parser")
-        #self.dep_parser = self.nlp.create_pipe("parser")
-        # #self.nlp.add_pipe(wrapped_nltk_sent_tok, first=True)#before="first") #"parser")
-        # self.dep_parser = DependencyParser(self.nlp.vocab)
-        # self.dep_parser.load("en_core_web_sm")
-
+        
+        self.nlp = spacy.load("en_core_web_sm", disable=["ner"])
+        #self.nlp.add_pipe("sentencizer", first=True)
+        # sent_tok = self.nlp.create_pipe('sentencizer')
+        # sent_tok.punct_chars.extend(["\n", "\n\n"]) #, "\n\n"])
+        # print(sent_tok.punct_chars)
+        # self.nlp.add_pipe(sent_tok, first=True)
+ 
         self.__prune_hiers()
     
 

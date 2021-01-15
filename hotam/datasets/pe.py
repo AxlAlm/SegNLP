@@ -20,17 +20,10 @@ import hotam.utils as u
 from hotam import DataSet
 from hotam.utils import RangeDict
 
-#ntlk
-import nltk
-# nltk.download('punkt')
-# nltk.download('averaged_perceptron_tagger')
-
+#
 # string
 from string import punctuation
 punctuation += "’‘,`'" + '"'
-
-# import spacy
-# nlp = spacy.load("en")
 
 logger = get_logger(__name__)
 
