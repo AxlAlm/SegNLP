@@ -7,7 +7,7 @@ import numpy as np
 
 class RelationEncoder(Encoder):
 
-    def __init__(self, name:str, labels:list):
+    def __init__(self, name:str):
         self._name = name
 
     def encode(self,item):
@@ -23,4 +23,4 @@ class RelationEncoder(Encoder):
         
 
     def decode_list(self, item_list:List[str], pad=False) -> List[List[int]]:
-        return np.array([str(item-i) for i,item in enumerate(item_list)])
+        return np.array([str(int(item)-i) for i,item in enumerate(item_list)])

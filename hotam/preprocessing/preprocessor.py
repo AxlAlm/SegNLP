@@ -381,7 +381,7 @@ class Preprocessor:
                     "char_start": start,
                     "char_end": end,
                     "text": token.lower(),
-                    "pos": tok.pos_,
+                    "pos": tok.tag_,
                     "dephead": tok.head.i - spacy_sentence.start,
                     "deprel": tok.dep_
                     #

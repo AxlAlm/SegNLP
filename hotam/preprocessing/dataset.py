@@ -45,7 +45,7 @@ import warnings
 class Batch(dict):
 
 
-    def __init__(self, input_dict, tasks:list, prediction_level:str):
+    def __init__(self, input_dict, tasks:list, prediction_level:str, ):
         super().__init__(input_dict)
         self.tasks = tasks
         self.prediction_level = prediction_level
@@ -94,6 +94,9 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
 
     def __getitem__(self, key):
+
+        if isinstance(key, int):
+            key = [key]
         
 
         if hotam.preprocessing.settings["CACHE_SAMPLES"]:
@@ -113,7 +116,14 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             samples_data = sorted(samples_data, key=lambda x:x["lengths_seq"], reverse=True)
             max_seq = samples_data[0]["lengths_seq"]
             max_tok = max(s["lengths_tok"] for s in samples_data)
-            max_seq_tok = max(samples_data[0]["lengths_seq_tok"])
+            max_seq_tok = max([max(s["lengths_seq_tok"]) for s in samples_data])
+
+        if hasattr(self, "max_sent"):
+            max_sent = max(s["lengths_sent"] for s in samples_data)
+            max_sent_tok = max([max(s["lengths_sent_tok"]) for s in samples_data])
+        
+
+        print("MAX SENTECE", max_sent, max_sent_tok)
 
         #unpack and turn to tensors
         unpacked_data = {}
@@ -142,6 +152,16 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                 elif cut == "tok":
                     #print(k, h , h.shape, max_tok)
                     h = h[:, :max_tok]
+                
+                # specific cutting when using dependency information
+                # here we cut on max words per sentence and nr of sentences.
+                elif cut == "sent":
+
+                    if len(h.shape) == 2:
+                        h = h[:, :max_sent]
+
+                    elif len(h.shape) > 2:
+                        h = h[:, :max_sent, :max_sent_tok]
                 
             except ValueError as e:
                 h = [s[k] for s in samples_data]
@@ -183,13 +203,21 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             sample_dict = {"ids": i}
 
             if self.prediction_level == "ac":
+                acs_grouped = sample.groupby("ac_id")
                 sample_dict.update({
                                     "lengths_tok":len(sample), 
-                                    "lengths_seq":len(sample.groupby("ac_id")), 
-                                    "lengths_seq_tok": [len(g) for i, g in sample.groupby("ac_id")],
+                                    "lengths_seq":len(acs_grouped), 
+                                    "lengths_seq_tok": [len(g) for i, g in acs_grouped],
                                     })
             else:
                 sample_dict.update({"lengths_tok":len(sample)})
+
+            if hasattr(self, "max_sent"):
+                sent_grouped = sample.groupby("sentence_id")
+                sample_dict.update({
+                                    "lengths_sent": len(sent_grouped),
+                                    "lengths_sent_tok": [len(g) for i, g in sent_grouped]
+                                    })
 
             sample_dict.update(self.__get_text(sample))
             sample_dict.update(self.__get_labels(sample))
@@ -260,9 +288,12 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         return sample_text
 
 
-    def __get_shape(self, ac:bool=None, token:bool=None, char:bool=None, feature_dim:int=None):
+    def __get_shape(self, sentence:bool=False, ac:bool=False, token:bool=False, char:bool=False, feature_dim:int=False):
 
         shape = []
+
+        if sentence:
+            shape.append(self.max_sent)
 
         if ac:
             shape.append(self.max_seq)
@@ -308,23 +339,78 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
         sample_encs = {}
         for enc in self.encodings:
-                
-            shape = self.__get_shape(
-                                    ac=self.prediction_level == "ac" and not self.tokens_per_sample,
-                                    token=enc in set(["words", "bert_encs", "chars"]),
-                                    char=enc == "chars",
-                                    feature_dim=None
-                                    )
-            sample_m = np.zeros(shape)
 
-            if self.prediction_level == "ac":
-                acs = sample.groupby(f"ac_id")
-                for ac_i,(_, ac ) in enumerate(acs):
-                    sample_m[ac_i][:ac.shape[0]] = np.stack(ac[enc].to_numpy())
+            # for dependency information we need to perserve the sentences 
+            #
+            if self.sample_level != "sentence" and enc in ["deprel", "dephead"]:
+                sample_m = np.zeros((self.max_sent, self.max_sent_tok))      
+                
+                #information about the root
+                if enc == "deprel":
+                    sent2root = np.zeros(self.max_sent)
+
+                sentences  = sample.groupby("sentence_id")
+
+                ac_i = 0
+
+                #create a mask
+                if self.prediction_level == "ac":
+                    
+                    #information about which ac belong in which sentence
+                    ac2sentence = np.zeros(self.max_seq)
+
+                    # given information from ac2sentence, we can get the mask for a sentnece for a particular ac
+                    # so we know what tokens belong to ac and not
+                    sentence_ac_mask = np.zeros((self.max_seq, self.max_sent_tok))
+
+
+                for sent_i, (sent_id, sent_df) in enumerate(sentences):
+                    enc_data = sent_df[enc].to_numpy()
+                    sample_m[sent_i][:sent_df.shape[0]] = enc_data
+                    
+                    if enc == "deprel":
+                        root_id = self.encode_list(["root"], "deprel")[0]
+                        root_idx = int(np.where(enc_data == root_id)[0])
+                        sent2root[sent_i] = root_idx
+                                    
+                    #create a mask
+                    if self.prediction_level == "ac":
+                        acs = sent_df.groupby("ac_id")
+
+                        for ac_id, ac_df in acs:
+                            ac2sentence[ac_i] = sent_i
+
+                            ac_ids = sent_df["ac_id"].to_numpy()
+                            mask = ac_ids == ac_id
+                            sentence_ac_mask[ac_i][:sent_df.shape[0]] = mask.astype(np.int8)
+                            ac_i += 1
+
+
+                sample_encs["sent2root"] = sent2root
+
+                if self.prediction_level == "ac":
+                    sample_encs["ac2sentence"] = ac2sentence
+                    sample_encs["sent_ac_mask"] = sentence_ac_mask
+                    
 
             else:
-                sample_m[:sample.shape[0]] = np.stack(sample[enc].to_numpy())
-            
+                shape = self.__get_shape(
+                                        ac=self.prediction_level == "ac" and not self.tokens_per_sample,
+                                        token=enc in set(["words", "bert_encs", "chars", "pos", "deprel", "dephead"]),
+                                        char=enc == "chars",
+                                        feature_dim=None
+                                        )
+                sample_m = np.zeros(shape)
+
+                if self.prediction_level == "ac":
+
+                    acs = sample.groupby("ac_id")
+                    for ac_i,(_, ac ) in enumerate(acs):                        
+                        sample_m[ac_i][:ac.shape[0]] = np.stack(ac[enc].to_numpy())
+
+                else:
+                    sample_m[:sample.shape[0]] = np.stack(sample[enc].to_numpy())
+                
             sample_encs[enc] = sample_m
         
         return sample_encs
@@ -775,10 +861,10 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         return max(len(g) for i,g in self.data.groupby(level+"_id"))
   
 
-    def __get_max_nr_seq(self):
+    def __get_max_nr_seq(self, level):
         # samples = self.level_dfs["token"].groupby(self.sample_level+"_id")
         samples = self.data.groupby(self.sample_level+"_id")
-        return max(len(sample.groupby(self.prediction_level+"_id")) for i, sample in samples)
+        return max(len(sample.groupby(level+"_id")) for i, sample in samples)
 
 
     @one_tqdm(desc="Removing Duplicates")
@@ -995,9 +1081,15 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             self.max_tok = self.__get_nr_tokens(self.sample_level)
 
         if self.prediction_level == "ac":
-            self.max_seq = self.__get_max_nr_seq()
+            self.max_seq = self.__get_max_nr_seq("ac")
             self.max_seq_tok = self.__get_nr_tokens(self.prediction_level)
-
+        
+        if self.prediction_level != "sentence" and ("deprel" in self.encodings or  "dephead" in self.encodings):
+            self.max_sent = self.__get_max_nr_seq("sentence")
+            self.max_sent_tok = self.__get_nr_tokens("sentence")
+            print("MAX SENTENCES", self.max_sent,   "MAX TOK PER SENT", self.max_sent_tok)
+            self.__cutmap["dephead"] = "sent"
+            self.__cutmap["deprel"] = "sent"
         
         # self.nr_samples = len(self.level_dfs[self.sample_level].shape[0]
         self.nr_samples = len(self.data[self.sample_level+"_id"].unique())

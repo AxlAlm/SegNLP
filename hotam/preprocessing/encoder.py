@@ -21,29 +21,6 @@ class DatasetEncoder:
 
     """
 
-    @one_tqdm(desc="Creating Data Encoders")
-    def _create_data_encoders(self):
-        """encodes the data for each the given encoding types. Also, creates encoding
-        models which are saved and can be used at later stages.d
-        """
-        self.enc2padvalue = {}
-
-        #logger.info("Creating Encoders ...")
-        for enc_type in self.encodings:
-
-            if enc_type == "words":
-                self.encoders["words"] = WordEncoder()
-
-            elif enc_type == "chars":
-                self.encoders["chars"] = CharEncoder()
-
-            elif enc_type == "bert_encs":
-                self.encoders["bert_encs"] = BertTokEncoder()
-            else:
-                raise KeyError(f'"{enc_type}" is not a supported feature')
-            
-            self.enc2padvalue[enc_type] = 0
-
 
     @one_tqdm(desc="Creating Label Encoders")
     def _create_label_encoders(self):
@@ -51,7 +28,7 @@ class DatasetEncoder:
         for task in self.all_tasks:
 
             if task == "relation":
-                self.encoders[task] = RelationEncoder(name=task, labels=self.task2labels[task])
+                self.encoders[task] = RelationEncoder(name=task)
             else:
                 self.encoders[task] = LabelEncoder(name=task, labels=self.task2labels[task])
 
@@ -79,6 +56,38 @@ class DatasetEncoder:
                 self.data[task] = self.data[task].apply(lambda x: self.encode(x, task))
 
 
+    @one_tqdm(desc="Creating Data Encoders")
+    def _create_data_encoders(self):
+        """encodes the data for each the given encoding types. Also, creates encoding
+        models which are saved and can be used at later stages.d
+        """
+        self.enc2padvalue = {}
+
+        #logger.info("Creating Encoders ...")
+        for enc_type in self.encodings:
+
+            if enc_type == "words":
+                self.encoders["words"] = WordEncoder()
+
+            elif enc_type == "pos":
+                self.encoders["pos"] = PosEncoder()
+
+            elif enc_type == "deprel":
+                self.encoders["deprel"] = DepEncoder()
+
+            elif enc_type == "dephead":
+                pass
+
+            elif enc_type == "chars":
+                self.encoders["chars"] = CharEncoder()
+
+            elif enc_type == "bert_encs":
+                self.encoders["bert_encs"] = BertTokEncoder()
+            else:
+                raise KeyError(f'"{enc_type}" is not a supported encoding')
+            
+            self.enc2padvalue[enc_type] = 0
+
     @one_tqdm(desc="Encoding Data")
     def _encode_data(self):
         
@@ -86,12 +95,19 @@ class DatasetEncoder:
             
             if enc == "bert_encs":
                 self.__encode_bytepairs("bert_encs")
+            if enc == "dephead":
+                pass
             else:
                 if enc in ["words", "chars"]:
                     key = "text"
-                    # self.level_dfs["token"][enc] = self.level_dfs["token"][key].apply(lambda x: self.encode(x, enc))
-                    self.data[enc] = self.data[key].apply(lambda x: self.encode(x, enc))
+                else:
+                    key = enc
 
+                # self.level_dfs["token"][enc] = self.level_dfs["token"][key].apply(lambda x: self.encode(x, enc))
+                self.data[key] = self.data[key].apply(lambda x: self.encode(x, enc))
+
+
+    
 
     def __encode_bytepairs(self, enc):
 

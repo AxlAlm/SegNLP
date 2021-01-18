@@ -62,4 +62,4 @@ class Encoder:
         List[int]
             list of decoded strings
         """
-        return np.array([self.decode(item) for item in item_list])
+        return np.array([self.decode(int(item)) for item in item_list])
