@@ -10,8 +10,11 @@ from datetime import datetime
 import pytz
 from tqdm import tqdm
 import os
+import sys
+import requests
 
-#am
+import zipfile
+
 from hotam import get_logger
 
 #torch
@@ -198,3 +201,31 @@ def copy_and_vet_dict(input_dict:dict, filter_key:str=None):
         output_dict[k] = v
     
     return output_dict
+
+
+
+def download(url:str, save_path:str, desc:str):
+
+    response = requests.get(url, stream=True)
+    total = int(response.headers.get('content-length')) #response.iter_content(chunk_size=max(int(total/1000), 1024*1024)), 
+    progress_bar = tqdm(total=total, unit='iB', unit_scale=True, desc=desc)
+
+    if total is None:
+        f.write(response.content)
+        return
+
+    with open(save_path, 'wb') as f:
+        for data in response.iter_content(chunk_size=1024):
+            progress_bar.update(len(data))
+            f.write(data)
+    progress_bar.close()
+
+    print(total != 0, progress_bar.n != total, progress_bar.n, total )
+    if total != 0 and progress_bar.n != total:
+        raise RuntimeError("ERROR, something went wrong")
+
+
+def unzip(zip_path:str, save_path:str):
+
+    with zipfile.ZipFile(zip_path, 'r') as zipf:
+        zipf.extractall(save_path)

@@ -13,12 +13,12 @@ def get_feature(feature_name):
     raise KeyError(f'"{fm}" is no a supported model"')
 
 
-from hotam.features.bow import OneHot
-from hotam.features.embeddings import Embeddings
-from hotam.features.document_positions import DocPos
+from .bow import BOW
+from .embeddings import Embeddings
+from .document_positions import DocPos
 
 __all__ = [
-            OneHot,
-            Embeddings,
-            DocPos,
+            "Embeddings",
+            "DocPos",
+            "BOW"
         ]

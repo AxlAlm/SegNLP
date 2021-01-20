@@ -1,6 +1,20 @@
 
 
 
+import xml.etree.ElementTree as ET
+from tqdm import tqdm
+
+class BNC:
+    
+tree = ET.parse('/Users/xalmax/phd/datasets/download/Texts/A/A0/A00.xml')
+root = tree.getroot()
+t = [text.strip() for text in root.itertext()]
+print(" ".join(t[t.index('A00')+1:]))
+# print(root.tag)
+# for child in root:
+#     print(child.tag, child.attrib)
+#     print(child.text)
+
 # import plotly.express as px
 # countries_to_hide = ["Australia"]
 # df = px.data.gapminder().query("continent=='Oceania'")
@@ -19,7 +33,7 @@
 
 # fig.show()
 
-from hotam.database import MongoDB
+# from hotam.database import MongoDB
 
 # import pymongo
 # import os
@@ -30,10 +44,10 @@ from hotam.database import MongoDB
 # for db in client.list_databases():
 #     print(db)
 
-db = MongoDB()
+# db = MongoDB()
 
-#print(db.get_projects())
-print(db.get_live_exps_ids())
+# #print(db.get_projects())
+# print(db.get_live_exps_ids())
 #print(db.get_done_exps_ids())
 
 

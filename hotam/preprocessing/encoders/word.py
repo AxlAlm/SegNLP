@@ -2,7 +2,7 @@
 
 from hotam.preprocessing.encoders.base import Encoder
 #from nltk.corpus import words
-from hotam.preprocessing.resources.vocab import vocab
+from ...resources.vocab import vocab
 from typing import List, Union, Dict
 #import json
 

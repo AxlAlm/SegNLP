@@ -394,15 +394,16 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                     
 
             else:
+                inc_ac = self.prediction_level == "ac" and not self.tokens_per_sample
                 shape = self.__get_shape(
-                                        ac=self.prediction_level == "ac" and not self.tokens_per_sample,
-                                        token=enc in set(["words", "bert_encs", "chars", "pos", "deprel", "dephead"]),
+                                        ac=inc_ac,
+                                        token=enc in set(["words", "bert_encs", "chars", "pos","deprel", "dephead" ]),
                                         char=enc == "chars",
                                         feature_dim=None
                                         )
                 sample_m = np.zeros(shape)
 
-                if self.prediction_level == "ac":
+                if inc_ac:
 
                     acs = sample.groupby("ac_id")
                     for ac_i,(_, ac ) in enumerate(acs):                        
@@ -445,16 +446,16 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             if self.prediction_level == "ac":
                 if self.tokens_per_sample:
                     if fm.level == "doc":
-                        ac = True
+                        inc_ac = True
                     else:
-                        ac = False
+                        inc_ac = False
                 else:
-                    ac = True
+                    inc_ac = True
             else:
-                ac = False
+                inc_ac = False
 
             shape = self.__get_shape(
-                                    ac=ac,
+                                    ac=inc_ac,
                                     token=fm.level == "word",
                                     #char=enc == "chars",
                                     feature_dim=fm.feature_dim
@@ -465,7 +466,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             sample_length = sample.shape[0]
 
             
-            if self.prediction_level == "ac" and ac:
+            if self.prediction_level == "ac" and inc_ac:
                     
                 feature_matrix, am_mask, ac_mask = self.__extract_ADU_features(fm, sample, sample_shape=feature_matrix.shape)
 

@@ -30,7 +30,7 @@ class DocPos(FeatureModel):
         self._level = "doc"
         self._dtype = np.uint8
 
-    @feature_memory
+    #@feature_memory
     def extract(self, df):
         """
         extracts document position for paragraphs. 

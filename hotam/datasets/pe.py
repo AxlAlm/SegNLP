@@ -20,6 +20,7 @@ import hotam.utils as u
 from hotam import DataSet
 from hotam.utils import RangeDict
 
+
 #
 # string
 from string import punctuation
@@ -71,9 +72,6 @@ Dataset Specs:
 ''' 
 
 
-
-
-
 # # TODO: is this  the cleanest solution to avoid .load() ??
 def PE(dump_path:str="/tmp/"):
     return PE_Dataset(dump_path=dump_path).load()
@@ -107,37 +105,23 @@ class PE_Dataset:
         str
             path to downloaded data
         """
+    
+        zip_dump_path = "/tmp/ArgumentAnnotatedEssays-2.0.zip"
+        parent_folder = os.path.join(self.dump_path, "ArgumentAnnotatedEssays-2.0")
+        data_folder = os.path.join(parent_folder, "brat-project-final")
+        if os.path.exists(data_folder) and not force:
+            return data_folder
+
+        zip_dump_path = "/tmp/ArgumentAnnotatedEssays-2.0.zip"
         
-        data_path = os.path.join(self.dump_path,"ArgumentAnnotatedEssays-2.0")
-        expected_data_folder_path = os.path.join(data_path, "ArgumentAnnotatedEssays-2.0/brat-project-final")
-        self.dump_path = data_path 
+        if not os.path.exists(zip_dump_path):
+            desc = f"Downloading ArgumentAnnotatedEssays-2.0"
+            u.download(url=self.dataset_url, save_path=zip_dump_path, desc=desc)
 
-        if os.path.exists(expected_data_folder_path) and not force:
-            #brat_zip_file = str(list(Path(data_path).rglob("brat-project-final.zip"))[0])
-            #final_data_dir = brat_zip_file.rsplit(".",1)[0]
-            return expected_data_folder_path
+        u.unzip(zip_dump_path, self.dump_path)
+        u.unzip(data_folder + ".zip", parent_folder)
 
-        logger.info(f"Downloading data for PE dataset from {self.dataset_url}. Saving to {data_path}")
-
-        zip_resp = urlopen(self.dataset_url)
-        zip_dump_path = "/tmp/pe_data.zip"
-        with open(zip_dump_path, "wb") as f:
-            f.write(zip_resp.read())
-
-        # unzip dump main file
-        zf = ZipFile(zip_dump_path)
-        zf.extractall(path=data_path)
-        zf.close()
-
-        brat_zip_file = str(list(Path(data_path).rglob("brat-project-final.zip"))[0])
-        final_data_dir = brat_zip_file.rsplit(".",1)[0]
-
-        #second file
-        zf = ZipFile(brat_zip_file)
-        zf.extractall(path=os.path.join(data_path, "ArgumentAnnotatedEssays-2.0"))
-        zf.close()
-
-        return final_data_dir
+        return data_folder
 
 
     def __read_file(self,file:str) -> str:
