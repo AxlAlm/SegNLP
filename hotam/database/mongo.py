@@ -103,3 +103,7 @@ class MongoDB:
     def get_project_tasks(self, project):
         tasks = sorted(set([t for exp in list(self.experiments.find({"project":project})) for t in exp["tasks"]]))
         return tasks
+    
+    def get_project_subtasks(self, project):
+        subtasks = sorted(set([t for exp in list(self.experiments.find({"project":project})) for t in exp["subtasks"]]))
+        return subtasks

@@ -1,5 +1,7 @@
 
+#basic
 import numpy as np
+import pandas as pd
 
 #plotly
 import plotly
@@ -10,7 +12,15 @@ import plotly.graph_objs as go
 from hotam.dashboard.utils import fig_layout
 
 
-def rank_bar(top_scores, display_metrics, display_splits, experiment2config, rank_task, top_n, clickdata):
+def rank_bar(   
+                title:str,
+                top_scores:pd.DataFrame, 
+                display_metrics:list, 
+                display_splits:list, 
+                experiment2config:dict, 
+                rank_task:str, 
+                top_n:int, 
+                clickdata:dict):
 
     split2color = {
                     "test":'lightsalmon',
@@ -60,11 +70,16 @@ def rank_bar(top_scores, display_metrics, display_splits, experiment2config, ran
                     )
 
 
-    fig.update_layout(barmode='group')
     fig.update_layout(
+                        barmode='group', 
+                        title=title,
                         yaxis=dict(range=[0,1]),
-                        #xaxis=dict(range=[0,max_x]),   
+                        clickmode='event'
                         )
-    fig.update_layout(clickmode='event')
+    # fig.update_layout(
+    #                     yaxis=dict(range=[0,1]),
+    #                     #xaxis=dict(range=[0,max_x]),   
+    #                     )
+    # fig.update_layout(clickmode='event')
 
     return fig

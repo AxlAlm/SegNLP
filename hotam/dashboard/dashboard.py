@@ -31,14 +31,14 @@ import hotviz
 
 
 #utils
-from hotam.dashboard.utils import get_filter, fig_layout, get_visible_info, update_visible_info
-from hotam.dashboard.views.visuals import *
+from .utils import get_filter, fig_layout, get_visible_info, update_visible_info
+from .visuals import *
 
 
 th_path  = "/tmp/text_highlight.png"
 
 
-class FullDash:
+class Dashboard:
 
     def __init__(self, db):
         self.db = db
@@ -113,8 +113,19 @@ class FullDash:
                     Input('exp-data', 'children')])(self.get_config)
 
 
-        app.callback(Output('data-table-hist', 'figure'),
-                    [Input('exp-data', 'children')])(self.get_data_table)
+
+        app.callback(Output('data-dist-dropdown-hist', 'options'),
+                    Output('data-dist-dropdown-hist', 'value')
+                    [Input('exp-data', 'children')]
+                    [state('data-dist-dropdown-hist', 'value')])(self.update_stats_dropdown)
+
+
+        app.callback(Output('data-dist-hist', 'figure'),
+                    [Input('data-cache', 'children'),
+                    Input('data-dist-dropdown-hist', 'value')])(self.get_data_distributions)
+
+        # app.callback(Output('data-table-hist', 'figure'),
+        #             [Input('exp-data', 'children')])(self.get_data_table)
 
 
         app.callback(
@@ -203,8 +214,12 @@ class FullDash:
                     Input('data-cache', 'children')])(self.get_config)
 
 
-        app.callback(Output('data-table', 'figure'),
-                    [Input('data-cache', 'children')])(self.get_data_table)
+        app.callback(Output('data-dist-dropdown', 'figure'),
+                    [Input('data-cache', 'children')])(self.update_stats_dropdown)
+
+
+        # app.callback(Output('data-table', 'figure'),
+        #             [Input('data-cache', 'children')])(self.get_data_table)
 
 
 
@@ -276,6 +291,7 @@ class FullDash:
 
         self.app = app
 
+
     def __get_info_div(self, name=""):
         if name:
             name = "-"+name
@@ -299,16 +315,28 @@ class FullDash:
                                                             html.Div( 
                                                                     className="pretty_container six columns",
                                                                     children=[
-                                                                                html.Pre(
-                                                                                        id=f"exp-config{name}",
-                                                                                        children=""
-                                                                                        )
-                                                                                ],
-                                                                    style={
-                                                                            "maxHeight": "500px", 
-                                                                            "maxWidth": "300px",
-                                                                            "overflow": "scroll",
-                                                                            }
+                                                                                dcc.Dropdown(
+                                                                                            id=f'data-dist-dropdown{name}',
+                                                                                            options=[],
+                                                                                            value=None,
+                                                                                            className="dcc_control",
+                                                                                            ),
+                                                                                dcc.Graph(
+                                                                                    id=f"data-dist{name}",
+                                                                                    figure = go.Figure([])
+                                                                                    )
+                                                                            ]
+                                                                    # children=[
+                                                                    #             html.Pre(
+                                                                    #                     id=f"exp-config{name}",
+                                                                    #                     children=""
+                                                                    #                     )
+                                                                    #             ],
+                                                                    # style={
+                                                                    #         "maxHeight": "500px", 
+                                                                    #         "maxWidth": "300px",
+                                                                    #         "overflow": "scroll",
+                                                                    #         }
                                                                     )
                                                             ]       
                                                 ),
@@ -397,25 +425,8 @@ class FullDash:
                                     children=[
 
                                                 html.Div(
-                                                        id=f"text-highlight-con{name}",
-                                                        className="pretty_container six columns",
-                                                        children=[ 
-                                                                    dcc.Dropdown(
-                                                                                id=f'sample-id-dropdown1{name}',
-                                                                                options=[],
-                                                                                value=None,
-                                                                                className="dcc_control",
-                                                                                ),
-                                                                    html.Img(   
-                                                                            id=f"text-highlight{name}",
-                                                                            src=""
-                                                                            ),
-                                                                    ],
-                                                        style={'display': 'none'}
-                                                        ),
-                                                html.Div(
                                                         id=f"tree-graph-con{name}",
-                                                        className="pretty_container six columns",
+                                                        className="pretty_container twelve columns",
                                                         children=[
                                                                     dcc.Dropdown(
                                                                                 id=f'sample-id-dropdown2{name}',
@@ -428,6 +439,29 @@ class FullDash:
                                                                             figure = go.Figure([])
                                                                             )
                                                                 ],                                                         
+                                                        style={'display': 'none'}
+                                                        ),
+                                                ]
+                                        ),
+                                html.Div(
+                                    className="row flex-display",
+                                    children=[
+
+                                                html.Div(
+                                                        id=f"text-highlight-con{name}",
+                                                        className="pretty_container twelve columns",
+                                                        children=[ 
+                                                                    dcc.Dropdown(
+                                                                                id=f'sample-id-dropdown1{name}',
+                                                                                options=[],
+                                                                                value=None,
+                                                                                className="dcc_control",
+                                                                                ),
+                                                                    html.Img(   
+                                                                            id=f"text-highlight{name}",
+                                                                            src=""
+                                                                            ),
+                                                                    ],
                                                         style={'display': 'none'}
                                                         ),
                                                 ]
@@ -465,66 +499,77 @@ class FullDash:
 
     def __get_hist_tab(self):
         return html.Div(    
-                        children=[
-                                    html.Div(
-                                            className="pretty_container twelve columns",
-                                            children=[
+                        children=[  
 
-                                                        dcc.Dropdown(
-                                                                    id='project-dropdown',
-                                                                    options=[],
-                                                                    value=None,
-                                                                    className="dcc_control",
-                                                                    placeholder="Select a project",
-                                                                    #persistence=True,
-                                                                    #clearable=False,
-                                                                    ),
-                                                        html.Div(
-                                                                id="rank-filters",
-                                                                className="pretty_container six columns",
-                                                                children=[
-                                                                            html.Div( 
-                                                                                    #className="pretty_container six columns",
-                                                                                    #className="column flex-display",
-                                                                                    children=[
-                                                                                            dcc.Dropdown(
-                                                                                                        id='task-filter',
-                                                                                                        options=[],
-                                                                                                        value=None,
-                                                                                                        className="dcc_control",
-                                                                                                        ),
-                                                                                                ]
-                                                                                        ),
-                                                                            html.Div( 
-                                                                                    #className="pretty_container six columns",
-                                                                                    #className="column flex-display",
-                                                                                    children=[
-                                                                                                dcc.Dropdown(
-                                                                                                        id='split-filter',
-                                                                                                        options=[
-                                                                                                                {"label":"val", "value":"val"},
-                                                                                                                {"label":"test", "value":"test"}
-                                                                                                                ],
-                                                                                                        value="val",
-                                                                                                        className="dcc_control",
-                                                                                                        ),    
-                                                                                                ]
-                                                                                        ),
-                                                                                ],
-                                                                style={'display': 'none'}
+                                html.Div(
+                                        className="column flex-display",
+                                        children=[
+                                                html.Div(
+                                                        className="pretty_container two columns",
+                                                        children=[
+
+                                                                    dcc.Dropdown(
+                                                                                id='project-dropdown',
+                                                                                options=[],
+                                                                                value=None,
+                                                                                className="dcc_control",
+                                                                                placeholder="Select a project",
+                                                                                #persistence=True,
+                                                                                #clearable=False,
+                                                                                ),
+                                                                    html.Div(
+                                                                            id="rank-filters",
+                                                                            className="row",
+                                                                            children=[
+                                                                                        html.Div( 
+                                                                                                #className="pretty_container six columns",
+                                                                                                #className="column flex-display",
+                                                                                                children=[
+                                                                                                        html.P("Rank by task:", className="control_label"),
+                                                                                                        dcc.RadioItems(
+                                                                                                                    id='task-filter',
+                                                                                                                    options=[],
+                                                                                                                    value=None,
+                                                                                                                    className="dcc_control",
+                                                                                                                    labelStyle={'display': 'inline-block'}
+                                                                                                                    ),
+                                                                                                            ]
+                                                                                                    ),
+                                                                                        html.Div( 
+                                                                                                #className="pretty_container six columns",
+                                                                                                #className="column flex-display",
+                                                                                                children=[
+                                                                                                            html.P("Rank by split:", className="control_label"),
+                                                                                                            dcc.RadioItems(
+                                                                                                                    id='split-filter',
+                                                                                                                    options=[
+                                                                                                                            {"label":"val", "value":"val"},
+                                                                                                                            {"label":"test", "value":"test"}
+                                                                                                                            ],
+                                                                                                                    value="val",
+                                                                                                                    className="dcc_control",
+                                                                                                                    labelStyle={'display': 'inline-block'}
+                                                                                                                    ),    
+                                                                                                            ]
+                                                                                                    ),
+                                                                                            ],
+                                                                            style={'display': 'none'}
+                                                                            ),
+                                                                    ]
                                                                 ),
-                                                        html.Div(   
-                                                                id="rank-view",
-                                                                children=[
-                                                                            dcc.Graph(
-                                                                                        id="rank-graph",
-                                                                                        figure = go.Figure([])
-                                                                                        ),                                        
-                                                                        ],
-                                                                style={'display': 'none'}
-                                                                ),
+                                                html.Div(   
+                                                        id="rank-view",
+                                                        className="pretty_container ten columns",
+                                                        children=[
+                                                                    dcc.Graph(
+                                                                                id="rank-graph",
+                                                                                figure = go.Figure([])
+                                                                                ),                                        
+                                                                ],
+                                                        style={'display': 'none'}
+                                                        ),
                                                     ]
-                                                ),
+                                        ),
                                     html.Div(
                                             className="pretty_container twelve columns",
                                             children=[
@@ -537,19 +582,21 @@ class FullDash:
                                                                     #persistence=True,
                                                                     #clearable=False,
                                                                     ),
-                                                        html.Div(   
-                                                                id="exp-view",
-                                                                #className="row flex-display",
-                                                                children=[
-                                                                            self.__get_info_div(name="hist"),
-                                                                            self.__get_visuals_div(name="hist")
-                                                                            ],
-                                                                style={'display': 'none'}
-                                                                #style={"display": "flex", "flex-direction": "column"},
-                                                                ),
-                                                        html.Div(id='exp-data', children=dict(), style={'display': 'none'}),
-                                                    ]
-                                                )
+                                                        ]
+                                            ),
+                                    html.Div(   
+                                            id="exp-view",
+                                            className="column",
+                                            children=[
+                                                        self.__get_info_div(name="hist"),
+                                                        self.__get_visuals_div(name="hist")
+                                                        ],
+                                            style={'display': 'none'}
+                                            #style={"display": "flex", "flex-direction": "column"},
+                                            ),
+                                    html.Div(id='exp-data', children=dict(), style={'display': 'none'}),
+                                        
+                                                
                                     ]
                         )
 
@@ -586,13 +633,15 @@ class FullDash:
         return [{"label":e, "value":e} for e in exps]
 
 
-    def update_task_dropdown(self, project):
-        tasks = sorted(self.db.get_project_tasks(project))
-        options = [{"label":t, "value":t} for t in tasks]
-        if len(tasks) > 1:
-            options.append({"label":"mean", "value":"mean"})
+    def update_stats_dropdown(self, data_cache, value):
+        exp_config = data_cache.get("exp_config", {})
+        tasks = exp_config["tasks"]
+        options = [{"label":t, "value":t} for t in tasks + ["sample"]]
 
-        return options
+        if state_value is None:
+            value = tasks[0]
+
+        return options, value
 
 
     def update_output(self, value):
@@ -647,6 +696,20 @@ class FullDash:
         data = data_cache["exp_config"]["dataset_stats"]
         df = pd.DataFrame(data)
         return make_table(df, "Dataset Statistics")
+
+
+
+    def get_data_distributions(self, data_cache, value):
+        
+        if not data_cache:
+            return {}
+
+        data = data_cache["exp_config"]["dataset_stats"]
+        df = pd.DataFrame(data)
+
+
+        return make_table(df, "Dataset Statistics")
+
 
 
     def get_config(self, config_value, data_cache):
@@ -750,6 +813,10 @@ class FullDash:
 
         filter_columns = []
         for task in tasks:
+            
+            if task == "relation":
+                continue
+
             classes = task2labels[task]
             for c in classes:
                 for metric in metrics:
@@ -963,7 +1030,7 @@ class FullDash:
         if exp_config is None:
             return [], None
 
-        options = [{"label":t, "value":t} for t in exp_config["tasks"]]
+        options = [{"label":t, "value":t} for t in exp_config["tasks"] if t not in "relation"]
         value = options[0]["value"]
 
 
@@ -1071,7 +1138,15 @@ class FullDash:
         top_scores = score_df.head(top_n)
         top_scores.reset_index(drop=True, inplace=True)
 
-        fig = rank_bar(top_scores, [rank_metric], [rank_split], experiment2config, task, top_n, clickData)
+        fig = rank_bar( 
+                        title=f"Top {top_n} experiments for project {project}",
+                        top_scores=top_scores, 
+                        display_metrics=[rank_metric], 
+                        display_splits=[rank_split], 
+                        experiment2config=experiment2config, 
+                        rank_task=task, 
+                        top_n=top_n, 
+                        clickdata=clickData)
 
         return fig, {'display': 'block'}
 

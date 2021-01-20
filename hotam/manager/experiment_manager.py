@@ -22,7 +22,6 @@ import sys
 from hotam.manager.ptl_trainer_setup import Trainer
 from hotam.manager.evaluator import Evaluator
 from hotam.utils import get_timestamp
-from hotam.dashboard import DummyDash
 from hotam.loggers import MongoLogger
 from hotam.database import MongoDB
 from hotam import get_logger
@@ -177,6 +176,7 @@ class ExperimentManager(Evaluator, Trainer):
             exp_config["dataset_stats"] = self.dataset.stats().to_dict()
             exp_config["task2label"] = self.dataset.task2labels
             exp_config["tasks"] = self.dataset.tasks
+            exp_config["subtasks"] = self.dataset.subtasks
             exp_config["evaluation_method"] = eval_method
             exp_config["hyperparamaters"] = hyperparamaters
             exp_config["experiment_id"] = experiment_id

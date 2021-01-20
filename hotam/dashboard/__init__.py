@@ -1,8 +1,6 @@
 
-from .dummy_dash import DummyDash
-from .full_dash import FullDash
+from .dashboard import Dashboard
 
 __all__ = [
-            "DummyDash",
-            "FullDash"
+            "Dashboard"
         ]

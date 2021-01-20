@@ -190,7 +190,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
     def name(self):
         return self._name
 
-    
+
     def __extract_sample_data(self, key):
 
         #samples = self.level_dfs["token"].loc[key,].groupby(self.sample_level+"_id")
@@ -663,63 +663,85 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         [type]
             [description]
 
-        TODO:   Fix a special count for relations that counts relations back (-) or forward (+) in AC instead of idx pointers
-                as this might be more useful for visulizing the distribution
         """
+
     
-        column_data = {"type":[], "train": [], "val":[], "test": []}
+        if not self._setup_done:
 
-        for i, split_set in self.splits.items():
+            #nr samples
+            nr_samples = len(self.data.groupby(self.dataset_level+"_id"))
+            acs = self.data.groupby("ac_id")
+      
+            rows = []
+            for task in self.dataset_tasks:
+                task_label_counts = acs.first()[task].value_counts()
 
-            for s, ids in split_set.items():
+                total = 0
+                for l, c in task_label_counts.items():
+                    rows.append((task,l,c))
+                    total += c
+                rows.append((task,"TOTAL",total))
+            
+            print("------ DATASET STATS ------ \n")
+            print(f"Number Samples ({self.dataset_level}):", nr_samples)
+            print("Label stats:")
+            df = pd.DataFrame(rows, columns=["task","label", "count"])
+            df.index = df.pop("task")
+
+            return df
+
+
+
+        if hasattr(self, "_stats"):
+            return self._stats
+        
+        rows = []
+
+        # we go through each of the different splits (e.g. each cross validation set. For non-cross validation there will only be one)
+        for split_id, split_set in self.splits.items():
+
+            #we got through every split type (train, test ,val)
+            for split_type, ids in split_set.items():
                 
-                if self.nr_splits == 1:
-                    name = self.sample_level
-                else:
-                    name = f"{self.sample_level}_{i}"
+                
+                rows.append({
+                                "type":self.sample_level,
+                                "task":"",
+                                "split":split_type,
+                                "split_id":split_id,
+                                "value": len(ids)
 
-                # row = {"type": name, s:len(ids)}
-
-                if name not in column_data["type"]:
-                    column_data["type"].append(name)
-
-                column_data[s].append(len(ids))
-
+                            })
 
                 for task in self.tasks:
-                    #df = self.level_dfs["token"]
+
                     label_counts = dict(self.data[self.data[f"{self.sample_level}_id"].isin(ids)][task].value_counts())
 
-                    if self.prediction_level == "token":
-                        label_counts = {self.decode(l,task):c for l,c in label_counts.items()}
-                    else:
-                        label_counts = {self.decode(l,task):int(c/len(ids)) for l,c in label_counts.items()}
+                    # if self.prediction_level == "token":
+                    #     label_counts = {self.decode(l,task):c for l,c in label_counts.items()}
+                    # else:
+                    #     label_counts = {self.decode(l,task):int(c/len(ids)) for l,c in label_counts.items()}
+
+                    if self.prediction_level == "ac":
                         label_counts.pop("None")
 
                     label_counts.update({l:0 for l in self.task2labels[task] if l not in label_counts.keys()})
-
                     label_counts = dict(sorted(list(label_counts.items()), key=lambda x:x[0]))
 
                     for l,nr in label_counts.items():
-                        
-                        if self.nr_splits == 1:
-                            l_name = l
-                            #l_name = f"{task}_{l}"
-                        else:
-                            l_name = f"{l}_{i}"
-                            #l_name = f"{task}_{l}_{i}"
-                        
-                        if l_name == "None":
-                            l_name = f"no_{task}"
+            
+                        rows.append({
+                                        "type":l,
+                                        "task":task,
+                                        "split":split_type,
+                                        "split_id":split_id,
+                                        "value": nr
+                                    })
 
-                        if l_name not in column_data["type"]:
-                            column_data["type"].append(l_name)
+        self._stats = pd.DataFrame(rows)
+        #df.index = df.pop("type")
 
-                        column_data[s].append(nr)
-
-        df = pd.DataFrame(column_data)
-        df.index = df.pop("type")
-        return df
+        return self._stats
 
 
     @one_tqdm(desc="Saving Preprocessed Dataset")
@@ -731,7 +753,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         pkl_path : str
             string path
         """
-        pickle_data([self.data, self.dataset_level], pkl_path)
+        pickle_data([self.data, self.dataset_level, self.dataset_tasks], pkl_path)
 
 
     @one_tqdm(desc="Loading Preprocessed Dataset")
@@ -752,7 +774,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         if hasattr(self, "level_dfs"):
             raise RuntimeError("data already exist. Overwriting is currently unsupported with load()")
 
-        self.data, self.dataset_level = load_pickle_data(pkl_path)
+        self.data, self.dataset_level, self.dataset_tasks = load_pickle_data(pkl_path)
         # self.stack_level_data = {l:[] for l in self.level_dfs.keys()}
         self._data_stack = []
 
@@ -826,7 +848,6 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             #     self.task2labels[task] = range(self.max_relation+1)
             # else:
             #     # self.task2labels[task] = sorted(list(self.level_dfs["token"][task].unique()))
-            print(self.data[task].unique())
             self.task2labels[task] = sorted(self.data[task].unique().tolist())
 
             if isinstance(self.task2labels[task][0], (np.int, np.int64, np.int32, np.int16)):
@@ -1054,6 +1075,8 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         #     if self.duplicate_ids.any():
         #         self.update_splits()
 
+        self.stats()
+
         enc_data_exit = os.path.exists(self._enc_file_name)
         if enc_data_exit and not override:
             self.__load_enc_state()
@@ -1103,6 +1126,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                         "prediction_level":prediction_level,
                         "sample_level": sample_level,
                         "tasks": tasks,
+                        "subtasks": self.subtasks,
                         "multitasks": multitasks,
                         "encodings": encodings,
                         "features": self.features,

@@ -8,7 +8,6 @@ from hotam.nn.models import LSTM_DIST
 
 
 from hotam.features import Embeddings, DocPos, BOW
-from hotam.dashboard import FullDash
 from hotam.database import MongoDB
 from hotam.loggers import MongoLogger
 
@@ -19,13 +18,11 @@ from hotam.resources.corpus import BNC
 
 if __name__ == "__main__":
 
-	bow = BOW()
-	print(bow.extract("hello, this is a test document. Lets see what will happen."))
-
 	# db = MongoDB()
 	# exp_logger = MongoLogger(db=db)
 
-	#pe = PE()
+	pe = PE()
+	print(pe.stats())
 	# #pe.example(sample_id=928, level="paragraph")
 	# #pe.example(sample_id=928, level="paragraph")
 

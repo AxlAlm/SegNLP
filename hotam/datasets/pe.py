@@ -471,7 +471,9 @@ class PE_Dataset:
             dataset.add_samples(samples)
             dataset.charspan2label(sample_span_labels)
             dataset.create_ams()
+            dataset.dataset_tasks = ["ac", "relation", "stance"]
             dataset.save(dump_path)
+            
 
         return dataset
         

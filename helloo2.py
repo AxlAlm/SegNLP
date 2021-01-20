@@ -1,15 +1,15 @@
 
 
 
-import xml.etree.ElementTree as ET
-from tqdm import tqdm
+# import xml.etree.ElementTree as ET
+# from tqdm import tqdm
 
-class BNC:
+# class BNC:
     
-tree = ET.parse('/Users/xalmax/phd/datasets/download/Texts/A/A0/A00.xml')
-root = tree.getroot()
-t = [text.strip() for text in root.itertext()]
-print(" ".join(t[t.index('A00')+1:]))
+# tree = ET.parse('/Users/xalmax/phd/datasets/download/Texts/A/A0/A00.xml')
+# root = tree.getroot()
+# t = [text.strip() for text in root.itertext()]
+# print(" ".join(t[t.index('A00')+1:]))
 # print(root.tag)
 # for child in root:
 #     print(child.tag, child.attrib)
@@ -33,22 +33,22 @@ print(" ".join(t[t.index('A00')+1:]))
 
 # fig.show()
 
-# from hotam.database import MongoDB
+from hotam.database import MongoDB
 
-# import pymongo
-# import os
+import pymongo
+import os
 
-# #client = pymongo.MongoClient()
-# client = pymongo.MongoClient(os.environ['MONGO_KEY'])
+#client = pymongo.MongoClient()
+#client = pymongo.MongoClient(os.environ['MONGO_KEY'])
 
-# for db in client.list_databases():
-#     print(db)
+db = MongoDB()
 
-# db = MongoDB()
+for p in db.get_projects():
+    print(p, db.get_project_tasks(p))
+    #print(p, db.get_project_subtasks(p))
 
-# #print(db.get_projects())
 # print(db.get_live_exps_ids())
-#print(db.get_done_exps_ids())
+# print(db.get_done_exps_ids())
 
 
 # my_db = client["xalmax"]
