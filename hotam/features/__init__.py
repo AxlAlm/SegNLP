@@ -16,9 +16,11 @@ def get_feature(feature_name):
 from .bow import BOW
 from .embeddings import Embeddings
 from .document_positions import DocPos
+from .dummy import DummyFeature
 
 __all__ = [
             "Embeddings",
             "DocPos",
-            "BOW"
+            "BOW",
+            "DummyFeature"
         ]

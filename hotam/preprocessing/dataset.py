@@ -45,10 +45,14 @@ import warnings
 class Batch(dict):
 
 
-    def __init__(self, input_dict, tasks:list, prediction_level:str, ):
+    def __init__(self, input_dict, tasks:list, prediction_level:str, length=int):
         super().__init__(input_dict)
         self.tasks = tasks
         self.prediction_level = prediction_level
+        self._len = length
+
+    def __len__(self):
+        return self._len
 
     def to(self, device):
         self.device = device
@@ -122,9 +126,6 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             max_sent = max(s["lengths_sent"] for s in samples_data)
             max_sent_tok = max([max(s["lengths_sent_tok"]) for s in samples_data])
         
-
-        print("MAX SENTECE", max_sent, max_sent_tok)
-
         #unpack and turn to tensors
         unpacked_data = {}
         k2dtype = { 
@@ -178,7 +179,8 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         return Batch(
                         deepcopy(unpacked_data), 
                         tasks=self.tasks,
-                        prediction_level=self.prediction_level
+                        prediction_level=self.prediction_level,
+                        length=len(unpacked_data["ids"])
                     )
     
 
