@@ -654,7 +654,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                                 )
 
 
-    def stats(self):
+    def stats(self, override=False):
 
         """
 
@@ -692,10 +692,15 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
 
 
-        if hasattr(self, "_stats"):
+        if hasattr(self, "_stats") and not override:
             return self._stats
         
         rows = []
+
+        if self.prediction_level == "ac":
+            df = self.data.groupby("ac_id").first()
+        else:
+            df = self.data
 
         # we go through each of the different splits (e.g. each cross validation set. For non-cross validation there will only be one)
         for split_id, split_set in self.splits.items():
@@ -715,14 +720,9 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
                 for task in self.tasks:
 
-                    label_counts = dict(self.data[self.data[f"{self.sample_level}_id"].isin(ids)][task].value_counts())
+                    label_counts = dict(df[df[f"{self.sample_level}_id"].isin(ids)][task].value_counts())
 
-                    # if self.prediction_level == "token":
-                    #     label_counts = {self.decode(l,task):c for l,c in label_counts.items()}
-                    # else:
-                    #     label_counts = {self.decode(l,task):int(c/len(ids)) for l,c in label_counts.items()}
-
-                    if self.prediction_level == "ac":
+                    if self.prediction_level == "ac" and "None" in label_counts:
                         label_counts.pop("None")
 
                     label_counts.update({l:0 for l in self.task2labels[task] if l not in label_counts.keys()})
@@ -790,6 +790,8 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         state_dict["main_tasks"] = self.main_tasks
         state_dict["task2subtasks"] = self.task2subtasks
         state_dict["task2labels"] = self.task2labels
+        state_dict["stats"] =  self._stats.to_dict()
+
 
         with open(self._enc_file_name,"w") as f:
             json.dump(state_dict, f)
@@ -807,7 +809,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         self.task2subtasks = state_dict["task2subtasks"]
         self.task2labels = state_dict["task2labels"]
         self.main_tasks = state_dict["main_tasks"]
-
+        self._stats = pd.DataFrame(state_dict["stats"])
 
     @one_tqdm(desc="Finding task and subtasks")
     def __fix_tasks(self):
@@ -1044,6 +1046,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         encodings : list
             encodings to be made, e.g. token, pos, bert
         """
+        self._setup_done = True
         self.prediction_level = prediction_level
         self.sample_level = sample_level
         self.tokens_per_sample = tokens_per_sample
@@ -1075,7 +1078,6 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         #     if self.duplicate_ids.any():
         #         self.update_splits()
 
-        self.stats()
 
         enc_data_exit = os.path.exists(self._enc_file_name)
         if enc_data_exit and not override:
@@ -1085,15 +1087,12 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
     
         else:
             self.__fix_tasks()
-
-            # if self.sample_level == "paragraph" and "relation" in self.all_tasks:
-            #     self.__relation_paragraph_norm()
-
             self._create_data_encoders()
             self._encode_data() 
             self.__fuse_subtasks()
             self.__get_task2labels()
             self._create_label_encoders()
+            self.stats(override=True)
             self._encode_labels()
             self.__save_enc_state()
         
@@ -1138,8 +1137,6 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         if hotam.preprocessing.settings["CACHE_SAMPLES"]:
             self.__setup_cache()
         
-        self._setup_done = True
-
 
     def train_dataloader(self):
         sampler = BatchSampler(self.splits[self.split_id]["train"], batch_size=self.batch_size, drop_last=False)

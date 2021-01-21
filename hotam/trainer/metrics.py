@@ -292,4 +292,3 @@ class Metrics:
         self._complex_label2subtasks(output_dict["preds"], mask)
         scores = self._get_score_log(output_dict, mask)
         return scores
-

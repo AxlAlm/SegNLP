@@ -272,6 +272,12 @@ class PE_Dataset:
 
         ac_id2relation = {AC_ID: ac_id2idx[AC_REL_ID] - ac_id2idx[AC_ID]  for AC_ID, AC_REL_ID in ac_id2relation.items()}
 
+        # if -11 in ac_id2relation.keys():
+        #     print(ac_id2relation)
+
+        # if 10 in ac_id2relation.keys():
+        #     print(ac_id2relation)
+
         #print("AC_ID2RELATION", ac_id2relation)
 
         # fill in some spans

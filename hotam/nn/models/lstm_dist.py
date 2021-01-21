@@ -208,7 +208,7 @@ class LSTM_DIST(nn.Module):
         return minus_reps
 
 
-    def forward(self,batch):
+    def forward(self, batch):
 
         word_embs = batch["word_embs"] 
         lengths_tok  = batch["lengths_tok"]
@@ -299,6 +299,7 @@ class LSTM_DIST(nn.Module):
         relation_loss = self.loss(torch.flatten(relation_out, end_dim=-2), batch["relation"].view(-1))
         stance_loss = self.loss(torch.flatten(stance_out, end_dim=-2), batch["stance"].view(-1))
         ac_loss = self.loss(torch.flatten(ac_out, end_dim=-2), batch["ac"].view(-1))
+        
         total_loss = (self.ALPHA * relation_loss) + (self.BETA * stance_loss) + ( (1 - (self.ALPHA-self.BETA)) * ac_loss) 
 
 
@@ -317,3 +318,4 @@ class LSTM_DIST(nn.Module):
                                 "stance": stance_probs
                             },
                 }
+
