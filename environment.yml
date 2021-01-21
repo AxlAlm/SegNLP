@@ -1,0 +1,30 @@
+name: hotam
+channels:
+  - defaults
+dependencies:
+  - python=3.7.4
+  - pip=20.0.2
+  - pip:
+    - numpy==1.18.1
+    - pytorch-lightning==0.9.0
+    - gensim==3.8.1
+    - regex==2020.1.8 
+    - nltk==3.4.5
+    - torch==1.6.0
+    - pytorch-crf==0.7.2
+    - flair==0.6.1
+    - scikit-learn==0.22.1
+    - pandas==1.0.1
+    - colorama==0.4.3
+    - transformers==2.11.0
+    - pymongo==3.11.0
+    - dash==1.16.0
+    - dash-html-components==1.1.1
+    - dash-core-components==1.12.0 
+    - plotly==4.9.0
+    - allennlp==0.9.0
+    - english-words==1.0.3
+    - imgkit==1.0.2
+    - dash-daq==0.5.0
+    - hotviz==0.0.5
+    - ipython==7.19.0
