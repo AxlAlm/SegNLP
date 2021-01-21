@@ -67,8 +67,8 @@ M.run(
     project="test_project",
     dataset=pe,
     model=LSTM_CRF,
-    monitor_metric="val-stance-f1",
-    progress_bar_metrics=["val-stance-f1"],
+    monitor_metric="val-seg_ac-f1",
+    progress_bar_metrics=["val-seg_ac-f1"],
     debug_mode=False,
     )
 
@@ -88,8 +88,8 @@ M.run(
     project="test_project",
     dataset=pe,
     model=LSTM_CRF,
-    monitor_metric="val-stance-f1",
-    progress_bar_metrics=["val-stance-f1"],
+    monitor_metric="val-seg_ac-f1",
+    progress_bar_metrics=["val-seg_ac-f1"],
     exp_logger=exp_logger
     )
 ```
