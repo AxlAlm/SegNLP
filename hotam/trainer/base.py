@@ -123,7 +123,7 @@ class PTLBase(ptl.LightningModule, Metrics):
             total_loss = 0
             for task, loss in output_dict["loss"].items():
                 total_loss += loss
-            
+        
         metrics = self.score(batch, output_dict, split)
     
         if self.logger and split in ["val", "test"]:
@@ -202,7 +202,9 @@ class PTLBase(ptl.LightningModule, Metrics):
 
     
     def __BIO_decode(self, bio_labels):
+        """
         
+        """
         #bio_labels_str = "-".join(bio_labels.astype(str))
         bio_labels_str = "-".join(bio_labels)
         self.__span_id = 0

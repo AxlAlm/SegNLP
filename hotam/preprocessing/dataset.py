@@ -18,7 +18,7 @@ from copy import deepcopy
 
 #hotam
 import hotam
-from hotam.utils import ensure_numpy, load_pickle_data, pickle_data, to_tensor, one_tqdm
+from hotam.utils import ensure_numpy, load_pickle_data, pickle_data, to_tensor, one_tqdm, timer
 from hotam import get_logger
 from .encoder import DatasetEncoder
 from .preprocessor import Preprocessor
@@ -238,7 +238,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         d = self.__TMP_SAMPLE_MEMMAP[key]
         return d
         
-    
+
     def __store_samples(self, key, samples_data):
         self.__TMP_SAMPLE_MEMMAP[key] = samples_data
 
@@ -336,7 +336,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         
         return sample_labels
     
-    
+
     def __get_encs(self, sample):
 
         sample_encs = {}
@@ -441,9 +441,8 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
     
         for feature, fm in self.feature2model.items():
             
-            if hotam.preprocessing.settings["STORE_FEATURES"]:
+            if hotam.preprocessing.settings["STORE_FEATURES"] and hasattr(fm, "_store_features"):
                 self.__feature_store_setup(fm)
-
 
             if self.prediction_level == "ac":
                 if self.tokens_per_sample:
@@ -464,7 +463,6 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                                     )
 
             feature_matrix = np.zeros(shape)
-
             sample_length = sample.shape[0]
 
             
@@ -482,10 +480,18 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                     feature_dict["ac_mask"] = ac_mask
            
             else:
+                
+                # context is for embeddings such as Bert and Flair where the word embeddings are dependent on the surrounding words
+                # so for these types we need to extract the embeddings per context. E.g. if we have a document and want Flair embeddings
+                # we first divide the document up in sentences, extract the embeddigns and the put them back into the 
+                # ducument shape.
+                # Have chosen to not extract flari embeddings with context larger than "sentence".
+                use_contex = False
+                if hasattr(fm, "context"):
+                    if fm.context != self.sample_level:
+                        use_context = True
 
-                if fm.context and fm.context != self.sample_level:
-
-                    start1 = time.time()
+                if use_contex:
                     contexts = sample.groupby(f"{fm.context}_id")
 
                     sample_embs = []

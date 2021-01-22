@@ -75,6 +75,16 @@ lstm_er = {
 }
 
 
+dummy_hps = {
+        "optimizer": "adam",
+        "lr": 0.001,
+        "hidden_dim": 100,
+        "num_layers": 1,
+        "batch_size": 32,
+
+        }
+
+
 def get_default_hps(model_name):
 
     if model_name.lower() == "lstm_crf":
@@ -85,5 +95,7 @@ def get_default_hps(model_name):
         return joint_pointer_nn_hps
     elif model_name.lower() == "lstm_dist":
         return lstm_dist_hps
+    elif model_name.lower() == "dummynn":
+        return dummy_hps
     else:
         raise NotImplementedError

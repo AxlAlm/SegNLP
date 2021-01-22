@@ -44,6 +44,7 @@ class Embeddings(FeatureModel):
         self._level = "word"
         self._input = "sentence"
         self._dtype = np.float32
+        self._store_features = True
         self.activate()
 
 

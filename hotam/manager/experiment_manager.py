@@ -209,7 +209,8 @@ class ExperimentManager(Evaluator, Trainer):
                                         )
             
             except BaseException as e:
-                exp_logger.update_config(experiment_id, key="status", value="broken")
+                if exp_logger:
+                    exp_logger.update_config(experiment_id, key="status", value="broken")
                 raise e
 
             if exp_logger:

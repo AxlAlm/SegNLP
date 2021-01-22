@@ -5,9 +5,14 @@ from typing import Tuple, List, Dict, Callable
 #hotam
 from hotam.manager.ptl_trainer_setup import Trainer
 from hotam.trainer.base import PTLBase
+from hotam import get_logger
 
 #torch
 import torch.nn as nn
+
+
+logger = get_logger("EVALUATOR")
+
 
 
 class Evaluator:
@@ -71,6 +76,7 @@ class Evaluator:
                             progress_bar_metrics=progress_bar_metrics,
                             )
 
+        logger.info("Starting Evalutation (training, validation and testing (optional) ) ... ")
         trainer.fit(    
                         model=plt_model, 
                         train_dataloader=self.dataset.train_dataloader(), 

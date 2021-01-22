@@ -95,6 +95,38 @@ M.run(
 ```
 
 
+#### What is passed to models and what do you need to define?
+
+When running DataSet.setup() you are setting the dimension of the input the model. You do this by adding featuers and setting sample and prediction level.
+
+All feature models have a variable feature_dim which determine the dimension of the feature. This information is collected in the DataSet and passed to all models
+as feature2dim. This dict will contain "word_embs" and/or "doc_embs". These two values are the sum of the feature dimension for each feature that is either on Word level or document level, something which is also set in the feature models.
+
+At the forward pass in a model you will be passed a batch. this batch is a dict but a subclass of a dict. This will contain all information you will need, such as:
+
+lengths
+word_embs
+doc_embs
+ids
+any encoding (e.g. chars, or pos)
+
+
+
+#### Features
+
+All feature models has a extract() function. this allways takes pandas.DataFrame object and return a numpy vector.
+
+For OneHots make sure that you have passed what you want onehot encodings of into the encoding paramater in DataSet.setup(). For example, if we use OneHot("pos") (one hot encodings for POS tags) make sure that the dataset has pos tags encoded (DataSet.setup(encodings=["pos"])).
+
+
+#### Hyperparamaters and Training configuration
+
+All training is done with Pytorch Lightning and all paramaters to the pytorch lightning Trainer() you can pass to the trainer_args paramater in ExperimentManager.run(). Default trainer_args are located in hotam.manager.plt_trainer_setup.py
+
+Hyperparamaters can also be passed to ExperimentManager.run(). For all model that are inherent in the lib there default hyperparamaters are set in hotam.default_hyperparamaters.
+
+
+
 How to run dashboard
 
 TBA
