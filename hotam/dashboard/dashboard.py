@@ -106,12 +106,10 @@ class Dashboard:
                     Output('exp-view', 'style'),
                     Input('done-exp-dropdown','value'))(self.update_exp_data)
 
-    
 
         app.callback(Output('exp-config-hist', 'children'),
                     [Input("exp-config-dropdown-hist", "value"),
                     Input('exp-data', 'children')])(self.get_config)
-
 
 
         app.callback(Output('data-dist-dropdown-hist', 'options'),
@@ -635,11 +633,11 @@ class Dashboard:
 
     def update_stats_dropdown(self, data_cache, value):
         exp_config = data_cache.get("exp_config", {})
-        tasks = exp_config["tasks"]
-        options = [{"label":t, "value":t} for t in tasks + ["sample"]]
+        subtasks = exp_config["subtasks"]
+        options = [{"label":t, "value":t} for t in subtasks]
 
         if state_value is None:
-            value = tasks[0]
+            value = subtasks[0]
 
         return options, value
 
@@ -702,14 +700,23 @@ class Dashboard:
     def get_data_distributions(self, data_cache, value):
         
         if not data_cache:
-            return {}
+            return go.Figure()
 
         data = data_cache["exp_config"]["dataset_stats"]
         df = pd.DataFrame(data)
 
+        if value == "relation":
+            df_rel = df[df["task"] == "relation"]
+            return make_relation_dist_plot(df_rel)
 
-        return make_table(df, "Dataset Statistics")
+        elif value == "ac":
+            ac_df = df[df["task"] == "relation"]
+            return label_dist_plot(ac_df)
 
+        elif value == "stance":
+            ac_df = df[df["task"] == "stance"]
+            return label_dist_plot(ac_df)
+    
 
 
     def get_config(self, config_value, data_cache):

@@ -1054,15 +1054,17 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         encodings : list
             encodings to be made, e.g. token, pos, bert
         """
+
+        if prediction_level == "ac" and [t for t in tasks if "seg" in t]:
+            raise ValueError("If prediction level is ac you cannot have segmentation as a task")
+
         self._setup_done = True
         self.prediction_level = prediction_level
         self.sample_level = sample_level
         self.tokens_per_sample = tokens_per_sample
-
         self.main_tasks = tasks
         self.tasks = tasks + multitasks
         self.encodings = encodings
-
         self.feature2model = {fm.name:fm for fm in features}
         self.features = list(self.feature2model.keys())
         self.feature2dim = {fm.name:fm.feature_dim for fm in features}
@@ -1076,7 +1078,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
         #create a hash encoding for the exp config
         #self._exp_hash = self.__create_exp_hash()
-        self._enc_file_name = os.path.join("/tmp/", f"{'_'.join(self.tasks+self.encodings)+self.prediction_level}_enc.json")
+        self._enc_file_name = os.path.join("/tmp/", f"{'-'.join(self.tasks+self.encodings)+self.prediction_level}_enc.json")
 
         # if remove_duplicates:
         #     self.remove_duplicates()
@@ -1159,56 +1161,3 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
     def test_dataloader(self):
         sampler = BatchSampler(self.splits[self.split_id]["test"], batch_size=self.batch_size, drop_last=False)
         return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0])
-
-
-
-
-    # @one_tqdm(desc="Removing cross-paragraph-relational Arugment Components")
-    # def __relation_paragraph_norm(self):
-    #     """
-    #     Some datasets might have Argument Relations that spans over the sample level (e.g. paragraph),
-    #     these will be removed.
-
-    #     """
-        
-    #     paragraphs = self.level_dfs["token"].groupby("paragraph_id")
-
-    #     all_max_acs = set()
-    #     for p_id, df in tqdm(paragraphs, desc="removing acs with relations across paragraphs"): 
-
-    #         print("_______________________________")
-    #         print(df["document_id"].unique())
-    #         print(" ".join(df["text"]))
-
-    #         acs = df.groupby("ac_id")
-    #         max_acs = len(acs)
-
-    #         print(max_acs)
-
-    #         for i, (ac_id, ac_df) in enumerate(acs):
-    #             relation = ac_df["relation"].unique()[0]
-
-    #             print(ac_df["ac"].unique(), ac_df["stance"].unique(), ac_df["relation"].unique())
-    #             print(ac_id, " ".join(ac_df["text"]))
-
-    #             #print(relation < max_acs, relation, max_acs)
-    #             if relation < max_acs:
-    #                 continue
-                
-    #             cond = self.level_dfs["token"]["ac_id"] == ac_id
-
-    #             # self.level_dfs["token"].loc[cond, "ac"] = "None"
-    #             self.level_dfs["token"].loc[cond, "relation"] = i
-
-    #             if "stance" in self.all_tasks:
-    #                 self.level_dfs["token"].loc[cond, "stance"] = "None"
-
-    #             # #self.level_dfs["token"].loc[cond, self.all_tasks] = np.nan
-    #             # self.level_dfs["token"].loc[self.level_dfs["token"]["am_id"] == ac_id, "am_id"] = np.nan
-    #             # self.level_dfs["token"].loc[cond,"ac_id"] = np.nan
-    #             #max_acs -= 1
-        
-    #         all_max_acs.add(max_acs)
-
-    #     self.max_relation = max(all_max_acs)
-        
