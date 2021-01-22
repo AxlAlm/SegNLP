@@ -99,16 +99,11 @@ class DatasetEncoder:
                 pass
             else:
                 if enc in ["words", "chars"]:
-                    key = "text"
+                    self.data[enc] = self.data["text"].apply(lambda x: self.encode(x, enc))
                 else:
-                    key = enc
-
-                # self.level_dfs["token"][enc] = self.level_dfs["token"][key].apply(lambda x: self.encode(x, enc))
-                self.data[key] = self.data[key].apply(lambda x: self.encode(x, enc))
-
+                    self.data[enc] = self.data[enc].apply(lambda x: self.encode(x, enc))
 
     
-
     def __encode_bytepairs(self, enc):
 
 
