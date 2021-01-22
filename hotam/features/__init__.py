@@ -17,10 +17,12 @@ from .bow import BOW
 from .embeddings import Embeddings
 from .document_positions import DocPos
 from .dummy import DummyFeature
+from .one_hot import OneHots
 
 __all__ = [
             "Embeddings",
             "DocPos",
             "BOW",
-            "DummyFeature"
+            "DummyFeature",
+            "OneHots"
         ]
