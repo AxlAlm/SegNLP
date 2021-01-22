@@ -7,11 +7,11 @@ from tqdm import tqdm
 from string import punctuation
 import warnings
 
-import stanza
+# import stanza
 import spacy
 
 #nltk
-import nltk
+# import nltk
 
 #hotam
 from hotam.utils import timer
@@ -45,38 +45,38 @@ class Preprocessor:
 
 
     Preprocesses text samples and structures them in a hiearchial manner by creating
-    dataframes for each units/subunits of the given text sample, i.e. levels. 
+    dataframes for each units/subunits of the given text sample, i.e. levels.
     The level dataframes created for e.g. a Document are:
-            
+
             Document -> Paragraphs -> Sentences -> tokens
-    
+
     The Dataframes contain ids of parent levels allowing you to both treverse on
     a level but also in a tree like manner.
 
     USEAGE:
     -------
     for preprocessing a text one use add_sample()
-    for preprocessing multiple texts use add_samples() 
+    for preprocessing multiple texts use add_samples()
 
     --
     Given a text sample Preprocessor does the following:
-    
-    ( 0) if level of the dataset samples is not given it guesses a level. E.g. if the dataset
-    contain sentences the dataset level is set to "sentences") 
 
-    1) Given the level of the text sample it processes the text sample by levels 
-    
+    ( 0) if level of the dataset samples is not given it guesses a level. E.g. if the dataset
+    contain sentences the dataset level is set to "sentences")
+
+    1) Given the level of the text sample it processes the text sample by levels
+
     2) appends processed level units along with ids of parents and so on to its appropriate stack. these are dicts.
 
     3) when preprocessing is done, clears the level stacks. This means taking the processed level untis (a list of dicts)
         createing a dataframe and then appending to the existing dataframe
-    
 
-    For example: if you pass a sentence, 2 dataframes will be returned. One for sentences 
+
+    For example: if you pass a sentence, 2 dataframes will be returned. One for sentences
     and one for token where in the latter will contain the ids for the former.
 
     TODO:
-    
+
     1) Adding choice of NLP tool. Adding support for Spacy, StandfordCORE NLP
 
     2) Multiprocessing
@@ -86,8 +86,8 @@ class Preprocessor:
     """
 
     def __paragraph_tokenize(self, doc:str) -> List[str]:
-        """ Tokenizes document into paragraphs by splitting by new line ("\n"). 
-    
+        """ Tokenizes document into paragraphs by splitting by new line ("\n").
+
         Will ignore any empty strings
 
         Paragraph tokenization includes title in the first paragraph (might need to be changed)
@@ -102,7 +102,7 @@ class Preprocessor:
         List[str]
             list of paragraphs
         """
-    
+
         paras = []
         stack = ""
         chars_added = 0
@@ -123,7 +123,7 @@ class Preprocessor:
 
                     stack += para
                     continue
-                
+
             if stack:
                 para = stack  + "\n" + para
                 stack = ""
@@ -160,7 +160,7 @@ class Preprocessor:
         """        Gets the text of last added parent to the given child-level. This function is used
         to simple fetch the last parent and the top parent processed so it can be processed on a lower level.
 
-        E.g. if param level = token, function will fetch the last sentences processed and top parent 
+        E.g. if param level = token, function will fetch the last sentences processed and top parent
         (if there is one) e.g paragraph or document.
 
         Parameters
@@ -172,7 +172,7 @@ class Preprocessor:
         -------
         Tuple[str,str]
             The top parent text and the closest parent text
-            
+
         """
         parents = self.level2parents[level]
         #closest_parent_text = self.stack_level_data[parents[0]][-1]["text"]
@@ -183,12 +183,12 @@ class Preprocessor:
 
 
     def __get_char_idx(self, level:str) -> int:
-        """Gets the current character index of the text. Given a level (e.g. "sentence", "token" etc) 
+        """Gets the current character index of the text. Given a level (e.g. "sentence", "token" etc)
         the fucntion will return an integer represting the index.
 
         if the level stack (e.g. no previously processed data on this level) the current index is set to 0, as its the first
 
-        if the last row added for the given level belongs to a different text sample (fetched based on the dataset_level, 
+        if the last row added for the given level belongs to a different text sample (fetched based on the dataset_level,
         e.g. on which level the top parent text is on), we set the current character index to 0 as we are begining on a new sample
 
 
@@ -203,7 +203,7 @@ class Preprocessor:
         int
             current character index with the sample text
         """
-        
+
         parents = self.level2parents[level]
         #top_parent_row = self.stack_level_data[parents[-1]][-1]
         top_parent_row = self._level_row_cache[parents[-1]]
@@ -211,7 +211,7 @@ class Preprocessor:
         #if not self.stack_level_data[level]:
         if level not in self._level_row_cache:
             return  0
-        
+
         level_row = self._level_row_cache[level]
         #level_row = self.stack_level_data[level][-1]
 
@@ -224,7 +224,7 @@ class Preprocessor:
 
 
     def __get_structure_ids(self, level:str) -> Dict[str,int]:
-        """Provides the ids for the parents for last unit on the given level. This is needed so we know which parent is a perent for 
+        """Provides the ids for the parents for last unit on the given level. This is needed so we know which parent is a perent for
         any given child and vice versa.
 
 
@@ -243,7 +243,7 @@ class Preprocessor:
             keys identify the level (e.g. "sentence_id") and int is the id
         """
 
-    
+
         parents = self.level2parents[level]
         first_parent = parents[0]
         upper_parents = parents[1:]
@@ -273,13 +273,13 @@ class Preprocessor:
             if not first:
 
                 # if the last unit of the given unit has a different parent id,
-                # we know can set the current_id_in_parent to -1, as we know its the first 
+                # we know can set the current_id_in_parent to -1, as we know its the first
                 # unit that will be in that parent unit. I.e. no unit on the same level have the same parent id.
                 if last_level_row[parent_id] != ids[parent_id]:
                     current_id_in_parent = -1 # <-- -1 because we are adding 1 later in the the __build_X functions.
                 else:
                     current_id_in_parent = last_level_row[parent_level_id]
-            
+
             ids[parent_level_id] = current_id_in_parent
 
 
@@ -287,7 +287,7 @@ class Preprocessor:
 
 
     def __infer_text_type(self, text:str) -> str:
-        """infer the unit type of the text naively. 
+        """infer the unit type of the text naively.
 
         if the text contains \n its a document
         else if the text contains more than 2 fullstops its a paragraph
@@ -312,13 +312,13 @@ class Preprocessor:
             t = "sentence"
         else:
             t = "token"
-        
+
         warnings.warn(f"No text_type was passed. text_type infered to '{t}'")
         return t
 
 
     def __build_tokens(self, spacy_sentence):
-        """tokenizes and pos-tags a sentence to create rows/processed units for tokens. Adds the processed tokens 
+        """tokenizes and pos-tags a sentence to create rows/processed units for tokens. Adds the processed tokens
         the token level stack. (see class description)
 
         for any token in the sentence we create an global id, an id for the token in the sentence, set character span
@@ -344,8 +344,8 @@ class Preprocessor:
 
                     }
 
-        
-        for example, given the document_sentence_id,sentence_token_id and document_id  we know that the token is 
+
+        for example, given the document_sentence_id,sentence_token_id and document_id  we know that the token is
         the 3rd token in the 4th sentence in document 50.
 
 
@@ -364,16 +364,16 @@ class Preprocessor:
             if current_token_idx == 0:
                 start = 0
             else:
-                # -2 here is just to start searching from a few characters back 
+                # -2 here is just to start searching from a few characters back
                 # it allows the tokenizer idxes to be a bit off and we will still find the correct
-                # char index in the origial text. 
-                start = doc.find(token, max(0, current_token_idx-2)) 
+                # char index in the origial text.
+                start = doc.find(token, max(0, current_token_idx-2))
 
             assert tok.i - spacy_sentence.start == i
             assert tok.head.i - spacy_sentence.start >= 0
             assert tok.head.i - spacy_sentence.start < len(sentence)
 
-            
+
             end = start + token_len
             row =  {
                     "id": self.__get_global_id("token"),
@@ -401,7 +401,7 @@ class Preprocessor:
         # stanza_doc = self.nlp(sentence)
         # spacy_doc = self.nlp(sentence)
         # s_toks = [t.text for t in stanza_doc.iter_tokens()]
-        
+
         # tokens = nltk.word_tokenize(sentence)
         # token_pos = nltk.pos_tag(tokens)
         # for i, (token,pos) in enumerate(token_pos):
@@ -440,7 +440,7 @@ class Preprocessor:
 
     def __build_sentences(self):
         """
-        Sentence tokenize text (assumed to be a paragraph) and creates 
+        Sentence tokenize text (assumed to be a paragraph) and creates
         a row/processed unit for each sentence. For each sentence call __build_tokens().
 
         For each sentence we set a global id, character span and the ids of all parents.
@@ -486,18 +486,18 @@ class Preprocessor:
         #     print(sentences)
         #     print(spacy_sentences)
         #     print(lol)
-        
+
         # sentences = nltk.sent_tokenize(paragraph)
         # for i, sent in enumerate(sentences):
         #     sent_len = len(sent)
-            
+
         #     if current_sent_idx == 0:
         #         start = 0
         #     else:
         #         start = doc.find(sent, current_sent_idx) #, current_sent_idx)
 
         #     end = start + sent_len
-      
+
         #     row =  {
         #             "id": self.__get_global_id("sentence"),
         #             "paragraph_sentence_id": i,
@@ -512,7 +512,7 @@ class Preprocessor:
         #     row.update(parent_ids)
 
         #     self._level_row_cache["sentence"] = row
-            
+
         #     #self.stack_level_data["sentence"].append(row)
 
         #     current_sent_idx = end #sent_len + 1
@@ -522,7 +522,7 @@ class Preprocessor:
 
     def __build_paragraphs(self):
         """
-        Tokenize text int paragraphs (assumed to be a documents) and creates 
+        Tokenize text int paragraphs (assumed to be a documents) and creates
         a row/processed unit for each paragraph.  For each sentence call __build_sentences().
 
         For each par we set a global id, character span and the ids of all parents.
@@ -545,7 +545,7 @@ class Preprocessor:
             else:
                 start = doc.find(para, current_para_idx)
             end = start + para_len
- 
+
             para_len = len(para)
             row =  {
                     "id": self.__get_global_id("paragraph"),
@@ -569,8 +569,8 @@ class Preprocessor:
 
     def __build_level_dfs(self, string:str, text_type:str, text_id:str, label:str):
         """given a text string processes it appropriately. Meaning, if the string is a document
-        we will process the document into document, paragraphs, documents and tokens. Creating 
-        dataframes for each of the levels. 
+        we will process the document into document, paragraphs, documents and tokens. Creating
+        dataframes for each of the levels.
 
         Parameters
         ----------
@@ -586,7 +586,7 @@ class Preprocessor:
         Raises
         ------
         NotImplementedError
-            if a text type that is not of the valid ones an error will be thrown. Text type 
+            if a text type that is not of the valid ones an error will be thrown. Text type
             has to be either document, paragraph or sentence.
         """
         self._level_row_cache[text_type] = {
@@ -597,13 +597,13 @@ class Preprocessor:
         #                                     "id":text_id,
         #                                     "text":string
         #                                     })
-        
+
         if text_type == "document":
             self.__build_paragraphs()
         elif text_type == "paragraph":
-            self.__build_sentences()      
+            self.__build_sentences()
         elif text_type == "sentence":
-            self.__build_tokens()   
+            self.__build_tokens()
         else:
             raise NotImplementedError(f'"{text_type}" is not a understood type')
 
@@ -612,7 +612,7 @@ class Preprocessor:
         """
         Given the dataset level we set the hierarchy. For now the heirarchy dicts, found in the Datset Class,
         are containing the full supported hierarchiy; from document to tokens. But if our datset level is for
-        example  sentences we need to remove documents and paragraphs for the assumed hierarchy so we know that 
+        example  sentences we need to remove documents and paragraphs for the assumed hierarchy so we know that
         what to process.
         """
 
@@ -621,7 +621,7 @@ class Preprocessor:
 
             if k in self.parent2children[self.dataset_level]:
                 new_level2parents[k] = v[:v.index(self.dataset_level)+1]
-        
+
         self.level2parents = new_level2parents
 
 
@@ -637,7 +637,7 @@ class Preprocessor:
             the level of the unit to be processed, e.g. "sentence", "document", "token" etc
             as this function is called at first processing sample its assumed to be the dataset level.
 
-            
+
         """
         self.dataset_level = level
 
@@ -652,17 +652,17 @@ class Preprocessor:
         self.data = pd.DataFrame()
         #self.nlp = stanza.Pipeline(lang='en', processors='tokenize,mwt,pos,lemma,depparse') #'tokenize,mwt,pos,lemma,depparse'
 
-        
-        
+
+
         self.nlp = spacy.load("en_core_web_sm", disable=["ner"])
         #self.nlp.add_pipe("sentencizer", first=True)
         # sent_tok = self.nlp.create_pipe('sentencizer')
         # sent_tok.punct_chars.extend(["\n", "\n\n"]) #, "\n\n"])
         # print(sent_tok.punct_chars)
         # self.nlp.add_pipe(sent_tok, first=True)
- 
+
         self.__prune_hiers()
-    
+
 
     def _clear_stack(self):
         """
@@ -678,7 +678,7 @@ class Preprocessor:
         # for level, stack in self.stack_level_data.items():
         #     self.level_dfs[level] = self.level_dfs[level].append(pd.DataFrame(stack))
         # self.stack_level_data = {l:[] for l in self.stack_level_data.keys()}
-    
+
 
     def create_ams(self, method="pre-ac"):
 
@@ -690,16 +690,16 @@ class Preprocessor:
             groups = self.data.groupby("sentence_id")
 
             for sent_id, sent_df in tqdm(groups, desc="labeling tokens with Argumentative Markers"):
-                
+
                 acs = sent_df.groupby("ac_id")
                 prev_ac_end = 0
                 for ac_id, ac_df in acs:
-                    
+
                     ac_start = min(ac_df["char_start"])
                     ac_end = max(ac_df["char_end"])
 
                     # more than previous end of ac and less than ac start
-                    cond1 = sent_df["char_start"] >= prev_ac_end 
+                    cond1 = sent_df["char_start"] >= prev_ac_end
                     cond2 = sent_df["char_start"] < ac_start
                     idxs = sent_df[cond1 & cond2].index
                     # self.level_dfs["token"]["am_id"].iloc[idxs] = ac_id
@@ -719,15 +719,15 @@ class Preprocessor:
             list of dict, where each dict contains the paramaters for add_sample()
 
 
-        TODO: 
-        
-        
+        TODO:
+
+
         -- multiprocessing
-        problem: 
+        problem:
         as we are infering global ids from the order of processing
         we cannot just pass the data to multiprocessing and add to
         a shared stacked dict.
-        Instead we need to make sure the data storing is NOT shared 
+        Instead we need to make sure the data storing is NOT shared
         across the processes, then when combining the processed data
         we need to know which split/batch was first and update
         the next split ids appropriately.
@@ -755,7 +755,7 @@ class Preprocessor:
             self.add_sample(**sample, _Preprocessor__single=False)
 
         self._clear_stack()
-    
+
 
     def add_sample(self, text:str, text_type:str, sample_id:int, label=None, __single:bool=True):
         """
@@ -789,7 +789,7 @@ class Preprocessor:
 
         if not hasattr(self, "dataset_level"):
             self.__init_setup(text_type)
-        
+
         # if isinstance(text_id,int):
         #     if text_id in self.stack_level_data[text_type]:
         #         raise ValueError("that id already exists")

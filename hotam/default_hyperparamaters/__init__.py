@@ -55,8 +55,6 @@ lstm_dist_hps = {
 }
 
 lstm_er = {
-    # "token_embedding_size" = 256,  # Embed dimension for tokens
-    "label_embedding_size": 20,  # Embed dimension for entity label
     "dep_embedding_size": 50,  # Embed dimension for depedency label
     "seq_lstm_h_size": 128,  # Sequential LSTM hidden size
     "tree_lstm_h_size": 128,  # Tree LSTM hidden size
@@ -67,22 +65,22 @@ lstm_er = {
     "seq_lstm_num_layers": 1,  # Sequential LSTM number of layer
     "lstm_bidirectional": True,  # Sequential LSTM bidirection
     "tree_bidirectional": True,  # Tree LSTM bidirection
-    "dropout": 0,
+    "graph_buid_type": 1,
+    "node_type_set": 1,
+    "dropout": 0.5,
     "optimizer": "adam",
-    "lr": 0.001,
+    "lr": 0.0001,
     "max_epochs": 10,
     "batch_size": 10,
 }
 
-
 dummy_hps = {
-        "optimizer": "adam",
-        "lr": 0.001,
-        "hidden_dim": 100,
-        "num_layers": 1,
-        "batch_size": 32,
-
-        }
+    "optimizer": "adam",
+    "lr": 0.001,
+    "hidden_dim": 100,
+    "num_layers": 1,
+    "batch_size": 32,
+}
 
 
 def get_default_hps(model_name):
@@ -97,5 +95,7 @@ def get_default_hps(model_name):
         return lstm_dist_hps
     elif model_name.lower() == "dummynn":
         return dummy_hps
+    elif model_name.lower() == "lstm_er":
+        return lstm_er
     else:
         raise NotImplementedError

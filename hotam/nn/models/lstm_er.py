@@ -350,6 +350,21 @@ class TreeLSTM(nn.Module):
         return logits
 
 
+class NELabelEmbedding(nn.Module):
+    def __init__(self, encode_size):
+
+        super(NELabelEmbedding, self).__init__()
+        self.encode_size = encode_size
+
+    def forward(self, prediction_id, device):
+        # label prediction, one-hot encoding for label embedding
+        batch_size = prediction_id.size(0)
+        label_one_hot = th.zeros(batch_size, self.encode_size, device=device)
+        label_one_hot[th.arange(batch_size), prediction_id] = 1
+
+        return label_one_hot
+
+
 class NerModule(nn.Module):
     def __init__(
         self,
@@ -386,7 +401,18 @@ class NerModule(nn.Module):
             nn.Linear(ner_hidden_size, ner_output_size),
         )
 
-    def forward(self, batch_embedded, return_type=0, h=None, c=None):
+        self.entity_embedding = NELabelEmbedding(
+            encode_size=label_embedding_size)
+
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self,
+                batch_embedded,
+                lengths,
+                pad_id=0.0,
+                return_type=0,
+                h=None,
+                c=None):
         """Compute logits of and predict entities' label.
         ----------
         g :     dgl.DGLGraph
@@ -407,15 +433,25 @@ class NerModule(nn.Module):
                             The predicted labels id
         """
         device = self.model_param.device
-        # LSTM layer
+
+        # LSTM layer;
+        # dropout input,
+        # sort batch according to the sample length
+        batch_embedded = self.dropout(batch_embedded)
+        lengths_sorted, ids_sorted = th.sort(lengths, descending=True)
+        _, ids_original = th.sort(ids_sorted, descending=False)
         if h is not None and c is not None:
-            lstm_out, _ = self.seqLSTM(batch_embedded,
-                                       (h.detach(), c.detach()))
+            lstm_out, _ = self.seqLSTM(
+                (batch_embedded[ids_sorted], h.detach(), c.detach()),
+                lengths_sorted)
         else:
-            lstm_out, _ = self.seqLSTM(batch_embedded)
+            lstm_out, _ = self.seqLSTM(batch_embedded[ids_sorted],
+                                       lengths_sorted)
+        lstm_out = lstm_out[ids_original]
 
         # Entity prediction layer
         logits = []  # out_list_len=SEQ, inner_list_of_list_len=(B, NE-OUT)
+        prob_dis = []
         label_id_predicted = []  # list_of_list_len=(SEQ, 1)
 
         # construct initial previous predicted label, v_{t-1}:v_0
@@ -425,20 +461,19 @@ class NerModule(nn.Module):
                            self.label_embedding_size,
                            device=device)
         for i in range(seq_length):  # loop over words
-            # construct input, get logits for word_i
+            # construct input, get logits for word_i, softmax, entity prediction
             ner_input = th.cat(
                 (lstm_out[:, i, :].view(batch_size, -1), v_t_old), dim=1)
             logits_i = self.ner_decoder(ner_input)  # (B, NE-OUT)
-            logits.append(logits_i.detach().tolist())
-
-            # softmax, label prediction, one-hot encoding for label embedding
+            logits_i = self.dropout(logits_i)
             prob_dist = F.softmax(logits_i, 0)  # (B, NE-OUT)
             prediction_id = th.max(prob_dist, 1)[1]
+            # entity label embedding
+            label_one_hot = self.entity_embedding(prediction_id, device)
+            # save data
             label_id_predicted.append(prediction_id.detach().tolist())
-            label_one_hot = th.zeros(batch_size,
-                                     self.label_embedding_size,
-                                     device=device)
-            label_one_hot[th.arange(batch_size), prediction_id] = 1
+            logits.append(logits_i.detach().tolist())
+            prob_dis.append(prob_dist.detach().tolist())
             v_t_old = label_one_hot  # v_{t-1} <- v_t
 
         # Reshape logits dimension from (SEQ, B, NE-OUT) to (B, SEQ, NE-OUT)
@@ -447,11 +482,16 @@ class NerModule(nn.Module):
                            device=device,
                            dtype=th.float,
                            requires_grad=True).view(batch_size, seq_length, -1)
+        prob_dis = th.tensor(prob_dis,
+                             device=device,
+                             dtype=th.float,
+                             requires_grad=True).view(batch_size, seq_length,
+                                                      -1)
         label_id_predicted = th.tensor(label_id_predicted,
                                        device=device,
                                        dtype=th.float).view(batch_size, -1)
         # TODO return type: what to return according to the input return_type
-        return logits, label_id_predicted
+        return logits, prob_dis, label_id_predicted
 
 
 class LSTM_RE(nn.Module):
@@ -460,27 +500,47 @@ class LSTM_RE(nn.Module):
 
         super(LSTM_RE, self).__init__()
 
-        token_embedding_size = 265  # Embed dimension for tokens
-        label_embedding_size = 265  # Embed dimension for entity label
-        dep_embedding_size = 265  # Embed dimension for depedency label
-        seq_lstm_h_size = 265  # Sequential LSTM hidden size
-        tree_lstm_h_size = 265  # Tree LSTM hidden size
-        ner_hidden_size = 265  # Entity recognition layer hidden size
-        ner_output_size = 265  # Entity recognition layer output size
-        re_hidden_size = 265  # Relation extraction layer hidden size
-        re_output_size = 265  # Relation extraction layer output size
-        seq_lstm_num_layers = 1,  # Sequential LSTM number of layer
-        lstm_bidirectional = True,  # Sequential LSTM bidirection
-        tree_bidirectional = True,  # Tree LSTM bidirection
-        dropout = 0,
-        graph_buid_type = 1,
-        node_type_set = 1,
+        num_ne = len(task2labels["seg_ac"])  # number of named entities
+        # num_relations = len(task2labels["stance"])  # number of relations
+        num_relations = 10
+
+        # Embed dimension for tokens
+        token_embs_size = feature2dim["word_embs"]
+        # Embed dimension for entity labels
+        label_embs_size = num_ne + 1
+        # Embed dimension for dependency labels
+        dep_embs_size = feature2dim["deprel"]
+        # Sequential LSTM hidden size
+        seq_lstm_h_size = hyperparamaters["seq_lstm_h_size"]
+        # Tree LSTM hidden size
+        tree_lstm_h_size = hyperparamaters["tree_lstm_h_size"]
+        # Entity recognition layer hidden size
+        ner_hidden_size = hyperparamaters["ner_hidden_size"]
+        # Entity recognition layer output size
+        ner_output_size = num_ne
+        # Relation extraction layer hidden size
+        re_hidden_size = hyperparamaters["re_hidden_size"]
+        # Relation extraction layer output size
+        re_output_size = num_relations
+        # Sequential LSTM number of layer
+        seq_lstm_num_layers = hyperparamaters["seq_lstm_num_layers"]
+        # Sequential LSTM bidirection
+        lstm_bidirectional = hyperparamaters["lstm_bidirectional"]
+        # Tree LSTM bidirection
+        tree_bidirectional = hyperparamaters["tree_bidirectional"]
+        dropout = hyperparamaters["dropout"]
+        graph_buid_type = hyperparamaters["graph_buid_type"]
+        node_type_set = hyperparamaters["node_type_set"]
+
+        self.OPT = hyperparamaters["optimizer"]
+        self.LR = hyperparamaters["lr"]
+        self.BATCH_SIZE = hyperparamaters["batch_size"]
 
         self.model_param = nn.Parameter(th.empty(0))
         # Entity recognition module
-        self.module_ner = NerModule(token_embedding_size=token_embedding_size,
-                                    label_embedding_size=label_embedding_size,
-                                    h_size=ner_hidden_size,
+        self.module_ner = NerModule(token_embedding_size=token_embs_size,
+                                    label_embedding_size=label_embs_size,
+                                    h_size=seq_lstm_h_size,
                                     ner_hidden_size=ner_hidden_size,
                                     ner_output_size=ner_output_size,
                                     bidirectional=lstm_bidirectional,
@@ -491,14 +551,20 @@ class LSTM_RE(nn.Module):
         n = 3 if tree_bidirectional else 1
         re_input_size = tree_lstm_h_size * n
         self.module_re = nn.Sequential(
-            TreeLSTM(embedding_dim=token_embedding_size,
+            TreeLSTM(embedding_dim=token_embs_size,
                      h_size=tree_lstm_h_size,
                      dropout=dropout,
                      bidirectional=tree_bidirectional),
             nn.Linear(re_input_size, re_hidden_size), nn.Tanh(),
             nn.Linear(re_hidden_size, re_output_size))
 
-    def forward(self, batch, not_entity_id, h=None, c=None):
+        self.loss = nn.CrossEntropyLoss(reduction="sum", ignore_index=-1)
+
+    @classmethod
+    def name(self):
+        return "LSTM_ER"
+
+    def forward(self, batch):
         """Compute logits of and predict entities' label.
         ----------
 
@@ -511,12 +577,14 @@ class LSTM_RE(nn.Module):
         # batch_size = batch.size(0)  # B
         token_embs = batch["word_embs"]  # (B, SEQ, W-E)
         # token_head_id = batch["dephead"]  # (B, SEQ)
-        # number of tokens in each sentence in the sample; list of list
-        # sents_len = batch["lengths_sent_tok"]
+
+        # number of tokens in each sample - torch size (B)
+        lengths_tok = batch["lengths_tok"]
 
         # NER Module ... Sequential LSTM
         # QSTN Is it important to initialize h, c?
-        logits_ner, ne_predtd = self.module_ner(token_embs)
+        logitss_ner, prob_ner, ne_predtd = self.module_ner(
+            token_embs, lengths_tok)
 
         # Get all possible relations in both direction of the last token of the
         # detected entities.
@@ -536,18 +604,27 @@ class LSTM_RE(nn.Module):
         #         for sample_sents_len in sents_len
         #     ]
 
-        total_loss = 1
+        # calc. losses
+        # Entity Recognition Module.
+        # (B, SEQ, NE-OUT) --> (B*SEQ, NE-OUT)
+        logitss_ner = logitss_ner.view(-1, logitss_ner.size(2))
+        ground_truth_ner = batch["seg_ac"].view(-1)
+        batch.change_pad_value(-1)  # ignore -1 in the loss function
+        loss_ner = self.loss(logitss_ner, ground_truth_ner)
+
+        # Relation Extraction Module.
+        loss_total = loss_ner
         return {
             "loss": {
-                "total": total_loss,
+                "total": loss_total,
             },
             "preds": {
-                "ac": ne_predtd,
+                "seg_ac": ne_predtd,
                 # "relation": stance_preds,
                 # "stance": stance_preds
             },
             "probs": {
-                "ac": logits_ner,
+                "seg_ac": prob_ner,
                 # "relation": relation_probs,
                 # "stance": stance_probs
             },
