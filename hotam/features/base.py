@@ -47,7 +47,7 @@ def feature_memory(extract):
         df = args[1]
         id_ = int(df.index.max())
 
-        if hotam.preprocessing.settings["STORE_FEATURES"]:
+        if not hotam.preprocessing.settings["STORE_FEATURES"]:
             return extract(class_object, df)
 
         # if we havent saved all features yet

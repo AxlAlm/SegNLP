@@ -24,7 +24,7 @@ class OneHots(FeatureModel):
     def __init__(self, label:str):
 
         #self.vocab = vocab
-        self._name = "one_hot"
+        self._name = label
         self._level = "word"
 
         if label == "pos":
@@ -42,7 +42,7 @@ class OneHots(FeatureModel):
     
     #@feature_memory
     def extract(self, df):
-        #ids = df[self.label].to_numpy()
-        ids_t = torch.LongTensor(df)
+        ids = df[self.label].to_numpy()
+        ids_t = torch.LongTensor(ids)
         one_hots = torch.nn.functional.one_hot(ids_t, num_classes=self._feature_dim).numpy().astype(self._dtype)
         return one_hots
