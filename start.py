@@ -7,8 +7,8 @@ pe = PE()
 pe.setup(
     tasks=[
         "seg_ac",
-        # "relation",
-        # "stance",
+        "relation",
+        "stance",
     ],
     multitasks=[],
     sample_level="paragraph",
