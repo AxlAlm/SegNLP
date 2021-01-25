@@ -11,6 +11,6 @@ __all__ = [
             "rank_bar",
             "make_table",
             "conf_matrix",
-            "make_relation_dist_plot"
+            "make_relation_dist_plot",
             "label_dist_plot"
             ]

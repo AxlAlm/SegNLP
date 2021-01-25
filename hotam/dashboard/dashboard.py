@@ -113,13 +113,13 @@ class Dashboard:
 
 
         app.callback(Output('data-dist-dropdown-hist', 'options'),
-                    Output('data-dist-dropdown-hist', 'value')
-                    [Input('exp-data', 'children')]
-                    [state('data-dist-dropdown-hist', 'value')])(self.update_stats_dropdown)
+                    Output('data-dist-dropdown-hist', 'value'),
+                    [Input('exp-data', 'children')],
+                    [State('data-dist-dropdown-hist', 'value')])(self.update_stats_dropdown)
 
 
         app.callback(Output('data-dist-hist', 'figure'),
-                    [Input('data-cache', 'children'),
+                    [Input('exp-data', 'children'),
                     Input('data-dist-dropdown-hist', 'value')])(self.get_data_distributions)
 
         # app.callback(Output('data-table-hist', 'figure'),
@@ -212,13 +212,15 @@ class Dashboard:
                     Input('data-cache', 'children')])(self.get_config)
 
 
-        app.callback(Output('data-dist-dropdown', 'figure'),
-                    [Input('data-cache', 'children')])(self.update_stats_dropdown)
+        app.callback(Output('data-dist-dropdown', 'options'),
+                    Output('data-dist-dropdown', 'value'),
+                    [Input('data-cache', 'children')],
+                    [State('data-dist-dropdown', 'value')])(self.update_stats_dropdown)
 
 
-        # app.callback(Output('data-table', 'figure'),
-        #             [Input('data-cache', 'children')])(self.get_data_table)
-
+        app.callback(Output('data-dist', 'figure'),
+                    [Input('data-cache', 'children'),
+                    Input('data-dist-dropdown', 'value')])(self.get_data_distributions)
 
 
         app.callback(
@@ -311,41 +313,33 @@ class Dashboard:
                                                                         className="dcc_control",
                                                                         ),
                                                             html.Div( 
-                                                                    className="pretty_container six columns",
                                                                     children=[
-                                                                                dcc.Dropdown(
-                                                                                            id=f'data-dist-dropdown{name}',
-                                                                                            options=[],
-                                                                                            value=None,
-                                                                                            className="dcc_control",
-                                                                                            ),
-                                                                                dcc.Graph(
-                                                                                    id=f"data-dist{name}",
-                                                                                    figure = go.Figure([])
-                                                                                    )
-                                                                            ]
-                                                                    # children=[
-                                                                    #             html.Pre(
-                                                                    #                     id=f"exp-config{name}",
-                                                                    #                     children=""
-                                                                    #                     )
-                                                                    #             ],
-                                                                    # style={
-                                                                    #         "maxHeight": "500px", 
-                                                                    #         "maxWidth": "300px",
-                                                                    #         "overflow": "scroll",
-                                                                    #         }
+                                                                                html.Pre(
+                                                                                        id=f"exp-config{name}",
+                                                                                        children=""
+                                                                                        )
+                                                                                ],
+                                                                    style={
+                                                                            "maxHeight": "500px", 
+                                                                            "maxWidth": "300px",
+                                                                            "overflow": "scroll",
+                                                                            }
                                                                     )
                                                             ]       
                                                 ),
                                             html.Div( 
                                                     className="pretty_container six columns",
                                                     children=[
+                                                                dcc.Dropdown(
+                                                                            id=f'data-dist-dropdown{name}',
+                                                                            options=[],
+                                                                            value=None,
+                                                                            className="dcc_control",
+                                                                            ),
                                                                 dcc.Graph(
-                                                                            id=f'data-table{name}',
-                                                                            figure = go.Figure(data=[]),
+                                                                    id=f"data-dist{name}",
+                                                                    figure = go.Figure([])
                                                                     )
-                                                                
                                                             ]
                                                         )
 
@@ -630,16 +624,13 @@ class Dashboard:
         exps = sorted(self.db.get_done_exps_ids())
         return [{"label":e, "value":e} for e in exps]
 
+    
+    def update_task_dropdown(self, project):
+        tasks = sorted(self.db.get_project_tasks(project))
+        return [{"label":t, "value":t} for e in tasks]
 
-    def update_stats_dropdown(self, data_cache, value):
-        exp_config = data_cache.get("exp_config", {})
-        subtasks = exp_config["subtasks"]
-        options = [{"label":t, "value":t} for t in subtasks]
 
-        if state_value is None:
-            value = subtasks[0]
 
-        return options, value
 
 
     def update_output(self, value):
@@ -686,37 +677,59 @@ class Dashboard:
         return exp_data, {"display":"block"}
 
 
-    def get_data_table(self, data_cache):
+    # def get_data_table(self, data_cache):
         
-        if not data_cache:
-            return {}
+    #     if not data_cache:
+    #         return {}
 
-        data = data_cache["exp_config"]["dataset_stats"]
-        df = pd.DataFrame(data)
-        return make_table(df, "Dataset Statistics")
+    #     data = data_cache["exp_config"]["dataset_stats"]
+    #     df = pd.DataFrame(data)
+    #     return make_table(df, "Dataset Statistics")
 
 
+    def update_stats_dropdown(self, data_cache, value):
+        exp_config = data_cache.get("exp_config", {})
+
+        print("EXP_CONFIG", exp_config)
+        if not exp_config:
+            return [], None
+
+            
+        subtasks = exp_config["subtasks"]
+        tasks = exp_config["tasks"]
+        print("TASKS", subtasks, tasks)
+        all_tasks = sorted(set(subtasks + tasks))
+        options = [{"label":t, "value":t} for t in all_tasks]
+
+        print("OPTIONS", options)
+        if value is None:
+            value = all_tasks[0]
+
+        return options, value
 
     def get_data_distributions(self, data_cache, value):
         
+        #print("DATA CHACE", data_cache)
         if not data_cache:
             return go.Figure()
 
+        print("VALUE", value)
+        if not value:
+            return go.Figure()
+
+        print("OKOKOKOK")
         data = data_cache["exp_config"]["dataset_stats"]
         df = pd.DataFrame(data)
 
+        print(df)
+
+        df = df[df["task"] == value]
+
+        print(df)
         if value == "relation":
-            df_rel = df[df["task"] == "relation"]
-            return make_relation_dist_plot(df_rel)
-
-        elif value == "ac":
-            ac_df = df[df["task"] == "relation"]
-            return label_dist_plot(ac_df)
-
-        elif value == "stance":
-            ac_df = df[df["task"] == "stance"]
-            return label_dist_plot(ac_df)
-    
+            return make_relation_dist_plot(df)
+        else:
+            return label_dist_plot(df)
 
 
     def get_config(self, config_value, data_cache):

@@ -47,9 +47,10 @@ class DatasetEncoder:
                     acs = df.groupby("ac_id")
                     relations = [ac_df["relation"].unique()[0] for ac_id, ac_df in acs]
                     enc_relations = self.encode_list(relations, task)
-
+  
                     for i, (ac_id, ac_df) in enumerate(acs):
                         self.data.loc[ac_df.index,"_relation"] = enc_relations[i]
+
                 self.data["relation"] = self.data.pop("_relation")
 
             else:

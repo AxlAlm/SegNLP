@@ -104,9 +104,10 @@ class PTLBase(ptl.LightningModule, Metrics):
         device = f"cuda:{next(self.parameters()).get_device()}" if self.on_gpu else "cpu"
 
         self.batch = batch
+        self.batch.current_epoch = self.current_epoch
 
         #pass on the whole batch to the model
-        output_dict = self.model.forward(batch)
+        output_dict = self.model.forward(self.batch)
 
         for task, preds in output_dict["preds"].items():
             assert torch.is_tensor(preds), f"{task} preds need to be a tensor"
@@ -124,7 +125,7 @@ class PTLBase(ptl.LightningModule, Metrics):
             for task, loss in output_dict["loss"].items():
                 total_loss += loss
         
-        metrics = self.score(batch, output_dict, split)
+        metrics = self.score(self.batch, output_dict, split)
     
         if self.logger and split in ["val", "test"]:
             self.logger.log_outputs(self.__reformat_outputs(output_dict))

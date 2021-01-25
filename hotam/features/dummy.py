@@ -30,6 +30,7 @@ class DummyFeature(FeatureModel):
     
     #@feature_memory
     def extract(self, df):
+        
         if self._level == "word":
             return np.random.random((df.shape[0],100))
         else:

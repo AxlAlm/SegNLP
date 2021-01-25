@@ -50,9 +50,11 @@ class Batch(dict):
         self.tasks = tasks
         self.prediction_level = prediction_level
         self._len = length
+        self.current_epoch = None
 
     def __len__(self):
         return self._len
+
 
     def to(self, device):
         self.device = device
@@ -124,6 +126,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
         if hasattr(self, "max_sent"):
             max_sent = max(s["lengths_sent"] for s in samples_data)
+            print("MAX SENT", max_sent)
             max_sent_tok = max([max(s["lengths_sent_tok"]) for s in samples_data])
         
         #unpack and turn to tensors
@@ -148,9 +151,13 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                         h = h[:, :max_seq]
 
                     elif len(h.shape) > 2:
-                        h = h[:, :max_seq, :max_seq_tok]
+                        if "embs" in k:
+                            h = h[:, :max_seq, :]
+                        else:                        
+                            h = h[:, :max_seq, :max_seq_tok]
 
                 elif cut == "tok":
+
                     #print(k, h , h.shape, max_tok)
                     h = h[:, :max_tok]
                 
@@ -159,7 +166,9 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                 elif cut == "sent":
 
                     if len(h.shape) == 2:
+                        print(k, h.shape)
                         h = h[:, :max_sent]
+                        print(h.shape)
 
                     elif len(h.shape) > 2:
                         h = h[:, :max_sent, :max_sent_tok]
@@ -705,10 +714,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         
         rows = []
 
-        if self.prediction_level == "ac":
-            df = self.data.groupby("ac_id").first()
-        else:
-            df = self.data
+        ac_df = self.data.groupby("ac_id").first()
 
         # we go through each of the different splits (e.g. each cross validation set. For non-cross validation there will only be one)
         for split_id, split_set in self.splits.items():
@@ -726,11 +732,16 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
                             })
 
-                for task in self.tasks:
+                for task in self.all_tasks:
 
-                    label_counts = dict(df[df[f"{self.sample_level}_id"].isin(ids)][task].value_counts())
+                    if "seg" in task:
+                        label_counts = dict(self.data[self.data[f"{self.sample_level}_id"].isin(ids)][task].value_counts())
+                    else:
+                        label_counts = dict(ac_df[ac_df[f"{self.sample_level}_id"].isin(ids)][task].value_counts())
 
-                    if self.prediction_level == "ac" and "None" in label_counts:
+
+                    #if self.prediction_level == "ac" and "None" in label_counts:
+                    if "None" in label_counts:
                         label_counts.pop("None")
 
                     label_counts.update({l:0 for l in self.task2labels[task] if l not in label_counts.keys()})
@@ -864,7 +875,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                 self.task2labels[task] = [int(i) for i in self.task2labels[task]]
 
         # if we only predict on acs we dont need "None" label
-        if self.prediction_level == "ac":
+        if self.prediction_level == "ac" and "ac" in self.all_tasks:
             self.task2labels["ac"].remove("None")
         
         
@@ -1117,10 +1128,9 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             self.max_seq = self.__get_max_nr_seq("ac")
             self.max_seq_tok = self.__get_nr_tokens(self.prediction_level)
         
-        if self.prediction_level != "sentence" and ("deprel" in self.encodings or  "dephead" in self.encodings):
+        if self.sample_level != "sentence" and ("deprel" in self.encodings or  "dephead" in self.encodings):
             self.max_sent = self.__get_max_nr_seq("sentence")
             self.max_sent_tok = self.__get_nr_tokens("sentence")
-            print("MAX SENTENCES", self.max_sent,   "MAX TOK PER SENT", self.max_sent_tok)
             self.__cutmap["dephead"] = "sent"
             self.__cutmap["deprel"] = "sent"
         
