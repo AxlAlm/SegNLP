@@ -21,12 +21,17 @@ class DummyNN(nn.Module):
         self.LR = hyperparamaters["lr"]
         self.HIDDEN_DIM = hyperparamaters["hidden_dim"]
         self.NUM_LAYERS = hyperparamaters["num_layers"]
-        self.WORD_EMB_DIM = feature2dim["word_embs"]
 
         self.task2labels = task2labels
         self.output_layers = nn.ModuleDict()
         for task, labels in task2labels.items():
-            self.output_layers[task] = nn.Linear(self.WORD_EMB_DIM, len(labels))
+
+            if task == "relation":
+                output_dim = 100
+            else:
+                output_dim = len(labels)
+
+            self.output_layers[task] = nn.Linear(feature2dim["dummy"], output_dim)
 
         self.loss = nn.CrossEntropyLoss(reduction="sum", ignore_index=-1)
 
@@ -38,28 +43,39 @@ class DummyNN(nn.Module):
 
 
     def forward(self, batch):
-        word_embs = batch["word_embs"]        
+        
+
+        level = None
+        if "word_embs" in batch:
+            embs = batch["word_embs"] 
+            level = "word"      
+        else:
+            embs = batch["doc_embs"]        
+            level = "doc"
 
         tasks_preds = {}
         tasks_loss = {}
         tasks_probs = {}
 
         for task, output_layer in self.output_layers.items():
-
-            dense_out = output_layer(word_embs)
-
-            #magic
-            preds = batch[task]
-
-            loss = self.loss(torch.flatten(dense_out, end_dim=-2), preds.view(-1))
+        
+            logits = output_layer(embs)
 
             #magic
-            tasks_preds[task] = preds
+            targets = batch[task]
+
+            #if level == "word":
+            targets = targets.view(-1)
+            logits = torch.flatten(logits, end_dim=-2)
+            loss = self.loss(logits, targets)
+
+            #magic
+            tasks_preds[task] = batch[task]
             tasks_loss[task] = loss
-            tasks_probs[task] =  probs
+            #tasks_probs[task] =  probs
 
         return {    
                     "loss":tasks_loss, 
                     "preds":tasks_preds,
-                    "probs": tasks_probs
+                    "probs": {}
                 }

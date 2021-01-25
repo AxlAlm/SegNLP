@@ -50,9 +50,11 @@ class Batch(dict):
         self.tasks = tasks
         self.prediction_level = prediction_level
         self._len = length
+        self.current_epoch = None
 
     def __len__(self):
         return self._len
+
 
     def to(self, device):
         self.device = device
@@ -148,9 +150,13 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                         h = h[:, :max_seq]
 
                     elif len(h.shape) > 2:
-                        h = h[:, :max_seq, :max_seq_tok]
+                        if "embs" in k:
+                            h = h[:, :max_seq, :]
+                        else:                        
+                            h = h[:, :max_seq, :max_seq_tok]
 
                 elif cut == "tok":
+
                     #print(k, h , h.shape, max_tok)
                     h = h[:, :max_tok]
                 
@@ -388,7 +394,8 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                             ac_i += 1
 
 
-                sample_encs["sent2root"] = sent2root
+                if enc == "deprel":
+                    sample_encs["sent2root"] = sent2root
 
                 if self.prediction_level == "ac":
                     sample_encs["ac2sentence"] = ac2sentence
@@ -639,7 +646,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         if fm.level == "word":
             #nr_sentence = len(self.level_dfs["token"]["sentence_id"].unique())
             nr_sentence = len(self.data["sentence_id"].unique())
-            shape = (nr_sentence, self.__get_nr_tokens("sentence"), fm.feature_dim)
+            shape = (nr_sentence, self._get_nr_tokens("sentence"), fm.feature_dim)
             feature_name = fm.name
         
         elif self.prediction_level == "ac":
@@ -705,10 +712,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         
         rows = []
 
-        if self.prediction_level == "ac":
-            df = self.data.groupby("ac_id").first()
-        else:
-            df = self.data
+        ac_df = self.data.groupby("ac_id").first()
 
         # we go through each of the different splits (e.g. each cross validation set. For non-cross validation there will only be one)
         for split_id, split_set in self.splits.items():
@@ -726,11 +730,16 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
                             })
 
-                for task in self.tasks:
+                for task in self.all_tasks:
 
-                    label_counts = dict(df[df[f"{self.sample_level}_id"].isin(ids)][task].value_counts())
+                    if "seg" in task:
+                        label_counts = dict(self.data[self.data[f"{self.sample_level}_id"].isin(ids)][task].value_counts())
+                    else:
+                        label_counts = dict(ac_df[ac_df[f"{self.sample_level}_id"].isin(ids)][task].value_counts())
 
-                    if self.prediction_level == "ac" and "None" in label_counts:
+
+                    #if self.prediction_level == "ac" and "None" in label_counts:
+                    if "None" in label_counts:
                         label_counts.pop("None")
 
                     label_counts.update({l:0 for l in self.task2labels[task] if l not in label_counts.keys()})
@@ -864,7 +873,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                 self.task2labels[task] = [int(i) for i in self.task2labels[task]]
 
         # if we only predict on acs we dont need "None" label
-        if self.prediction_level == "ac":
+        if self.prediction_level == "ac" and "ac" in self.all_tasks:
             self.task2labels["ac"].remove("None")
         
         
@@ -883,7 +892,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             self.data[task] = subtask_labels
 
 
-    def __get_nr_tokens(self, level):
+    def _get_nr_tokens(self, level):
         """
         Gets the max number of words for each of the levels in the heirarchy. E.g. max words in documents, 
         sentences, paragraphs.
@@ -893,7 +902,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         return max(len(g) for i,g in self.data.groupby(level+"_id"))
   
 
-    def __get_max_nr_seq(self, level):
+    def _get_max_nr_seq(self, level):
         # samples = self.level_dfs["token"].groupby(self.sample_level+"_id")
         samples = self.data.groupby(self.sample_level+"_id")
         return max(len(sample.groupby(level+"_id")) for i, sample in samples)
@@ -1054,15 +1063,17 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         encodings : list
             encodings to be made, e.g. token, pos, bert
         """
+
+        if prediction_level == "ac" and [t for t in tasks if "seg" in t]:
+            raise ValueError("If prediction level is ac you cannot have segmentation as a task")
+
         self._setup_done = True
         self.prediction_level = prediction_level
         self.sample_level = sample_level
         self.tokens_per_sample = tokens_per_sample
-
         self.main_tasks = tasks
         self.tasks = tasks + multitasks
         self.encodings = encodings
-
         self.feature2model = {fm.name:fm for fm in features}
         self.features = list(self.feature2model.keys())
         self.feature2dim = {fm.name:fm.feature_dim for fm in features}
@@ -1076,7 +1087,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
         #create a hash encoding for the exp config
         #self._exp_hash = self.__create_exp_hash()
-        self._enc_file_name = os.path.join("/tmp/", f"{'_'.join(self.tasks+self.encodings)+self.prediction_level}_enc.json")
+        self._enc_file_name = os.path.join("/tmp/", f"{'-'.join(self.tasks+self.encodings)+self.prediction_level}_enc.json")
 
         # if remove_duplicates:
         #     self.remove_duplicates()
@@ -1086,6 +1097,20 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         #     if self.duplicate_ids.any():
         #         self.update_splits()
 
+
+        if self.prediction_level == "token" or self.tokens_per_sample:
+            self.max_tok = self._get_nr_tokens(self.sample_level)
+
+        if self.prediction_level == "ac":
+            self.max_seq = self._get_max_nr_seq("ac")
+            self.max_seq_tok = self._get_nr_tokens(self.prediction_level)
+        
+        if self.sample_level != "sentence" and ("deprel" in self.encodings or  "dephead" in self.encodings):
+            self.max_sent = self._get_max_nr_seq("sentence")
+            self.max_sent_tok = self._get_nr_tokens("sentence")
+            self.__cutmap["dephead"] = "sent"
+            self.__cutmap["deprel"] = "sent"
+        
 
         enc_data_exit = os.path.exists(self._enc_file_name)
         if enc_data_exit and not override:
@@ -1107,19 +1132,6 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         
         # self.level_dfs["token"].index = self.level_dfs["token"][f"{sample_level}_id"].to_numpy() #.pop(f"{sample_level}_id")
         self.data.index = self.data[f"{sample_level}_id"].to_numpy() #.pop(f"{sample_level}_id")
-
-        if self.prediction_level == "token" or self.tokens_per_sample:
-            self.max_tok = self.__get_nr_tokens(self.sample_level)
-
-        if self.prediction_level == "ac":
-            self.max_seq = self.__get_max_nr_seq("ac")
-            self.max_seq_tok = self.__get_nr_tokens(self.prediction_level)
-        
-        if self.sample_level != "sentence" and ("deprel" in self.encodings or  "dephead" in self.encodings):
-            self.max_sent = self.__get_max_nr_seq("sentence")
-            self.max_sent_tok = self.__get_nr_tokens("sentence")
-            self.__cutmap["dephead"] = "sent"
-            self.__cutmap["deprel"] = "sent"
         
         # self.nr_samples = len(self.level_dfs[self.sample_level].shape[0]
         self.nr_samples = len(self.data[self.sample_level+"_id"].unique())
@@ -1158,56 +1170,3 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
     def test_dataloader(self):
         sampler = BatchSampler(self.splits[self.split_id]["test"], batch_size=self.batch_size, drop_last=False)
         return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0])
-
-
-
-
-    # @one_tqdm(desc="Removing cross-paragraph-relational Arugment Components")
-    # def __relation_paragraph_norm(self):
-    #     """
-    #     Some datasets might have Argument Relations that spans over the sample level (e.g. paragraph),
-    #     these will be removed.
-
-    #     """
-        
-    #     paragraphs = self.level_dfs["token"].groupby("paragraph_id")
-
-    #     all_max_acs = set()
-    #     for p_id, df in tqdm(paragraphs, desc="removing acs with relations across paragraphs"): 
-
-    #         print("_______________________________")
-    #         print(df["document_id"].unique())
-    #         print(" ".join(df["text"]))
-
-    #         acs = df.groupby("ac_id")
-    #         max_acs = len(acs)
-
-    #         print(max_acs)
-
-    #         for i, (ac_id, ac_df) in enumerate(acs):
-    #             relation = ac_df["relation"].unique()[0]
-
-    #             print(ac_df["ac"].unique(), ac_df["stance"].unique(), ac_df["relation"].unique())
-    #             print(ac_id, " ".join(ac_df["text"]))
-
-    #             #print(relation < max_acs, relation, max_acs)
-    #             if relation < max_acs:
-    #                 continue
-                
-    #             cond = self.level_dfs["token"]["ac_id"] == ac_id
-
-    #             # self.level_dfs["token"].loc[cond, "ac"] = "None"
-    #             self.level_dfs["token"].loc[cond, "relation"] = i
-
-    #             if "stance" in self.all_tasks:
-    #                 self.level_dfs["token"].loc[cond, "stance"] = "None"
-
-    #             # #self.level_dfs["token"].loc[cond, self.all_tasks] = np.nan
-    #             # self.level_dfs["token"].loc[self.level_dfs["token"]["am_id"] == ac_id, "am_id"] = np.nan
-    #             # self.level_dfs["token"].loc[cond,"ac_id"] = np.nan
-    #             #max_acs -= 1
-        
-    #         all_max_acs.add(max_acs)
-
-    #     self.max_relation = max(all_max_acs)
-        

@@ -113,7 +113,8 @@ class LSTM_DIST(nn.Module):
                                     )
         
         #self.max_rel = len(task2labels["relation"])
-        self.relation_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), len(task2labels["relation"]))
+        #self.relation_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), MAX_NR_AC)
+        self.are_related = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), 1)
         self.stance_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), len(task2labels["stance"]))
         self.ac_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), len(task2labels["ac"]))
     
@@ -275,10 +276,6 @@ class LSTM_DIST(nn.Module):
             relation_probs[i] = out_softmax
             relation_out_new[i] = out
 
-        # print(relation_probs)
-        # print(relation_out_new)
-        # print(relation_probs.shape,relation_out_new.shape )
-
         relation_out = relation_out_new
 
         stance_probs = F.softmax(stance_out, dim=-1)
@@ -290,11 +287,6 @@ class LSTM_DIST(nn.Module):
 
         # we want to ignore -1  in the loss function so we set pad_values to -1, default is 0
         batch.change_pad_value(-1)
-
-        #flat_shape = np.prod(relation_out.shape[:2])
-        #print(batch["ids"])
-        #print("TARGET", batch["relation"].view(-1))
-        #print("INPUT", torch.flatten(relation_out, end_dim=-2))
         
         relation_loss = self.loss(torch.flatten(relation_out, end_dim=-2), batch["relation"].view(-1))
         stance_loss = self.loss(torch.flatten(stance_out, end_dim=-2), batch["stance"].view(-1))

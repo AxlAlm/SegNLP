@@ -9,10 +9,6 @@ class Encoder:
         raise NotImplementedError()
     
     @property
-    def keys(self):
-        raise NotImplementedError()
-
-    @property
     def name(self):
         return self._name
 
