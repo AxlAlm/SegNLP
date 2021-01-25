@@ -1115,10 +1115,9 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             self.max_seq = self.__get_max_nr_seq("ac")
             self.max_seq_tok = self.__get_nr_tokens(self.prediction_level)
         
-        if self.prediction_level != "sentence" and ("deprel" in self.encodings or  "dephead" in self.encodings):
+        if self.sample_level != "sentence" and ("deprel" in self.encodings or  "dephead" in self.encodings):
             self.max_sent = self.__get_max_nr_seq("sentence")
             self.max_sent_tok = self.__get_nr_tokens("sentence")
-            print("MAX SENTENCES", self.max_sent,   "MAX TOK PER SENT", self.max_sent_tok)
             self.__cutmap["dephead"] = "sent"
             self.__cutmap["deprel"] = "sent"
         
