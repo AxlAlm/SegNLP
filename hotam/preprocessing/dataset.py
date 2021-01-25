@@ -1132,7 +1132,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         
         # self.level_dfs["token"].index = self.level_dfs["token"][f"{sample_level}_id"].to_numpy() #.pop(f"{sample_level}_id")
         self.data.index = self.data[f"{sample_level}_id"].to_numpy() #.pop(f"{sample_level}_id")
-
+        
         # self.nr_samples = len(self.level_dfs[self.sample_level].shape[0]
         self.nr_samples = len(self.data[self.sample_level+"_id"].unique())
 
