@@ -871,7 +871,8 @@ class Dashboard:
 
 
     def update_highlight_text(self, sample_id, data_cache):
-
+        return "", {'display': 'none'}
+        
         if not data_cache or sample_id is None:
             return "", {'display': 'none'}
 
@@ -952,6 +953,7 @@ class Dashboard:
 
 
     def update_tree_graph(self, sample_id, data_cache, fig_state):
+        return fig_state, {'display': 'none'}
 
         def extract_data(df):
             spans = df.groupby("span_ids")
@@ -1193,14 +1195,11 @@ class Dashboard:
 
 
     def update_data_cache(self, n, experiment_id,  cache_state):
-        print("IS CALLLED")
 
         if experiment_id is None:
-            print("IS NOT UPDATEING ")
             return dash.no_update
         
         if cache_state != {}:
-            print("UPDATEING AS NORMAL")
             prev_epoch = cache_state.get("epoch", -1)
             current_exp = cache_state.get("experiment_id")
 
@@ -1215,7 +1214,6 @@ class Dashboard:
             return data_cache, style
 
         else:
-            print("FIRST UPDATE")
 
             filter_by = get_filter(experiment=experiment_id)
             last_epoch = self.db.get_last_epoch(filter_by)
