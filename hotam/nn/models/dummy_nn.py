@@ -25,8 +25,13 @@ class DummyNN(nn.Module):
         self.task2labels = task2labels
         self.output_layers = nn.ModuleDict()
         for task, labels in task2labels.items():
-            print(len(labels), labels)
-            self.output_layers[task] = nn.Linear(feature2dim["dummy"], len(labels))
+
+            if task == "relation":
+                output_dim = 100
+            else:
+                output_dim = len(labels)
+
+            self.output_layers[task] = nn.Linear(feature2dim["dummy"], output_dim)
 
         self.loss = nn.CrossEntropyLoss(reduction="sum", ignore_index=-1)
 
@@ -39,8 +44,7 @@ class DummyNN(nn.Module):
 
     def forward(self, batch):
         
-        print("HELLO", batch["deprel"].shape, batch["dephead"].shape)
-        print(batch["deprel"])
+
         level = None
         if "word_embs" in batch:
             embs = batch["word_embs"] 
@@ -55,25 +59,18 @@ class DummyNN(nn.Module):
 
         for task, output_layer in self.output_layers.items():
         
-            dense_out = output_layer(embs)
+            logits = output_layer(embs)
 
             #magic
             targets = batch[task]
-            print("MAX", torch.max(targets))
 
-            if level == "word":
-                targets = targets.view(-1)
-                preds = torch.flatten(dense_out, end_dim=-2)
-
-            if level == "doc":
-                targets = targets.view(-1)
-                preds = torch.flatten(dense_out, end_dim=-2)
-            
-            print(preds.shape, targets.shape)
-            loss = self.loss(preds, targets)
+            #if level == "word":
+            targets = targets.view(-1)
+            logits = torch.flatten(logits, end_dim=-2)
+            loss = self.loss(logits, targets)
 
             #magic
-            tasks_preds[task] = targets
+            tasks_preds[task] = batch[task]
             tasks_loss[task] = loss
             #tasks_probs[task] =  probs
 

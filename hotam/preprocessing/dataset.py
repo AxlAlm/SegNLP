@@ -126,7 +126,6 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
         if hasattr(self, "max_sent"):
             max_sent = max(s["lengths_sent"] for s in samples_data)
-            print("MAX SENT", max_sent)
             max_sent_tok = max([max(s["lengths_sent_tok"]) for s in samples_data])
         
         #unpack and turn to tensors
@@ -166,9 +165,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                 elif cut == "sent":
 
                     if len(h.shape) == 2:
-                        print(k, h.shape)
                         h = h[:, :max_sent]
-                        print(h.shape)
 
                     elif len(h.shape) > 2:
                         h = h[:, :max_sent, :max_sent_tok]
@@ -397,7 +394,8 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                             ac_i += 1
 
 
-                sample_encs["sent2root"] = sent2root
+                if enc == "deprel":
+                    sample_encs["sent2root"] = sent2root
 
                 if self.prediction_level == "ac":
                     sample_encs["ac2sentence"] = ac2sentence
@@ -648,7 +646,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         if fm.level == "word":
             #nr_sentence = len(self.level_dfs["token"]["sentence_id"].unique())
             nr_sentence = len(self.data["sentence_id"].unique())
-            shape = (nr_sentence, self.__get_nr_tokens("sentence"), fm.feature_dim)
+            shape = (nr_sentence, self._get_nr_tokens("sentence"), fm.feature_dim)
             feature_name = fm.name
         
         elif self.prediction_level == "ac":
@@ -894,7 +892,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             self.data[task] = subtask_labels
 
 
-    def __get_nr_tokens(self, level):
+    def _get_nr_tokens(self, level):
         """
         Gets the max number of words for each of the levels in the heirarchy. E.g. max words in documents, 
         sentences, paragraphs.
@@ -904,7 +902,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         return max(len(g) for i,g in self.data.groupby(level+"_id"))
   
 
-    def __get_max_nr_seq(self, level):
+    def _get_max_nr_seq(self, level):
         # samples = self.level_dfs["token"].groupby(self.sample_level+"_id")
         samples = self.data.groupby(self.sample_level+"_id")
         return max(len(sample.groupby(level+"_id")) for i, sample in samples)
@@ -1100,6 +1098,20 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         #         self.update_splits()
 
 
+        if self.prediction_level == "token" or self.tokens_per_sample:
+            self.max_tok = self._get_nr_tokens(self.sample_level)
+
+        if self.prediction_level == "ac":
+            self.max_seq = self._get_max_nr_seq("ac")
+            self.max_seq_tok = self._get_nr_tokens(self.prediction_level)
+        
+        if self.sample_level != "sentence" and ("deprel" in self.encodings or  "dephead" in self.encodings):
+            self.max_sent = self._get_max_nr_seq("sentence")
+            self.max_sent_tok = self._get_nr_tokens("sentence")
+            self.__cutmap["dephead"] = "sent"
+            self.__cutmap["deprel"] = "sent"
+        
+
         enc_data_exit = os.path.exists(self._enc_file_name)
         if enc_data_exit and not override:
             self.__load_enc_state()
@@ -1121,19 +1133,6 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         # self.level_dfs["token"].index = self.level_dfs["token"][f"{sample_level}_id"].to_numpy() #.pop(f"{sample_level}_id")
         self.data.index = self.data[f"{sample_level}_id"].to_numpy() #.pop(f"{sample_level}_id")
 
-        if self.prediction_level == "token" or self.tokens_per_sample:
-            self.max_tok = self.__get_nr_tokens(self.sample_level)
-
-        if self.prediction_level == "ac":
-            self.max_seq = self.__get_max_nr_seq("ac")
-            self.max_seq_tok = self.__get_nr_tokens(self.prediction_level)
-        
-        if self.sample_level != "sentence" and ("deprel" in self.encodings or  "dephead" in self.encodings):
-            self.max_sent = self.__get_max_nr_seq("sentence")
-            self.max_sent_tok = self.__get_nr_tokens("sentence")
-            self.__cutmap["dephead"] = "sent"
-            self.__cutmap["deprel"] = "sent"
-        
         # self.nr_samples = len(self.level_dfs[self.sample_level].shape[0]
         self.nr_samples = len(self.data[self.sample_level+"_id"].unique())
 

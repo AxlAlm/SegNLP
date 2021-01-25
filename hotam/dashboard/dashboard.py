@@ -53,12 +53,6 @@ class Dashboard:
                                             children=[
                                                         dcc.Tab(label='Historical View', value='tab-1'),
                                                         dcc.Tab(label='Live View', value='tab-2'),
-                                                        dcc.Interval(
-                                                                    id='interval-component',
-                                                                    interval=1*1000, # in milliseconds
-                                                                    n_intervals=0,
-                                                                    max_intervals=-1,
-                                                                )  
                                                         ]
                                             ),
                                     html.Div(id='tab-content')
@@ -70,7 +64,7 @@ class Dashboard:
 
 
         app.callback(Output('project-dropdown', 'options'),
-                    Input('interval-component', 'n_intervals'))(self.update_project_dropdown)
+                    Input('interval-component-hist', 'n_intervals'))(self.update_project_dropdown)
         
 
         app.callback(Output('rank-filters', 'style'),
@@ -93,7 +87,7 @@ class Dashboard:
 
 
         app.callback(Output('done-exp-dropdown', 'options'),
-                    Input('interval-component', 'n_intervals'))(self.update_done_exp_dropdown)
+                    Input('interval-component-hist', 'n_intervals'))(self.update_done_exp_dropdown)
 
 
         app.callback(Output('done-exp-dropdown', 'value'),
@@ -196,13 +190,13 @@ class Dashboard:
 
         
         app.callback(Output('exp-dropdown', 'options'),
-                    Input('interval-component', 'n_intervals'))(self.update_live_exp_dropdown)
+                    Input('interval-component-live', 'n_intervals'))(self.update_live_exp_dropdown)
 
 
         app.callback(
                     Output('data-cache', 'children'),
                     Output('live-view', 'style'),
-                    [Input('interval-component', 'n_intervals'),
+                    [Input('interval-component-live', 'n_intervals'),
                     Input('exp-dropdown','value')],
                     [State('data-cache', 'children')])(self.update_data_cache)
 
@@ -484,7 +478,13 @@ class Dashboard:
                                             style={'display': 'none'}
                                             #style={"display": "flex", "flex-direction": "column"},
                                             ),
-                                    html.Div(id='data-cache', children=dict(), style={'display': 'none'})
+                                    html.Div(id='data-cache', children=dict(), style={'display': 'none'}),
+                                    dcc.Interval(
+                                                    id='interval-component-live',
+                                                    interval=1*1000, # in milliseconds
+                                                    n_intervals=0,
+                                                    max_intervals=-1,
+                                                                                )  
                                     ]
                         )
 
@@ -587,8 +587,12 @@ class Dashboard:
                                             #style={"display": "flex", "flex-direction": "column"},
                                             ),
                                     html.Div(id='exp-data', children=dict(), style={'display': 'none'}),
-                                        
-                                                
+                                    dcc.Interval(
+                                                    id='interval-component-hist',
+                                                    interval=10*1000, # in milliseconds
+                                                    n_intervals=0,
+                                                    max_intervals=-1,
+                                                                                )  
                                     ]
                         )
 
@@ -627,10 +631,7 @@ class Dashboard:
     
     def update_task_dropdown(self, project):
         tasks = sorted(self.db.get_project_tasks(project))
-        return [{"label":t, "value":t} for e in tasks]
-
-
-
+        return [{"label":t, "value":t} for t in tasks]
 
 
     def update_output(self, value):
@@ -690,22 +691,19 @@ class Dashboard:
     def update_stats_dropdown(self, data_cache, value):
         exp_config = data_cache.get("exp_config", {})
 
-        print("EXP_CONFIG", exp_config)
         if not exp_config:
             return [], None
-
             
         subtasks = exp_config["subtasks"]
         tasks = exp_config["tasks"]
-        print("TASKS", subtasks, tasks)
         all_tasks = sorted(set(subtasks + tasks))
         options = [{"label":t, "value":t} for t in all_tasks]
 
-        print("OPTIONS", options)
         if value is None:
             value = all_tasks[0]
 
         return options, value
+
 
     def get_data_distributions(self, data_cache, value):
         
@@ -713,19 +711,15 @@ class Dashboard:
         if not data_cache:
             return go.Figure()
 
-        print("VALUE", value)
         if not value:
             return go.Figure()
 
-        print("OKOKOKOK")
         data = data_cache["exp_config"]["dataset_stats"]
         df = pd.DataFrame(data)
 
-        print(df)
 
         df = df[df["task"] == value]
 
-        print(df)
         if value == "relation":
             return make_relation_dist_plot(df)
         else:
@@ -827,6 +821,10 @@ class Dashboard:
         experiment_id = data_cache["experiment_id"]
 
         tasks = data_cache["exp_config"]["tasks"]
+
+        if len(tasks) == 1 and tasks[0] == "relation":
+            return fig_state, {"display":"none"}
+
         metrics = data_cache["exp_config"]["metrics"].copy()
         metrics.remove("confusion_matrix")
         task2labels = data_cache["exp_config"]["dataset_config"]["task_labels"]
@@ -1051,8 +1049,11 @@ class Dashboard:
             return [], None
 
         options = [{"label":t, "value":t} for t in exp_config["tasks"] if t not in "relation"]
-        value = options[0]["value"]
 
+        if not options:
+            value = None
+        else:
+            value = options[0]["value"]
 
         return options, value
 
@@ -1112,8 +1113,7 @@ class Dashboard:
         #NOTE! we are assuming that all experiments are done with the same metrics
         # and we are displaying only
         display_splits = ["val", "test"] 
-        display_metrics = list(experiment2config.items())[-1][1]["metrics"]
-
+        display_metrics = [m for m in list(experiment2config.items())[-1][1]["metrics"] if "confusion" not in m]
         
         score_data = []
         exp_groups = data.groupby("experiment_id")
@@ -1193,12 +1193,14 @@ class Dashboard:
 
 
     def update_data_cache(self, n, experiment_id,  cache_state):
-
+        print("IS CALLLED")
 
         if experiment_id is None:
+            print("IS NOT UPDATEING ")
             return dash.no_update
         
         if cache_state != {}:
+            print("UPDATEING AS NORMAL")
             prev_epoch = cache_state.get("epoch", -1)
             current_exp = cache_state.get("experiment_id")
 
@@ -1213,6 +1215,7 @@ class Dashboard:
             return data_cache, style
 
         else:
+            print("FIRST UPDATE")
 
             filter_by = get_filter(experiment=experiment_id)
             last_epoch = self.db.get_last_epoch(filter_by)
