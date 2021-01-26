@@ -429,21 +429,20 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
     def __get_feature_data(self, sample):
         
 
+        mask_dict = {}
         feature_dict = {}
-        word_embeddings = []
-        doc_embeddings = []
         masks_not_added = True
 
         if self.prediction_level == "ac":
-            feature_dict["am_token_mask"] = np.zeros((self.max_seq, self.max_seq_tok))
-            feature_dict["ac_token_mask"] = np.zeros((self.max_seq, self.max_seq_tok))
-            feature_dict["ac_mask"] = np.zeros(self.max_seq)
+            mask_dict["am_token_mask"] = np.zeros((self.max_seq, self.max_seq_tok))
+            mask_dict["ac_token_mask"] = np.zeros((self.max_seq, self.max_seq_tok))
+            mask_dict["ac_mask"] = np.zeros(self.max_seq)
     
         if self.tokens_per_sample:
-            feature_dict["token_mask"] = np.zeros(self.max_tok)
+            mask_dict["token_mask"] = np.zeros(self.max_tok)
 
         if self.prediction_level == "token":
-            feature_dict["token_mask"] = np.zeros(self.max_tok)
+            mask_dict["token_mask"] = np.zeros(self.max_tok)
 
     
         for feature, fm in self.feature2model.items():
@@ -477,14 +476,14 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                     
                 feature_matrix, am_mask, ac_mask = self.__extract_ADU_features(fm, sample, sample_shape=feature_matrix.shape)
 
-                if feature in self.__word_features and not np.sum(feature_dict["ac_token_mask"]):
-                    feature_dict["am_token_mask"] = am_mask
-                    feature_dict["ac_token_mask"] = ac_mask
+                if feature in self.__word_features and not np.sum(mask_dict["ac_token_mask"]):
+                    mask_dict["am_token_mask"] = am_mask
+                    mask_dict["ac_token_mask"] = ac_mask
 
-                    if not sum(feature_dict["ac_mask"]):
-                        feature_dict["ac_mask"] = np.max(ac_mask, axis=-1)
+                    if not sum(mask_dict["ac_mask"]):
+                        mask_dict["ac_mask"] = np.max(ac_mask, axis=-1)
                 else:
-                    feature_dict["ac_mask"] = ac_mask
+                    mask_dict["ac_mask"] = ac_mask
            
             else:
                 
@@ -492,13 +491,9 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                 # so for these types we need to extract the embeddings per context. E.g. if we have a document and want Flair embeddings
                 # we first divide the document up in sentences, extract the embeddigns and the put them back into the 
                 # ducument shape.
-                # Have chosen to not extract flari embeddings with context larger than "sentence".
-                use_contex = False
-                if hasattr(fm, "context"):
-                    if fm.context != self.sample_level:
-                        use_context = True
+                # Have chosen to not extract flair embeddings with context larger than "sentence".
+                if fm.context and fm.context != self.sample_level:
 
-                if use_contex:
                     contexts = sample.groupby(f"{fm.context}_id")
 
                     sample_embs = []
@@ -514,26 +509,17 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                     feature_matrix[:sample_length] = fm.extract(sample)[:sample_length]
                 
 
-                feature_dict["token_mask"][:sample_length] = np.ones(sample_length)
+                mask_dict["token_mask"][:sample_length] = np.ones(sample_length)
 
 
-            if fm.level == "word":
-                word_embeddings.append(feature_matrix)
-            
-            if fm.level == "doc":
-                doc_embeddings.append(feature_matrix)
+            if fm.group not in feature_dict:
+                feature_dict[fm.group] = []
 
+            feature_dict[fm.group].append(feature_matrix)
 
-        if len(word_embeddings) > 1:
-            feature_dict["word_embs"] = np.concatenate(word_embeddings, axis=-1)
-        elif len(word_embeddings) == 1:
-            feature_dict["word_embs"] = word_embeddings[0]
-    
-        if len(doc_embeddings) > 1:
-            feature_dict["doc_embs"] = np.concatenate(doc_embeddings, axis=-1)
-        elif len(doc_embeddings) == 1:
-            feature_dict["doc_embs"] = doc_embeddings[0]
-        
+        feature_dict = {k: np.concatenate(v, axis=-1) if len(v) > 1 else v for k,v in feature_dict.items()}
+        feature_dict.update(mask_dict)
+
         return feature_dict
 
 
@@ -1067,6 +1053,10 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         if prediction_level == "ac" and [t for t in tasks if "seg" in t]:
             raise ValueError("If prediction level is ac you cannot have segmentation as a task")
 
+        feature_levels = set([fm.level for fm in features])
+        if "doc" in feature_levels and prediction_level == "token":
+            raise ValueError("Having features on doc level is not supported when prediction level is on word level.")
+
         self._setup_done = True
         self.prediction_level = prediction_level
         self.sample_level = sample_level
@@ -1074,11 +1064,18 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         self.main_tasks = tasks
         self.tasks = tasks + multitasks
         self.encodings = encodings
+
         self.feature2model = {fm.name:fm for fm in features}
         self.features = list(self.feature2model.keys())
+        self._feature_groups = set([fm.group for fm in features])
         self.feature2dim = {fm.name:fm.feature_dim for fm in features}
-        self.feature2dim["word_embs"] = sum(fm.feature_dim for fm in features if fm.level == "word")
-        self.feature2dim["doc_embs"] = sum(fm.feature_dim for fm in features if fm.level == "doc")
+        self.feature2dim.update({
+                                group:sum([fm.feature_dim for fm in features if fm.group == group]) 
+                                for group in self._feature_groups
+                                })
+
+        #self.feature2dim["word_embs"] = sum(fm.feature_dim for fm in features if fm.level == "word")
+        #self.feature2dim["doc_embs"] = sum(fm.feature_dim for fm in features if fm.level == "doc")
         self.__word_features = [fm.name for fm in self.feature2model.values() if fm.level == "word"]
 
         # to later now how we cut some of the padding for each batch

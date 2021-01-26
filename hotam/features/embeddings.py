@@ -34,8 +34,8 @@ class Embeddings(FeatureModel):
 
     """
     
-    def __init__(self, emb_name:str, gpu:int=None):
-
+    def __init__(self, emb_name:str, gpu:int=None, group:str="word_embs"):
+            
         if isinstance(gpu, int):
             flair.device = torch.device(f'cuda:{gpu}') 
 
@@ -44,6 +44,7 @@ class Embeddings(FeatureModel):
         self._level = "word"
         self._input = "sentence"
         self._dtype = np.float32
+        self._group = self._name if group is None else group
         self._store_features = True
         self.activate()
 

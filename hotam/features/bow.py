@@ -34,13 +34,14 @@ def space_tok(string):
 
 class BOW(FeatureModel):
 
-    def __init__(self, corpus:Union[dict,str]="BNC",  dim=200):
+    def __init__(self, corpus:Union[dict,str]="BNC",  dim:int=200, group:str="doc_embs"):
 
         #self.vocab = vocab
         self._name = "tfidf"
         self._level = "doc"
         self._feature_dim = dim
         self._dtype = np.float32
+        self._group = self._name if group is None else group
 
         self.__init_model(corpus)
 
