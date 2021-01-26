@@ -160,7 +160,7 @@ class Metrics:
 
         class_scores_dict = {}
 
-        task_labels_ids = list(self.dataset.encoders[task].id2label.keys())
+        task_labels_ids = self.dataset.encoders[task].ids
         metric_args = metric["args"].copy()
         metric_args["labels"] = task_labels_ids
         metric_args["average"] = None
@@ -181,6 +181,7 @@ class Metrics:
 
     def _get_metrics(self, targets:np.ndarray, output_dict:dict, task:str, mask:np.ndarray):
         
+        #TODO: change this function to so that it calcualtes the f1 label wise then aggregates to f1 task wise.
         scores = {} 
         class_scores = {}
         for metric in self.metrics:
@@ -198,13 +199,13 @@ class Metrics:
 
             assert targets.shape == preds.shape, f"shape missmatch for {task}: Targets:{targets.shape} | Preds: {preds.shape}"
 
-            task_labels_ids = list(self.dataset.encoders[task].id2label.keys())
+
             metric_args = deepcopy(metric["args"])
-            metric_args["labels"] = task_labels_ids
-
+            
+            #using labels will make the f1 behave a bit odd. If labels that are not present will be counter as 0 in the average clculation
+            #metric_args["labels"] = self.dataset.encoders[task].ids
             score_name = "-".join([self.split, task, metric["name"]]).lower()
-            score = metric["function"](targets, preds, **metric_args)
-
+            score = metric["function"](targets, targets, **metric_args)
             scores[score_name] = score
 
             if metric["per_class"] and not metric["probs"] and task != "relation":
@@ -265,9 +266,6 @@ class Metrics:
             average_main_task_scores = pd.DataFrame(main_task_values).mean().to_dict()
             scores.update(average_main_task_scores)
 
-        
-        # print(scores.keys())
-        # print("SCORES", scores[f"{self.split}-seg-confusion_matrix"])
         return scores
 
 

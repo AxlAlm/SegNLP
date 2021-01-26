@@ -409,6 +409,7 @@ class NerModule(nn.Module):
     def forward(self,
                 batch_embedded,
                 lengths,
+                mask,
                 pad_id=0.0,
                 return_type=0,
                 h=None,
@@ -464,10 +465,16 @@ class NerModule(nn.Module):
             # construct input, get logits for word_i, softmax, entity prediction
             ner_input = th.cat(
                 (lstm_out[:, i, :].view(batch_size, -1), v_t_old), dim=1)
+            # QSTN is this order is correct? Is the dim is correct? what is
+            # dim=-1?
             logits_i = self.ner_decoder(ner_input)  # (B, NE-OUT)
             logits_i = self.dropout(logits_i)
-            prob_dist = F.softmax(logits_i, 0)  # (B, NE-OUT)
-            prediction_id = th.max(prob_dist, 1)[1]
+            logits_i_copy = logits_i.detach().clone()
+            mask_i = mask[:, i].type(th.bool)
+            logits_i_copy[~mask_i] = float('-inf')
+            prob_dist = F.softmax(logits_i_copy, dim=1)  # (B, NE-OUT)
+            prediction_id = th.max(prob_dist, dim=1)[1]
+
             # entity label embedding
             label_one_hot = self.entity_embedding(prediction_id, device)
             # save data
@@ -504,6 +511,15 @@ class LSTM_RE(nn.Module):
         num_relations = len(task2labels["stance"])  # number of relations
         self.last_tkn_data = last_word_pattern(task2labels["seg_ac"])
 
+        self.model_param = nn.Parameter(th.empty(0))
+
+        self.graph_buid_type = hyperparamaters["graph_buid_type"]
+        self.node_type_set = hyperparamaters["node_type_set"]
+
+        self.OPT = hyperparamaters["optimizer"]
+        self.LR = hyperparamaters["lr"]
+        self.BATCH_SIZE = hyperparamaters["batch_size"]
+
         # Embed dimension for tokens
         token_embs_size = feature2dim["word_embs"]
         # Embed dimension for entity labels
@@ -529,14 +545,7 @@ class LSTM_RE(nn.Module):
         # Tree LSTM bidirection
         tree_bidirectional = hyperparamaters["tree_bidirectional"]
         dropout = hyperparamaters["dropout"]
-        self.graph_buid_type = hyperparamaters["graph_buid_type"]
-        self.node_type_set = hyperparamaters["node_type_set"]
 
-        self.OPT = hyperparamaters["optimizer"]
-        self.LR = hyperparamaters["lr"]
-        self.BATCH_SIZE = hyperparamaters["batch_size"]
-
-        self.model_param = nn.Parameter(th.empty(0))
         # Entity recognition module
         self.module_ner = NerModule(token_embedding_size=token_embs_size,
                                     label_embedding_size=label_embs_size,
@@ -548,10 +557,12 @@ class LSTM_RE(nn.Module):
                                     dropout=dropout)
 
         # Relation extraction module
-        n = 3 if tree_bidirectional else 1
-        re_input_size = tree_lstm_h_size * n
+        nt = 3 if tree_bidirectional else 1
+        ns = 2 if lstm_bidirectional else 1
+        re_input_size = tree_lstm_h_size * nt
+        tree_input_size = seq_lstm_h_size * ns + dep_embs_size + label_embs_size
         self.module_re = nn.Sequential(
-            TreeLSTM(embedding_dim=token_embs_size,
+            TreeLSTM(embedding_dim=tree_input_size,
                      h_size=tree_lstm_h_size,
                      dropout=dropout,
                      bidirectional=tree_bidirectional),
@@ -578,8 +589,15 @@ class LSTM_RE(nn.Module):
         # token_head_id = batch["dephead"]  # (B, SEQ)
         batch_size = token_embs.size(0)  # B
 
-        # number of tokens in each sample - torch size (B)
+        # number of tokens in each sample - torch size (B, Sent_len)
         lengths_sent_tok = batch["lengths_sent_tok"]
+        lengths_per_sample = batch["lengths_tok"]
+        #   I. Sentence_id for each token: token2sent_id
+        #    list of list: (B, Sent_len)
+        #  II. Character start position for each sentence in each sample:
+        #      sent_strt: list of list: (B, Sent_len)
+        # III. Character end position for each sentence in each sample:
+        #      sent_end: list of list: (B, Sent_len)
         token2sent_id = [
             list(
                 it.chain.from_iterable(
@@ -590,37 +608,67 @@ class LSTM_RE(nn.Module):
                      for lengths_ in lengths_sent_tok]
         sent_end = [[s + len_ - 1 for s, len_ in zip(start, length)]
                     for start, length in zip(sent_strt, lengths_sent_tok)]
-        # NER Module ... Sequential LSTM
-        # QSTN Is it important to initialize h, c?
-        logitss_ner, prob_ner, ne_predtd = self.module_ner(
-            token_embs, lengths_sent_tok)
+        mask = batch["token_mask"]
 
-        # Get all possible relations in both direction of the last token of the
-        # detected entities.
+        # get token head absolute idx in format of list of list
+        heads_abs = []
+        for i, token_head_sample in enumerate(batch["dephead"].tolist()):
+            head_abs_sample = []
+            sent_strt_sample = sent_strt[i]
+            sent_num = batch["lengths_sent"].tolist()[i]
+            for j, heads in enumerate(token_head_sample[0:sent_num]):
+                head_sample = heads[0:lengths_sent_tok[i][j]]
+                sent_strt_l = [sent_strt_sample[j]] * len(head_sample)
+                head_abs_sample += [
+                    x + y for x, y in zip(head_sample, sent_strt_l)
+                ]
+            heads_abs.append(head_abs_sample)
+
+        # NER Module:
+        # ===========
+        # NOTE Is it important to initialize h, c?
+        logitss_ner, prob_ner, ne_predtd = self.module_ner(
+            token_embs, lengths_per_sample, mask)
+
+        # Get all possible relations in both direction between the last token
+        # of the detected entities.
         graphs = [None] * batch_size
         g_empty = dgl.graph([])
-        relations_data = sub_batch(ne_predtd, self.last_tkn_data)
+        relations_data = sub_batch(ne_predtd, mask, self.last_tkn_data)
+        # NOTE loop is needed because the sentence lengthes differ across
         for r1, r2, sample_ids in relations_data:
             # no relations, build empty graphs
-            if not r1:
+            if r1.nelement() == 0:
                 for i in sample_ids:
                     graphs[i] = g_empty
                 continue
             # get sentence id for tokens in r1 and r2
-            for rel1, rel2, idx in r1, r2, sample_ids:
-                sent_id = th.tensor(token2sent_id[idx],
-                                    device=device,
-                                    dtype=th.long)
-                sent_src = th.index_select(rel1, dim=0, index=sent_id)
-                sent_dist = th.index_select(rel2, dim=0, index=sent_id)
+            # samples. We use relations as in
+            sent_id = th.tensor(token2sent_id[sample_ids],
+                                device=device,
+                                dtype=th.long)
+            # NOTE U is range of
+            sent_src_id = th.index_select(sent_id, dim=0, index=r1)
+            sent_dist_id = th.index_select(sent_id, dim=0, index=r2)
+            # not practical: epoch=0, we have 113050 graph!
+            U = [
+                list(range(sent_strt[sample_ids][u], sent_end[sample_ids][v]))
+                for u, v in zip(sent_src_id, sent_dist_id)
+            ]
+            V = [[heads_abs[sample_ids][token] for token in U]]
+
 
         # Calculation of losses:
         # =======================
         # Entity Recognition Module.
         # (B, SEQ, NE-OUT) --> (B*SEQ, NE-OUT)
+        # QSTN Pad token ignoring, should I change it to -1 in the ground
+        # truth?
+        # QSTN batch change pad value ddoes not work, either in
+        # batch["word_embs"] or batch["seg_ac"]
         logitss_ner = logitss_ner.view(-1, logitss_ner.size(2))
-        ground_truth_ner = batch["seg_ac"].view(-1)
         batch.change_pad_value(-1)  # ignore -1 in the loss function
+        ground_truth_ner = batch["seg_ac"].view(-1)
         loss_ner = self.loss(logitss_ner, ground_truth_ner)
 
         # Relation Extraction Module.
@@ -643,6 +691,9 @@ class LSTM_RE(nn.Module):
 
 
 def last_word_pattern(ne_labels):
+    """
+    """
+    # Get patterns of pair of labels that determine the end of a named entity.
     ne_label_data = defaultdict(list)
     for i, label in enumerate(ne_labels):
         ne_label_data[label[0]].append(i)
@@ -663,13 +714,18 @@ def last_word_pattern(ne_labels):
     return B_B + B_O + IB_IO + B_Idash_I_Idash
 
 
-def sub_batch(predictions, last_token_pattern: list):
+
+def sub_batch(predictions, token_mask, last_token_pattern: list):
     """
     """
     # 1. Get predicted entities' last token
     #    last_token_pattern contains a list of two consecutive labels that
     #    idintfy the last token. These pairs are as follows:
-    #    [B, B], [B, O], [I, B], [I, O]
+    #    [B, B], [B, O], [I, B], [I, O],
+    #    [B-Claim, I-not-Claim]: any combination of B-I that are not belong to
+    #    the same entity class
+    #    [I-Claim, I-not-Claim]: ny combination of I-I that are not belong to
+    #    the same entity class
     #    Each time one of these pattern appears in the label sequence, the first
     #    label of the pair is the last token.
     #
@@ -690,14 +746,8 @@ def sub_batch(predictions, last_token_pattern: list):
     #       c has a shape of (B, SEQ, 2)
     #    c. Search for patterns; (c[:, :, None] == cmp).all(-1).any(-1)
 
-    # 2. Group prediction samples that have the same number of last word tokens.
-    #    Note that tensors must have the same dimnsions, thus, we need to this
-    #    grouping step. Accoridng to this [stackoverfollow
-    #    answer](https://stackoverflow.com/a/64180416), using defaultdict is
-    #    the fastes option for array up to 2400 elements, which is enough for
-    #    our case
-
-    # 3. Get all posiible relation in both directions between last token
+    # 2. for each sample, get all posiible relation in both directions between
+    #    last token
 
     # step: 1, mask last word by true
     d = th.device('cpu')
@@ -712,39 +762,46 @@ def sub_batch(predictions, last_token_pattern: list):
     last_word_mask = (p_zipped[:, :,
                                None] == last_token_pattern).all(-1).any(-1)
 
-    # step: 2: group tensors that have the same number of last words
-    group_data = defaultdict(list)
-    num_last_tkns = last_word_mask.sum(dim=1)
-    for i, num in enumerate(num_last_tkns.detach().tolist()):
-        group_data[num].append(i)
+    # # step: 2: group tensors that have the same number of last words
+    # group_data = defaultdict(list)
+    # num_last_tkns = last_word_mask.sum(dim=1)
+    # for i, num in enumerate(num_last_tkns.detach().tolist()):
+    #     group_data[num].append(i)
 
-    # step: 3
+    # step: 2
     # NOTE For loop is needed is the number of items are different
-    for num_last_tokns_sample, idx in group_data.items():
-        if num_last_tokns_sample <= 1:  # no relation
-            yield None, None, idx
+    for i in range(last_word_mask.size(0)):
+        # get the last token id in each sample
+        # select rows in last_word_mask using idx
+        # get the lat word id
+        # idx_tensor = th.tensor(idx, dtype=th.long)  # sample id to tensor
+        sample_mask = last_word_mask[i, :]
+        sample_mask = sample_mask[token_mask[i, :]]
+        last_word_id = th.nonzero(sample_mask).flatten()
+        # get relations per sample
+        # list of list of list. The relation in each sample is in list of
+        # list.
+        # For example, assume in sample-i there are relations betwenn
+        # tokens-(1,4) and tokens-(5,9). Then the relation will be in form
+        # of [[1, 5], [4, 9]]
+        r = list(map(list, zip(*it.combinations(last_word_id.tolist(), 2))))
+        r1 = th.tensor(r[0], device=d)
+        r2 = th.tensor(r[1], device=d)
+        yield r1, r2, i
 
-        else:
-            # get the last token id in each sample
-            # select rows in last_word_mask using idx
-            # get the lat word id
-            idx_tensor = th.tensor(idx, dtype=th.long)  # sample id to tensor
-            sub_mask = th.index_select(last_word_mask, dim=0, index=idx_tensor)
-            last_word_id = th.nonzero(sub_mask)[:,
-                                                1].view(sub_mask.size(0), -1)
-            # get relations per sample
-            # list of list of list. The relation in each sample is in list of
-            # list.
-            # For example, assume in sample-i there are relations betwenn
-            # tokens-(1,4) and tokens-(5,9). Then the relation will be in form
-            # of [[1, 5], [4, 9]]
-            r1 = []
-            r2 = []
-            for sample in last_word_id.tolist():
-                r = list(map(list, zip(*it.combinations(sample, 2))))
-                r1.append(r[0])
-                r2.append(r[1])
 
-            r1 = th.tensor(r1, device=d)
-            r1 = th.tensor(r2, device=d)
-            yield r1, r2, idx
+# - deprel,  e.g. "nmod" etc  (shape = (nr_sentence, max_tok_in_sent  ))
+
+# - dephead, e.g. for each token on which idx is it's head (shape =
+#   (nr_sentence, max_tok_in_sent))
+
+# - lengths_sent,  nr sentence is sample
+
+# - lengths_sent_tok, nr token in each sentence in the sample, given this we
+#   can get is_sent_end.
+
+# - ac2sentence, which is vector where ac2sentence[ac_idx] given u the idx of
+#   the sentence the ac is in
+
+# - sent_ac_mask, which given an ac_idx gives you a mask over a sentence
+#   telling you which tokens belong to the ac.

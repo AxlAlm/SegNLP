@@ -26,9 +26,16 @@ class DatasetEncoder:
     def _create_label_encoders(self):
         
         for task in self.all_tasks:
+            
 
             if task == "relation":
-                self.encoders[task] = RelationEncoder(name=task)
+                relations = self.task2labels[task]
+                _min_rel_value = min(relations)
+                _max_rel_value = max(relations)
+                max_back_relation = 0 if _min_rel_value > 0 else _min_rel_value
+                max_forward_relation = 0 if _max_rel_value < 0 else _max_rel_value
+                max_acs = self._get_max_nr_seq("ac")
+                self.encoders[task] = RelationEncoder(name=task, max_back_relation=max_back_relation, max_forward_relation=max_forward_relation, max_acs=max_acs)
             else:
                 self.encoders[task] = LabelEncoder(name=task, labels=self.task2labels[task])
 
@@ -47,9 +54,10 @@ class DatasetEncoder:
                     acs = df.groupby("ac_id")
                     relations = [ac_df["relation"].unique()[0] for ac_id, ac_df in acs]
                     enc_relations = self.encode_list(relations, task)
-
+  
                     for i, (ac_id, ac_df) in enumerate(acs):
                         self.data.loc[ac_df.index,"_relation"] = enc_relations[i]
+
                 self.data["relation"] = self.data.pop("_relation")
 
             else:

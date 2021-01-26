@@ -118,7 +118,7 @@ class RangeDict(dict):
 
 
 
-def pickle_data(data,file_path):
+def pickle_data(data, file_path):
     with open(file_path, "wb") as f:
         pkl.dump(data,f,  protocol=4)
 
@@ -149,7 +149,10 @@ def one_tqdm(desc:str):
 
         def wrapper(*args, **kwargs):
             pbar = tqdm(total=1, desc=desc)
+            # try:
             f(*args, **kwargs)
+            # except error as e:
+            #     return e
             pbar.update(1)
         
         return wrapper

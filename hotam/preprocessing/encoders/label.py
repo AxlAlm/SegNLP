@@ -28,17 +28,18 @@ class LabelEncoder(Encoder):
         
         self.id2label = dict(enumerate(labels))
         self.label2id = {l:i for i,l in self.id2label.items()}
-        
 
 
     def __len__(self):
         return len(self.id2label)
-    
 
     @property
-    def keys(self):
+    def labels(self):
         return list(self.label2id.keys())
 
+    @property
+    def ids(self):
+        return list(self.id2label.keys())
 
     @property
     def name(self):

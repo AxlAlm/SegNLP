@@ -24,12 +24,13 @@ class DummyFeature(FeatureModel):
         #self.vocab = vocab
         self._name = "dummy"
         self._level = level
-        self._context = "sentence"
         self._feature_dim = 100
         self._dtype = np.float32
+        self._group = f"{level}_embs"
     
     #@feature_memory
     def extract(self, df):
+        
         if self._level == "word":
             return np.random.random((df.shape[0],100))
         else:

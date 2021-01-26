@@ -13,14 +13,14 @@ class MongoDB:
         # Database
         if 'MONGO_KEY' in os.environ:
             client = pymongo.MongoClient(os.environ['MONGO_KEY'])
-            db = client[os.environ['DB_NAME']]
+            self.db = client[os.environ['DB_NAME']]
         else:
             client = pymongo.MongoClient()
-            db = client["dummy_db"]
+            self.db = client["dummy_db"]
 
-        self.experiments = db["experiments"]
-        self.outputs = db["outputs"]
-        self.scores = db["scores"]
+        self.experiments = self.db["experiments"]
+        self.outputs = self.db["outputs"]
+        self.scores = self.db["scores"]
 
     
     def get_last_exp(self):

@@ -75,12 +75,13 @@ lstm_er = {
 }
 
 dummy_hps = {
-    "optimizer": "adam",
-    "lr": 0.001,
-    "hidden_dim": 100,
-    "num_layers": 1,
-    "batch_size": 32,
-}
+        "optimizer": "adam",
+        "lr": 0.001,
+        "hidden_dim": 100,
+        "num_layers": 1,
+        "batch_size": 32,
+        "max_epochs":100,
+        }
 
 
 def get_default_hps(model_name):

@@ -53,12 +53,6 @@ class Dashboard:
                                             children=[
                                                         dcc.Tab(label='Historical View', value='tab-1'),
                                                         dcc.Tab(label='Live View', value='tab-2'),
-                                                        dcc.Interval(
-                                                                    id='interval-component',
-                                                                    interval=1*1000, # in milliseconds
-                                                                    n_intervals=0,
-                                                                    max_intervals=-1,
-                                                                )  
                                                         ]
                                             ),
                                     html.Div(id='tab-content')
@@ -70,7 +64,7 @@ class Dashboard:
 
 
         app.callback(Output('project-dropdown', 'options'),
-                    Input('interval-component', 'n_intervals'))(self.update_project_dropdown)
+                    Input('interval-component-hist', 'n_intervals'))(self.update_project_dropdown)
         
 
         app.callback(Output('rank-filters', 'style'),
@@ -93,7 +87,7 @@ class Dashboard:
 
 
         app.callback(Output('done-exp-dropdown', 'options'),
-                    Input('interval-component', 'n_intervals'))(self.update_done_exp_dropdown)
+                    Input('interval-component-hist', 'n_intervals'))(self.update_done_exp_dropdown)
 
 
         app.callback(Output('done-exp-dropdown', 'value'),
@@ -106,22 +100,20 @@ class Dashboard:
                     Output('exp-view', 'style'),
                     Input('done-exp-dropdown','value'))(self.update_exp_data)
 
-    
 
         app.callback(Output('exp-config-hist', 'children'),
                     [Input("exp-config-dropdown-hist", "value"),
                     Input('exp-data', 'children')])(self.get_config)
 
 
-
         app.callback(Output('data-dist-dropdown-hist', 'options'),
-                    Output('data-dist-dropdown-hist', 'value')
-                    [Input('exp-data', 'children')]
-                    [state('data-dist-dropdown-hist', 'value')])(self.update_stats_dropdown)
+                    Output('data-dist-dropdown-hist', 'value'),
+                    [Input('exp-data', 'children')],
+                    [State('data-dist-dropdown-hist', 'value')])(self.update_stats_dropdown)
 
 
         app.callback(Output('data-dist-hist', 'figure'),
-                    [Input('data-cache', 'children'),
+                    [Input('exp-data', 'children'),
                     Input('data-dist-dropdown-hist', 'value')])(self.get_data_distributions)
 
         # app.callback(Output('data-table-hist', 'figure'),
@@ -198,13 +190,13 @@ class Dashboard:
 
         
         app.callback(Output('exp-dropdown', 'options'),
-                    Input('interval-component', 'n_intervals'))(self.update_live_exp_dropdown)
+                    Input('interval-component-live', 'n_intervals'))(self.update_live_exp_dropdown)
 
 
         app.callback(
                     Output('data-cache', 'children'),
                     Output('live-view', 'style'),
-                    [Input('interval-component', 'n_intervals'),
+                    [Input('interval-component-live', 'n_intervals'),
                     Input('exp-dropdown','value')],
                     [State('data-cache', 'children')])(self.update_data_cache)
 
@@ -214,13 +206,15 @@ class Dashboard:
                     Input('data-cache', 'children')])(self.get_config)
 
 
-        app.callback(Output('data-dist-dropdown', 'figure'),
-                    [Input('data-cache', 'children')])(self.update_stats_dropdown)
+        app.callback(Output('data-dist-dropdown', 'options'),
+                    Output('data-dist-dropdown', 'value'),
+                    [Input('data-cache', 'children')],
+                    [State('data-dist-dropdown', 'value')])(self.update_stats_dropdown)
 
 
-        # app.callback(Output('data-table', 'figure'),
-        #             [Input('data-cache', 'children')])(self.get_data_table)
-
+        app.callback(Output('data-dist', 'figure'),
+                    [Input('data-cache', 'children'),
+                    Input('data-dist-dropdown', 'value')])(self.get_data_distributions)
 
 
         app.callback(
@@ -313,41 +307,33 @@ class Dashboard:
                                                                         className="dcc_control",
                                                                         ),
                                                             html.Div( 
-                                                                    className="pretty_container six columns",
                                                                     children=[
-                                                                                dcc.Dropdown(
-                                                                                            id=f'data-dist-dropdown{name}',
-                                                                                            options=[],
-                                                                                            value=None,
-                                                                                            className="dcc_control",
-                                                                                            ),
-                                                                                dcc.Graph(
-                                                                                    id=f"data-dist{name}",
-                                                                                    figure = go.Figure([])
-                                                                                    )
-                                                                            ]
-                                                                    # children=[
-                                                                    #             html.Pre(
-                                                                    #                     id=f"exp-config{name}",
-                                                                    #                     children=""
-                                                                    #                     )
-                                                                    #             ],
-                                                                    # style={
-                                                                    #         "maxHeight": "500px", 
-                                                                    #         "maxWidth": "300px",
-                                                                    #         "overflow": "scroll",
-                                                                    #         }
+                                                                                html.Pre(
+                                                                                        id=f"exp-config{name}",
+                                                                                        children=""
+                                                                                        )
+                                                                                ],
+                                                                    style={
+                                                                            "maxHeight": "500px", 
+                                                                            "maxWidth": "300px",
+                                                                            "overflow": "scroll",
+                                                                            }
                                                                     )
                                                             ]       
                                                 ),
                                             html.Div( 
                                                     className="pretty_container six columns",
                                                     children=[
+                                                                dcc.Dropdown(
+                                                                            id=f'data-dist-dropdown{name}',
+                                                                            options=[],
+                                                                            value=None,
+                                                                            className="dcc_control",
+                                                                            ),
                                                                 dcc.Graph(
-                                                                            id=f'data-table{name}',
-                                                                            figure = go.Figure(data=[]),
+                                                                    id=f"data-dist{name}",
+                                                                    figure = go.Figure([])
                                                                     )
-                                                                
                                                             ]
                                                         )
 
@@ -492,7 +478,13 @@ class Dashboard:
                                             style={'display': 'none'}
                                             #style={"display": "flex", "flex-direction": "column"},
                                             ),
-                                    html.Div(id='data-cache', children=dict(), style={'display': 'none'})
+                                    html.Div(id='data-cache', children=dict(), style={'display': 'none'}),
+                                    dcc.Interval(
+                                                    id='interval-component-live',
+                                                    interval=1*1000, # in milliseconds
+                                                    n_intervals=0,
+                                                    max_intervals=-1,
+                                                                                )  
                                     ]
                         )
 
@@ -595,8 +587,12 @@ class Dashboard:
                                             #style={"display": "flex", "flex-direction": "column"},
                                             ),
                                     html.Div(id='exp-data', children=dict(), style={'display': 'none'}),
-                                        
-                                                
+                                    dcc.Interval(
+                                                    id='interval-component-hist',
+                                                    interval=10*1000, # in milliseconds
+                                                    n_intervals=0,
+                                                    max_intervals=-1,
+                                                                                )  
                                     ]
                         )
 
@@ -632,16 +628,10 @@ class Dashboard:
         exps = sorted(self.db.get_done_exps_ids())
         return [{"label":e, "value":e} for e in exps]
 
-
-    def update_stats_dropdown(self, data_cache, value):
-        exp_config = data_cache.get("exp_config", {})
-        tasks = exp_config["tasks"]
-        options = [{"label":t, "value":t} for t in tasks + ["sample"]]
-
-        if state_value is None:
-            value = tasks[0]
-
-        return options, value
+    
+    def update_task_dropdown(self, project):
+        tasks = sorted(self.db.get_project_tasks(project))
+        return [{"label":t, "value":t} for t in tasks]
 
 
     def update_output(self, value):
@@ -688,28 +678,52 @@ class Dashboard:
         return exp_data, {"display":"block"}
 
 
-    def get_data_table(self, data_cache):
+    # def get_data_table(self, data_cache):
         
-        if not data_cache:
-            return {}
+    #     if not data_cache:
+    #         return {}
 
-        data = data_cache["exp_config"]["dataset_stats"]
-        df = pd.DataFrame(data)
-        return make_table(df, "Dataset Statistics")
+    #     data = data_cache["exp_config"]["dataset_stats"]
+    #     df = pd.DataFrame(data)
+    #     return make_table(df, "Dataset Statistics")
 
+
+    def update_stats_dropdown(self, data_cache, value):
+        exp_config = data_cache.get("exp_config", {})
+
+        if not exp_config:
+            return [], None
+            
+        subtasks = exp_config["subtasks"]
+        tasks = exp_config["tasks"]
+        all_tasks = sorted(set(subtasks + tasks))
+        options = [{"label":t, "value":t} for t in all_tasks]
+
+        if value is None:
+            value = all_tasks[0]
+
+        return options, value
 
 
     def get_data_distributions(self, data_cache, value):
         
+        #print("DATA CHACE", data_cache)
         if not data_cache:
-            return {}
+            return go.Figure()
+
+        if not value:
+            return go.Figure()
 
         data = data_cache["exp_config"]["dataset_stats"]
         df = pd.DataFrame(data)
 
 
-        return make_table(df, "Dataset Statistics")
+        df = df[df["task"] == value]
 
+        if value == "relation":
+            return make_relation_dist_plot(df)
+        else:
+            return label_dist_plot(df)
 
 
     def get_config(self, config_value, data_cache):
@@ -807,6 +821,10 @@ class Dashboard:
         experiment_id = data_cache["experiment_id"]
 
         tasks = data_cache["exp_config"]["tasks"]
+
+        if len(tasks) == 1 and tasks[0] == "relation":
+            return fig_state, {"display":"none"}
+
         metrics = data_cache["exp_config"]["metrics"].copy()
         metrics.remove("confusion_matrix")
         task2labels = data_cache["exp_config"]["dataset_config"]["task_labels"]
@@ -853,7 +871,8 @@ class Dashboard:
 
 
     def update_highlight_text(self, sample_id, data_cache):
-
+        return "", {'display': 'none'}
+        
         if not data_cache or sample_id is None:
             return "", {'display': 'none'}
 
@@ -934,6 +953,7 @@ class Dashboard:
 
 
     def update_tree_graph(self, sample_id, data_cache, fig_state):
+        return fig_state, {'display': 'none'}
 
         def extract_data(df):
             spans = df.groupby("span_ids")
@@ -1031,8 +1051,11 @@ class Dashboard:
             return [], None
 
         options = [{"label":t, "value":t} for t in exp_config["tasks"] if t not in "relation"]
-        value = options[0]["value"]
 
+        if not options:
+            value = None
+        else:
+            value = options[0]["value"]
 
         return options, value
 
@@ -1092,8 +1115,7 @@ class Dashboard:
         #NOTE! we are assuming that all experiments are done with the same metrics
         # and we are displaying only
         display_splits = ["val", "test"] 
-        display_metrics = list(experiment2config.items())[-1][1]["metrics"]
-
+        display_metrics = [m for m in list(experiment2config.items())[-1][1]["metrics"] if "confusion" not in m]
         
         score_data = []
         exp_groups = data.groupby("experiment_id")
@@ -1173,7 +1195,6 @@ class Dashboard:
 
 
     def update_data_cache(self, n, experiment_id,  cache_state):
-
 
         if experiment_id is None:
             return dash.no_update
