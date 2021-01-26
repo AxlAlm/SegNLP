@@ -19,7 +19,7 @@ class DocPos(FeatureModel):
     and Whether the AC  is  in  an  opening,  body,  or  closing  paragraph."
     """
 
-    def __init__(self, dataset:DataSet, prediction_level:str):
+    def __init__(self, dataset:DataSet, prediction_level:str, group:str="doc_embs"):
         self._feature_dim = 2
         self._name = "docpos"
 
@@ -28,6 +28,7 @@ class DocPos(FeatureModel):
         self.doc2paralen = {i:g.shape[0] for i,g in para_groups}
         self.prediction_level = prediction_level
         self._level = "doc"
+        self._group = self._name if group is None else group
         self._dtype = np.uint8
 
     #@feature_memory

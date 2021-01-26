@@ -21,11 +21,12 @@ from hotam.preprocessing import DataSet
 
 class OneHots(FeatureModel):
 
-    def __init__(self, label:str):
+    def __init__(self, label:str, group:str=None):
 
-        #self.vocab = vocab
-        self._name = label
+        self._name = f"{label}_embs"
         self._level = "word"
+        self._dtype = np.uint8
+        self._group = self._name if group is None else group
 
         if label == "pos":
             labels = pos_labels
@@ -38,7 +39,6 @@ class OneHots(FeatureModel):
 
         self.label = label
         self._feature_dim = len(labels)
-        self._dtype = np.uint8
     
     #@feature_memory
     def extract(self, df):
