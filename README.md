@@ -1,7 +1,8 @@
 # HotAM
 
-![](https://github.com/AxlAlm/HotAM/blob/main/HOTAM_LOGO.png)
-
+<p align="center">
+  <img src="https://github.com/AxlAlm/HotAM/blob/main/HOTAM_LOGO.png?raw=true" alt="hot jam dam"/>
+</p>
 
 ## About
 
