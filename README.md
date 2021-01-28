@@ -1,5 +1,7 @@
 # HotAM
 
+![](https://github.com/AxlAlm/HotAM/blob/main/HOTAM_LOGO.png)
+
 ### pre
 
 - install the packages in evironment.yml
