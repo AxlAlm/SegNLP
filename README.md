@@ -15,7 +15,7 @@ HotAM is a Python Framework for Argument Mining.
 - install MongoDB (if you want to log to mongodb and used dashboard)
 
 ## Overview
-![](https://github.com/AxlAlm/HotAM/blob/main/HotAm-modules.png)
+![](https://github.com/AxlAlm/HotAM/blob/main/hotam-modules.png)
 
 ## Get Started
 TBA
