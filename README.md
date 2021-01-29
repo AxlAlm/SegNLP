@@ -88,8 +88,8 @@ this can be done any time as it will be running in sync with ExperimentManager.r
 
 ```python
 Dashboard(db=db).run_server(
-				port=8050,
-				)
+			    port=8050,
+			    )
 ```
 
 
