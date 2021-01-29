@@ -105,16 +105,16 @@ Dashboard(db=db).run_server(
 - [Dashboard]()
 
 
-### Mentions
+### Mentions / References
 
-This framework is built upon the following python libs and HotAM would not be what it is without these
+This framework is built upon the following python libs and HotAM would not be what it is without these:
 
 - Pytroch
 - Pytroch Lightning
 - FlairNLP
 - Dash
 
-### References
+The same goes for all the reserch in Argument Mining:
 
 TBA
 
