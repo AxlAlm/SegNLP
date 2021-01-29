@@ -108,7 +108,7 @@ Dashboard(db=db).run_server(
 
 ### Mentions
 
-This framework is build upon the following python libs and HotAM would not be what it is would these
+This framework is built upon the following python libs and HotAM would not be what it is would these
 
 - Pytroch
 - Pytroch Lightning
