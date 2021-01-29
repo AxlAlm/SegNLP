@@ -94,7 +94,16 @@ dashboard = Dashboard(db=db).run_server(
 ```
 
 
-### Toturials
+### Information
+
+- Datasets
+- Features
+- Models
+- Logging
+- Database
+- Dashboard
+
+
 ### Experiment and SOTA results
 
 
