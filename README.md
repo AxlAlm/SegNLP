@@ -84,10 +84,9 @@ M.run(
 ```
 
 ##### Start Dashboard to view experiment live and view past experiments
+this can be done any time as it will be running in sync with ExperimentManager.run()
 
 ```python
-
-db = MongoDB()
 dashboard = Dashboard(db=db).run_server(
 					port=8050,
 					)
