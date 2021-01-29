@@ -87,6 +87,8 @@ M.run(
 this can be done any time as it will be running in sync with ExperimentManager.run()
 
 ```python
+from hotam.dashboard import Dashboard
+
 Dashboard(db=db).run_server(
 			    port=8050,
 			    )
