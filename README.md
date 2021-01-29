@@ -98,6 +98,7 @@ Dashboard(db=db).run_server(
 - [Datasets](https://github.com/AxlAlm/HotAM/blob/main/docs/datasets.md)
 - [Features](https://github.com/AxlAlm/HotAM/blob/main/docs/features.md)
 - [Models](https://github.com/AxlAlm/HotAM/blob/main/docs/models.md)
+- [Training with ExperimentManager]()
 - [Logging]()
 - [Database]()
 - [Dashboard]()
