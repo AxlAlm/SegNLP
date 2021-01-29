@@ -91,7 +91,6 @@ Dashboard(db=db).run_server(
 			    )
 ```
 
-## Overview
 ![](https://github.com/AxlAlm/HotAM/blob/main/hotam-modules.png)
 
 
