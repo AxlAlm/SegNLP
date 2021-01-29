@@ -19,7 +19,7 @@ HotAM is a Python Framework for Argument Mining.
 
 ## Get Started
 
-### Pick a dataset
+#### Pick a dataset
 
 ```python
 from hotam.datasets import PE
@@ -27,7 +27,7 @@ from hotam.datasets import PE
 pe = PE()
 ```
 
-### Explore a bit
+#### Explore a bit
 
 ```python
 
@@ -35,7 +35,7 @@ pe.example()
 pe.stats()
 ```
 
-### Prepare dataset for experiment
+#### Prepare dataset for experiment
 
 ```python
 from hotam.features import Embeddings
@@ -51,13 +51,13 @@ pe.setup(
 	)
 ```
 
-### pick a model
+#### pick a model
 
 ```python
 from hotam.nn.models import LSTM_CRF
 ```
 
-### setup logging 
+#### setup logging 
 
 ```python
 from hotam.database import MongoDB
@@ -67,7 +67,7 @@ db = MongoDB()
 exp_logger = MongoLogger(db=db)
 ```
 
-### Run an experiment
+#### Run an experiment
 
 ```python
 from hotam import ExperimentManager
@@ -83,7 +83,7 @@ M.run(
     )
 ```
 
-### Start Dashboard to view experiment live and view past experiments
+#### Start Dashboard to view experiment live and view past experiments
 
 ```python
 
