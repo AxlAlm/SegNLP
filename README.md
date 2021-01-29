@@ -116,3 +116,5 @@ This framework is build upon the following python libs and HotAM would not be wh
 
 ### TODO
 
+- installing by Pip
+
