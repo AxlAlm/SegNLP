@@ -26,5 +26,5 @@ dependencies:
     - english-words==1.0.3
     - imgkit==1.0.2
     - dash-daq==0.5.0
-    - hotviz==0.0.5
+    - hotviz==0.0.8
     - ipython==7.19.0

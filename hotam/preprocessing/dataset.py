@@ -15,6 +15,7 @@ import hashlib
 import shutil
 import shelve
 from copy import deepcopy
+from pprint import pprint
 
 #hotam
 import hotam
@@ -466,7 +467,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                                     token=fm.level == "word",
                                     #char=enc == "chars",
                                     feature_dim=fm.feature_dim
-                                    )
+                                    )  
 
             feature_matrix = np.zeros(shape)
             sample_length = sample.shape[0]
@@ -517,7 +518,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
             feature_dict[fm.group].append(feature_matrix)
 
-        feature_dict = {k: np.concatenate(v, axis=-1) if len(v) > 1 else v for k,v in feature_dict.items()}
+        feature_dict = {k: np.concatenate(v, axis=-1) if len(v) > 1 else v[0] for k,v in feature_dict.items()}
         feature_dict.update(mask_dict)
 
         return feature_dict
@@ -723,13 +724,14 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                     else:
                         label_counts = dict(ac_df[ac_df[f"{self.sample_level}_id"].isin(ids)][task].value_counts())
 
-
                     #if self.prediction_level == "ac" and "None" in label_counts:
-                    if "None" in label_counts:
-                        label_counts.pop("None")
 
+                    
                     label_counts.update({l:0 for l in self.task2labels[task] if l not in label_counts.keys()})
                     label_counts = dict(sorted(list(label_counts.items()), key=lambda x:x[0]))
+
+                    if "None" in label_counts and task == "ac":
+                        label_counts.pop("None")
 
                     for l,nr in label_counts.items():
             
@@ -999,11 +1001,28 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
         print("------ AC's ------")
         tree_data = []
+
+        if self.name.lower() == "pe":
+            majorclaims_idx = None
+        
         for i, (ac_id, ac_df) in enumerate(acs_grouped):
             text = " ".join(ac_df["text"])
             ac = ac_df["ac"].unique()[0]
             relation = int(ac_df["relation"].unique()[0])
+            relation = relation if self._setup_done else i + relation
             stance = ac_df["stance"].unique()[0]
+
+            if ac == "MajorClaim" and self.name.lower() == "pe":
+                if majorclaims_idx is not None:
+                    relation = majorclaims_idx
+                    stance = "Paraphrase"
+                else:
+                    majorclaims_idx =  i
+                
+                print(ac, relation, i)
+
+            if ac == "Claim" and self.name.lower() == "pe":
+                relation  = majorclaims_idx
 
             print(f"{i}:", text)
             print("AC:", ac)
@@ -1013,20 +1032,41 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
             tree_data.append({
                                 'label': ac,
-                                'link': relation if self._setup_done else i + relation,
+                                'link': relation,
                                 'link_label': stance,
                                 'text': text
                                 })
 
+        text_span_data = []
+        for i, row in example.iterrows():
+            
+            #print(row["ac_id"], np.isnan(row["ac_id"]))
+            span_id = row["ac_id"] if not np.isnan(row["ac_id"]) else None
+            label = row["ac"]
+            score = 1.0 if label != None else 0.0
+            
+            text_span_data.append({
+                                'token': row["text"],
+                                'pred': {
+                                            "span_id": span_id,
+                                            "label": label,
+                                            "score": score,
+                                            },
+                                'gold':{
+                                            "span_id": span_id,
+                                            "label": label,
+                                            "score": score,
+                                            },
+                                })
+        with open("../../span_data_2.json", "w") as f:
+            json.dump(text_span_data, f)
 
-        print(tree_data)
         fig = hot_tree(tree_data)
         fig.show()
 
 
     def setup(  self,
                 tasks:list,
-                multitasks:list, 
                 prediction_level:str,
                 sample_level:str, 
                 features:list,
@@ -1035,19 +1075,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                 tokens_per_sample:bool=False,
                 override:bool=False,
                 ):
-        """prepares the data for an experiemnt on a set task.
-
-        adds additional labels to task
-        set encodings and sample_level
-
-        Parameters
-        ----------
-        sample_level : str
-            level on which the samples should be set
-        multitasks : list
-            if there are more labels 
-        encodings : list
-            encodings to be made, e.g. token, pos, bert
+        """prepares the data
         """
 
         if prediction_level == "ac" and [t for t in tasks if "seg" in t]:
@@ -1062,7 +1090,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         self.sample_level = sample_level
         self.tokens_per_sample = tokens_per_sample
         self.main_tasks = tasks
-        self.tasks = tasks + multitasks
+        self.tasks = tasks
         self.encodings = encodings
 
         self.feature2model = {fm.name:fm for fm in features}
@@ -1142,7 +1170,6 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                         "sample_level": sample_level,
                         "tasks": tasks,
                         "subtasks": self.subtasks,
-                        "multitasks": multitasks,
                         "encodings": encodings,
                         "features": self.features,
                         "remove_duplicates": remove_duplicates,

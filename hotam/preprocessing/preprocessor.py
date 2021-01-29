@@ -454,6 +454,7 @@ class Preprocessor:
         #paragraph, current_sent_id,  current_sent_idx = self.__get_text_id_idx("sentence")
 
         spacy_doc = self.nlp(paragraph)
+        
         for i, sentence in enumerate(spacy_doc.sents):
 
             if current_sent_idx == 0:

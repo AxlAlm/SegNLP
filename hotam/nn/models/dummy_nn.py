@@ -44,7 +44,6 @@ class DummyNN(nn.Module):
 
     def forward(self, batch):
         
-
         level = None
         if "word_embs" in batch:
             embs = batch["word_embs"] 
