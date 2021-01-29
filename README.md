@@ -22,7 +22,6 @@ HotAM is a Python Framework for Argument Mining.
 ### Pick a dataset
 
 ```python
-#Persuasive Essays
 from hotam.datasets import PE
 
 pe = PE()
@@ -35,7 +34,6 @@ pe = PE()
 pe.example()
 pe.stats()
 ```
-Note that calling stats() after the step below will change the output.
 
 ### Prepare dataset for experiment
 
@@ -52,6 +50,56 @@ pe.setup(
     		],
 	)
 ```
+
+### pick a model
+
+```python
+from hotam.nn.models import LSTM_CRF
+```
+
+### setup logging 
+
+```python
+from hotam.database import MongoDB
+from hotam.loggers import MongoLogger
+
+db = MongoDB()
+exp_logger = MongoLogger(db=db)
+```
+
+### Run an experiment
+
+```python
+from hotam import ExperimentManager
+
+M = ExperimentManager()
+M.run( 
+    project="my_project",
+    dataset=pe,
+    model=LSTM_CRF,
+    monitor_metric="val-seg-f1",
+    progress_bar_metrics=["val-seg-f1"],
+    exp_logger=exp_logger
+    )
+```
+
+### Start Dashboard to view experiment live and view past experiments
+
+```python
+
+db = MongoDB()
+dashboard = Dashboard(db=db).run_server(
+					port=8050,
+					)
+```
+
+
+### Toturials
+### Experiment and SOTA results
+
+
+
+
 
 Lets take a look at the paramaters:
 
@@ -76,6 +124,16 @@ HotAm supports a few model. However, you can easliy create your own as model are
 from hotam.nn.models import LSTM_CRF
 ```
 
+### setup logging 
+
+```python
+from hotam.database import MongoDB
+from hotam.loggers import MongoLogger
+
+db = MongoDB()
+exp_logger = MongoLogger(db=db)
+```
+
 ### Run an experiment
 
 
@@ -96,9 +154,9 @@ M.run(
     monitor_metric="val-seg_ac-f1",
     progress_bar_metrics=["val-seg_ac-f1"],
     debug_mode=False,
+    
     )
 ```
-**ExperimentManager** takes care of everything we need for training.
 
 
 ## Datasets
