@@ -18,7 +18,53 @@ HotAM is a Python Framework for Argument Mining.
 ![](https://github.com/AxlAlm/HotAM/blob/main/hotam-modules.png)
 
 ## Get Started
-TBA
+
+### Pick a dataset
+
+```python
+#Persuasive Essays
+from hotam.datasets import PE
+
+pe = PE()
+```
+
+
+### Explore a bit
+```python
+
+pe.example()
+pe.stats()
+```
+
+### Prepare dataset for experiment
+
+```python
+from hotam.features import Embeddings
+
+pe.setup(
+    tasks=["seg"],
+    sample_level="document",
+    prediction_level="token",	
+    encodings=["pos"],
+    features=[
+    		Embeddings("glove")
+    		],
+	)
+```
+
+Lets take a look at the paramaters:
+
+tasks decide which task you will test during the experiment. Above we only test "seg" (segmentation of argument components) For complexed task, e.g. combinations of two or more task into one, you add a "_" between. E.g. if we want to combine "seg" and "ac" (argument component classification) we use the task ["seg_ac"]. If we want to do "seg" and "ac" seperately we pass ["seg", "ac"].  Note that the tasks allowed here are decided by the dataset.
+
+sample_level decide which level the samples in your experiment will be on. If you set sample level documents, you will be passing documents. If you set sentences you will pass sentence and so on.
+
+prediction_level decides which level your model is to be evaluated and expect predictions on. Here we only have two options  "token" and "ac". Passing "token" will make the framework expect predictions for a sample to be on token level and transform samples, encodings and features to match this. For the above configuration our e.g. input embeddings for a sample to the model will be in the following dimension (batch_size, max_nr_tokens). 
+If we pass "ac" our framwork will expect us to predict on Argument Components. If we for example change the above configuare from "token" to "ac" our input e.g. embeddings for our model will be in the following shape (batch_size, max_nr_ac_in_doc, max_token_in_acs). Note that some combinations of tasks, sample_level and prediction_level are not allowed as they dont make sense, e.g. task=["seg"] and prediction_level=["ac"] -- segmentation is already given as we are given Argument Components.
+
+
+
+
+
 
 ## Datasets
 Persuasive Essays (LINK)
