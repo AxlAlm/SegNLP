@@ -5,8 +5,6 @@
 
 ## About
 
-<img src="https://github.com/AxlAlm/HotAM/blob/main/HOTAM_LOGO.png?raw=true" alt="hot jam dam"/>
-
 HotAM is a Python Framework for Argument Mining.
 
 ## Setup and Installation
@@ -114,6 +112,10 @@ This framework is built upon the following python libs and HotAM would not be wh
 - Pytroch Lightning
 - FlairNLP
 - Dash
+
+
+<img src="https://github.com/AxlAlm/HotAM/blob/main/HOTAM_LOGO.png?raw=true" alt="hot jam dam"/>
+
 
 The same goes for all the reserch in Argument Mining:
 
