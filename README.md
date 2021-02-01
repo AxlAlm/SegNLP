@@ -1,4 +1,5 @@
-# ![](https://github.com/AxlAlm/HotAM/blob/main/logo2.png)
+
+# HotAm
 
 <p align="center">
   <img src="https://github.com/AxlAlm/HotAM/blob/main/HOTAM_LOGO.png?raw=true" alt="hot jam dam"/>
