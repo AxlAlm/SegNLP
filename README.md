@@ -1,11 +1,11 @@
 
-# HotAm
-
 <p align="center">
-  <img src="https://github.com/AxlAlm/HotAM/blob/main/HOTAM_LOGO.png?raw=true" alt="hot jam dam"/>
+  <img src="https://github.com/AxlAlm/HotAM/blob/main/logo3.png?raw=true" alt="hot jam dam"/>
 </p>
 
 ## About
+
+<img src="https://github.com/AxlAlm/HotAM/blob/main/HOTAM_LOGO.png?raw=true" alt="hot jam dam"/>
 
 HotAM is a Python Framework for Argument Mining.
 
