@@ -1,6 +1,6 @@
 
 <p align="center">
-  <img src="https://github.com/AxlAlm/HotAM/blob/main/logo3.png?raw=true" alt="hot jam dam"/>
+  <img src="https://github.com/AxlAlm/HotAM/blob/main/logo3.png?raw=true" alt="logo" width="180" height="180"/>
 </p>
 
 ## About
