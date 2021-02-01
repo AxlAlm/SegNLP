@@ -114,9 +114,6 @@ This framework is built upon the following python libs and HotAM would not be wh
 - Dash
 
 
-<img src="https://github.com/AxlAlm/HotAM/blob/main/HOTAM_LOGO.png?raw=true" alt="hot jam dam"/>
-
-
 The same goes for all the reserch in Argument Mining:
 
 TBA
@@ -125,4 +122,8 @@ TBA
 ### TODO
 
 - installing by Pip
+
+
+<hr>
+<img src="https://github.com/AxlAlm/HotAM/blob/main/HOTAM_LOGO.png?raw=true" alt="hot jam dam"/>
 
