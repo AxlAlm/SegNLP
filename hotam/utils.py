@@ -223,7 +223,6 @@ def download(url:str, save_path:str, desc:str):
             f.write(data)
     progress_bar.close()
 
-    print(total != 0, progress_bar.n != total, progress_bar.n, total )
     if total != 0 and progress_bar.n != total:
         raise RuntimeError("ERROR, something went wrong")
 

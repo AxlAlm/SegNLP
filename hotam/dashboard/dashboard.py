@@ -961,21 +961,20 @@ class Dashboard:
 
         def extract_data(df):
             spans = df.groupby("span_ids")
-            data = []
+            span_data = []
             for i,(span_id, span) in enumerate(spans):
 
                 label = span["ac"].unique()[0]
                 relation = span["relation"].unique()[0]
                 relation_type = span["stance"].unique()[0]
-
+                print(span["text"].tolist())
                 span_data.append({
                                     "label":label,
                                     "link": relation,
                                     "link_label": relation_type,
                                     "text": " ".join(span["text"].tolist()),
-                                    })
-            
-            return data
+                                    })            
+            return span_data
 
 
         def pe_majorclaim_fix(data):
@@ -1022,14 +1021,18 @@ class Dashboard:
 
         pred_df = pd.DataFrame(sample_out["preds"])
         gold_df = pd.DataFrame(sample_out["gold"])
-        text = [" ".join(t) for t in sample_out["text"]]
-
 
         if "span_ids" in pred_df.columns:
+            text = sample_out["text"]
+            pred_df["text"] = text
+            gold_df["text"] = text
             pred_data = extract_data(pred_df)
             gold_data = extract_data(gold_df)
+
       
         else:
+            text = [" ".join(t) for t in sample_out["text"]]
+
             rename_dict = {"ac": "label", "relation": "link", "stance":"link_label"}
 
             if not has_stance:
@@ -1043,7 +1046,8 @@ class Dashboard:
 
             pred_data = list(pred_df.loc[:,list(rename_dict.values())+["text"]].T.to_dict().values())
             gold_data = list(gold_df.loc[:,list(rename_dict.values())+["text"]].T.to_dict().values())
-            
+    
+
         # example input:
         # """
         #     [{   
@@ -1059,9 +1063,11 @@ class Dashboard:
             pe_majorclaim_fix(pred_data)
             pe_majorclaim_fix(gold_data)
 
-
+        
+        pprint(pred_data)
         fig = hotviz.hot_tree(pred_data, gold_data=gold_data)
-
+        
+        print("THIRD")
         fig.update_layout(
                             autosize=False,
                             width=1200,

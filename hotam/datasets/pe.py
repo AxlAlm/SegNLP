@@ -9,10 +9,11 @@ import random
 import os
 from urllib.request import urlopen
 from zipfile import ZipFile
+from zipfile import BadZipFile
+
 import time
 from pathlib import Path
 from typing import Tuple, List, Dict
-
 
 # hotam
 from hotam import get_logger
@@ -439,6 +440,13 @@ class PE_Dataset:
         dataset = DataSet("pe", data_path=dump_path)
         dataset.add_splits(self.splits)
 
+        dataset.dataset_tasks = ["ac", "relation", "stance"]
+        dataset.dataset_task_labels = {"ac":["MajorClaim", "Claim", "Premise"], "stance":["For", "Against", "supports", "attacks"]}
+        dataset.about = """The corpus consists of argument annotated persuasive essays including annotations of argument components and argumentative relations.
+                        """
+        dataset.url = "https://www.informatik.tu-darmstadt.de/ukp/research_6/data/argumentation_mining_1/argument_annotated_essays_version_2/index.en.jsp"
+
+
         if not hasattr(dataset, "data"):
             
             ann_files = sorted(glob(self._dataset_path+"/*.ann"))
@@ -477,7 +485,6 @@ class PE_Dataset:
             dataset.add_samples(samples)
             dataset.charspan2label(sample_span_labels)
             dataset.create_ams()
-            dataset.dataset_tasks = ["ac", "relation", "stance"]
             dataset.save(dump_path)
             
 

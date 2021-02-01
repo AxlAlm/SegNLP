@@ -2,8 +2,9 @@
 import numpy as np
 from tqdm import tqdm
 import os
+import webbrowser
 import pandas as pd
-from IPython.display import display
+from IPython.display import display, Image
 from typing import Union, List, Dict, Tuple
 import random
 import copy
@@ -35,7 +36,7 @@ from torch.utils.data import BatchSampler
 import torch
 
 #hotviz
-from hotviz import hot_tree
+from hotviz import hot_tree, hot_text
 
 
 logger = get_logger("DATASET")
@@ -656,6 +657,24 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                                 )
 
 
+    def info(self):
+        doc = f"""
+            Info:
+
+            {self.about}
+
+            Tasks: 
+            {self.dataset_tasks}
+
+            Task Labels:
+            {self.dataset_task_labels}
+
+            Source:
+            {self.url}
+            """
+        print(doc)
+
+
     def stats(self, override=False):
 
         """
@@ -972,63 +991,37 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         return self.task2subtasks[task].index(subtask)
 
 
-    def example(self, sample_id="random", level="document"):
-        
 
-        if sample_id == "random":
-            if self._setup_done:
-                sample_id = random.choice(set(self.data.index.to_numpy()))
-            else:
-                sample_id = random.choice(self.data[level+"_id"].unique())
-        
-        
-        if self._setup_done:
-            example = self.data.loc[sample_id]
-        else:
-            example = self.data.loc[self.data[level+"_id"] == sample_id, :]
-
+    def __get_tree_data(self, example):
 
         acs_grouped = example.groupby("ac_id")
         relations = [ac_df["relation"].unique()[0] for ac_id, ac_df in acs_grouped]
         acs = [ac_df["ac"].unique()[0] for ac_id, ac_df in acs_grouped]
-        
-        print("------------ Example -------------\n")
-        print("Parent ids:")
-        print(f"{self.dataset_level} ID:", example[f"{self.dataset_level}_id"].unique()[0]), 
-    
-        print(f"-------- Text {level} ------")
-        print( " ".join(example["text"]) + "\n\n")
-
-        print("------ AC's ------")
         tree_data = []
-
-        if self.name.lower() == "pe":
-            majorclaims_idx = None
         
+        if self.name.lower() == "pe":
+            major_claim_idx = [i for i, (ac_id, ac_df) in enumerate(acs_grouped) if ac_df["ac"].unique()[0] == "MajorClaim"][0]
+
         for i, (ac_id, ac_df) in enumerate(acs_grouped):
             text = " ".join(ac_df["text"])
             ac = ac_df["ac"].unique()[0]
+
+            if self._setup_done:
+                if "ac" in self.all_tasks:
+                    ac = self.encoders["ac"].decode(ac)
+
+            ac = ac_df["ac"].unique()[0]
+
             relation = int(ac_df["relation"].unique()[0])
             relation = relation if self._setup_done else i + relation
             stance = ac_df["stance"].unique()[0]
 
             if ac == "MajorClaim" and self.name.lower() == "pe":
-                if majorclaims_idx is not None:
-                    relation = majorclaims_idx
-                    stance = "Paraphrase"
-                else:
-                    majorclaims_idx =  i
-                
-                print(ac, relation, i)
-
+                relation = major_claim_idx
+                stance = "Paraphrase"
+     
             if ac == "Claim" and self.name.lower() == "pe":
-                relation  = majorclaims_idx
-
-            print(f"{i}:", text)
-            print("AC:", ac)
-            print("Relation:", relation)
-            print("Stance:", stance)
-            print("____")
+                relation  = major_claim_idx
 
             tree_data.append({
                                 'label': ac,
@@ -1036,13 +1029,19 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                                 'link_label': stance,
                                 'text': text
                                 })
+        return tree_data
+    
 
+    def __get_span_data(self, example):
         text_span_data = []
         for i, row in example.iterrows():
-            
-            #print(row["ac_id"], np.isnan(row["ac_id"]))
             span_id = row["ac_id"] if not np.isnan(row["ac_id"]) else None
             label = row["ac"]
+
+            if self._setup_done:
+                if "ac" in self.all_tasks:
+                    ac = self.encoders["ac"].decode(ac)
+
             score = 1.0 if label != None else 0.0
             
             text_span_data.append({
@@ -1057,20 +1056,59 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
                                             "label": label,
                                             "score": score,
                                             },
-                                })
-        with open("../../span_data_2.json", "w") as f:
-            json.dump(text_span_data, f)
+                                }) 
+        return text_span_data
 
-        fig = hot_tree(tree_data)
-        fig.show()
+
+    def example(self, sample_id="random", level="document", span_params:dict={}, tree_params:dict={}):
+        
+
+        if sample_id == "random":
+            if self._setup_done:
+                sample_id = random.choice(set(self.data.index.to_numpy()))
+
+            else:
+                sample_id = random.choice(self.data[level+"_id"].unique())
+
+        
+        if self._setup_done:
+            example = self.data.loc[sample_id]
+            can_do_tree = "relation" in self.all_tasks
+            can_do_spans = "seg" in self.all_tasks or "ac" in self.all_tasks
+            show_scores = "ac" in self.all_tasks
+        else:
+            example = self.data.loc[self.data[level+"_id"] == sample_id, :]
+            can_do_tree = True
+            can_do_spans = True
+            show_scores = True
+
+        if can_do_spans:
+            text_span_data = self.__get_span_data(example)
+
+            hot_text_args = dict(labels=self.dataset_task_labels["ac"], 
+                                save_path="/tmp/hot_text.png", 
+                                show_scores=show_scores,
+                                show_gold=False,
+                                height=600)
+            hot_text_args.update(span_params)
+
+            hot_text(text_span_data, **hot_text_args)
+            display(Image(filename=hot_text_args["save_path"]))
+
+        if can_do_tree:
+            fig = hot_tree(self.__get_tree_data(example), **span_params)
+            fig.show()
+
+        
+        #display(Image(filename=hot_text_args["save_path"])), fig.show()
 
 
     def setup(  self,
                 tasks:list,
                 prediction_level:str,
                 sample_level:str, 
-                features:list,
-                encodings:list,
+                features:list=[],
+                encodings:list=[],
                 remove_duplicates:bool=False,
                 tokens_per_sample:bool=False,
                 override:bool=False,

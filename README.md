@@ -1,6 +1,6 @@
 
 <p align="center">
-  <img src="https://github.com/AxlAlm/HotAM/blob/main/logo3.png?raw=true" alt="logo" width="180" height="180"/>
+  <img src="https://github.com/AxlAlm/HotAM/blob/main/logo.png?raw=true" alt="logo" width="180" height="180"/>
 </p>
 
 ## About
@@ -90,7 +90,7 @@ Dashboard(db=db).run_server(
 			    )
 ```
 
-![](https://github.com/AxlAlm/HotAM/blob/main/hotam-modules.png)
+![](https://github.com/AxlAlm/HotAM/blob/main/modules.png)
 
 
 ### Information
@@ -125,5 +125,5 @@ TBA
 
 
 <hr>
-<img src="https://github.com/AxlAlm/HotAM/blob/main/HOTAM_LOGO.png?raw=true" alt="hot jam dam"/>
+<img src="https://github.com/AxlAlm/HotAM/blob/main/my_jam.png?raw=true" alt="hot jam dam"/>
 
