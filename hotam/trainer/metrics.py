@@ -186,7 +186,7 @@ class Metrics:
         class_scores = {}
         for metric in self.metrics:
 
-            if metric["name"] == "confusion_matrix" and task == "relation":
+            if metric["name"] == "confusion_matrix" and "relation" in task:
                 continue
 
             #decide if we want probabilites or predictions for the metric
@@ -199,13 +199,15 @@ class Metrics:
 
             assert targets.shape == preds.shape, f"shape missmatch for {task}: Targets:{targets.shape} | Preds: {preds.shape}"
 
-
             metric_args = deepcopy(metric["args"])
             
-            #using labels will make the f1 behave a bit odd. If labels that are not present will be counter as 0 in the average clculation
-            #metric_args["labels"] = self.dataset.encoders[task].ids
+            # using labels will make the f1 behave a bit odd. If labels that are not present will be counter as 0 in the average calculation
+            # we only use it in confusion matrix to ensure we get a same dim tabel
+            if metric["name"] == "confusion_matrix":
+                metric_args["labels"] = self.dataset.encoders[task].ids
+
             score_name = "-".join([self.split, task, metric["name"]]).lower()
-            score = metric["function"](targets, targets, **metric_args)
+            score = metric["function"](targets, preds, **metric_args)
             scores[score_name] = score
 
             if metric["per_class"] and not metric["probs"] and task != "relation":
@@ -248,7 +250,6 @@ class Metrics:
 
             scores.update(task_scores)
             scores.update(task_class_scores)
-
 
             # for main tasks we want to know the average score
             # so we add these to a list, which we easiliy can turn into an

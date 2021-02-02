@@ -32,8 +32,9 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 def my_mean(scores):
 
-    if isinstance(scores,list):
-        scores = np.array(scores)
+    scores = ensure_numpy(scores)
+    # if isinstance(scores,list):
+    #     scores = np.array(scores)
     
     if scores.shape[0] == 0:
         return scores[0]

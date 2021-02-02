@@ -17,6 +17,8 @@ import shutil
 import shelve
 from copy import deepcopy
 from pprint import pprint
+import warnings
+
 
 #hotam
 import hotam
@@ -24,7 +26,7 @@ from hotam.utils import ensure_numpy, load_pickle_data, pickle_data, to_tensor, 
 from hotam import get_logger
 from .encoder import DatasetEncoder
 from .preprocessor import Preprocessor
-from .labler import Labler
+from .labeler import Labeler
 from .split_utils import SplitUtils
 
 #pytorch lightning
@@ -38,10 +40,7 @@ import torch
 #hotviz
 from hotviz import hot_tree, hot_text
 
-
 logger = get_logger("DATASET")
-
-import warnings
 
 
 class Batch(dict):
@@ -72,7 +71,7 @@ class Batch(dict):
             self[task][~self[f"{self.prediction_level}_mask"].type(torch.bool)] = -1
      
 
-class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, SplitUtils):    
+class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labeler, SplitUtils):    
 
 
     def __init__(self, name, data_path:str="", device:"cpu"=None):
@@ -430,7 +429,6 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
 
     def __get_feature_data(self, sample):
         
-
         mask_dict = {}
         feature_dict = {}
         masks_not_added = True
@@ -874,6 +872,12 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             #     self.task2labels[task] = range(self.max_relation+1)
             # else:
             #     # self.task2labels[task] = sorted(list(self.level_dfs["token"][task].unique()))
+
+            # for i, row in self.data.iterrows():
+            #     if type(row["seg"]) == type(np.nan):
+            #         print(row)
+
+            # print(task, self.data[task].unique().tolist())
             self.task2labels[task] = sorted(self.data[task].unique().tolist())
 
             if isinstance(self.task2labels[task][0], (np.int, np.int64, np.int32, np.int16)):
@@ -991,7 +995,6 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
         return self.task2subtasks[task].index(subtask)
 
 
-
     def __get_tree_data(self, example):
 
         acs_grouped = example.groupby("ac_id")
@@ -1096,11 +1099,18 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labler, Spl
             display(Image(filename=hot_text_args["save_path"]))
 
         if can_do_tree:
-            fig = hot_tree(self.__get_tree_data(example), **span_params)
+            fig = hot_tree(self.__get_tree_data(example), **tree_params)
             fig.show()
 
-        
+        #fig.show()
+        #if can_do_spans and can_do_tree:
         #display(Image(filename=hot_text_args["save_path"])), fig.show()
+
+        # elif can_do_spans:
+        #     display(Image(filename=hot_text_args["save_path"])),
+
+        # elif can_do_tree:
+        #      fig.show()
 
 
     def setup(  self,

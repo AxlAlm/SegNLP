@@ -14,17 +14,17 @@ lstm_crf_hps =  {
                     "bidir": True,
                     "fine_tune_embs": False,
                     "batch_size": 32,
-                    "max_epochs":150,
+                    "max_epochs":100,
                     }
             
 
 lstm_cnn_crf_hps = {
-                    "optimizer": "sgd",
+                    "optimizer": "adam",
                     "lr": 0.001,
-                    "hidden_dim": 256,
+                    "hidden_dim": 250,
                     "char_dim": 100,
                     "kernel_size": 3,
-                    "num_layers": 2,
+                    "num_layers": 1,
                     "bidir": True,
                     "batch_size": 32,
                     "max_epochs":100,
