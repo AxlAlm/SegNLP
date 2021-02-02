@@ -19,7 +19,7 @@ lstm_crf_hps =  {
             
 
 lstm_cnn_crf_hps = {
-                    "optimizer": "adam",
+                    "optimizer": "sgd",
                     "lr": 0.001,
                     "hidden_dim": 250,
                     "char_dim": 100,
@@ -39,9 +39,9 @@ joint_pointer_nn_hps = {
                         "encoder_num_layers":2,
                         "encoder_bidir":True,
                         "decoder_hidden_dim": 512,
-                        "feature_dropout": 0.8,
-                        "encoder_dropout": 0.8,
-                        "decoder_dropout": 0.8,
+                        "feature_dropout": 0.9,
+                        "encoder_dropout": 0.9,
+                        "decoder_dropout": 0.9,
                         "task_weight":0.5,
                         "batch_size": 16,
                         "max_epochs":1000,

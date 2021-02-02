@@ -1082,8 +1082,13 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labeler, Sp
         else:
             example = self.data.loc[self.data[level+"_id"] == sample_id, :]
             can_do_tree = True
-            can_do_spans = True
+            can_do_spans = True if self.sample_level != "sentence" else False
             show_scores = True
+
+
+        if self.dataset_level == "document" and level != "document":
+            doc_id = int(example["document_id"].unique()[0])
+            print(f"Belong to Document {doc_id}")
 
         if can_do_spans:
             text_span_data = self.__get_span_data(example)

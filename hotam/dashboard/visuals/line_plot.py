@@ -12,59 +12,36 @@ import plotly.graph_objs as go
 from hotam.dashboard.utils import fig_layout
 
 
-def make_lineplot(data, columns, title):
+def make_lineplot(data, title, max_y:int):
 
     if data.shape[0] == 0:
         return go.Figure(data=[])
 
-    if "train" not in data["split"].to_numpy():
-        return go.Figure()
-
-    grouped = data.groupby("split")
-    max_y = 0
-    max_x = max(grouped.get_group("val")['epoch'])+1
+    max_y = max_y
+    max_x = data['epoch'].max()+1
 
     fig = go.Figure()
 
+    columns = [c for c in data.columns if c not in ["split", "epoch"]]
     for c in columns:
-
-        if c not in grouped.get_group("train").columns:
-            continue
-
-        tc = grouped.get_group("train")[c].max()
-        vc = grouped.get_group("val")[c].max()
-
-        if tc > max_y:
-                max_y = tc
         
-        if vc > max_y:
-            max_y = vc
+        metric_data = data.loc[:,[c,"split", "epoch"]]
+        groups = metric_data.groupby("split")
 
-        fig.add_trace({
-            'x': grouped.get_group("train")['epoch'].to_numpy(),
-            'y': grouped.get_group("train")[c].to_numpy(),
-            'name': f"train-{c}",
-            'mode': 'lines',
-            'type': 'scatter',
-            "connectgaps":True
-        })
+        for split, df in groups:
+            fig.add_trace({
+                            'x': df['epoch'].to_numpy(),
+                            'y': df[c].to_numpy(),
+                            'name': f"{split}-{c}",
+                            'mode': 'lines',
+                            'type': 'scatter',
+                            "connectgaps":True
+                            })
 
-        fig.add_trace({
-            'x': grouped.get_group("val")['epoch'].to_numpy(),
-            'y': grouped.get_group("val")[c].to_numpy(),
-            'name': f"val-{c}",
-            'mode': 'lines',
-            'type': 'scatter',
-            "connectgaps":True
-
-        })
-
-    
     fig.update_layout(  
                         title=title,
-                        yaxis=dict(range=[0,np.ceil(max_y)]),
+                        yaxis=dict(range=[0,max_y]),
                         xaxis=dict(range=[0,max_x]),   
                         )
 
- 
     return fig_layout(fig)

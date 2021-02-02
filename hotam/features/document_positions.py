@@ -23,9 +23,10 @@ class DocPos(FeatureModel):
         self._feature_dim = 2
         self._name = "docpos"
 
-        #create a dict of document 2 number of paragraphs
-        para_groups = dataset.level_dfs["paragraph"].groupby("document_id", sort=False)
-        self.doc2paralen = {i:g.shape[0] for i,g in para_groups}
+        # create a dict of document to number of paragraphs
+        # we need this to figure out if a paragraph is in the start or in the body, or last in a paragraph
+        documents = dataset.data.groupby("document_id")
+        self.doc2paralen = {doc_id:len(doc["paragraph_id"].unique()) for doc_id, doc in documents}
         self.prediction_level = prediction_level
         self._level = "doc"
         self._group = self._name if group is None else group

@@ -210,7 +210,7 @@ class Metrics:
             score = metric["function"](targets, preds, **metric_args)
             scores[score_name] = score
 
-            if metric["per_class"] and not metric["probs"] and task != "relation":
+            if metric["per_class"] and not metric["probs"]: #and task != "relation"
                 class_metric = self._get_class_metrics(metric, targets, preds, task, self.split)
                 class_scores.update(class_metric)
         

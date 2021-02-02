@@ -5,6 +5,7 @@ from .table import make_table
 from .conf_matrix import conf_matrix
 from .rel_dist_plot import make_relation_dist_plot
 from .dist_hist import label_dist_plot
+from .rel_dist_plot_error import make_rel_error_dist_plot
 
 __all__ = [
             "make_lineplot",
@@ -12,5 +13,6 @@ __all__ = [
             "make_table",
             "conf_matrix",
             "make_relation_dist_plot",
-            "label_dist_plot"
+            "label_dist_plot",
+            "make_rel_error_dist_plot"
             ]

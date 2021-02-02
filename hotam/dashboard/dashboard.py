@@ -129,17 +129,52 @@ class Dashboard:
 
 
         app.callback(
+                    Output('task-metric-filter-task-hist', 'options'),
+                    Output('task-metric-filter-task-hist', 'value'),
+                    [
+                    #Input('done-exp-dropdown', 'value'),
+                    Input('exp-data', 'children')
+                    ],
+                    [State('task-metric-filter-task-hist','value')])(self.get_all_tasks)
+        
+        app.callback(
                     Output('task-metric-graph-hist', 'figure'),
                     Output('task-metric-graph-con-hist', 'style'),
-                    [Input('exp-data', 'children')],
+                    [
+                        Input('exp-data', 'children'),
+                        Input('task-metric-filter-task-hist', 'value'),
+                        Input('task-metric-filter-metric-hist', 'value'),
+                        Input('task-metric-filter-split-hist', 'value')
+                    ],
                     [State('task-metric-graph-hist', 'figure')])(self.update_task_metric_graph)
 
 
+
+        # app.callback(
+        #             Output('class-metric-graph-hist', 'figure'),
+        #             Output('class-metric-graph-con-hist', 'style'),
+        #             [Input('exp-data', 'children')],
+        #             [State('class-metric-graph-hist', 'figure')])(self.update_class_metric_graph)
+
+        app.callback(
+                    Output('class-metric-filter-task-hist', 'options'),
+                    Output('class-metric-filter-task-hist', 'value'),
+                    [
+                    Input('exp-data', 'children')
+                    ],
+                    [State('class-metric-filter-task-hist','value')])(self.get_all_tasks2)
+        
         app.callback(
                     Output('class-metric-graph-hist', 'figure'),
                     Output('class-metric-graph-con-hist', 'style'),
-                    [Input('exp-data', 'children')],
+                    [
+                        Input('exp-data', 'children'),
+                        Input('class-metric-filter-task-hist', 'value'),
+                        Input('class-metric-filter-metric-hist', 'value'),
+                        Input('class-metric-filter-split-hist', 'value')
+                    ],
                     [State('class-metric-graph-hist', 'figure')])(self.update_class_metric_graph)
+
 
 
         app.callback(Output('conf-dropdown-hist', 'options'),
@@ -226,9 +261,20 @@ class Dashboard:
 
 
         app.callback(
+                    Output('task-metric-filter-task', 'options'),
+                    Output('task-metric-filter-task', 'value'),
+                    [Input('data-cache', 'children')],
+                    [State('task-metric-filter-task','value')])(self.get_all_tasks)
+        
+        app.callback(
                     Output('task-metric-graph', 'figure'),
                     Output('task-metric-graph-con', 'style'),
-                    [Input('data-cache', 'children')],
+                    [
+                        Input('data-cache', 'children'),
+                        Input('task-metric-filter-task', 'value'),
+                        Input('task-metric-filter-metric', 'value'),
+                        Input('task-metric-filter-split', 'value')
+                    ],
                     [State('task-metric-graph', 'figure')])(self.update_task_metric_graph)
 
 
@@ -352,42 +398,178 @@ class Dashboard:
                             children=[
                                 html.Div(
                                     className="row flex-display",
+                                    #className="pretty_container twelve columns",
+                                    id=f"loss-graph-con{name}",
                                     children=[
                                                 html.Div(
-                                                        id=f"loss-graph-con{name}",
-                                                        className="pretty_container six columns",
+                                                        #id=f"loss-graph-con{name}",
+                                                        className="pretty_container twelve columns",
                                                         children=[dcc.Graph(
                                                                             id=f"loss-graph{name}",
                                                                             figure = go.Figure([])
                                                                             )
                                                                     ],
-                                                        style={'display': 'none'}
+                                                        #style={'display': 'none'}
+                                                        ),
+                                                ],
+                                    style={'display': 'none'}
+                                    ),  
+                                html.Div(
+                                        id=f"task-metric-graph-con{name}",
+                                        #className="pretty_container twelve columns",
+                                        className="row flex-display",
+                                        children=[
+                                                html.Div(
+                                                        #id="task-metric-filters",
+                                                        className="pretty_container two columns",
+                                                        children=[
+                                                                    html.Div( 
+                                                                            #className="pretty_container six columns",
+                                                                            #className="row",
+                                                                            children=[
+                                                                                    html.P("Filter Task:", className="control_label"),
+                                                                                    dcc.Checklist(
+                                                                                                id=f"task-metric-filter-task{name}",
+                                                                                                options=[],
+                                                                                                value=None,
+                                                                                                className="dcc_control",
+                                                                                                labelStyle={'display': 'inline-block'}
+                                                                                                ),
+                                                                                        ]
+                                                                                ),
+                                                                        html.Div( 
+                                                                            #className="pretty_container six columns",
+                                                                            #className="column flex-display",
+                                                                            children=[
+                                                                                    html.P("Filter Metric:", className="control_label"),
+                                                                                    dcc.Checklist(
+                                                                                                id=f"task-metric-filter-metric{name}",
+                                                                                                options=[
+                                                                                                        {"label":"f1", "value":"f1"},
+                                                                                                        {"label":"precision", "value":"precision"},
+                                                                                                        {"label":"recall", "value":"recall"}
+                                                                                                        ],
+                                                                                                value=["f1"],
+                                                                                                className="dcc_control",
+                                                                                                labelStyle={'display': 'inline-block'}
+                                                                                                ),
+                                                                                        ]
+                                                                                ),
+                                                                    html.Div( 
+                                                                            #className="pretty_container six columns",
+                                                                            #className="column flex-display",
+                                                                            children=[
+                                                                                        html.P("Filter Split:", className="control_label"),
+                                                                                        dcc.Checklist(
+                                                                                                id=f"task-metric-filter-split{name}",
+                                                                                                options=[
+                                                                                                        {"label":"val", "value":"val"},
+                                                                                                        {"label":"train", "value":"train"}
+                                                                                                        ],
+                                                                                                value=["val", "train"],
+                                                                                                className="dcc_control",
+                                                                                                labelStyle={'display': 'inline-block'}
+                                                                                                ),    
+                                                                                        ]
+                                                                                ),
+                                                                        ],
                                                         ),
                                                 html.Div(
-                                                        id=f"task-metric-graph-con{name}",
-                                                        className="pretty_container six columns",
-                                                        children=[dcc.Graph(
-                                                                            id=f"task-metric-graph{name}",
-                                                                            figure = go.Figure([])
-                                                                            )
-                                                                    ],                                                    
-                                                        style={'display': 'none'}
+                                                        className="pretty_container nine columns",
+                                                        children=[
+                                                                dcc.Graph(
+                                                                    id=f"task-metric-graph{name}",
+                                                                    figure = go.Figure([])
+                                                                    )
+                                                                    ]
+                                                        )
+                                            ],                                                    
+                                        style={'display': 'none'}
+                                ),
+                                html.Div(
+                                        id=f"class-metric-graph-con{name}",
+                                        #className="pretty_container twelve columns",
+                                        className="row flex-display",
+                                        children=[
+                                                html.Div(
+                                                        #id="task-metric-filters",
+                                                        className="pretty_container two columns",
+                                                        children=[
+                                                                    html.Div( 
+                                                                            #className="pretty_container six columns",
+                                                                            #className="row",
+                                                                            children=[
+                                                                                    html.P("Filter Task:", className="control_label"),
+                                                                                    dcc.Dropdown(
+                                                                                                id=f"class-metric-filter-task{name}",
+                                                                                                options=[],
+                                                                                                value=None,
+                                                                                                className="dcc_control",
+                                                                                                ),
+                                                                                        ]
+                                                                                ),
+                                                                        html.Div( 
+                                                                            #className="pretty_container six columns",
+                                                                            #className="column flex-display",
+                                                                            children=[
+                                                                                    html.P("Filter Metric:", className="control_label"),
+                                                                                    dcc.Checklist(
+                                                                                                id=f"class-metric-filter-metric{name}",
+                                                                                                options=[
+                                                                                                        {"label":"f1", "value":"f1"},
+                                                                                                        {"label":"precision", "value":"precision"},
+                                                                                                        {"label":"recall", "value":"recall"}
+                                                                                                        ],
+                                                                                                value=["f1"],
+                                                                                                className="dcc_control",
+                                                                                                labelStyle={'display': 'inline-block'}
+                                                                                                ),
+                                                                                        ]
+                                                                                ),
+                                                                    html.Div( 
+                                                                            #className="pretty_container six columns",
+                                                                            #className="column flex-display",
+                                                                            children=[
+                                                                                        html.P("Filter Split:", className="control_label"),
+                                                                                        dcc.Checklist(
+                                                                                                id=f"class-metric-filter-split{name}",
+                                                                                                options=[
+                                                                                                        {"label":"val", "value":"val"},
+                                                                                                        {"label":"train", "value":"train"}
+                                                                                                        ],
+                                                                                                value=["val", "train"],
+                                                                                                className="dcc_control",
+                                                                                                labelStyle={'display': 'inline-block'}
+                                                                                                ),    
+                                                                                        ]
+                                                                                ),
+                                                                        ],
                                                         ),
-                                                ]
-                                        ),
+                                                html.Div(
+                                                        className="pretty_container nine columns",
+                                                        children=[
+                                                                dcc.Graph(
+                                                                    id=f"class-metric-graph{name}",
+                                                                    figure = go.Figure([])
+                                                                    )
+                                                                    ]
+                                                        )
+                                            ],                                                    
+                                        style={'display': 'none'}
+                                ),
                                 html.Div(
                                     className="row flex-display",
                                     children=[
-                                                html.Div(
-                                                        id=f"class-metric-graph-con{name}",
-                                                        className="pretty_container six columns",
-                                                        children=[dcc.Graph(
-                                                                            id=f"class-metric-graph{name}",
-                                                                            figure = go.Figure([])
-                                                                            )
-                                                                            ],                                                      
-                                                        style={'display': 'none'}
-                                                        ),
+                                                # html.Div(
+                                                #         id=f"class-metric-graph-con{name}",
+                                                #         className="pretty_container six columns",
+                                                #         children=[dcc.Graph(
+                                                #                             id=f"class-metric-graph{name}",
+                                                #                             figure = go.Figure([])
+                                                #                             )
+                                                #                             ],                                                      
+                                                #         style={'display': 'none'}
+                                                #         ),
                                                 html.Div(
                                                         id=f"conf-matrix-con{name}",
                                                         className="pretty_container six columns",
@@ -635,6 +817,41 @@ class Dashboard:
         return [{"label":t, "value":t} for t in tasks]
 
 
+
+    def get_all_tasks(self, data_cache, value):
+        
+        if not data_cache:
+            return [], None
+
+        all_tasks = data_cache["exp_config"]["tasks"] + data_cache["exp_config"]["subtasks"] 
+        options = [{"label":t, "value":t} for t in all_tasks]
+
+        if value is None:
+            value = data_cache["exp_config"]["tasks"]
+
+        return options, value
+
+
+
+    def get_all_tasks2(self, data_cache, value):
+        """
+        we filter tasks that are unions for relation + something. Relation itself is fine, but not in combination
+        """
+        
+        if not data_cache:
+            return [], None
+
+        all_tasks = data_cache["exp_config"]["tasks"] + data_cache["exp_config"]["subtasks"] 
+        options = [{"label":t, "value":t} for t in all_tasks if ("relation" not in t or t == "relation")]
+
+        if value is None:
+            value = options[0]["value"]
+
+        return options, value
+
+
+
+
     def update_output(self, value):
         if value:
             return {'display': 'none'}
@@ -757,7 +974,14 @@ class Dashboard:
         
         task_loss = [task+"-loss" for task in tasks]
 
-        figure = make_lineplot(data, task_loss, "Loss")
+        
+        filtered_data = data.loc[:, task_loss+ ["split", "epoch"]]
+        
+        max_loss = data.loc[:, task_loss].max().max()
+        max_loss = max_loss + (max_loss*0.2)
+        figure = make_lineplot(filtered_data, "Loss", max_y=max_loss)
+
+        #figure = make_lineplot(data, task_loss, "Loss")
 
         last_vis_state = get_visible_info(fig_state)
         current_vis_state = get_visible_info(figure)
@@ -767,7 +991,7 @@ class Dashboard:
         return figure, {"display":"block"}
 
 
-    def update_task_metric_graph(self, data_cache, fig_state):
+    def update_task_metric_graph(self, data_cache, tasks, metrics, splits, fig_state):
 
 
         fig_state = go.Figure(fig_state)
@@ -778,25 +1002,27 @@ class Dashboard:
         if not data_cache["scores"]:
             return fig_state, {"display":"none"}
 
+        # if task is None:
+        #     return fig_state, {"display":"none"}
 
         data = pd.DataFrame(data_cache["scores"])
         experiment_id = data_cache["experiment_id"]
         
-        tasks = data_cache["exp_config"]["tasks"]
-        metrics = data_cache["exp_config"]["metrics"].copy()
-        metrics.remove("confusion_matrix")       
-
+        #tasks = data_cache["exp_config"]["tasks"] + data_cache["exp_config"]["subtasks"]
+        #metrics = data_cache["exp_config"]["metrics"].copy()
+        #metrics.remove("confusion_matrix")       
 
         task_metrics = []
         for task in tasks:
             for metric in metrics:
                 task_metrics.append("-".join([task,metric]))
     
-        figure = make_lineplot(data, task_metrics, "Task Scores")
+        cond = data["split"].isin(splits) 
+        filtered_data = data.loc[cond].loc[:, task_metrics+ ["split", "epoch"]]
 
+        figure = make_lineplot(filtered_data, "Task Scores", max_y=1.0)
 
         last_vis_state = get_visible_info(fig_state)
-
         if data_cache["epoch"] == 0:
             last_vis_state = {k:False for k in task_metrics if "f1" not in k}
 
@@ -807,8 +1033,8 @@ class Dashboard:
         return figure, {"display":"block"}
 
 
-    def update_class_metric_graph(self, data_cache, fig_state):
-        
+    def update_class_metric_graph(self, data_cache, task, metrics, splits, fig_state):
+
         fig_state = go.Figure(fig_state)
 
         if not data_cache:
@@ -819,40 +1045,46 @@ class Dashboard:
 
 
         data = pd.DataFrame(data_cache["scores"])
-        experiment_id = data_cache["experiment_id"]
-
-        tasks = data_cache["exp_config"]["tasks"]
-
-        if len(tasks) == 1 and tasks[0] == "relation":
-            return fig_state, {"display":"none"}
-
-        metrics = data_cache["exp_config"]["metrics"].copy()
-        metrics.remove("confusion_matrix")
         task2labels = data_cache["exp_config"]["dataset_config"]["task_labels"]
+        #experiment_id = data_cache["experiment_id"]
 
-        filter_columns = []
-        for task in tasks:
-            
-            if task == "relation":
-                continue
+        #tasks = data_cache["exp_config"]["tasks"]
+        # if len(tasks) == 1 and tasks[0] == "relation":
+        #     return fig_state, {"display":"none"}
+        # metrics = data_cache["exp_config"]["metrics"].copy()
+        # metrics.remove("confusion_matrix")
 
-            classes = task2labels[task]
-            for c in classes:
+        print(task, metrics, splits)
+        if task == "relation":
+
+            filter_columns = []
+            for c in task2labels[task]:
+                filter_columns.append("-".join([task, str(c), "f1"]).lower())
+
+            data_stats = data_cache["exp_config"]["dataset_stats"]
+            figure = make_rel_error_dist_plot(data, data_stats, splits, filter_columns)
+
+        else:
+        
+            filter_columns = []
+            for c in task2labels[task]:
                 for metric in metrics:
                     filter_columns.append("-".join([task, str(c), metric]).lower())
 
-    
-        figure =  make_lineplot(data, filter_columns, "Class Scores")
 
-        last_vis_state = get_visible_info(fig_state)
+            cond = data["split"].isin(splits) 
+            filtered_data = data.loc[cond].loc[:, filter_columns+ ["split", "epoch"]]
 
+            figure = make_lineplot(filtered_data, "Class Scores", max_y=1.0)
 
-        if data_cache["epoch"] == 0:
-            last_vis_state = {k:False for k in filter_columns if "f1" not in k}
+            last_vis_state = get_visible_info(fig_state)
 
-        current_vis_state = get_visible_info(figure)
-        if last_vis_state.keys() == current_vis_state.keys():
-            update_visible_info(figure, last_vis_state)
+            if data_cache["epoch"] == 0:
+                last_vis_state = {k:False for k in filter_columns if "f1" not in k}
+
+            current_vis_state = get_visible_info(figure)
+            if last_vis_state.keys() == current_vis_state.keys():
+                update_visible_info(figure, last_vis_state)
 
         return figure, {"display":"block"}
 
@@ -1090,7 +1322,7 @@ class Dashboard:
         if exp_config is None:
             return [], None
 
-        options = [{"label":t, "value":t} for t in exp_config["tasks"] if t not in "relation"]
+        options = [{"label":t, "value":t} for t in exp_config["tasks"] if "relation" not in t]
 
         if not options:
             value = None

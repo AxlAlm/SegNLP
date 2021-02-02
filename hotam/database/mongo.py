@@ -71,8 +71,11 @@ class MongoDB:
 
     def get_tasks(self, filter_by):
         exp = self.experiments.find_one(filter_by)
-        return [{"label":t, "value":t} for t in list(exp["task2label"].keys())]
+        return [{"label":t, "value":t} for t in exp["tasks"]]
 
+    def get_subtasks(self, filter_by):
+        exp = self.experiments.find_one(filter_by)
+        return [{"label":t, "value":t} for t in exp["subtasks"]]
 
     def get_task_classes(self, filter_by, tasks=[]):
         exp = self.experiments.find_one(filter_by)
