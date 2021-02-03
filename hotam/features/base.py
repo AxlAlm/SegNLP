@@ -77,7 +77,7 @@ class FeatureModel(ABC):
         if ids_exist:
             self._load_ids()
         else:
-            self.__saved_ids = set()
+            self._saved_ids = set()
 
         # the memmap
         self.__memmap_path = os.path.join(dir_path, f"{feature_name}.dat")
@@ -97,17 +97,17 @@ class FeatureModel(ABC):
 
     def _dump_ids(self):
         with open(self.__idsets_path, "w") as f:
-            json.dump(list(self.__saved_ids), f, indent=4)
+            json.dump(list(self._saved_ids), f, indent=4)
 
 
     def _load_ids(self):
         with open(self.__idsets_path, "r") as f:
-            self.__saved_ids = set(json.load(f))
+            self._saved_ids = set(json.load(f))
 
     
     def _all_saved(self):
 
-        if len(self.__saved_ids) == self._mem_data.shape[0]-1:
+        if len(self._saved_ids) == self._mem_data.shape[0]-1:
             #logger.info("All Features are saved")
 
             if callable(getattr(self, "deactivate", None)):

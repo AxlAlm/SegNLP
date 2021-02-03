@@ -114,9 +114,9 @@ class LSTM_DIST(nn.Module):
         
         #self.max_rel = len(task2labels["relation"])
         #self.relation_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), MAX_NR_AC)
-        self.are_related = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), 1)
-        self.stance_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), len(task2labels["stance"]))
-        self.ac_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), len(task2labels["ac"]))
+        self.relation_clf = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), 1)
+        self.stance_clf = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), len(task2labels["stance"]))
+        self.ac_clf = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), len(task2labels["ac"]))
     
         self.loss = nn.CrossEntropyLoss(reduction="sum", ignore_index=-1)
 
@@ -234,12 +234,15 @@ class LSTM_DIST(nn.Module):
 
         #if self.DISTICTION:
 
+        #create span representation for Argument Components and Argumentative Markers
         am_minus_embs = self.__minus_span(lstm_out, batch["am_spans"])
         ac_minus_embs = self.__minus_span(lstm_out, batch["ac_spans"])
 
+        #pass each of the spans to a seperate BiLSTM. 
         am_lstm_out, _ = self.am_lstm(am_minus_embs, lengths_seq)
         ac_lstm_out, _ = self.ac_lstm(ac_minus_embs, lengths_seq)
 
+        #concatenate the output from Argument Component BiLSTM and Argument Marker BiLSTM with BOW embeddigns W
         contex_emb = torch.cat((am_lstm_out, ac_lstm_out, W), dim=-1)
 
         final_out, _ = self.adu_lstm(contex_emb, lengths_seq)
@@ -248,35 +251,48 @@ class LSTM_DIST(nn.Module):
         #     adu_minus_embs = torch.cat(self.__minus_span(lstm_out, batch["am_spans"]), W, dim=-1)
         #     final_out, _ = self.adu_lstm(adu_minus_embs, lengths_seq)
         
+        #relation_out = self.relation_layer(final_out)
 
-        relation_out = self.relation_layer(final_out)
-        stance_out = self.stance_layer(final_out)
-        ac_out = self.ac_layer(final_out)
 
-        relation_out_new = torch.zeros((*ac_mask.shape, ac_mask.shape[-1]))
-        relation_probs = torch.zeros((*ac_mask.shape, ac_mask.shape[-1]))
-        print("BATCH SIZE", batch_size)
-        for i in range(batch_size):
-            # print(i)
-            sample_mask = ac_mask[i]
-            sample_m_mask = sample_mask.repeat(max_nr_acs,1)
-            # print(ac_mask[i])
-            # print(sample_m_mask)
-            # print(relation_out[i,:, :6].shape, ac_mask.shape)
-            out = relation_out[i,:, :max_nr_acs] * sample_m_mask
+        # Classification of AC and Stance is pretty straight forward
+        stance_out = self.stance_clf(final_out)
+        ac_out = self.ac_cl(final_out)
+
+
+        # Classification of Links between ACs is done by concatenate a one-hot vector representing positions
+        # with the span representations from final_out.
+        # 
+        # maximum spanning tree algorithm
+
+
+        
+
+        # relation_out_new = torch.zeros((*ac_mask.shape, ac_mask.shape[-1]))
+        # relation_probs = torch.zeros((*ac_mask.shape, ac_mask.shape[-1]))
+        # print("BATCH SIZE", batch_size)
+        # for i in range(batch_size):
+        #     # print(i)
+        #     sample_mask = ac_mask[i]
+        #     sample_m_mask = sample_mask.repeat(max_nr_acs,1)
+        #     # print(ac_mask[i])
+        #     # print(sample_m_mask)
+        #     # print(relation_out[i,:, :6].shape, ac_mask.shape)
+        #     out = relation_out[i,:, :max_nr_acs] * sample_m_mask
             
-            out_copy = out.detach().clone()
-            sample_m_mask = sample_m_mask.type(torch.bool)
-            out_copy[~sample_m_mask] = float('-inf')
-            # print("INF OUT", out_copy)
-            out_softmax = F.softmax(out_copy, dim=-1)
+        #     out_copy = out.detach().clone()
+        #     sample_m_mask = sample_m_mask.type(torch.bool)
+        #     out_copy[~sample_m_mask] = float('-inf')
+        #     # print("INF OUT", out_copy)
+        #     out_softmax = F.softmax(out_copy, dim=-1)
 
-            # print("SOFTMAX", out_softmax)
-            # print("OUT", out)
-            relation_probs[i] = out_softmax
-            relation_out_new[i] = out
+        #     # print("SOFTMAX", out_softmax)
+        #     # print("OUT", out)
+        #     relation_probs[i] = out_softmax
+        #     relation_out_new[i] = out
+        #relation_out = relation_out_new
 
-        relation_out = relation_out_new
+
+
 
         stance_probs = F.softmax(stance_out, dim=-1)
         ac_probs = F.softmax(ac_out, dim=-1)

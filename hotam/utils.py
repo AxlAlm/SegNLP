@@ -3,6 +3,7 @@
 import functools
 import numpy as np
 from time import time
+import time
 import _pickle as pkl
 import json
 from typing import List, Dict, Tuple
@@ -144,9 +145,7 @@ def timer(func):
 
 
 def one_tqdm(desc:str):
-
     def decorator(f):
-
         def wrapper(*args, **kwargs):
             pbar = tqdm(total=1, desc=desc)
             # try:
@@ -154,6 +153,7 @@ def one_tqdm(desc:str):
             # except error as e:
             #     return e
             pbar.update(1)
+            pbar.close()
         
         return wrapper
     
@@ -223,7 +223,6 @@ def download(url:str, save_path:str, desc:str):
             f.write(data)
     progress_bar.close()
 
-    print(total != 0, progress_bar.n != total, progress_bar.n, total )
     if total != 0 and progress_bar.n != total:
         raise RuntimeError("ERROR, something went wrong")
 

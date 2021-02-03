@@ -6,8 +6,6 @@ from typing import List, Tuple, Dict
 from tqdm import tqdm
 from string import punctuation
 import warnings
-
-# import stanza
 import spacy
 
 #nltk
@@ -454,6 +452,7 @@ class Preprocessor:
         #paragraph, current_sent_id,  current_sent_idx = self.__get_text_id_idx("sentence")
 
         spacy_doc = self.nlp(paragraph)
+
         for i, sentence in enumerate(spacy_doc.sents):
 
             if current_sent_idx == 0:
@@ -670,14 +669,22 @@ class Preprocessor:
         """
         if self.data.shape == (0,0):
             self.data = pd.DataFrame(self._data_stack)
+            self._clean()
         else:
             raise NotImplementedError
 
         self._data_stack = []
-        del self.nlp
+        #del self.nlp
         # for level, stack in self.stack_level_data.items():
         #     self.level_dfs[level] = self.level_dfs[level].append(pd.DataFrame(stack))
         # self.stack_level_data = {l:[] for l in self.stack_level_data.keys()}
+
+
+    def _clean(self):
+        self.data = self.data[~self.data.text.str.contains("\n")]
+        self.data = self.data[~self.data.text.str.contains("\t")]
+        self.data.reset_index(inplace=True)
+
 
 
     def create_ams(self, method="pre-ac"):

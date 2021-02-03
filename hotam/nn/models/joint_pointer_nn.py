@@ -43,32 +43,21 @@ class JointPN(nn.Module):
     Decoder:
     ______
     
-    As the decoder is working over timesteps the LSTM will be a LstmCell to 
-    which we manually pass the last cell states to, along with appropriately 
+    As the decoder is working over timesteps we will use a LstmCell which we pass the last cell states to, along with appropriately 
     modified input
 
-    For each timestep in max sequence length:
+    For each timestep (max seq length):
 
     4)  Decoder takes the last states from the encoder to init the decoder.
         NOTE as the encoder is Bi-Directional we cannot just pass on the states
         from the encoder to the decoder. What do we pass on?
 
-        a) concatenation of forward layer outputs. This means that the decoder hidden is
-        always encoder hidden * 2.  In the paper they set the Decoder Hidden to 512,
-        and the encoder hidden to 256, which fit with the rule.
+        foward and backwards concatenations of last layer in encoder lstm. 
 
-        c)  foward and backwards concate of last layer. Fit with the hyperparamaters
-            in the paper.
-
-        b)  last foward layer outputs. Will not work with the hyperparamaters given in the paper.
-            i.e. Encoder will output 256 dims, but the Decoder and attention will then not match as
-            they are 512
-
-
-        As input, we pass and empty zero tensor as there is no input arrow
+        As first input, we pass and zero tensor as there is no input arrow
         architecture in the paper. This also make sense as there are no previous 
         decoding timesteps, which the input is intended to be, hence there is 
-        nothing to pass
+        nothing to pass. One could pass a random value tensor representing START
     
     5)  the input to the next decoder is set as the hidden state outputed from the
         LSTM-cell. Hidden state and cells state are also set as next states for 

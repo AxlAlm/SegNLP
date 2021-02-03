@@ -3,28 +3,32 @@
 # from hotam.default_hyperparamaters.lstm_crf import joint_pointer_nn_hps
 # from hotam.default_hyperparamaters.lstm_crf import lstm_dist_hps
 
-lstm_crf_hps = {
-    "optimizer": "sgd",
-    "lr": 0.001,
-    "hidden_dim": 256,
-    "num_layers": 2,
-    "bidir": True,
-    "fine_tune_embs": False,
-    "batch_size": 32,
-    "max_epochs": 150,
-}
+
+
+lstm_crf_hps =  {
+                    "optimizer": "sgd",
+                    "lr": 0.001,
+                    "hidden_dim": 256,
+                    "num_layers": 2,
+                    "bidir": True,
+                    "fine_tune_embs": False,
+                    "batch_size": 32,
+                    "max_epochs":100,
+                    }
+
 
 lstm_cnn_crf_hps = {
-    "optimizer": "sgd",
-    "lr": 0.001,
-    "hidden_dim": 256,
-    "char_dim": 100,
-    "kernel_size": 3,
-    "num_layers": 2,
-    "bidir": True,
-    "batch_size": 32,
-    "max_epochs": 100,
-}
+                    "optimizer": "adam",
+                    "lr": 0.001,
+                    "hidden_dim": 250,
+                    "char_dim": 100,
+                    "kernel_size": 3,
+                    "num_layers": 1,
+                    "bidir": True,
+                    "batch_size": 32,
+                    "max_epochs":100,
+                    }
+
 
 joint_pointer_nn_hps = {
     "optimizer": "adam",

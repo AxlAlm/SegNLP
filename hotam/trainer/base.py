@@ -32,8 +32,9 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 def my_mean(scores):
 
-    if isinstance(scores,list):
-        scores = np.array(scores)
+    scores = ensure_numpy(scores)
+    # if isinstance(scores,list):
+    #     scores = np.array(scores)
     
     if scores.shape[0] == 0:
         return scores[0]
@@ -204,18 +205,26 @@ class PTLBase(ptl.LightningModule, Metrics):
     
     def __BIO_decode(self, bio_labels):
         """
-        
+        takes a list of string BIO encodings. Applies regex to find the spans and relabels them 
+        with a span ids
         """
-        #bio_labels_str = "-".join(bio_labels.astype(str))
         bio_labels_str = "-".join(bio_labels)
         self.__span_id = 0
         def repl(m):
-            c = f'SPAN_{self.__span_id}-' * len(m.group())
+            bio_list = m.group().split("-")
+            lenght = len(m.group().split("-")) -1
+            #if "" == bio_list[-1]:
+                #lenght -= 1
+
+            c = f'SPAN_{self.__span_id}-' * lenght
             self.__span_id += 1
             return c
-            
-        m = re.sub(fr"B-(I(-|))*", repl, bio_labels_str)
-        return m.split("-")
+
+        m = re.sub(r"B-(I-)*", repl, bio_labels_str)
+        spans = m.split("-")
+
+        assert len(spans) == len(bio_labels), f"span length: {len(spans)}, bio length: {len(bio_labels)}"
+        return spans
             
 
     def __reformat_outputs(self, output_dict):
@@ -248,9 +257,14 @@ class PTLBase(ptl.LightningModule, Metrics):
             for task in self.dataset.subtasks:
                 task_preds = ensure_numpy(output_dict["preds"][task])
                 task_gold = ensure_numpy(self.batch[task])
-          
-                outputs[ID]["preds"][task] = self.dataset.decode_list(task_preds[i][:length], task).tolist()
-                outputs[ID]["gold"][task] = self.dataset.decode_list(task_gold[i][:length], task).tolist()
+
+                # as relation prediction are assumed to be indexes to related span, we want to perserve them as such for later graphics
+                if task == "relation":
+                    outputs[ID]["preds"][task] = task_preds[i][:length].tolist()
+                    outputs[ID]["gold"][task] = task_gold[i][:length].tolist()
+                else:
+                    outputs[ID]["preds"][task] = self.dataset.decode_list(task_preds[i][:length], task).tolist()
+                    outputs[ID]["gold"][task] = self.dataset.decode_list(task_gold[i][:length], task).tolist()
 
                 if task == "seg" and not spans_added:
                     outputs[ID]["preds"]["span_ids"] = self.__BIO_decode(outputs[ID]["preds"][task])

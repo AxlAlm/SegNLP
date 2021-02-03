@@ -11,6 +11,7 @@ import torch.optim as optim
 
 #hotam
 from hotam.nn.layers import LSTM_LAYER
+from hotam.utils import zero_pad
 import hotam.utils as u
 
 # use a torch implementation of CRF
@@ -130,5 +131,5 @@ class LSTM_CRF(nn.Module):
         return {    
                     "loss":tasks_loss, 
                     "preds":tasks_preds,
-                    "probs": None
+                    "probs": {}
                 }

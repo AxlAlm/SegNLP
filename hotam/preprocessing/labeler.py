@@ -12,10 +12,10 @@ from hotam.utils import RangeDict
 from hotam.utils import timer
 from hotam import get_logger
 
-logger = get_logger("LABLER")
+logger = get_logger("LABELER")
 
 
-class Labler:
+class Labeler:
 
     """
     class for labeling the heirarchially structured data created from Preprocessor.
@@ -41,6 +41,7 @@ class Labler:
         label, label_id = char_span[row["char_end"]]
 
         label = label.copy() # make a seperate obj for each particular token
+        #label["seg"] = "O"
 
         if "None" in label_id:
 

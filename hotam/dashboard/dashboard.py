@@ -11,6 +11,8 @@ import imgkit
 import base64
 import os
 import math
+from pprint import pprint
+import traceback
 
 
 #dash
@@ -42,8 +44,7 @@ class Dashboard:
 
     def __init__(self, db):
         self.db = db
-        app = dash.Dash("Dummy Dash Board")  
-    
+        app = dash.Dash("HotAm Dashboard")  
 
 
         app.layout = html.Div([
@@ -871,7 +872,6 @@ class Dashboard:
 
 
     def update_highlight_text(self, sample_id, data_cache):
-        return "", {'display': 'none'}
         
         if not data_cache or sample_id is None:
             return "", {'display': 'none'}
@@ -879,7 +879,7 @@ class Dashboard:
         if not data_cache["outputs"]:
             return "", {'display': 'none'}
 
-        tasks  = data_cache["exp_config"]["tasks"]
+        tasks  = set(data_cache["exp_config"]["tasks"] +data_cache["exp_config"]["subtasks"])
         if "seg" not in tasks:
             return "", {'display': 'none'}
 
@@ -913,7 +913,6 @@ class Dashboard:
 
                 },
             """
-
             pred_span = sample_out["preds"]["span_ids"][i] if "SPAN" in sample_out["preds"]["span_ids"][i] else None
             gold_span = sample_out["gold"]["span_ids"][i] if "SPAN" in sample_out["gold"]["span_ids"][i] else None
 
@@ -925,7 +924,9 @@ class Dashboard:
                             }
 
             if pred_span:
-                token_data["pred"]["label"] = sample_out["preds"][task][i]
+                pred_label = sample_out["preds"][task][i]
+                pred_label = pred_label if pred_label != "None" else None
+                token_data["pred"]["label"] = pred_label
 
             if task in sample_out["probs"]:
                 scores = sample_out["probs"][task][i]
@@ -934,16 +935,20 @@ class Dashboard:
                 token_data["pred"]["label"] = task2labels[task][idx]
 
             if gold_span:
-                pred_label = sample_out["gold"][task]
+                gold_label = sample_out["gold"][task][i]
+                gold_label = gold_label if gold_label != "None" else None
                 token_data["gold"] ={
                                     "span_id":gold_span,
-                                    "label":pred_label
+                                    "label":gold_label
                                     }
 
 
             data.append(token_data)
 
-        hotviz.hot_text(data, labels=task2labels[task], save_path=th_path, print_html=False)
+        #pprint(data)
+        labels = [l for l in task2labels[task] if l != "None"]
+        hotviz.hot_text(data, labels=labels, save_path=th_path, print_html=False, width=1200)
+
 
         with open(th_path, "rb") as f:
             enc_img = base64.b64encode(f.read())
@@ -953,20 +958,43 @@ class Dashboard:
 
 
     def update_tree_graph(self, sample_id, data_cache, fig_state):
-        return fig_state, {'display': 'none'}
 
         def extract_data(df):
             spans = df.groupby("span_ids")
-            data = []
-            for i, span in spans:
+            span_data = []
+            for i,(span_id, span) in enumerate(spans):
+
+                label = span["ac"].unique()[0]
+                relation = span["relation"].unique()[0]
+                relation_type = span["stance"].unique()[0]
+                print(span["text"].tolist())
                 span_data.append({
-                                    "label":span["ac"].unique()[0],
-                                    "link": span["relation"].unique()[0],
-                                    "link_label": span["stance"].unique()[0],
+                                    "label":label,
+                                    "link": relation,
+                                    "link_label": relation_type,
                                     "text": " ".join(span["text"].tolist()),
-                                    })
-            
-            return data
+                                    })            
+            return span_data
+
+
+        def pe_majorclaim_fix(data):
+            """
+            In persuasive essays dataset all Claims are related to the majorlcaims. the Major claims are parapharses of the same statement.
+            """
+            majorclaim_idx = None
+            for i,d in enumerate(data):
+
+                if d["label"] == "MajorClaim":
+                    if majorclaim_idx is not None:
+                        d["link"] = majorclaim_idx
+                        d["link_label"] = "paraphrase"
+                    else:
+                        majorclaim_idx = i
+
+            for d in data:
+                if d["label"] == "Claim":
+                    d["link"] = majorclaim_idx
+
 
         fig_state = go.Figure(fig_state)
 
@@ -993,20 +1021,23 @@ class Dashboard:
 
         pred_df = pd.DataFrame(sample_out["preds"])
         gold_df = pd.DataFrame(sample_out["gold"])
-        text = [" ".join(t) for t in sample_out["text"]]
-
 
         if "span_ids" in pred_df.columns:
+            text = sample_out["text"]
+            pred_df["text"] = text
+            gold_df["text"] = text
             pred_data = extract_data(pred_df)
             gold_data = extract_data(gold_df)
+
       
         else:
+            text = [" ".join(t) for t in sample_out["text"]]
+
             rename_dict = {"ac": "label", "relation": "link", "stance":"link_label"}
 
             if not has_stance:
                 pred_df["stance"] = "None"
                 gold_df["stance"] = "None"
-
 
             pred_df.rename(columns=rename_dict,  inplace=True)
             gold_df.rename(columns=rename_dict,  inplace=True)
@@ -1015,8 +1046,7 @@ class Dashboard:
 
             pred_data = list(pred_df.loc[:,list(rename_dict.values())+["text"]].T.to_dict().values())
             gold_data = list(gold_df.loc[:,list(rename_dict.values())+["text"]].T.to_dict().values())
-            
-
+    
 
         # example input:
         # """
@@ -1029,10 +1059,20 @@ class Dashboard:
         #             },]
         # """
 
-        print(pred_data)
-        print(gold_data)
+        if data_cache["exp_config"]["dataset"] == "pe":
+            pe_majorclaim_fix(pred_data)
+            pe_majorclaim_fix(gold_data)
 
+        
+        pprint(pred_data)
         fig = hotviz.hot_tree(pred_data, gold_data=gold_data)
+        
+        print("THIRD")
+        fig.update_layout(
+                            autosize=False,
+                            width=1200,
+                            height=1200,
+                        )
 
 
         last_vis_state = get_visible_info(fig_state)
