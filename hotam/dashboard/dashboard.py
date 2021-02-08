@@ -13,7 +13,7 @@ import os
 import math
 from pprint import pprint
 import traceback
-
+import logging
 
 #dash
 import dash
@@ -37,6 +37,10 @@ from .utils import get_filter, fig_layout, get_visible_info, update_visible_info
 from .visuals import *
 
 
+# from hotam import get_logger
+# import inspect
+# logger = get_logger("DASHBOARD", "-dashboard", logging_level=logging.DEBUG)
+
 th_path  = "/tmp/text_highlight.png"
 
 
@@ -44,28 +48,32 @@ class Dashboard:
 
     def __init__(self, db):
         self.db = db
-        app = dash.Dash("HotAm Dashboard")  
+        app = dash.Dash("HotAm Dashboard")
+
+        # app.logger  = logger
+        # app.layout = html.Div([
+        #                             dcc.Tabs(
+        #                                     id='tabs', 
+        #                                     value='tab-1', 
+        #                                     children=[
+        #                                                 dcc.Tab(label='Historical View', value='tab-1'),
+        #                                                 dcc.Tab(label='Live View', value='tab-2'),
+        #                                                 ]
+        #                                     ),
+        #                             html.Div(id='tab-content')
+        #                         ])
+        # app.callback(Output('tab-content', 'children'),
+        #                     [Input('tabs', 'value')])(self.render_content)
 
 
-        app.layout = html.Div([
-                                    dcc.Tabs(
-                                            id='tabs', 
-                                            value='tab-1', 
-                                            children=[
-                                                        dcc.Tab(label='Historical View', value='tab-1'),
-                                                        dcc.Tab(label='Live View', value='tab-2'),
-                                                        ]
-                                            ),
-                                    html.Div(id='tab-content')
-                                ])
+        app.layout  = self.__get_content()
 
 
-        app.callback(Output('tab-content', 'children'),
-                            [Input('tabs', 'value')])(self.render_content)
 
+        #### RANKING DROPDOWNS / CHECKLISTS
 
         app.callback(Output('project-dropdown', 'options'),
-                    Input('interval-component-hist', 'n_intervals'))(self.update_project_dropdown)
+                    Input('interval-component', 'n_intervals'))(self.update_project_dropdown)
         
 
         app.callback(Output('rank-filters', 'style'),
@@ -76,165 +84,45 @@ class Dashboard:
                     Input('project-dropdown', 'value'))(self.update_task_dropdown)
 
 
+        #### EXP VIEW DROPDOWN / CHECKLISTS
+        app.callback(
+                    Output('exp-dropdown', 'options'),
+                    Output('exp-dropdown', 'value'),
+                    [
+                    Input('interval-component', 'n_intervals'),
+                    Input('rank-graph', 'clickData')
+                    ],
+                    State('exp-dropdown', 'value'))(self.update_exp_dropdown)
+
+
+        #### DATA CACHE 
+        app.callback(
+                    Output('data-cache', 'children'),
+                    Output('exp-view', 'style'),
+                    [
+                    Input('interval-component', 'n_intervals'),
+                    Input('exp-dropdown','value')
+                    ],
+                    [
+                    State('data-cache', 'children'),
+                    ])(self.update_data_cache)
+
+
+
+        #### VISUALS
         app.callback(
                     Output('rank-graph', 'figure'),
                     Output('rank-view', 'style'),
+
+                    Input('rank-btn-val', 'n_clicks'),
+
                     [
-                    Input('rank-graph', 'clickData'),
-                    Input('project-dropdown','value'),
-                    Input('task-filter', 'value'),
-                    Input('split-filter', 'value')]
+                    State('rank-graph', 'clickData'),
+                    State('project-dropdown','value'),
+                    State('task-filter', 'value'),
+                    State('split-filter', 'value')
+                    ]
                     )(self.update_rank_graph)
-
-
-        app.callback(Output('done-exp-dropdown', 'options'),
-                    Input('interval-component-hist', 'n_intervals'))(self.update_done_exp_dropdown)
-
-
-        app.callback(Output('done-exp-dropdown', 'value'),
-                    Input('rank-graph', 'clickData'),
-                    State('done-exp-dropdown', 'value'))(self.update_exp_dropdown_value)
-
-
-        app.callback(
-                    Output('exp-data', 'children'),
-                    Output('exp-view', 'style'),
-                    Input('done-exp-dropdown','value'))(self.update_exp_data)
-
-
-        app.callback(Output('exp-config-hist', 'children'),
-                    [Input("exp-config-dropdown-hist", "value"),
-                    Input('exp-data', 'children')])(self.get_config)
-
-
-        app.callback(Output('data-dist-dropdown-hist', 'options'),
-                    Output('data-dist-dropdown-hist', 'value'),
-                    [Input('exp-data', 'children')],
-                    [State('data-dist-dropdown-hist', 'value')])(self.update_stats_dropdown)
-
-
-        app.callback(Output('data-dist-hist', 'figure'),
-                    [Input('exp-data', 'children'),
-                    Input('data-dist-dropdown-hist', 'value')])(self.get_data_distributions)
-
-        # app.callback(Output('data-table-hist', 'figure'),
-        #             [Input('exp-data', 'children')])(self.get_data_table)
-
-
-        app.callback(
-                    Output('loss-graph-hist', 'figure'),
-                    Output('loss-graph-con-hist', 'style'),
-                    [Input('exp-data', 'children')],
-                    [State('loss-graph-hist', 'figure')])(self.update_loss_graph)
-
-
-        app.callback(
-                    Output('task-metric-filter-task-hist', 'options'),
-                    Output('task-metric-filter-task-hist', 'value'),
-                    [
-                    #Input('done-exp-dropdown', 'value'),
-                    Input('exp-data', 'children')
-                    ],
-                    [State('task-metric-filter-task-hist','value')])(self.get_all_tasks)
-        
-        app.callback(
-                    Output('task-metric-graph-hist', 'figure'),
-                    Output('task-metric-graph-con-hist', 'style'),
-                    [
-                        Input('exp-data', 'children'),
-                        Input('task-metric-filter-task-hist', 'value'),
-                        Input('task-metric-filter-metric-hist', 'value'),
-                        Input('task-metric-filter-split-hist', 'value')
-                    ],
-                    [State('task-metric-graph-hist', 'figure')])(self.update_task_metric_graph)
-
-
-
-        # app.callback(
-        #             Output('class-metric-graph-hist', 'figure'),
-        #             Output('class-metric-graph-con-hist', 'style'),
-        #             [Input('exp-data', 'children')],
-        #             [State('class-metric-graph-hist', 'figure')])(self.update_class_metric_graph)
-
-        app.callback(
-                    Output('class-metric-filter-task-hist', 'options'),
-                    Output('class-metric-filter-task-hist', 'value'),
-                    [
-                    Input('exp-data', 'children')
-                    ],
-                    [State('class-metric-filter-task-hist','value')])(self.get_all_tasks2)
-        
-        app.callback(
-                    Output('class-metric-graph-hist', 'figure'),
-                    Output('class-metric-graph-con-hist', 'style'),
-                    [
-                        Input('exp-data', 'children'),
-                        Input('class-metric-filter-task-hist', 'value'),
-                        Input('class-metric-filter-metric-hist', 'value'),
-                        Input('class-metric-filter-split-hist', 'value')
-                    ],
-                    [State('class-metric-graph-hist', 'figure')])(self.update_class_metric_graph)
-
-
-
-        app.callback(Output('conf-dropdown-hist', 'options'),
-                    Output('conf-dropdown-hist', 'value'),
-                    Input('done-exp-dropdown','value')
-                    )(self.update_conf_dropdown)
-
-
-        app.callback(
-                    Output('conf-matrix-hist', 'figure'),
-                    Output('conf-matrix-con-hist', 'style'),
-                    [
-                    Input('conf-dropdown-hist', 'value'),
-                    Input('exp-data', 'children')
-                    ])(self.update_conf_matrix)
-
-        
-        app.callback(Output('sample-id-dropdown1-hist', 'options'),
-                    Output('sample-id-dropdown1-hist', 'value'),
-                    Input('done-exp-dropdown','value')
-                    )(self.update_sample_id_dropdown)
-
-
-        app.callback(
-                    Output('text-highlight-hist', 'src'),
-                    Output('text-highlight-con-hist', 'style'),
-                    [
-                    Input('sample-id-dropdown1-hist', 'value'),
-                    Input('exp-data', 'children')
-                    ])(self.update_highlight_text)
-
-
-        app.callback(Output('sample-id-dropdown2-hist', 'options'),
-                    Output('sample-id-dropdown2-hist', 'value'),
-                    Input('done-exp-dropdown','value')
-                    )(self.update_sample_id_dropdown)
-
-        app.callback(
-                    Output('tree-graph-hist', 'figure'),
-                    Output('tree-graph-con-hist', 'style'),
-                    [
-                    Input('sample-id-dropdown2-hist', 'value'),
-                    Input('exp-data', 'children')
-                    ],
-                    [State('tree-graph-hist', 'figure')])(self.update_tree_graph)
-
-
-        ################# LIVE VIEW ###############
-
-        
-        app.callback(Output('exp-dropdown', 'options'),
-                    Input('interval-component-live', 'n_intervals'))(self.update_live_exp_dropdown)
-
-
-        app.callback(
-                    Output('data-cache', 'children'),
-                    Output('live-view', 'style'),
-                    [Input('interval-component-live', 'n_intervals'),
-                    Input('exp-dropdown','value')],
-                    [State('data-cache', 'children')])(self.update_data_cache)
 
             
         app.callback(Output('exp-config', 'children'),
@@ -279,9 +167,22 @@ class Dashboard:
 
 
         app.callback(
+                    Output('class-metric-filter-task', 'options'),
+                    Output('class-metric-filter-task', 'value'),
+                    [
+                    Input('data-cache', 'children'),
+                    ],
+                    [State('class-metric-filter-task','value')])(self.get_all_tasks2)
+        
+        app.callback(
                     Output('class-metric-graph', 'figure'),
                     Output('class-metric-graph-con', 'style'),
-                    [Input('data-cache', 'children')],
+                    [
+                        Input('data-cache', 'children'),
+                        Input('class-metric-filter-task', 'value'),
+                        Input('class-metric-filter-metric', 'value'),
+                        Input('class-metric-filter-split', 'value')
+                    ],
                     [State('class-metric-graph', 'figure')])(self.update_class_metric_graph)
 
 
@@ -328,7 +229,7 @@ class Dashboard:
                     Input('data-cache', 'children')
                     ],
                     [State('tree-graph', 'figure')])(self.update_tree_graph)
-
+    
 
         self.app = app
 
@@ -640,39 +541,7 @@ class Dashboard:
         return visuals
 
 
-    def __get_live_tab(self):
-        return html.Div(
-                        children=[
-                                    dcc.Dropdown(
-                                                id='exp-dropdown',
-                                                options=[],
-                                                value=None,
-                                                className="dcc_control",
-                                                #persistence=True,
-                                                #clearable=False,
-                                                ),
-                                    html.Div(   
-                                            id="live-view",
-                                            #className="row flex-display",
-                                            children=[
-                                                        self.__get_info_div(),
-                                                        self.__get_visuals_div()
-                                                        ],
-                                            style={'display': 'none'}
-                                            #style={"display": "flex", "flex-direction": "column"},
-                                            ),
-                                    html.Div(id='data-cache', children=dict(), style={'display': 'none'}),
-                                    dcc.Interval(
-                                                    id='interval-component-live',
-                                                    interval=1*1000, # in milliseconds
-                                                    n_intervals=0,
-                                                    max_intervals=-1,
-                                                                                )  
-                                    ]
-                        )
-
-
-    def __get_hist_tab(self):
+    def __get_content(self):
         return html.Div(    
                         children=[  
 
@@ -682,7 +551,7 @@ class Dashboard:
                                                 html.Div(
                                                         className="pretty_container two columns",
                                                         children=[
-
+                                                                    html.P("Choose a Project:", className="control_label"),
                                                                     dcc.Dropdown(
                                                                                 id='project-dropdown',
                                                                                 options=[],
@@ -727,6 +596,7 @@ class Dashboard:
                                                                                                                     ),    
                                                                                                             ]
                                                                                                     ),
+                                                                                            html.Button('Rank', id='rank-btn-val', n_clicks=0),
                                                                                             ],
                                                                             style={'display': 'none'}
                                                                             ),
@@ -749,7 +619,7 @@ class Dashboard:
                                             className="pretty_container twelve columns",
                                             children=[
                                                         dcc.Dropdown(
-                                                                    id='done-exp-dropdown',
+                                                                    id='exp-dropdown',
                                                                     options=[],
                                                                     value=None,
                                                                     className="dcc_control",
@@ -763,38 +633,21 @@ class Dashboard:
                                             id="exp-view",
                                             className="column",
                                             children=[
-                                                        self.__get_info_div(name="hist"),
-                                                        self.__get_visuals_div(name="hist")
+                                                        self.__get_info_div(),
+                                                        self.__get_visuals_div()
                                                         ],
                                             style={'display': 'none'}
                                             #style={"display": "flex", "flex-direction": "column"},
                                             ),
-                                    html.Div(id='exp-data', children=dict(), style={'display': 'none'}),
                                     dcc.Interval(
-                                                    id='interval-component-hist',
-                                                    interval=10*1000, # in milliseconds
+                                                    id='interval-component',
+                                                    interval=1*1000, # in milliseconds
                                                     n_intervals=0,
                                                     max_intervals=-1,
-                                                                                )  
+                                                                                ),
+                                    html.Div(id='data-cache', children=dict(), style={'display': 'none'}),
                                     ]
                         )
-
-
-    def render_content(self, tab):
-        if tab == 'tab-1':
-            return html.Div(
-                            children=[
-                                        self.__get_hist_tab(),
- 
-                                    ]
-                        )
-
-        elif tab == 'tab-2':
-            return html.Div(
-                            children=[  
-                                        self.__get_live_tab(),
-                                    ]
-                            )
 
 
     def update_project_dropdown(self, n):
@@ -807,9 +660,18 @@ class Dashboard:
         return [{"label":e, "value":e} for e in exps]
 
 
-    def update_done_exp_dropdown(self, n):
-        exps = sorted(self.db.get_done_exps_ids())
-        return [{"label":e, "value":e} for e in exps]
+    def update_exp_dropdown(self, n, clickData, value):
+
+        if clickData:
+            value = dict(clickData)["points"][0]["customdata"]
+
+        live_exps = set(self.db.get_live_exps_ids())
+        done_exps = set(self.db.get_done_exps_ids())
+
+        exps = sorted(live_exps | done_exps)
+        options = [{"label":e, "value":e} for e  in exps]
+
+        return options, value
 
     
     def update_task_dropdown(self, project):
@@ -817,20 +679,18 @@ class Dashboard:
         return [{"label":t, "value":t} for t in tasks]
 
 
-
     def get_all_tasks(self, data_cache, value):
         
         if not data_cache:
             return [], None
 
-        all_tasks = data_cache["exp_config"]["tasks"] + data_cache["exp_config"]["subtasks"] 
+        all_tasks = sorted(set(data_cache["exp_config"]["tasks"] + data_cache["exp_config"]["subtasks"]))
         options = [{"label":t, "value":t} for t in all_tasks]
 
         if value is None:
             value = data_cache["exp_config"]["tasks"]
 
         return options, value
-
 
 
     def get_all_tasks2(self, data_cache, value):
@@ -841,69 +701,13 @@ class Dashboard:
         if not data_cache:
             return [], None
 
-        all_tasks = data_cache["exp_config"]["tasks"] + data_cache["exp_config"]["subtasks"] 
+        all_tasks = sorted(set(data_cache["exp_config"]["tasks"] + data_cache["exp_config"]["subtasks"]))
         options = [{"label":t, "value":t} for t in all_tasks if ("relation" not in t or t == "relation")]
 
         if value is None:
             value = options[0]["value"]
 
         return options, value
-
-
-
-
-    def update_output(self, value):
-        if value:
-            return {'display': 'none'}
-        else:
-            return {'display': 'block'}
-    
-
-    def get_exp_data(self, experiment_id:str, last_epoch:int):
-
-        filter_by = {"experiment_id":experiment_id}
-    
-        exp_config = self.db.get_exp_config(filter_by)
-
-        if exp_config is None:
-            return {}, {"display":"none"}
-
-
-        filter_by["epoch"] =  { "$lte": last_epoch}
-        scores = self.db.get_scores(filter_by)
-        scores = scores.to_dict()
-
-        filter_by["epoch"] = last_epoch
-        outputs = self.db.get_outputs(filter_by).get("data", {})
-        
-        if "_id" in exp_config:
-            exp_config.pop("_id")
-        
-        if "_id" in scores:
-            scores.pop("_id")
-        
-        if "_id" in outputs:
-            outputs.pop("_id")
-
-        exp_data = {
-                "exp_config": exp_config,
-                "experiment_id": experiment_id,
-                "epoch": last_epoch,
-                "scores": scores,
-                "outputs": outputs,
-                }
-        
-        return exp_data, {"display":"block"}
-
-
-    # def get_data_table(self, data_cache):
-        
-    #     if not data_cache:
-    #         return {}
-
-    #     data = data_cache["exp_config"]["dataset_stats"]
-    #     df = pd.DataFrame(data)
-    #     return make_table(df, "Dataset Statistics")
 
 
     def update_stats_dropdown(self, data_cache, value):
@@ -1054,7 +858,6 @@ class Dashboard:
         # metrics = data_cache["exp_config"]["metrics"].copy()
         # metrics.remove("confusion_matrix")
 
-        print(task, metrics, splits)
         if task == "relation":
 
             filter_columns = []
@@ -1199,7 +1002,6 @@ class Dashboard:
                 label = span["ac"].unique()[0]
                 relation = span["relation"].unique()[0]
                 relation_type = span["stance"].unique()[0]
-                print(span["text"].tolist())
                 span_data.append({
                                     "label":label,
                                     "link": relation,
@@ -1230,25 +1032,25 @@ class Dashboard:
 
         fig_state = go.Figure(fig_state)
 
-
         if not data_cache or sample_id is None:
             return fig_state, {'display': 'none'}
 
         if not data_cache["scores"]:
             return fig_state, {"display":"none"}
 
-        if "relation" not in data_cache["exp_config"]["tasks"]:
+        all_tasks  = set(data_cache["exp_config"]["tasks"] + data_cache["exp_config"]["subtasks"])
+        if "relation" not in all_tasks:
             return go.Figure([]), {'display': 'none'}
 
         has_stance = False
-        if "stance" in data_cache["exp_config"]["tasks"]:
+        if "stance" in all_tasks:
             has_stance = True
 
         outputs = data_cache["outputs"]
 
         if not outputs:
-            return []
-
+            return fig_state, {"display":"none"}
+        
         sample_out = outputs[sample_id]
 
         pred_df = pd.DataFrame(sample_out["preds"])
@@ -1291,15 +1093,25 @@ class Dashboard:
         #             },]
         # """
 
+        # gold_data = [d for d in gold_data if d["label"] != "None"]
+        # pred_data = [d for d in pred_data if d["label"] != "None"]
+
+        # gold_data = [d for d in gold_data if d["link"] < len(gold_data)]
+        # pred_data = [d for d in pred_data if d["link"] < len(pred_data)]
+
         if data_cache["exp_config"]["dataset"] == "pe":
             pe_majorclaim_fix(pred_data)
             pe_majorclaim_fix(gold_data)
 
         
-        pprint(pred_data)
-        fig = hotviz.hot_tree(pred_data, gold_data=gold_data)
-        
-        print("THIRD")
+        #pprint(pred_data)
+        # pprint(gold_data)
+
+        print("WTFF IS HAPPING")
+        #try:
+        fig = hotviz.hot_tree(pred_data, gold_data=gold_data) # link_label2color={"For":"#28cb44", "supports":"#28cb44","Against":"#f21535", "attacks":"#f21535", "Paraphrase":"#f58a00"})
+        #print(fig)
+        #print("AER WE DONE")
         fig.update_layout(
                             autosize=False,
                             width=1200,
@@ -1312,7 +1124,6 @@ class Dashboard:
         if last_vis_state.keys() == current_vis_state.keys():
             update_visible_info(fig, last_vis_state)
         
-
         return fig, {'display': 'block'}
 
 
@@ -1357,7 +1168,7 @@ class Dashboard:
         return fig, {'display': 'block'}
 
 
-    def update_rank_graph(self, clickData, project, task, rank_split):
+    def update_rank_graph(self, click_n, clickData, project, task, rank_split):
 
 
         if None in [project, task, rank_split]:
@@ -1440,7 +1251,8 @@ class Dashboard:
                         experiment2config=experiment2config, 
                         rank_task=task, 
                         top_n=top_n, 
-                        clickdata=clickData)
+                        clickdata=clickData
+                        )
 
         return fig, {'display': 'block'}
 
@@ -1452,47 +1264,70 @@ class Dashboard:
             return {'display': 'none'}
 
 
-    def update_exp_dropdown_value(self, clickData, state_value):
-        if clickData:
-            exp_id = dict(clickData)["points"][0]["customdata"]
-            return exp_id
-        else:
-            return state_value
-    
+    def get_exp_data(self, experiment_id:str, last_epoch:int):
 
-    def update_exp_data(self, experiment_id):
-        filter_by = get_filter(experiment=experiment_id)
-        last_epoch = self.db.get_last_epoch(filter_by)
-        return self.get_exp_data(experiment_id, last_epoch)
+        filter_by = {"experiment_id":experiment_id}
+    
+        exp_config = self.db.get_exp_config(filter_by)
+
+        if exp_config is None:
+            return {}, {"display":"none"}
+
+
+        filter_by["epoch"] =  { "$lte": last_epoch}
+        scores = self.db.get_scores(filter_by)
+        scores = scores.to_dict()
+
+        filter_by["epoch"] = last_epoch
+        outputs = self.db.get_outputs(filter_by).get("data", {})
+        
+        if "_id" in exp_config:
+            exp_config.pop("_id")
+        
+        if "_id" in scores:
+            scores.pop("_id")
+        
+        if "_id" in outputs:
+            outputs.pop("_id")
+
+    
+        exp_data = {
+                "exp_config": exp_config,
+                "experiment_id": experiment_id,
+                "epoch": last_epoch,
+                "scores": scores,
+                "outputs": outputs,
+                }
+        
+        return exp_data, {"display":"block"}
 
 
     def update_data_cache(self, n, experiment_id,  cache_state):
 
         if experiment_id is None:
             return dash.no_update
-        
-        if cache_state != {}:
-            prev_epoch = cache_state.get("epoch", -1)
-            current_exp = cache_state.get("experiment_id")
 
-            filter_by = get_filter(experiment=experiment_id)
-            last_epoch = self.db.get_last_epoch(filter_by)
+        current_exp = cache_state.get("experiment_id", None)
+        prev_epoch = cache_state.get("epoch", -1)
+        status = cache_state.get("exp_config", {}).get("status", "done")
+        #if cache_state != {}:
 
-            if experiment_id == current_exp:
-                if last_epoch == prev_epoch:
-                    return dash.no_update
+        if current_exp == experiment_id and status == "done":
+            return dash.no_update
 
-            data_cache, style  = self.get_exp_data(experiment_id, last_epoch)
-            return data_cache, style
+        filter_by = get_filter(experiment=experiment_id)
+        last_epoch = self.db.get_last_epoch(filter_by)
 
-        else:
+        # if there is now new epoch to update for
+        if last_epoch == prev_epoch:
+            return dash.no_update
 
-            filter_by = get_filter(experiment=experiment_id)
-            last_epoch = self.db.get_last_epoch(filter_by)
-            data_cache, style  = self.get_exp_data(experiment_id, last_epoch)
-            return data_cache, style
+        print("WE ARE UPDATING")
+        data_cache, style  = self.get_exp_data(experiment_id, last_epoch)
+        return data_cache, style
 
 
     def run_server(self, *args, **kwargs):
         self.app.run_server(*args, **kwargs)
+
 

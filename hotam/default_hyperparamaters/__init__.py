@@ -66,7 +66,7 @@ dummy_hps = {
         "hidden_dim": 100,
         "num_layers": 1,
         "batch_size": 32,
-        "max_epochs":100,
+        "max_epochs":10,
         }
 
 

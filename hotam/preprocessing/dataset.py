@@ -1003,7 +1003,12 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labeler, Sp
         tree_data = []
         
         if self.name.lower() == "pe":
-            major_claim_idx = [i for i, (ac_id, ac_df) in enumerate(acs_grouped) if ac_df["ac"].unique()[0] == "MajorClaim"][0]
+            major_claim_idxes = [i for i, (ac_id, ac_df) in enumerate(acs_grouped) if ac_df["ac"].unique()[0] == "MajorClaim"]
+            if len(major_claim_idxes):
+                major_claim_idx = major_claim_idxes[0]
+            else:
+                major_claim_idx = None
+
 
         for i, (ac_id, ac_df) in enumerate(acs_grouped):
             text = " ".join(ac_df["text"])
@@ -1023,7 +1028,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labeler, Sp
                 relation = major_claim_idx
                 stance = "Paraphrase"
      
-            if ac == "Claim" and self.name.lower() == "pe":
+            if ac == "Claim" and self.name.lower() == "pe" and major_claim_idx is not None:
                 relation  = major_claim_idx
 
             tree_data.append({
@@ -1043,7 +1048,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labeler, Sp
 
             if self._setup_done:
                 if "ac" in self.all_tasks:
-                    ac = self.encoders["ac"].decode(ac)
+                    label = self.encoders["ac"].decode(label)
 
             score = 1.0 if label != None else 0.0
             
@@ -1081,8 +1086,8 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labeler, Sp
             show_scores = "ac" in self.all_tasks
         else:
             example = self.data.loc[self.data[level+"_id"] == sample_id, :]
-            can_do_tree = True
-            can_do_spans = True if self.sample_level != "sentence" else False
+            can_do_spans = True
+            can_do_tree = False if self.dataset_level == "sentence" or level=="sentence" else True
             show_scores = True
 
 
