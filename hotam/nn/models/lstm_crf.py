@@ -122,8 +122,10 @@ class LSTM_CRF(nn.Module):
                             )
 
             #returns preds with no padding (padding values removed)
-            preds = crf.decode( emissions=dense_out, 
-                                mask=mask)
+            preds = crf.decode( 
+                                emissions=dense_out, 
+                                mask=mask
+                                )
 
             tasks_preds[task] = torch.tensor(zero_pad(preds), dtype=torch.long)
             tasks_loss[task] = loss

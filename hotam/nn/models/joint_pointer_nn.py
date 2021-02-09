@@ -10,6 +10,103 @@ from hotam.nn.layers.attention import CONTENT_BASED_ATTENTION
 from hotam.nn.utils import masked_mean, multiply_mask_matrix
 
 
+
+class Decoder(nn.Module):
+
+
+    def __init__(self, input_size:int, hidden_size:int, dropout=None):
+        super().__init__()
+
+        self.input_layer = nn.Linear(input_size, hidden_size)
+        self.lstm_cell =  nn.LSTMCell(input_size, hidden_size)
+
+        self.attention = CONTENT_BASED_ATTENTION(
+                                                    input_dim=hidden_size,
+                                                    )
+        
+        self.use_dropout = False
+        if dropout:
+            self.dropout = nn.Dropout(dropout)
+            self.use_dropout = True
+
+
+    def forward(self, encoder_outputs, encoder_h_s, encoder_c_s, mask):
+
+        seq_len = encoder_outputs.shape[1]
+        batch_size = encoder_outputs.shape[0]
+
+        #we concatenate the forward direction lstm states
+        # from (NUM_LAYER*DIRECTIONS, BATCH_SIZE, HIDDEN_SIZE) ->
+        # (BATCH_SIZE, HIDDEN_SIZE*NUM_LAYER)
+        layer_dir_idx = list(range(0,encoder_h_s.shape[0],2))
+        encoder_h_s = torch.cat([*encoder_h_s[layer_dir_idx]],dim=1)
+        encoder_c_s = torch.cat([*encoder_c_s[layer_dir_idx]],dim=1)
+
+        decoder_input = torch.zeros(encoder_h_s.shape)
+        prev_h_s = encoder_h_s
+        prev_c_s = encoder_c_s
+
+        #(BATCH_SIZE, SEQ_LEN)
+        pointer_probs = torch.zeros(batch_size, seq_len, seq_len)
+        for i in range(seq_len):
+            
+            prev_h_s, prev_c_s = self.lstm_cell(decoder_input, (prev_h_s, prev_c_s))
+
+            if self.use_dropout:
+                prev_h_s = self.dropout(prev_h_s)
+
+            decoder_input = self.input_layer(decoder_input)
+            decoder_input = F.sigmoid(decoder_input)
+
+            pointer_softmax = self.attention(prev_h_s, encoder_outputs, mask)
+        
+            pointer_probs[:, i] = pointer_softmax
+            
+        return pointer_probs
+
+
+class Encoder(nn.Module):
+
+    def __init__(   
+                    self,  
+                    input_size:int, 
+                    input_layer_dim:int, 
+                    hidden_size:int, 
+                    num_layers:int, 
+                    bidirectional:int,
+                    dropout:float=None,
+                    ):
+        super().__init__()
+
+        self.input_layer = nn.Linear(input_size, input_layer_dim)
+
+        self.lstm =  LSTM_LAYER(  
+                                input_size=input_layer_dim,
+                                hidden_size=hidden_size,
+                                num_layers=num_layers,
+                                bidirectional=bidirectional,
+                                )
+        
+        self.use_dropout = False
+        if dropout:
+            self.dropout = nn.Dropout(dropout)
+            self.use_dropout = True
+
+
+    def forward(self, X, lengths):
+
+        X = self.input_layer(X)
+        dense_out = F.sigmoid(X)
+
+        out, hidden = self.lstm(dense_out, lengths)
+
+        if self.use_dropout:
+            out = self.dropout(out)
+
+        return out, hidden
+
+
+
 class JointPN(nn.Module):
 
     """
@@ -140,7 +237,7 @@ class JointPN(nn.Module):
         nr_ac_labels = len(task2labels["ac"])
         self.ac_clf_layer = nn.Linear(self.ENCODER_HIDDEN_DIM*(2 if self.ENCODER_BIDIR else 1), nr_ac_labels)
 
-        self.loss = nn.CrossEntropyLoss(reduction="sum", ignore_index=-1)
+        self.loss = nn.NLLLoss(reduction="sum", ignore_index=-1)
 
 
     @classmethod
@@ -178,6 +275,7 @@ class JointPN(nn.Module):
 
         # 3-7 | Decoder
         # (BATCH_SIZE, SEQ_LEN, SEQ_LEN)
+        # prob distributions (softmax)
         pointer_probs = self.decoder(encoder_out, encoder_h_s, encoder_c_s, ac_mask)
 
         # we want to ignore -1  in the loss function so we set pad_values to -1, default is 0
@@ -187,7 +285,7 @@ class JointPN(nn.Module):
         #(BATCH_SIZE * SEQ_LEN, NUM_LABELS)   
         pointer_probs_2d = torch.flatten(pointer_probs, end_dim=-2)
 
-        relation_loss = self.TASK_WEIGHT * self.loss(pointer_probs_2d, batch["relation"].view(-1))
+        relation_loss = self.TASK_WEIGHT * self.loss(torch.log(pointer_probs_2d), batch["relation"].view(-1))
         relation_preds = torch.argmax(pointer_probs,dim=-1)
 
         #9
@@ -196,7 +294,7 @@ class JointPN(nn.Module):
 
         #(BATCH_SIZE * SEQ_LEN, NUM_LABELS)    
         ac_probs_2d = torch.flatten(ac_probs, end_dim=-2)
-        ac_loss = (1-self.TASK_WEIGHT) * self.loss(ac_probs_2d, batch["ac"].view(-1))
+        ac_loss = (1-self.TASK_WEIGHT) * self.loss(torch.log(ac_probs_2d), batch["ac"].view(-1))
         ac_preds = torch.argmax(ac_probs, dim=-1)
 
         #10
@@ -214,98 +312,3 @@ class JointPN(nn.Module):
                             },
                     "probs": {}
                 }
-
-
-class Decoder(nn.Module):
-
-
-    def __init__(self, input_size:int, hidden_size:int, dropout=None):
-        super().__init__()
-
-        self.input_layer = nn.Linear(input_size, hidden_size)
-        self.lstm_cell =  nn.LSTMCell(input_size, hidden_size)
-
-        self.attention = CONTENT_BASED_ATTENTION(
-                                                    input_dim=hidden_size,
-                                                    )
-        
-        self.use_dropout = False
-        if dropout:
-            self.dropout = nn.Dropout(dropout)
-            self.use_dropout = True
-
-
-    def forward(self, encoder_outputs, encoder_h_s, encoder_c_s, mask):
-
-        seq_len = encoder_outputs.shape[1]
-        batch_size = encoder_outputs.shape[0]
-
-        #we concatenate the forward direction lstm states
-        # from (NUM_LAYER*DIRECTIONS, BATCH_SIZE, HIDDEN_SIZE) ->
-        # (BATCH_SIZE, HIDDEN_SIZE*NUM_LAYER)
-        layer_dir_idx = list(range(0,encoder_h_s.shape[0],2))
-        encoder_h_s = torch.cat([*encoder_h_s[layer_dir_idx]],dim=1)
-        encoder_c_s = torch.cat([*encoder_c_s[layer_dir_idx]],dim=1)
-
-        decoder_input = torch.zeros(encoder_h_s.shape)
-        prev_h_s = encoder_h_s
-        prev_c_s = encoder_c_s
-
-        #(BATCH_SIZE, SEQ_LEN)
-        pointer_probs = torch.zeros(batch_size, seq_len, seq_len)
-        for i in range(seq_len):
-            
-            prev_h_s, prev_c_s = self.lstm_cell(decoder_input, (prev_h_s, prev_c_s))
-
-            if self.use_dropout:
-                prev_h_s = self.dropout(prev_h_s)
-
-            decoder_input = self.input_layer(decoder_input)
-            decoder_input = F.sigmoid(decoder_input)
-
-            pointer_softmax = self.attention(prev_h_s, encoder_outputs, mask)
-        
-            pointer_probs[:, i] = pointer_softmax
-            
-        return pointer_probs
-
-
-class Encoder(nn.Module):
-
-    def __init__(   
-                    self,  
-                    input_size:int, 
-                    input_layer_dim:int, 
-                    hidden_size:int, 
-                    num_layers:int, 
-                    bidirectional:int,
-                    dropout:float=None,
-                    ):
-        super().__init__()
-
-        self.input_layer = nn.Linear(input_size, input_layer_dim)
-
-        self.lstm =  LSTM_LAYER(  
-                                input_size=input_layer_dim,
-                                hidden_size=hidden_size,
-                                num_layers=num_layers,
-                                bidirectional=bidirectional,
-                                )
-        
-        self.use_dropout = False
-        if dropout:
-            self.dropout = nn.Dropout(dropout)
-            self.use_dropout = True
-
-
-    def forward(self, X, lengths):
-
-        X = self.input_layer(X)
-        dense_out = F.sigmoid(X)
-
-        out, hidden = self.lstm(dense_out, lengths)
-
-        if self.use_dropout:
-            out = self.dropout(out)
-
-        return out, hidden

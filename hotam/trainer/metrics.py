@@ -80,89 +80,50 @@ class Metrics:
 
         return metrics, [m["name"] for m in metrics], [m["name"] for m in metrics if m["per_class"]]
   
-    def _get_progress_bar_metrics(self, log:dict) -> dict:
-        """
-        will extract the metrics which should be monitored either by progress bar or callbacks, 
-        and return them in a dict
+    # def _get_progress_bar_metrics(self, log:dict) -> dict:
+    #     """
+    #     will extract the metrics which should be monitored either by progress bar or callbacks, 
+    #     and return them in a dict
 
-        Parameters
-        ----------
-        log : dict
-            logging dict
+    #     Parameters
+    #     ----------
+    #     log : dict
+    #         logging dict
 
-        Returns
-        -------
-        dict
-            dict of metrics scores
-        """
+    #     Returns
+    #     -------
+    #     dict
+    #         dict of metrics scores
+    #     """
 
-        current_split = log["split"]
-        scores = {}
-        for task_metric in [self.monitor_metric]+self.progress_bar_metrics:
-            task, metric = task_metric.rsplit("_",1)
-            split = task.split("_", 1)
+    #     current_split = log["split"]
+    #     scores = {}
+    #     for task_metric in [self.monitor_metric]+self.progress_bar_metrics:
+    #         task, metric = task_metric.rsplit("_",1)
+    #         split = task.split("_", 1)
 
-            if current_split != split:
-                continue
+    #         if current_split != split:
+    #             continue
 
-            scores[task_metric] = log["scores"].loc[task][metric]
+    #         scores[task_metric] = log["scores"].loc[task][metric]
 
-        return scores
+    #    return scores
 
-
-    def _complex_label2subtasks(self, output_dict:dict, mask:np.ndarray):
-        """
-        given that some labels are complexed, i.e. 2 plus tasks in one, we can break these apart and 
-        get the predictions for each of the task so we can get metric for each of them. 
-
-        for example, if one task is Segmentation+Arugment Component Classification, this task is actually two
-        tasks hence we can break the predictions so we cant get scores for each of the tasks.
-
-        this fucntions simple extracts the predictions for any subtask in any complex task
-
-        Parameters
-        ----------
-        output_dict : dict
-            predictions per task from the batch
-        """
-
-        def get_subtask_preds(task, preds):
-            subtasks_predictions = {}
-
-            # e.g. "seg_ac"
-            original_shape = preds.shape
-            flat_preds = ensure_flat(ensure_numpy(preds))
-            decoded_preds = self.dataset.decode_list(flat_preds, task)
-            for subtask in task.split("_"):
-
-                # get the positon of the subtask in the joint label
-                # e.g. for  labels following this, B_MajorClaim, 
-                # BIO is at position 0, and AC is at position 1
-                subtask_position = self.dataset.get_subtask_position(task, subtask)
-
-                # remake joint labels to subtask labels
-                subtask_preds = torch.LongTensor(self.dataset.encode_list([p.split("_")[subtask_position] for p in decoded_preds], subtask))
-                subtasks_predictions[subtask] = subtask_preds.view(original_shape)
-
-            return subtasks_predictions
-
-        for task, preds in output_dict.copy().items():
-
-            if "_" not in task:
-                continue
-            
-            #ensure_flat(ensure_numpy(preds), mask=mask)
-            subtask_preds = get_subtask_preds(task, preds)
-            output_dict.update(subtask_preds)
-           
 
     def _get_class_metrics(self, metric:dict,  targets:np.ndarray, preds:np.ndarray, task:str, split:str):
 
         class_scores_dict = {}
-
-        task_labels_ids = self.dataset.encoders[task].ids
         metric_args = metric["args"].copy()
-        metric_args["labels"] = task_labels_ids
+
+        if task == "relation":
+            preds = []
+            targets = []
+            metric_args["labels"] = self.dataset.encoders[task].labels
+        else:
+            #task_labels_ids = self.dataset.encoders[task].ids
+            metric_args["labels"] = self.dataset.encoders[task].ids
+
+        print(lol)
         metric_args["average"] = None
 
         class_scores = metric["function"](targets, preds, **metric_args) #, **new_args)
@@ -179,7 +140,7 @@ class Metrics:
         return class_scores_dict
 
 
-    def _get_metrics(self, targets:np.ndarray, output_dict:dict, task:str, mask:np.ndarray):
+    def _get_metrics(self, targets:np.ndarray, output_dict:dict, task:str):
         
         #TODO: change this function to so that it calcualtes the f1 label wise then aggregates to f1 task wise.
         scores = {} 
@@ -195,7 +156,7 @@ class Metrics:
             else:
                 preds = output_dict["preds"][task]
 
-            preds = ensure_flat(ensure_numpy(preds), mask=mask)
+            #preds = ensure_flat(ensure_numpy(preds), mask=mask)
 
             assert targets.shape == preds.shape, f"shape missmatch for {task}: Targets:{targets.shape} | Preds: {preds.shape}"
 
@@ -210,14 +171,14 @@ class Metrics:
             score = metric["function"](targets, preds, **metric_args)
             scores[score_name] = score
 
-            if metric["per_class"] and not metric["probs"] and task != "relation":
+            if metric["per_class"] and not metric["probs"]:
                 class_metric = self._get_class_metrics(metric, targets, preds, task, self.split)
                 class_scores.update(class_metric)
         
         return scores, class_scores
             
 
-    def _get_score_log(self, output_dict:dict, mask:np.ndarray) -> Tuple[list, list, list, list]:
+    def _get_seg_label_metrics(self, output_dict:dict) -> Tuple[list, list, list, list]:
         """
         calculates the score for each metrics for each task and for each class if supported. Also calculates the mean metric scores for 
         the main tasks.
@@ -238,12 +199,11 @@ class Metrics:
         main_task_values = []
         for task in self.dataset.all_tasks:
             
-            targets = ensure_flat(ensure_numpy(self.batch[task]), mask=mask)
-
+            #targets = ensure_flat(ensure_numpy(self.batch[task]), mask=mask)
             #targets = self._ensure_numpy(self.batch.get_flat(task, remove=self.dataset.task2padvalue[task])) #.cpu().detach().numpy()  #.cpu().detach().numpy()
 
             # calculates the metrics and the class metrics if wanted
-            task_scores, task_class_scores = self._get_metrics(targets, output_dict, task, mask)
+            task_scores, task_class_scores = self._get_metrics(targets, output_dict, task)
 
             if task in output_dict["loss"]:
                 task_scores["-".join([self.split, task, "loss"]).lower()]  = ensure_numpy(output_dict["loss"][task])
@@ -254,12 +214,13 @@ class Metrics:
             # for main tasks we want to know the average score
             # so we add these to a list, which we easiliy can turn into an
             # DataFrame and average
-            if task in self.dataset.tasks:
-                comb_task_name = "_".join(self.dataset.tasks).lower()
+            if task in self.dataset.subtasks:
+                # comb_task_name = "_".join(self.dataset.tasks).lower()
 
-                #renaming to combined task
-                rn_scores = {re.sub(r"-\w+-", f"-{comb_task_name}-", k):v for k,v in task_scores.items() if "confusion_matrix" not in k}
-
+                # #renaming to combined task
+                #rn_scores = {re.sub(r"-\w+-", f"-{comb_task_name}-", k):v for k,v in task_scores.items() if "confusion_matrix" not in k}
+                
+                rn_scores = {re.sub(r"-\w+-", "-average-", k):v for k,v in task_scores.items() if "confusion_matrix" not in k}
                 main_task_values.append(rn_scores)
             
 
@@ -270,7 +231,14 @@ class Metrics:
         return scores
 
 
-    def score(self, batch, output_dict, split) -> Tuple[pd.DataFrame, pd.DataFrame]:
+ 
+
+
+    def _segmentation_evaluation(self, list_segments):
+        pass
+
+
+    def get_eval_metrics(self, output_dict, ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         normalize complex labels, calculates the metrics, creates DataFrames for task and class metrics.
 
@@ -284,10 +252,21 @@ class Metrics:
         List[pd.DataFrame, pd.DataFrame]
             DataFrame for task scores and class scores
         """
-        self.batch = batch 
-        self.split = split 
-        mask = self.batch[f"{self.batch.prediction_level}_mask"]
+        #mask = self.batch[f"{self.batch.prediction_level}_mask"]
+        #self._complex_label2subtasks(output_dict["preds"], mask)
 
-        self._complex_label2subtasks(output_dict["preds"], mask)
-        scores = self._get_score_log(output_dict, mask)
-        return scores
+        if self._segmentation:
+            segmentation_score = self._segmentation_evaluation(output_dict["segment_lengths"])
+            
+            seg_predictions = {}
+            for task in self.dataset.subtasks:
+                seg_predictions[task] = get_task_seg_label(output_dict[task], output_dict["segment_lengths"])
+            
+        else:
+            SEGMENTS = "(BATCH_SIZE, ACs, NR_TOKS)"
+        
+
+        # now we have the labels for each segment
+        eval_metrics  = self._get_seg_label_metrics([])
+
+        return eval_metrics

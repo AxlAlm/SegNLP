@@ -53,6 +53,7 @@ class Batch(dict):
         self._len = length
         self.current_epoch = None
 
+
     def __len__(self):
         return self._len
 
@@ -220,6 +221,8 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labeler, Sp
                                     })
             else:
                 sample_dict.update({"lengths_tok":len(sample)})
+
+                
 
             if hasattr(self, "max_sent"):
                 sent_grouped = sample.groupby("sentence_id")

@@ -70,6 +70,7 @@ class PTLBase(ptl.LightningModule, Metrics):
 
         self.monitor_metric = monitor_metric
         self.progress_bar_metrics = progress_bar_metrics
+        self._segmentation = "seg" in self.dataset.subtasks
         self.metrics, self.metric_names, self.class_metric_names = self.metrics()
 
                     
@@ -89,6 +90,7 @@ class PTLBase(ptl.LightningModule, Metrics):
             
             result.log(
                         metric, 
+
                         metrics[metric],
                         on_step=True, 
                         on_epoch=True, 
@@ -100,15 +102,40 @@ class PTLBase(ptl.LightningModule, Metrics):
 
 
     def _step(self, batch, split):
-        #self.current_step += 1
+
         # fetches the device so we can place tensors on the correct memmory
         device = f"cuda:{next(self.parameters()).get_device()}" if self.on_gpu else "cpu"
 
         self.batch = batch
+        self.split = split 
         self.batch.current_epoch = self.current_epoch
 
         #pass on the whole batch to the model
         output_dict = self.model.forward(self.batch)
+
+
+        """
+
+        if AC = [
+                [AC1,AC2, AC3, PAD]
+                [AC1,AC2, PAD, PAD]
+                ]
+        
+        if SEG = [
+                [TOK1,TOK2, TOK3, ... ,PAD]
+                [TOK1,TOK2, PAD, ... ,  PAD]
+                ]
+            we need segment_lengths
+        """
+
+        assert "preds" in output_dict
+        assert "probs" in output_dict
+
+        if self._segmentation:
+            assert "segment_lengths" in output_dict, "If segmentation is a subtasks lengths of predicted segmentation lengths need to be given in model output dict"
+            lengths = batch["length_tok"]
+        else:
+            lengths = batch["length_seq"]
 
         for task, preds in output_dict["preds"].items():
             assert torch.is_tensor(preds), f"{task} preds need to be a tensor"
@@ -116,8 +143,13 @@ class PTLBase(ptl.LightningModule, Metrics):
 
         for task, probs in output_dict["probs"].items():
             assert torch.is_tensor(probs), f"{task} preds need to be a tensor"
-            assert len(probs.shape) == 3, f"{task} preds need to be a 2D tensor"
+            assert len(probs.shape) == 3, f"{task} preds need to be a 3D tensor"
 
+        # decode all labels
+        output_dict["preds"] = self.__decode_labels(output_dict["preds"], lengths=lengths)
+        
+        if self.logger and split in ["val", "test"]:
+            self.logger.log_outputs(self.__reformat_outputs(output_dict))
 
         if "total" in output_dict["loss"]:
             total_loss = output_dict["loss"]["total"]
@@ -125,8 +157,9 @@ class PTLBase(ptl.LightningModule, Metrics):
             total_loss = 0
             for task, loss in output_dict["loss"].items():
                 total_loss += loss
+            output_dict["loss"]["total"] = total_loss
         
-        metrics = self.score(self.batch, output_dict, split)
+        metrics = self.get_eval_metrics(output_dict)
     
         if self.logger and split in ["val", "test"]:
             self.logger.log_outputs(self.__reformat_outputs(output_dict))
@@ -201,31 +234,7 @@ class PTLBase(ptl.LightningModule, Metrics):
             return [opt], [scheduler]
         else:
             return opt
-
-    
-    def __BIO_decode(self, bio_labels):
-        """
-        takes a list of string BIO encodings. Applies regex to find the spans and relabels them 
-        with a span ids
-        """
-        bio_labels_str = "-".join(bio_labels)
-        self.__span_id = 0
-        def repl(m):
-            bio_list = m.group().split("-")
-            lenght = len(m.group().split("-")) -1
-            #if "" == bio_list[-1]:
-                #lenght -= 1
-
-            c = f'SPAN_{self.__span_id}-' * lenght
-            self.__span_id += 1
-            return c
-
-        m = re.sub(r"B-(I-)*", repl, bio_labels_str)
-        spans = m.split("-")
-
-        assert len(spans) == len(bio_labels), f"span length: {len(spans)}, bio length: {len(bio_labels)}"
-        return spans
-            
+     
 
     def __reformat_outputs(self, output_dict):
 
@@ -284,4 +293,59 @@ class PTLBase(ptl.LightningModule, Metrics):
         return outputs
 
 
- 
+    def __decode_labels(self, output_dict:dict, lengths:list):
+
+
+        def get_subtask_preds(decoded_labels:list, task:str):
+            """
+            given that some labels are complexed, i.e. 2 plus tasks in one, we can break these apart and 
+            get the predictions for each of the task so we can get metric for each of them. 
+
+            for example, if one task is Segmentation+Arugment Component Classification, this task is actually two
+            tasks hence we can break the predictions so we cant get scores for each of the tasks.
+            """
+            subtasks_predictions = {}
+            for subtask in task.split("_"):
+
+                # get the positon of the subtask in the joint label
+                # e.g. for  labels following this, B_MajorClaim, 
+                # BIO is at position 0, and AC is at position 1
+                subtask_position = self.dataset.get_subtask_position(task, subtask)
+                subtask_labels = [p.split("_")[subtask_position] for p in decoded_labels]
+
+                # remake joint labels to subtask labels
+                #subtask_preds = torch.LongTensor(self.dataset.encode_list([p.split("_")[subtask_position] for p in decoded_labels], subtask))
+                #subtasks_predictions[subtask] = subtask_preds.view(original_shape)
+                subtasks_predictions[subtask] = subtask_labels
+
+            return subtasks_predictions
+        
+
+        def decode(self, preds:list, lengths:list):
+            decoded_preds  = []
+            for i, sample_preds in enumerate(preds):
+                decoded_preds.extend(self.dataset.decode_list(preds[:lenghts[i]], task))
+            
+            return decoded_preds
+
+        outputs = {}
+        for task, preds in output_dict.copy().items():
+
+            decoded_labels = decode(preds=preds, lengths=lengths)
+            outputs[task] = decoded_labels
+
+            if "_" not in task:
+                continue
+            
+            #ensure_flat(ensure_numpy(preds), mask=mask)
+            subtask_preds = get_subtask_preds(decoded_labels=decoded_labels, task=decoded_labels)
+            outputs.update(subtask_preds)
+        
+        return outputs
+           
+
+
+
+
+
+
