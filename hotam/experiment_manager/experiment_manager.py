@@ -53,7 +53,7 @@ def ensure_config():
     pass
 
 
-class ExperimentManager(Evaluator, Trainer):
+class ExperimentManager:
 
 
     def __get_test_model_choice(self, trainer_args:dict):
@@ -78,7 +78,6 @@ class ExperimentManager(Evaluator, Trainer):
             test_model_choice = "best"
         
         return test_model_choice
-
 
 
     def __create_hyperparam_sets(self, hyperparamaters:Dict[str,Union[str, int, float, list]]) -> Union[dict,List[dict]]:
@@ -156,7 +155,7 @@ class ExperimentManager(Evaluator, Trainer):
             #setup Pytroch Lightning Trainer
             trainer_args_copy = deepcopy(trainer_args)
             trainer_args_copy["logger"] = exp_logger
-            trainer = self._setup_ptl_trainer( 
+            trainer = get_ptl_trainer( 
                                                 experiment_id = experiment_id,
                                                 trainer_args = trainer_args_copy,
                                                 hyperparamaters = hyperparamaters,

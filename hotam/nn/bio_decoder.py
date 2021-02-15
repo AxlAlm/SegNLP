@@ -3,7 +3,7 @@ from hotam.utils import ensure_numpy, ensure_flat
 
 import re 
 import torch
-
+import numpy as np
 #torch.nn.Module
 
 class BIO_Decoder():
@@ -31,9 +31,6 @@ class BIO_Decoder():
         encoded_bios = ensure_flat(ensure_numpy(encoded_bios))
         encoded_bios_str = "-".join(encoded_bios.astype(str)) + "-"
 
-        #self.__seg_id = 0
-        #self.__lengths = []
-        #self.__indexes = []
         self.__lengths = []
         self.__seg_types = []
         def repl(m):
@@ -42,46 +39,25 @@ class BIO_Decoder():
 
             seg_type = "AC"
             set_labels = list(set(bio_list))
-            # print(set_labels[0] in self._Os, set_labels[0], self._Os, bio_list)
             if int(set_labels[0]) in self._Os:
-                #seg_id_sequence  = "NONE-" * lenght
                 seg_type = None
-            # else:
-            #     seg_id_sequence = f'{seg_type}_{self.__seg_id}-' * lenght
-            #     self.__seg_id += 1
-
+      
             self.__lengths.append(length)
             self.__seg_types.append(seg_type)
-
-            #return seg_id_sequence
-            #return length, seg_type
+  
             return ""
-
 
         re.sub(self.pattern, repl, encoded_bios_str)
 
-        lenghts = self.__lengths
-        seg_types = self.__seg_types
 
-        #marked_spans_str = re.sub(self.pattern, repl, encoded_bios_str)
-        #marked_spans = marked_spans_str.split("-")[:-1]
-        #lengths = self.__lengths
-        #assert len(lengths) == self.__seg_id
-        #assert len(marked_spans) == len(encoded_bios), f"span length: {len(marked_spans)}, bio length: {len(encoded_bios)}"
-
-        return lenghts, seg_types
-
-
-    def decode(self, batch_bios, lengths):
+    def decode(self, batch_bios, sample_lengths):
         
         batch_size = batch_bios.shape[0]
-        batch_lengths = []
+        sample_seg_lengths = []
+        sample_seg_types = []
         for i in range(batch_size):
-            lengths = self._bio_decode_sample(batch_bios[i][:lengths[i]])
-            batch_lengths.append(lengths)
+            self._bio_decode_sample(batch_bios[i][:sample_lengths[i]])
+            sample_seg_lengths.append(self.__lengths)
+            sample_seg_types.append(self.__lengths)
 
-        print(batch_lengths)
-        return batch_lengths
-
-
-
+        return sample_seg_lengths, sample_seg_types

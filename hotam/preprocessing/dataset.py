@@ -330,19 +330,22 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labeler, Sp
         sample_labels = {}
         for task in self.all_tasks:
 
-            if self.prediction_level == "ac":
-                task_matrix = np.zeros(self.max_seq)
+            ac_task_matrix = np.zeros(self.max_seq)
 
-                ac_i = 0
-                acs = sample.groupby(f"ac_id")
-                for _, ac in acs:
-                    task_matrix[ac_i] = np.nanmax(ac[task].to_numpy())
-                    ac_i += 1
-            else:
+            ac_i = 0
+            acs = sample.groupby(f"ac_id")
+            for _, ac in acs:
+                ac_task_matrix[ac_i] = np.nanmax(ac[task].to_numpy())
+                ac_i += 1
+
+            sample_labels[f"ac_{task}"] = ac_task_matrix
+
+
+            if self.prediction_level == "token":
                 task_matrix = np.zeros(self.max_tok)
                 task_matrix[:sample.shape[0]]  = sample[task].to_numpy()
+                sample_labels[f"token_{task}"] = task_matrix
 
-            sample_labels[task] = task_matrix
         
         return sample_labels
     
@@ -1184,13 +1187,14 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labeler, Sp
         #         self.update_splits()
 
 
-        if self.prediction_level == "token" or self.tokens_per_sample:
-            self.max_tok = self._get_nr_tokens(self.sample_level)
-
-        if self.prediction_level == "ac":
-            self.max_seq = self._get_max_nr_seq("ac")
-            self.max_seq_tok = self._get_nr_tokens(self.prediction_level)
+        #if self.prediction_level == "token" or self.tokens_per_sample:
+        #   self.max_tok = self._get_nr_tokens(self.sample_level)
+        #if self.prediction_level == "ac":
         
+        self.max_tok = self._get_nr_tokens(self.sample_level)
+        self.max_seq = self._get_max_nr_seq("ac")
+        self.max_seq_tok = self._get_nr_tokens(self.prediction_level)
+    
         if self.sample_level != "sentence" and ("deprel" in self.encodings or  "dephead" in self.encodings):
             self.max_sent = self._get_max_nr_seq("sentence")
             self.max_sent_tok = self._get_nr_tokens("sentence")

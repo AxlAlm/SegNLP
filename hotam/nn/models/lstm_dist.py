@@ -29,39 +29,29 @@ class LSTM_DIST(nn.Module):
     https://www.aclweb.org/anthology/P16-1218/
 
 
+
+    Model Overview:
     
-    For AM+AC:
+    1) pass word embeddigns to an LSTM, get hidden reps H.
 
-        1) Concatenate features BoW, Word embs and Doc Positions
+    2) given H create LSTM-minus representations for AM anc AC
 
-        2) pass concatenated features to an LSTM, get hidden reps H.
+    3) pass the AM and AC minus representations to seperate BiLSTMs
 
+    4) Concatenate AM and AC output from 3) with document embeddings (BOW and document positions)
 
-    If distinction between AC and AM:
+    5) pass the concatenation from 4 to a final BiLSTM
 
-        3) create LSTM-minus represnetation for AC and AM
-    
-    else:
+    6) Classification 
+            
+            get Argument Component Types by:
 
-        3) create LSTM-minus represnetation for AM+AC
-    
+            get Stance by:
 
-    4) pass AM+AC or AM anc AC to 2 BiLSTMS
-
-
-    IF distinction between AC and AM:
-
-        5) concatenate preceding AM with AC (matching AMs and ACs)
-
-
-    output layer:
-
-        dense layer where output dim == num classes
-
-
-
+            Get relation by:
 
     """
+
     def __init__(self,  hyperparamaters:dict, task2labels:dict, feature2dim:dict):
         super().__init__()
 
@@ -218,42 +208,41 @@ class LSTM_DIST(nn.Module):
         batch_size = ac_mask.shape[0]
         max_nr_acs = ac_mask.shape[1]
 
+        # Wi:j 
+        W = batch["doc_embs"]
+
         # batch is sorted by length of prediction level which is Argument Components
         # so we need to sort the word embeddings for the sample, pass to lstm then return to 
         # original order
         sorted_lengths_tok, sorted_indices = torch.sort(lengths_tok, descending=True)
         _ , original_indices = torch.sort(sorted_indices, descending=False)
 
+        # 1
         # input (Batch_dize, nr_tokens, word_emb_dim)
         # output (Batch_dize, nr_tokens, word_emb_dim)
         lstm_out, _ = self.word_lstm(word_embs[sorted_indices], sorted_lengths_tok)
         lstm_out = lstm_out[original_indices]
 
-        # Wi:j
-        W = batch["doc_embs"]
 
-        #if self.DISTICTION:
-
-        #create span representation for Argument Components and Argumentative Markers
+        # 2
+        # create span representation for Argument Components and Argumentative Markers
         am_minus_embs = self.__minus_span(lstm_out, batch["am_spans"])
         ac_minus_embs = self.__minus_span(lstm_out, batch["ac_spans"])
 
-        #pass each of the spans to a seperate BiLSTM. 
+        # 3
+        # pass each of the spans to a seperate BiLSTM. 
         am_lstm_out, _ = self.am_lstm(am_minus_embs, lengths_seq)
         ac_lstm_out, _ = self.ac_lstm(ac_minus_embs, lengths_seq)
 
-        #concatenate the output from Argument Component BiLSTM and Argument Marker BiLSTM with BOW embeddigns W
+        # 4
+        # concatenate the output from Argument Component BiLSTM and Argument Marker BiLSTM with BOW embeddigns W
         contex_emb = torch.cat((am_lstm_out, ac_lstm_out, W), dim=-1)
 
+        # 5
         final_out, _ = self.adu_lstm(contex_emb, lengths_seq)
 
-        # else:
-        #     adu_minus_embs = torch.cat(self.__minus_span(lstm_out, batch["am_spans"]), W, dim=-1)
-        #     final_out, _ = self.adu_lstm(adu_minus_embs, lengths_seq)
-        
-        #relation_out = self.relation_layer(final_out)
 
-
+        # 6
         # Classification of AC and Stance is pretty straight forward
         stance_out = self.stance_clf(final_out)
         ac_out = self.ac_cl(final_out)
@@ -263,10 +252,6 @@ class LSTM_DIST(nn.Module):
         # with the span representations from final_out.
         # 
         # maximum spanning tree algorithm
-
-
-        
-
         # relation_out_new = torch.zeros((*ac_mask.shape, ac_mask.shape[-1]))
         # relation_probs = torch.zeros((*ac_mask.shape, ac_mask.shape[-1]))
         # print("BATCH SIZE", batch_size)
@@ -293,7 +278,6 @@ class LSTM_DIST(nn.Module):
 
 
 
-
         stance_probs = F.softmax(stance_out, dim=-1)
         ac_probs = F.softmax(ac_out, dim=-1)
 
@@ -311,6 +295,25 @@ class LSTM_DIST(nn.Module):
         total_loss = (self.ALPHA * relation_loss) + (self.BETA * stance_loss) + ( (1 - (self.ALPHA-self.BETA)) * ac_loss) 
 
 
+        output.add_loss(task="total",    data=total_loss)
+        output.add_loss(task="relation", data=relation_loss)
+        output.add_loss(task="ac",       data=ac_loss)
+        output.add_loss(task="stance",   data=stance_loss)
+
+        output.add_preds(task="relation", level="ac", data=relations_preds)
+        output.add_preds(task="ac",       level="ac", data=ac_preds)
+        output.add_preds(task="stance",   level="ac", data=stance_preds)
+
+        output.add_probs(task="relation", level="ac", data=relation_probs)
+        output.add_probs(task="ac",       level="ac", data=ac_probs)
+        output.add_probs(task="stance",   level="ac", data=stance_probs)
+
+        return output
+
+       
+
+    
+
         return {    
                     "loss": {   
                                 "total": total_loss,
@@ -327,3 +330,12 @@ class LSTM_DIST(nn.Module):
                             },
                 }
 
+
+
+class Output:
+
+    self __init__():
+    pass
+
+
+class 

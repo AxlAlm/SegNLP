@@ -68,11 +68,12 @@ def reduce_and_remove(matrix, mask):
 
 
     for example:
-        given a 4D matrix where dims are (batch_size, nr_paragraphs, nr_spans, nr_tokens),
+        given a 4D matrix where dims are (batch_size, nr_paragraphs, nr_spans, feature_dim),
         if we want to get all words for all paragraphs we need to remove spans and remove padding tokens.
         we cannot remove all values == n as padding for nr words in paragraphs needs to exists.
         So, we need to find out max paragraph length, remove all zeros between that length and then after.
-
+        
+        Given (batch_size, nr_paragraphs, nr_spans, nr_tokens) we get 
     """
     batch_size, _, _, feature_dim = matrix.shape
 

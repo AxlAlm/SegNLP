@@ -36,14 +36,14 @@ class Metrics:
                         { 
                             "name": "precision",
                             "function": precision_score,
-                            "args": {"average":"macro"},
+                            "args": {}, #{"average":"macro"},
                             "probs": False,
                             "per_class": True
                         },
                         { 
                             "name": "recall",
                             "function": recall_score,
-                            "args": {"average":"macro"},
+                            "args": {}, #{"average":"macro"},
                             "probs": False,
                             "per_class": True
 
@@ -51,7 +51,7 @@ class Metrics:
                         { 
                             "name": "f1",
                             "function": f1_score,
-                            "args": {"average":"macro"},
+                            "args": {}, #{"average":"macro"},
                             "probs": False,
                             "per_class": True
                         },
@@ -110,91 +110,93 @@ class Metrics:
     #    return scores
 
 
-    def _get_class_metrics(self, metric:dict,  targets:np.ndarray, preds:np.ndarray, task:str, split:str):
+    # def _get_class_metrics(self, metric:dict,  targets:np.ndarray, preds:np.ndarray, task:str, split:str):
 
-        class_scores_dict = {}
-        metric_args = metric["args"].copy()
+    #     class_scores_dict = {}
 
-        if task == "relation":
-            preds = []
-            targets = []
-            metric_args["labels"] = self.dataset.encoders[task].labels
-        else:
-            #task_labels_ids = self.dataset.encoders[task].ids
-            metric_args["labels"] = self.dataset.encoders[task].ids
+    #     metric_args = metric["args"].copy()
+    #     metric_args["labels"] = self.dataset.encoders[task].labels
+    #     metric_args["average"] = None
 
-        print(lol)
-        metric_args["average"] = None
+    #     class_scores = metric["function"](targets, preds, **metric_args) #, **new_args)
 
-        class_scores = metric["function"](targets, preds, **metric_args) #, **new_args)
-
-        for label_id, value in zip(task_labels_ids, class_scores):
-            label_name = self.dataset.decode(label_id, task)
-
-            if not isinstance(label_name, str):
-                label_name = str(label_name)
-
-            class_score_name = "-".join([split, task, label_name, metric["name"]]).lower()
-            class_scores_dict[class_score_name] = value
+    #     for label, value in zip(task_labels_ids, class_scores):
+    #         class_score_name = "-".join([split, task, label, metric["name"]]).lower()
+    #         class_scores_dict[class_score_name] = value
         
-        return class_scores_dict
+    #     return class_scores_dict
 
 
-    def _get_metrics(self, targets:np.ndarray, output_dict:dict, task:str):
+    def calc_seg_metrics():
+        pass
+
+
+    def calc_metrics(self, preds:np.ndarray, targets:np.ndarray, mask:np.ndarray, task:str, prefix:str):
+
+        score_name = "-".join([prefix, task, metric["name"]]).lower()
         
-        #TODO: change this function to so that it calcualtes the f1 label wise then aggregates to f1 task wise.
-        scores = {} 
-        class_scores = {}
-        for metric in self.metrics:
+        preds = ensure_flat(ensure_numpy(preds), mask=mask)
+        targets = ensure_flat(ensure_numpy(targets), mask=mask)
+        assert targets.shape == preds.shape, f"shape missmatch for {task}: Targets:{targets.shape} | Preds: {preds.shape}"
 
-            if metric["name"] == "confusion_matrix" and "relation" in task:
-                continue
+        metric_args = deepcopy(metric["args"])
+        
 
-            #decide if we want probabilites or predictions for the metric
-            if metric["probs"]:
-                preds = output_dict["probs"][task]
-            else:
-                preds = output_dict["preds"][task]
+        results = {}
 
-            #preds = ensure_flat(ensure_numpy(preds), mask=mask)
+        label_counts = Counter(preds+targets)
+        labels = self.dataset.encoders[task].labels
+        label_counts = Counter({l:0 for l in labels})
+        label_counts += Counter(preds+targets)
 
-            assert targets.shape == preds.shape, f"shape missmatch for {task}: Targets:{targets.shape} | Preds: {preds.shape}"
+        if task != "relation":
+            confusion_matrix = confusion_matrix(targets, preds, label=labels)
 
-            metric_args = deepcopy(metric["args"])
-            
-            # using labels will make the f1 behave a bit odd. If labels that are not present will be counter as 0 in the average calculation
-            # we only use it in confusion matrix to ensure we get a same dim tabel
-            if metric["name"] == "confusion_matrix":
-                metric_args["labels"] = self.dataset.encoders[task].ids
+        #scores["f1"] = f1_score(targets, preds, label=self.dataset.encoders[task].labels)
+        rs = recall_score(targets, preds, label=labels)
+        ps = precision_score(targets, preds, label=labels)
 
-            score_name = "-".join([self.split, task, metric["name"]]).lower()
-            score = metric["function"](targets, preds, **metric_args)
-            scores[score_name] = score
+        rows = []
+        for i,label in enumerate(labels):
+            p = ps[i]
+            r = rs[i]
+            f1 = 2 * ((p*r) / (p+r))
 
-            if metric["per_class"] and not metric["probs"]:
-                class_metric = self._get_class_metrics(metric, targets, preds, task, self.split)
-                class_scores.update(class_metric)
+            rows.append({"name":f"{prefix}-{label}-precision", "metric": "precision" , "value":p})
+            rows.append({"name":f"{prefix}-{label}-recall", "metric": "recall", "value":r })
+            rows.append({"name":f"{prefix}-{label}-f1", "metric": "f1", "value": f1})
+
+
+        df = pd.DataFrame(rows)
+
+        #FILTER OUT ZERO COUNTS
+        rows_labels_not_present = ""
+        avrg_precision = df[df["metric"]=="precision"].mean()
+        avrg_recall = df[df["metric"]=="recall"].mean()
+        avrg_f1 = df[df["metric"]=="f1"].mean()
+
+        
+
+
+
+
+            # if metric["per_class"] and not metric["probs"]:
+            #     class_metric = self._get_class_metrics(metric, targets, preds, task, self.split)
+            #     class_scores.update(class_metric)
         
         return scores, class_scores
-            
 
-    def _get_seg_label_metrics(self, output_dict:dict) -> Tuple[list, list, list, list]:
-        """
-        calculates the score for each metrics for each task and for each class if supported. Also calculates the mean metric scores for 
-        the main tasks.
 
-        scores are structured in such a way that it can be easy loaded into a multiindex DataFrame.
-        
-        Parameters
-        ----------
-        output_dict : dict
-            outputs from the batch
 
-        Returns
-        -------
-        Tuple[list, list, list, list]
-            returns values and index for class scores and task scores
-        """
+
+
+
+
+
+
+
+
+    def _get_seg_label_metrics(self, output_dict:dict) -> Tuple[list, list, list, list]:   
         scores = {}
         main_task_values = []
         for task in self.dataset.all_tasks:
@@ -231,10 +233,8 @@ class Metrics:
         return scores
 
 
- 
 
-
-    def _segmentation_evaluation(self, list_segments):
+    def __segmentation_evaluation(self, list_segments):
         pass
 
 
@@ -256,14 +256,32 @@ class Metrics:
         #self._complex_label2subtasks(output_dict["preds"], mask)
 
         if self._segmentation:
-            segmentation_score = self._segmentation_evaluation(output_dict["segment_lengths"])
-            
+            segmentation_score = self.__segmentation_evaluation(output_dict["segment_lengths"])
+        
+
+        ### WE NEED DECIDE HOW TO EVALUATE METRICS.
+        # idea is to compare sampel by sample
+        # then we can first get labels of segments
+        #
+        #
+        # we could flatten the predictions as well and we add padding in gold for each sample where the predicted segments
+        # have more ACs than the gold?
+        #
+        # Or we can chose to cut it off.
             seg_predictions = {}
             for task in self.dataset.subtasks:
-                seg_predictions[task] = get_task_seg_label(output_dict[task], output_dict["segment_lengths"])
+                seg_predictions[task] = self.__get_segment_labels(
+                                                                    output_dict[task],
+                                                                    output_dict["segment_lengths"], 
+                                                                    task
+                                                                    )
             
         else:
-            SEGMENTS = "(BATCH_SIZE, ACs, NR_TOKS)"
+            # if prediction level is AC and we dont do segmentation 
+            # we can create the pairs of Argument Components easily.
+            for task in self.dataset.subtasks:
+                (output_dict[task], self.batch[task])
+
         
 
         # now we have the labels for each segment
