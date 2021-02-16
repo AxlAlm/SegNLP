@@ -59,32 +59,32 @@ def multiply_mask_matrix(matrix, mask):
     
 
 
-def reduce_and_remove(matrix, mask):
+# def reduce_and_remove(matrix, mask):
 
-    """
-    Given a 4D matrix turn it into a 3D by removing 3D dimension while perserving padding.
+#     """
+#     Given a 4D matrix turn it into a 3D by removing 3D dimension while perserving padding.
 
-    (similar to pytroch.utils.pad_packed_sequences, sort of)
+#     (similar to pytroch.utils.pad_packed_sequences, sort of)
 
 
-    for example:
-        given a 4D matrix where dims are (batch_size, nr_paragraphs, nr_spans, feature_dim),
-        if we want to get all words for all paragraphs we need to remove spans and remove padding tokens.
-        we cannot remove all values == n as padding for nr words in paragraphs needs to exists.
-        So, we need to find out max paragraph length, remove all zeros between that length and then after.
+#     for example:
+#         given a 4D matrix where dims are (batch_size, nr_paragraphs, nr_spans, feature_dim),
+#         if we want to get all words for all paragraphs we need to remove spans and remove padding tokens.
+#         we cannot remove all values == n as padding for nr words in paragraphs needs to exists.
+#         So, we need to find out max paragraph length, remove all zeros between that length and then after.
         
-        Given (batch_size, nr_paragraphs, nr_spans, nr_tokens) we get 
-    """
-    batch_size, _, _, feature_dim = matrix.shape
+#         Given (batch_size, nr_paragraphs, nr_spans, nr_tokens) we get 
+#     """
+#     batch_size, _, _, feature_dim = matrix.shape
 
-    matrix_f = matrix[mask]
-    lengths = torch.sum(torch.sum(mask, dim=-1),dim=1)
+#     matrix_f = matrix[mask]
+#     lengths = torch.sum(torch.sum(mask, dim=-1),dim=1)
     
-    new_tensor = torch.zeros((batch_size, max(lengths), feature_dim))
+#     new_tensor = torch.zeros((batch_size, max(lengths), feature_dim))
 
-    start_idx = 0
-    for end_idx in lengths:
-        new_tensor[:end_idx] = matrix_f[start_idx:start_idx+end_idx]
-        start_idx += end_idx
+#     start_idx = 0
+#     for end_idx in lengths:
+#         new_tensor[:end_idx] = matrix_f[start_idx:start_idx+end_idx]
+#         start_idx += end_idx
 
-    return new_tensor
+#     return new_tensor

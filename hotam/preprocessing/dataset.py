@@ -338,13 +338,15 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labeler, Sp
                 ac_task_matrix[ac_i] = np.nanmax(ac[task].to_numpy())
                 ac_i += 1
 
+
+
+            #if self.prediction_level == "token":
+            task_matrix = np.zeros(self.max_tok)
+            task_matrix[:sample.shape[0]]  = sample[task].to_numpy()
+
+
             sample_labels[f"ac_{task}"] = ac_task_matrix
-
-
-            if self.prediction_level == "token":
-                task_matrix = np.zeros(self.max_tok)
-                task_matrix[:sample.shape[0]]  = sample[task].to_numpy()
-                sample_labels[f"token_{task}"] = task_matrix
+            sample_labels[f"token_{task}"] = task_matrix
 
         
         return sample_labels

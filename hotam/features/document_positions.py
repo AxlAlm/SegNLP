@@ -24,7 +24,7 @@ class DocPos(FeatureModel):
         self._name = "docpos"
 
         # create a dict of document to number of paragraphs
-        # we need this to figure out if a paragraph is in the start or in the body, or last in a paragraph
+        # we need this to figure out if a argument is in the start or in the body, or last in a paragraph
         documents = dataset.data.groupby("document_id")
         self.doc2paralen = {doc_id:len(doc["paragraph_id"].unique()) for doc_id, doc in documents}
         self.prediction_level = prediction_level

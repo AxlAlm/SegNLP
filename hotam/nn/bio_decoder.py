@@ -23,41 +23,52 @@ class BIO_Decoder():
         if self._apply_correction:
             Bs += f"|(?<=({Os}))({Is})"
 
-        self.pattern = re.compile(f"({Bs})({Is})*|({Os})+")
-
+        #self.pattern = re.compile(f"({Bs})({Is})*|({Os})+")
+        self.pattern = re.compile(f"(?P<AC>({Bs})({Is})*)|(?P<NONE>({Os})+)")
+        
 
     def _bio_decode_sample(self, encoded_bios):
 
-        encoded_bios = ensure_flat(ensure_numpy(encoded_bios))
+        encoded_bios = ensure_numpy(encoded_bios)
         encoded_bios_str = "-".join(encoded_bios.astype(str)) + "-"
 
-        self.__lengths = []
-        self.__seg_types = []
-        def repl(m):
-            bio_list = m.group().split("-")[:-1] #when splitting on "-" we will alway create an empty "" at the end
-            length = len(bio_list)
+        all_matches = re.finditer(self.pattern, encoded_bios_str)
 
-            seg_type = "AC"
-            set_labels = list(set(bio_list))
-            if int(set_labels[0]) in self._Os:
-                seg_type = None
-      
-            self.__lengths.append(length)
-            self.__seg_types.append(seg_type)
-  
-            return ""
+        seg_types = []
+        seg_lengths = []
+        ac_length = 0
+        for m in all_matches:
+            length = len(string.split("-")[:-1])
+            seg_type = None if groupdict["AC"] is None else "AC"
 
-        re.sub(self.pattern, repl, encoded_bios_str)
+            seg_lengths.append(length)
+            seg_type.append(seg_type)
+            
+            if seg_type == "AC":
+                ac_length += 1 
+
+        return seg_lengths, seg_types, ac_length
 
 
-    def decode(self, batch_bios, sample_lengths):
+    def decode(self, batch_encoded_bios:np.ndarray, lengths:np.ndarray):
         
-        batch_size = batch_bios.shape[0]
-        sample_seg_lengths = []
-        sample_seg_types = []
-        for i in range(batch_size):
-            self._bio_decode_sample(batch_bios[i][:sample_lengths[i]])
-            sample_seg_lengths.append(self.__lengths)
-            sample_seg_types.append(self.__lengths)
+        batch_size = batch_encoded_bios.shape[0]
 
-        return sample_seg_lengths, sample_seg_types
+        # sample = [2,3,10,6] where each number indicate the lenght of a Argument Component 
+        sample_seg_lengths = []
+
+        # sample = [AC,NONE,AC,AC] were AC indicate that segment is a argument component, NONE that its not an Argument Component
+        sample_seg_types = []
+
+        # sample = 3, nr of predicted Argument Components in the sample
+        sample_ac_lengths = []
+
+        for i in range(batch_size):
+            seg_lengths, seg_types, ac_length = self._bio_decode_sample(
+                                                                    encoded_bios=batch_encoded_bios[i][:lengths[i]]
+                                                                    )
+            sample_seg_lengths.append(seg_lengths)
+            sample_seg_types.append(seg_types)
+            sample_ac_lengths.append(ac_length)
+
+        return sample_seg_lengths, sample_seg_types, sample_ac_lengths
