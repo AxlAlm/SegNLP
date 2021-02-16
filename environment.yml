@@ -6,7 +6,7 @@ dependencies:
   - pip=20.0.2
   - pip:
     - numpy==1.18.1
-    - pytorch-lightning==1.2.0
+    - pytorch-lightning==1.1.8
     - gensim==3.8.1
     - regex==2020.1.8 
     - nltk==3.4.5

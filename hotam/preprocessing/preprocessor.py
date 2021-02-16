@@ -686,7 +686,6 @@ class Preprocessor:
         self.data.reset_index(inplace=True)
 
 
-
     def create_ams(self, method="pre-ac"):
 
         if method=="pre-ac":

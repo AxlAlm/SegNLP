@@ -73,10 +73,7 @@ class PTLBase(ptl.LightningModule):
         #self.monitor_metric = monitor_metric
         #self.progress_bar_metrics = progress_bar_metrics
         #self.metrics, self.metric_names, self.class_metric_names = self.metrics()
-        
-        
-        self.output = ModelOutput()
-
+    
 
                     
     def forward(self) -> dict:

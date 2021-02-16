@@ -9,28 +9,25 @@ class ModelOutput:
     def __init__(self, dataset, calc_metrics:bool=True, return_output=Union[List[int], bool]):
 
         self.dataset = dataset
-        self._need_seg_lens = if self.dataset.prediction_level == "token"
-        self._seg_lens_added = False
+        #self._need_seg_lens = if self.dataset.prediction_level == "token"
+        #self._seg_lens_added = False
         self._total_loss_added = False
 
-        if "seg" in self.dataset.subtasks:
-            seg_task = [t for t in self.dataset.tasks if "seg" in task][0]
-            Bs = [i for l,i in self.dataset.encoders[seg_task].label2id.items() if l.lower().startswith("b")]
-            Is = [i for l,i in self.dataset.encoders[seg_task].label2id.items() if l.lower().startswith("i")]
-            Os = [i for l,i in self.dataset.encoders[seg_task].label2id.items() if l.lower().startswith("o")]
-            self.bio = BIO_Decoder(
-                                    Bs=Bs,
-                                    Is=Is,
-                                    Os=Os,
-                                    )
+        # if "seg" in self.dataset.subtasks:
+        #     seg_task = [t for t in self.dataset.tasks if "seg" in task][0]
+        #     Bs = [i for l,i in self.dataset.encoders[seg_task].label2id.items() if l.lower().startswith("b")]
+        #     Is = [i for l,i in self.dataset.encoders[seg_task].label2id.items() if l.lower().startswith("i")]
+        #     Os = [i for l,i in self.dataset.encoders[seg_task].label2id.items() if l.lower().startswith("o")]
+        #     self.bio = BIO_Decoder(
+        #                             Bs=Bs,
+        #                             Is=Is,
+        #                             Os=Os,
+        #                             )
         
 
         #self.seg = {}
         self.loss = {}
-        self.preds = {}
-        self.probs = {}
         self.batch = None
-        #self.outputs = outputs = {ID:{"preds":{}, "probs":{}, "gold":{}, "text":{}} for ID in id2idx.keys()}
 
 
     def __get_subtask_preds(decoded_labels:list, task:str):
@@ -58,64 +55,25 @@ class ModelOutput:
         return subtasks_predictions
     
 
-    def __decode_labels(self, preds:list, lengths:list):
-        decoded_preds  = []
-        for i, sample_preds in enumerate(preds):
-            decoded_preds.extend(self.dataset.decode_list(preds[:lenghts[i]], task))
+    def __decode_labels(self, preds:list, lengths:list, task:str):
+
+        dtype = str if task == "relation" else np.int16
+        size = preds.shape[0]
+        decoded_preds = np.zeros((size, max(lengths)), dtype=dtype)
+        for i, sample_preds in range(size):
+            decoded_preds[i][:lenghts[i]] = self.dataset.decode_list(preds[i][:lenghts[i]], task)
         
         return decoded_preds
 
 
-    def __get_segment_labels(labels:list, seg_lengths:list, seg_types:list, max_nr_segs:int, task:str):
-
-        nr_samples = labels.shape[0]
-        seg_labels = torch.zeros(nr_samples, max_nr_segs)
-        i = 0
-        for i in range(nr_samples):
-            floor = 0
-            type_length = zip(seg_types[i] , seg_lengths[i])
-            # we dont want segments taht are not Argument Components. These ones we filter out.
-            sample_seg_lens = [l for t,l in type_length if t is not None] 
-            nr_segs = len(sample_seg_lens)
-            for j in range(nr_segs):
-                    
-                seg_labels = labels[i][floor:floor+length]
-                most_freq_label = Counter(seg_labels).most_common(1)[0][0]
-
-                if task == "relation":
-                    
-                    point_to_idx = j + most_freq_label 
-                    if point_to_idx > nr_segs or point_to_idx < 0:
-                        most_freq_label = nr_segs - j
-
-                seg_labels[i][j] = most_freq_label
-                floor += length
-
-        return seg_labels
-
-
-    def __handle_segmentation(self,data);
-        self.seg["seg_lengths"], self.seg["types"], self.seg["lenghts_seq"] = self.bio.decode(
-                                                                                            batch_encoded_bios=data, 
-                                                                                            lengths=self.batch["lengths_tok"]
-                                                                                            )
-
-        # if calc_metrics:
-        #     seg_results = calc_seg_metrics( 
-        #                                     target_seg_lens=self.batch["lengths_seq"], 
-        #                                     pred_seg_lens=self.seg["seg_lengths"]
-        #                                     )
-
-        # self._seg_lens_added = True
-
-
-    def __handle_complex_tasks(self, data:torch.tensor, level:str, lengths:list):
+    def __handle_complex_tasks(self, data:torch.tensor, level:str, lengths:list, task:str):
 
         # if task is a complex task we get the predictions for each of the subtasks embedded in the 
         # complex task. We will only use these to evaluate
         decoded_labels = self.__decode_labels(
                                                 preds=data, 
-                                                lengths=lengths
+                                                lengths=lengths,
+                                                task=task,
                                                 )
 
         subtask_preds = self.__get_subtask_preds(
@@ -140,6 +98,15 @@ class ModelOutput:
                 tok_labels[i][start:end] = ac_labels[i][j]
         return tok_labels
         
+
+    def __correct_segmentation(self, data):
+        pass
+
+    
+    def __correct_relations(self, data):
+        pass
+
+
 
     def add_loss(self, task:str, data=torch.tensor):
 
@@ -193,6 +160,7 @@ class ModelOutput:
                                         data=data,
                                         level=level,
                                         lengths=lengths
+                                        task=task,
                                         )
             return
 
@@ -219,6 +187,14 @@ class ModelOutput:
             decoded_labels = data
 
 
+
+        if task == "seg":
+            decoded_labels = self.__correct_segmentation(decoded_labels)
+
+        if task == "relation":
+            decoded_labels = self.__correct_relations(decoded_labels)
+
+
         if calc_metrics:
             task_metrics = calc_metrics(
                                         targets=self.batch[f"token_{task}"],
@@ -230,6 +206,8 @@ class ModelOutput:
 
         
         if return_output:
+
+
             if sample_ids == "same":
 
                 if isinstance(return_output) == bool:
@@ -243,8 +221,6 @@ class ModelOutput:
         #self.preds[task] = seg_labels
 
 
-
-
     def add_probs(self, task:str, level:str, data:torch.tensor):
 
         assert torch.is_tensor(data), f"{task} probs need to be a tensor"
@@ -254,14 +230,10 @@ class ModelOutput:
         
 
 
-
     def clear(self):
-        self.seg = {}
-        self.loss = {}
-        self.preds = {}
-        self.probs = {}
         self.batch = None
-        self.outputs
+        self.loss = {}
+        self.output = {}
 
 
 
@@ -269,13 +241,50 @@ class ModelOutput:
 
 
 
+    # def __get_segment_labels(labels:list, seg_lengths:list, seg_types:list, max_nr_segs:int, task:str):
+
+    #     nr_samples = labels.shape[0]
+    #     seg_labels = torch.zeros(nr_samples, max_nr_segs)
+    #     i = 0
+    #     for i in range(nr_samples):
+    #         floor = 0
+    #         type_length = zip(seg_types[i] , seg_lengths[i])
+    #         # we dont want segments taht are not Argument Components. These ones we filter out.
+    #         sample_seg_lens = [l for t,l in type_length if t is not None] 
+    #         nr_segs = len(sample_seg_lens)
+    #         for j in range(nr_segs):
+                    
+    #             seg_labels = labels[i][floor:floor+length]
+    #             most_freq_label = Counter(seg_labels).most_common(1)[0][0]
+
+    #             if task == "relation":
+                    
+    #                 point_to_idx = j + most_freq_label 
+    #                 if point_to_idx > nr_segs or point_to_idx < 0:
+    #                     most_freq_label = nr_segs - j
+
+    #             seg_labels[i][j] = most_freq_label
+    #             floor += length
+
+    #     return seg_labels
 
 
 
 
 
+    # def __handle_segmentation(self,data);
+    #     self.seg["seg_lengths"], self.seg["types"], self.seg["lenghts_seq"] = self.bio.decode(
+    #                                                                                         batch_encoded_bios=data, 
+    #                                                                                         lengths=self.batch["lengths_tok"]
+    #                                                                                         )
 
+    #     # if calc_metrics:
+    #     #     seg_results = calc_seg_metrics( 
+    #     #                                     target_seg_lens=self.batch["lengths_seq"], 
+    #     #                                     pred_seg_lens=self.seg["seg_lengths"]
+    #     #                                     )
 
+    #     # self._seg_lens_added = True
 
     # def add_preds(self, task:str, level:str, data:torch.tensor):
 
