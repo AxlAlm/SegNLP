@@ -1,808 +1,1822 @@
 #basic
-import re
 import numpy as np
-import pandas as pd
-from typing import List, Tuple, Dict
 from tqdm import tqdm
-from string import punctuation
+import os
+import webbrowser
+import pandas as pd
+from IPython.display import display, Image
+from typing import Union, List, Dict, Tuple
+import random
+import copy
+import json
+from pathlib import Path
+import time
+import glob
+import hashlib
+import shutil
+import shelve
+from copy import deepcopy
+from pprint import pprint
 import warnings
-import spacy
 
-#nltk
-import nltk
 
 #hotam
-from hotam.utils import timer
+import hotam
+from hotam.utils import ensure_numpy, load_pickle_data, pickle_data, to_tensor, one_tqdm, timer
 from hotam import get_logger
-logger = get_logger("PREPROCESSOR")
+from .encoder import DatasetEncoder
+from .preprocessor import Preprocessor
+from .labeler import Labeler
+from .split_utils import SplitUtils
 
-#import multiprocessing as mp
+#pytorch lightning
+import pytorch_lightning as ptl
 
-# punctuation fixes
-punctuation += "’‘,`'" + '"'
-strange_characters = {
-                        '``':'"',
-                        "''":'"'
-                    }
+#pytroch
+from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import BatchSampler
+import torch
 
+#hotviz
+from hotviz import hot_tree, hot_text
 
-# nltk download checking
-# # TODO: move this to a better spot and maybe not where its called upon importing.
-# try:
-#     nltk.data.find('tokenizers/punkt')
-#     nltk.download('tokenizers/averaged_perceptron_tagger')
-# except LookupError:
-#     nltk.download("punkt")
-#     nltk.download('averaged_perceptron_tagger')
+logger = get_logger("DATASET")
 
 
-class Preprocessor:
-
-    """
-    Class for preprocessing text.
+class ModelInput(dict):
 
 
-    Preprocesses text samples and structures them in a hiearchial manner by creating
-    dataframes for each units/subunits of the given text sample, i.e. levels. 
-    The level dataframes created for e.g. a Document are:
-            
-            Document -> Paragraphs -> Sentences -> tokens
+    def __init__(self, tasks:list, prediction_level:str, shape:tuple):
+        super().__init__()
+        self.tasks = tasks
+        self.prediction_level = prediction_level
+        self._len = length
+        self.current_epoch = None
+        self.pad_value = 0
+
+
+    def __len__(self):
+        return self._len
+
     
-    The Dataframes contain ids of parent levels allowing you to both treverse on
-    a level but also in a tree like manner.
+    def __add__(self):
+        pass
 
-    USEAGE:
-    -------
-    for preprocessing a text one use add_sample()
-    for preprocessing multiple texts use add_samples() 
 
-    --
-    Given a text sample Preprocessor does the following:
-    
-    ( 0) if level of the dataset samples is not given it guesses a level. E.g. if the dataset
-    contain sentences the dataset level is set to "sentences") 
+    def to(self, device):
+        self.device = device
+        for k,v in self.items():
+            if torch.is_tensor(v):
+                self[k] = v.to(self.device)
 
-    1) Given the level of the text sample it processes the text sample by levels 
-    
-    2) appends processed level units along with ids of parents and so on to its appropriate stack. these are dicts.
-
-    3) when preprocessing is done, clears the level stacks. This means taking the processed level untis (a list of dicts)
-        createing a dataframe and then appending to the existing dataframe
+        return self
     
 
-    For example: if you pass a sentence, 2 dataframes will be returned. One for sentences 
-    and one for token where in the latter will contain the ids for the former.
+    def to_tensor(self, device):
+        pass
 
-    TODO:
-    
-    1) Adding choice of NLP tool. Adding support for Spacy, StandfordCORE NLP
 
-    2) Multiprocessing
+    def to_numpy(self, device):
+        pass
 
-    (3 add choice to how data should be preprocessed. for example, what do do with titles?, or sub-headings?)'
 
-    """
+    def change_pad_value(self, new_value):
+        for task in self.tasks:
+            self[task][self[task] == self.pad_value] = new_value
+            # self[task][~self[f"{self.prediction_level}_mask"].type(torch.bool)] = -1
+     
 
-    def __paragraph_tokenize(self, doc:str) -> List[str]:
-        """ Tokenizes document into paragraphs by splitting by new line ("\n"). 
-    
-        Will ignore any empty strings
+    def add(self, key, value, idx):
+        self[key][idx] = value
 
-        Paragraph tokenization includes title in the first paragraph (might need to be changed)
 
-        Parameters
-        ----------
-        doc : str
-            a document to be tokenized into paragraphs
 
-        Returns
-        -------
-        List[str]
-            list of paragraphs
-        """
-    
-        paras = []
-        stack = ""
-        chars_added = 0
-        for i, para in enumerate(doc.split("\n")):
-            #print([para])
-            #para =  para.strip()
 
-            if not para:
-                stack += "\n"
-                continue
+class Preprocessor(Encoder, TextProcesser, Labeler):    
 
-            #to add title to first paragraph
-            if i == 0:
-                if len(re.findall(r"[\.?!]", para)) <= 2:
 
-                    #if para[-1] not in punctuation:
-                        #para += "."
+    def __init__(self,
+                tasks:list,
+                prediction_level:str,
+                sample_level:str, 
+                features:list=[],
+                encodings:list=[],
+                remove_duplicates:bool=False,
+                tokens_per_sample:bool=False,
+                override:bool=False,
+                ):
+        super().__init__()
 
-                    stack += para
-                    continue
+        self.prediction_level = prediction_level
+        self.sample_level = sample_level
+        self.tokens_per_sample = tokens_per_sample
+        self.main_tasks = tasks
+        self.tasks = tasks
+        self.encodings = encodings
+
+        self.feature2model = {fm.name:fm for fm in features}
+        self.features = list(self.feature2model.keys())
+        self._feature_groups = set([fm.group for fm in features])
+        self.feature2dim = {fm.name:fm.feature_dim for fm in features}
+        self.feature2dim.update({
+                                group:sum([fm.feature_dim for fm in features if fm.group == group]) 
+                                for group in self._feature_groups
+                                })
+        self.__word_features = [fm.name for fm in self.feature2model.values() if fm.level == "word"]
+
+        self.__need_bio = if self.prediction_level == "token"
+
+        self.__init__preprocessor()
+        self.__init__encoder()
+        self._create_data_encoders()
+        self._create_label_encoders()
+
+
+    def __getitem__(self, docs:List[str], token_labels:List[List[dict]] = None, span_labels:List[dict] = None):
+        model_input = self.__extract_data(docs, token_labels, span_labels)
+        return model_input
+
+
+    def __extract_data(self, docs:List[str], token_labels:List[List[dict]] = None, span_labels:List[dict] = None):
+
+        Input = ModelInput()
+
+        for i, doc in enumerate(docs):
+
+            sample = self._process_doc(doc)
+
+            if token_labels:
+                sample = self._label_spans(sample, span_labels)
                 
-            if stack:
-                para = stack  + "\n" + para
-                stack = ""
-
-            paras.append(para)
-
-        return paras
-
-
-    def __get_global_id(self, level:str) -> int:
-        """Creates a global id for the current level, .e.g. sentence, word, paragraph.
-
-        An ID is equal to a counter, i.e. sentence nr 10 will have ID 0, sentence 11 ID 10 and so on.
-
-
-        Parameters
-        ----------
-        level : str
-            the level of the unit to be processed, e.g. "sentence", "document", "token" etc
-
-        Returns
-        -------
-        int
-            ID for the current unit on the given level
-        """
-        try:
-            return self._level_row_cache[level]["id"] + 1
-            #return self.stack_level_data[level][-1]["id"] + 1
-        except KeyError as e:
-            return 0
-
-
-    def __get_parent_text(self, level:str) -> Tuple[str,str]:
-        """        Gets the text of last added parent to the given child-level. This function is used
-        to simple fetch the last parent and the top parent processed so it can be processed on a lower level.
-
-        E.g. if param level = token, function will fetch the last sentences processed and top parent 
-        (if there is one) e.g paragraph or document.
-
-        Parameters
-        ----------
-        level : str
-            the level of the unit to be processed, e.g. "sentence", "document", "token" etc
-
-        Returns
-        -------
-        Tuple[str,str]
-            The top parent text and the closest parent text
+            if span_labels:
+                sample = self._label_tokens(sample, token_labels)
             
-        """
-        parents = self.level2parents[level]
-        #closest_parent_text = self.stack_level_data[parents[0]][-1]["text"]
-        #top_parent_text = self.stack_level_data[parents[-1]][-1]["text"]
-        closest_parent_text = self._level_row_cache[parents[0]]["text"]
-        top_parent_text = self._level_row_cache[parents[-1]]["text"]
-        return top_parent_text, closest_parent_text
+            if self.__need_bio:
+                sample = self._add_bios(sample)
+
+            if self.argumentative_markers:
+                sample = self.__mark_ams(sample)
 
 
-    def __get_char_idx(self, level:str) -> int:
-        """Gets the current character index of the text. Given a level (e.g. "sentence", "token" etc) 
-        the fucntion will return an integer represting the index.
+            Input.add("id", i, i)
 
-        if the level stack (e.g. no previously processed data on this level) the current index is set to 0, as its the first
+            #if self.prediction_level == "ac":
+            acs_grouped = sample.groupby("ac_id")
+            Input.add("lengths_tok", len(sample), i)
+            Input.add("lengths_seq", len(acs_grouped), i)
+            Input.add("lengths_seq_tok", [len(g) for i, g in acs_grouped], i)
 
-        if the last row added for the given level belongs to a different text sample (fetched based on the dataset_level, 
-        e.g. on which level the top parent text is on), we set the current character index to 0 as we are begining on a new sample
+            # if hasattr(self, "max_sent"):
+            #     sent_grouped = sample.groupby("sentence_id")
+            #     sample_dict.update({
+            #                         "lengths_sent": len(sent_grouped),
+            #                         "lengths_sent_tok": [len(g) for i, g in sent_grouped]
+            #                         })
+            self.__get_text(Input, sample, i)
+            self.__get_labels(Input, sample, i)
+            self.__get_encs(Input, sample, i)
+            self.__get_feature_data(Input, sample, i)
+
+            if self.prediction_level == "ac":
+                sample_dict.update(self.__get_am_ac_spans(Input, sample, i))
 
 
-        Parameters
-        ----------
-        level : str
-            the level of the unit to be processed, e.g. "sentence", "document", "token" etc
+        return Input
+  
 
+    def __get_shape(self, sentence:bool=False, ac:bool=False, token:bool=False, char:bool=False, feature_dim:int=False):
 
-        Returns
-        -------
-        int
-            current character index with the sample text
-        """
+        shape = []
+
+        if sentence:
+            shape.append(self.max_sent)
+
+        if ac:
+            shape.append(self.max_seq)
+
+        if token and ac:
+            shape.append(self.max_seq_tok)
+        elif token:
+            shape.append(self.max_tok)
+
         
-        parents = self.level2parents[level]
-        #top_parent_row = self.stack_level_data[parents[-1]][-1]
-        top_parent_row = self._level_row_cache[parents[-1]]
+        if char:
+            shape.append(self.encoders["chars"].max_word_length)
 
-        #if not self.stack_level_data[level]:
-        if level not in self._level_row_cache:
-            return  0
+        if feature_dim:
+            shape.append(feature_dim)
         
-        level_row = self._level_row_cache[level]
-        #level_row = self.stack_level_data[level][-1]
+        return tuple(shape)
 
-        if level_row[f"{self.dataset_level}_id"] != top_parent_row["id"]:
-            current_idx = 0
+
+    def __get_text(self, Input:ModelInput, sample:pd.DataFrame, idx:int):
+
+        if self.prediction_level == "ac":
+            acs = sample.groupby(f"ac_id")
+            text = []
+            for _, ac in acs:
+                text.append(ac["text"].to_numpy())
+
+            sample_text["text"] = np.array(text)
         else:
-            current_idx = level_row["char_end"]
-
-        return current_idx
-
-
-    def __get_structure_ids(self, level:str) -> Dict[str,int]:
-        """Provides the ids for the parents for last unit on the given level. This is needed so we know which parent is a perent for 
-        any given child and vice versa.
-
-
-        For example: If we pass "token" as level and our samples (e.g. dataset_level) are documents
-        we get the id for the document, the paragraph and the sentence that the last token belongs to.
-
-
-        Parameters
-        ----------
-        level : str
-            the level of the unit to be processed, e.g. "sentence", "document", "token" etc
-
-        Returns
-        -------
-        Dict[str,int]
-            keys identify the level (e.g. "sentence_id") and int is the id
-        """
-
-    
-        parents = self.level2parents[level]
-        first_parent = parents[0]
-        upper_parents = parents[1:]
-        last_parent_row = self._level_row_cache[first_parent]
-        #last_parent_row = self.stack_level_data[first_parent][-1]
-
-        #inherent all the ids of the closest parent
-        ids ={k:v for k,v in last_parent_row.items() if "id" in k}
-        ids[f"{first_parent}_id"] = ids.pop("id")
-
-
-        # if there ARE previous units of the given level, e.g. the stack
-        # for tokens is NOT empty we know the unit is not the first of its kind
-        first = True
-        current_id_in_parent = -1 # <-- -1 because we are adding 1 later in the the __build_X functions.
-        #if self.stack_level_data[level]:
-        if level in self._level_row_cache:
-            # last_level_row = self.stack_level_data[level][-1]
-            last_level_row = self._level_row_cache[level]
-            first = False
-
-        for parent in upper_parents:
-            parent_level_id = f"{parent}_{level}_id"
-            parent_id = f"{parent}_id"
-
-            # if the current unit is not last
-            if not first:
-
-                # if the last unit of the given unit has a different parent id,
-                # we know can set the current_id_in_parent to -1, as we know its the first 
-                # unit that will be in that parent unit. I.e. no unit on the same level have the same parent id.
-                if last_level_row[parent_id] != ids[parent_id]:
-                    current_id_in_parent = -1 # <-- -1 because we are adding 1 later in the the __build_X functions.
-                else:
-                    current_id_in_parent = last_level_row[parent_level_id]
-            
-            ids[parent_level_id] = current_id_in_parent
-
-
-        return ids
-
-
-    def __infer_text_type(self, text:str) -> str:
-        """infer the unit type of the text naively. 
-
-        if the text contains \n its a document
-        else if the text contains more than 2 fullstops its a paragraph
-        else if the text contain spaces its a sentence
-        else its a token
-
-        Parameters
-        ----------
-        text : str
-            text
-
-        Returns
-        -------
-        str
-            text type
-        """
-        if "\n" in text.strip():
-            t =  "doc"
-        elif text.count(".") >= 2:
-            t = "paragraph"
-        elif " " in text.strip():
-            t = "sentence"
-        else:
-            t = "token"
+            sample_text["text"] = sample["text"].to_numpy()
         
-        warnings.warn(f"No text_type was passed. text_type infered to '{t}'")
-        return t
+        return sample_text
 
 
-    def __build_tokens(self, spacy_sentence):
-        """tokenizes and pos-tags a sentence to create rows/processed units for tokens. Adds the processed tokens 
-        the token level stack. (see class description)
+    def __get_labels(self, sample):
 
-        for any token in the sentence we create an global id, an id for the token in the sentence, set character span
-        add pos tag and create a label slot. Then we add all the parent ids.
+        sample_labels = {}
+        for task in self.all_tasks:
 
-        example:
-                {
-                    "id": 24 <--- global id, token in corpus
-                    "sentence_token_id": 2, <--- which token in the sentence
-                    "char_start": 10,
-                    "char_end": 16,
-                    "text": "giraff",
-                    "label": None,
-                    "pos": "NN",
-                    "sentence_id": 150,
-                    "paragraph_id": 70,
-                    "document_id": 50,
-                    "paragraph_sentence_id": 2, <--- which sentence in the paragraph
-                    "document_sentence_id:" 3, <--- which sentence in the document
-                    "paragraph_document_id" 1, <--- which paragraph in the document
-                    "document_token_id": 20,  <--- which token in the document
-                    "paragraph_token_id" 4, <--- which token in the paragraph
+            ac_task_matrix = np.zeros(self.max_seq)
 
-                    }
+            ac_i = 0
+            acs = sample.groupby(f"ac_id")
+            for _, ac in acs:
+                ac_task_matrix[ac_i] = np.nanmax(ac[task].to_numpy())
+                ac_i += 1
+
+
+
+            #if self.prediction_level == "token":
+            task_matrix = np.zeros(self.max_tok)
+            task_matrix[:sample.shape[0]]  = sample[task].to_numpy()
+
+
+            sample_labels[f"ac_{task}"] = ac_task_matrix
+            sample_labels[f"token_{task}"] = task_matrix
 
         
-        for example, given the document_sentence_id,sentence_token_id and document_id  we know that the token is 
-        the 3rd token in the 4th sentence in document 50.
-
-
-        """
-
-        parent_ids = self.__get_structure_ids("token")
-        doc, sentence = self.__get_parent_text("token")
-        current_token_idx = self.__get_char_idx("token")
-
-        #print("HELLO DOC", doc)
-        for i, tok in enumerate(spacy_sentence):
-            token = tok.text
-            token_len = len(token)
-            token = strange_characters.get(token, token)
-
-            if current_token_idx == 0:
-                start = 0
-            else:
-                # -2 here is just to start searching from a few characters back 
-                # it allows the tokenizer idxes to be a bit off and we will still find the correct
-                # char index in the origial text. 
-                start = doc.find(token, max(0, current_token_idx-2)) 
-
-            assert tok.i - spacy_sentence.start == i
-            assert tok.head.i - spacy_sentence.start >= 0
-            assert tok.head.i - spacy_sentence.start < len(sentence)
-
-            
-            end = start + token_len
-            row =  {
-                    "id": self.__get_global_id("token"),
-                    "sentence_token_id": i,
-                    "char_start": start,
-                    "char_end": end,
-                    "text": token.lower(),
-                    "pos": tok.tag_,
-                    "dephead": tok.head.i - spacy_sentence.start,
-                    "deprel": tok.dep_
-                    #
-                    }
-
-            for parent in self.level2parents["token"][1:]:
-                parent_ids[f"{parent}_token_id"] += 1
-
-            row.update(parent_ids)
-
-            self._level_row_cache["token"] = row
-            self._data_stack.append(row)
-
-            current_token_idx = end
-
-
-        # stanza_doc = self.nlp(sentence)
-        # spacy_doc = self.nlp(sentence)
-        # s_toks = [t.text for t in stanza_doc.iter_tokens()]
-        
-        # tokens = nltk.word_tokenize(sentence)
-        # token_pos = nltk.pos_tag(tokens)
-        # for i, (token,pos) in enumerate(token_pos):
-        #     token_len = len(token)
-        #     token = strange_characters.get(token, token)
-
-        #     if current_token_idx == 0:
-        #         start = 0
-        #     else:
-        #         start = doc.find(token, max(0, current_token_idx-2))
-        #     end = start + token_len
-
-        #     row =  {
-        #             "id": self.__get_global_id("token"),
-        #             "sentence_token_id": i,
-        #             "char_start": start,
-        #             "char_end": end,
-        #             "text": token.lower(),
-        #             #"pos": token_dict["xpos"],
-        #             #"dephead": token_dict["head"],
-        #             #"deprel": token_dict["deprel"]
-        #             #
-        #             }
-
-        #     for parent in self.level2parents["token"][1:]:
-        #         parent_ids[f"{parent}_token_id"] += 1
-
-        #     row.update(parent_ids)
-
-        #     self._level_row_cache["token"] = row
-
-        #     self._data_stack.append(row)
-
-        #     current_token_idx = end
-
-
-    def __build_sentences(self):
-        """
-        Sentence tokenize text (assumed to be a paragraph) and creates 
-        a row/processed unit for each sentence. For each sentence call __build_tokens().
-
-        For each sentence we set a global id, character span and the ids of all parents.
-
-        See __build_tokens() documentation for a more detailed example of format.
-        """
-
-        parent_ids = self.__get_structure_ids("sentence")
-        doc, paragraph = self.__get_parent_text("sentence")
-        current_sent_idx = self.__get_char_idx("sentence")
-        #paragraph, current_sent_id,  current_sent_idx = self.__get_text_id_idx("sentence")
-
-        spacy_doc = self.nlp(paragraph)
-        
-        for i, sentence in enumerate(spacy_doc.sents):
-
-            if current_sent_idx == 0:
-                start_idx = 0
-            else:
-                start_idx = doc.find(str(sentence), current_sent_idx) #, current_sent_idx)
-
-            end_idx = start_idx + len(str(sentence)) #sentence[-1].idx + len(sentence[-1])
-            row =  {
-                    "id": self.__get_global_id("sentence"),
-                    "paragraph_sentence_id": i,
-                    "text":str(sentence),
-                    "char_start": start_idx,
-                    "char_end": end_idx,
-                    }
-
-            for parent in self.level2parents["sentence"][1:]:
-                parent_ids[f"{parent}_sentence_id"] += 1
-
-            row.update(parent_ids)
-
-            self._level_row_cache["sentence"] = row
-            current_sent_idx = end_idx
-            self.__build_tokens(sentence)
-
-        # sd = [s for s in spacy_doc.sents]
-        # print(len(str(sd[0])), sd[0][-1].idx, sd[0][-1].text, sd[1][0].idx, sd[1][0].text, len(sentences[0]))
-        # spacy_sentences = [str(s) for s in spacy_doc.sents]
-        # if sentences != spacy_sentences:
-        #     print(sentences)
-        #     print(spacy_sentences)
-        #     print(lol)
-        
-        # sentences = nltk.sent_tokenize(paragraph)
-        # for i, sent in enumerate(sentences):
-        #     sent_len = len(sent)
-            
-        #     if current_sent_idx == 0:
-        #         start = 0
-        #     else:
-        #         start = doc.find(sent, current_sent_idx) #, current_sent_idx)
-
-        #     end = start + sent_len
-      
-        #     row =  {
-        #             "id": self.__get_global_id("sentence"),
-        #             "paragraph_sentence_id": i,
-        #             "text":sent,
-        #             "char_start": start,
-        #             "char_end": end,
-        #             }
-
-        #     for parent in self.level2parents["sentence"][1:]:
-        #         parent_ids[f"{parent}_sentence_id"] += 1
-
-        #     row.update(parent_ids)
-
-        #     self._level_row_cache["sentence"] = row
-            
-        #     #self.stack_level_data["sentence"].append(row)
-
-        #     current_sent_idx = end #sent_len + 1
-
-        #     self.__build_tokens()
-
-
-    def __build_paragraphs(self):
-        """
-        Tokenize text int paragraphs (assumed to be a documents) and creates 
-        a row/processed unit for each paragraph.  For each sentence call __build_sentences().
-
-        For each par we set a global id, character span and the ids of all parents.
-
-        See __build_tokens() documentation for a more detailed example of format.
-        """
-
-        parent_ids = self.__get_structure_ids("paragraph")
-        doc, _ = self.__get_parent_text("paragraph")
-        current_para_idx = self.__get_char_idx("paragraph")
-
-
-        paras = self.__paragraph_tokenize(doc)
-
-        for i,para in enumerate(paras):
-            para_len = len(para)
-
-            if i == 0:
-                start = 0
-            else:
-                start = doc.find(para, current_para_idx)
-            end = start + para_len
- 
-            para_len = len(para)
-            row =  {
-                    "id": self.__get_global_id("paragraph"),
-                    "document_paragraph_id": i,
-                    "text": para,
-                    "char_start": start,
-                    "char_end": end,
-                    }
-
-            for parent in self.level2parents["paragraph"][1:]:
-                parent_ids[f"{parent}_paragraph_id"] += 1
-
-            row.update(parent_ids)
-
-            #self.stack_level_data["paragraph"].append(row)
-            self._level_row_cache["paragraph"] = row
-            current_para_idx = end
-
-            self.__build_sentences()
-
-
-    def __build_level_dfs(self, string:str, text_type:str, text_id:str, label:str):
-        """given a text string processes it appropriately. Meaning, if the string is a document
-        we will process the document into document, paragraphs, documents and tokens. Creating 
-        dataframes for each of the levels. 
-
-        Parameters
-        ----------
-        string : str
-            text sample to be processed
-        text_type : str
-            type of the given string
-        text_id : str
-            id for the given string
-        label : str
-            label of the given string, if there is any.
-
-        Raises
-        ------
-        NotImplementedError
-            if a text type that is not of the valid ones an error will be thrown. Text type 
-            has to be either document, paragraph or sentence.
-        """
-        self._level_row_cache[text_type] = {
-                                            "id":text_id,
-                                            "text":string
-                                            }
-        # #self.stack_level_data[text_type].append({
-        #                                     "id":text_id,
-        #                                     "text":string
-        #                                     })
-        
-        if text_type == "document":
-            self.__build_paragraphs()
-        elif text_type == "paragraph":
-            self.__build_sentences()      
-        elif text_type == "sentence":
-            self.__build_tokens()   
-        else:
-            raise NotImplementedError(f'"{text_type}" is not a understood type')
-
-
-    def __prune_hiers(self):
-        """
-        Given the dataset level we set the hierarchy. For now the heirarchy dicts, found in the Datset Class,
-        are containing the full supported hierarchiy; from document to tokens. But if our datset level is for
-        example  sentences we need to remove documents and paragraphs for the assumed hierarchy so we know that 
-        what to process.
-        """
-
-        new_level2parents = {self.dataset_level:[]}
-        for k, v in self.level2parents.items():
-
-            if k in self.parent2children[self.dataset_level]:
-                new_level2parents[k] = v[:v.index(self.dataset_level)+1]
-        
-        self.level2parents = new_level2parents
-
-
-    def __init_setup(self, level:str):
-        """
-        sets up the stacks where we will add the processed units of each level,
-        also set the datset level, e.g. on what level are the samples, and corrects
-        the hierarchy thereafter.
-
-        Parameters
-        ----------
-        level : str
-            the level of the unit to be processed, e.g. "sentence", "document", "token" etc
-            as this function is called at first processing sample its assumed to be the dataset level.
-
-            
-        """
-        self.dataset_level = level
-
-        # storing the current row for each level, used to fetch ids etc for lower lever data
-        self._level_row_cache = {}
-        self._data_stack = []
-
-        # self.stack_level_data = {level:[]}
-        # self.stack_level_data.update({l:[] for l in self.parent2children[level]})
-        # self.level_dfs = {l:pd.DataFrame() for l in self.stack_level_data.keys()}
-
-        self.data = pd.DataFrame()
-        #self.nlp = stanza.Pipeline(lang='en', processors='tokenize,mwt,pos,lemma,depparse') #'tokenize,mwt,pos,lemma,depparse'
-
-        
-        
-        self.nlp = spacy.load("en_core_web_sm", disable=["ner"])
-        #self.nlp.add_pipe("sentencizer", first=True)
-        # sent_tok = self.nlp.create_pipe('sentencizer')
-        # sent_tok.punct_chars.extend(["\n", "\n\n"]) #, "\n\n"])
-        # print(sent_tok.punct_chars)
-        # self.nlp.add_pipe(sent_tok, first=True)
- 
-        self.__prune_hiers()
+        return sample_labels
     
 
-    def _clear_stack(self):
-        """
-        Create dataframes from the list of processed units on each level.
-        """
-        if self.data.shape == (0,0):
-            self.data = pd.DataFrame(self._data_stack)
-            self._clean()
-        else:
-            raise NotImplementedError
+    def __get_encs(self, sample):
 
-        self._data_stack = []
-        #del self.nlp
-        # for level, stack in self.stack_level_data.items():
-        #     self.level_dfs[level] = self.level_dfs[level].append(pd.DataFrame(stack))
-        # self.stack_level_data = {l:[] for l in self.stack_level_data.keys()}
-    
+        sample_encs = {}
+        for enc in self.encodings:
 
-    def _clean(self):
-        self.data = self.data[~self.data.text.str.contains("\n")]
-        self.data = self.data[~self.data.text.str.contains("\t")]
-        self.data.reset_index(inplace=True)
-
-
-    def create_ams(self, method="pre-ac"):
-
-        if method=="pre-ac":
-            # self.level_dfs["token"]["am_id"] = np.nan
-            # groups = self.level_dfs["token"].groupby("sentence_id")
-
-            self.data["am_id"] = np.nan
-            groups = self.data.groupby("sentence_id")
-
-            for sent_id, sent_df in tqdm(groups, desc="labeling tokens with Argumentative Markers"):
+            # for dependency information we need to perserve the sentences 
+            #
+            if self.sample_level != "sentence" and enc in ["deprel", "dephead"]:
+                sample_m = np.zeros((self.max_sent, self.max_sent_tok))      
                 
-                acs = sent_df.groupby("ac_id")
-                prev_ac_end = 0
-                for ac_id, ac_df in acs:
+                #information about the root
+                if enc == "deprel":
+                    sent2root = np.zeros(self.max_sent)
+
+                sentences  = sample.groupby("sentence_id")
+
+                ac_i = 0
+
+                #create a mask
+                if self.prediction_level == "ac":
                     
-                    ac_start = min(ac_df["char_start"])
-                    ac_end = max(ac_df["char_end"])
+                    #information about which ac belong in which sentence
+                    ac2sentence = np.zeros(self.max_seq)
 
-                    # more than previous end of ac and less than ac start
-                    cond1 = sent_df["char_start"] >= prev_ac_end 
-                    cond2 = sent_df["char_start"] < ac_start
-                    idxs = sent_df[cond1 & cond2].index
-                    # self.level_dfs["token"]["am_id"].iloc[idxs] = ac_id
-                    self.data["am_id"].iloc[idxs] = ac_id
-                    prev_ac_end = ac_end
+                    # given information from ac2sentence, we can get the mask for a sentnece for a particular ac
+                    # so we know what tokens belong to ac and not
+                    sentence_ac_mask = np.zeros((self.max_seq, self.max_sent_tok))
 
 
-    def add_samples(self, data:List[dict]):
-        """
+                for sent_i, (sent_id, sent_df) in enumerate(sentences):
+                    enc_data = sent_df[enc].to_numpy()
+                    sample_m[sent_i][:sent_df.shape[0]] = enc_data
+                    
+                    if enc == "deprel":
+                        root_id = self.encode_list(["root"], "deprel")[0]
+                        root_idx = int(np.where(enc_data == root_id)[0])
+                        sent2root[sent_i] = root_idx
+                                    
+                    #create a mask
+                    if self.prediction_level == "ac":
+                        acs = sent_df.groupby("ac_id")
 
-        A function for preprocessing multiple samples. Simply calls add_sample().
+                        for ac_id, ac_df in acs:
+                            ac2sentence[ac_i] = sent_i
+
+                            ac_ids = sent_df["ac_id"].to_numpy()
+                            mask = ac_ids == ac_id
+                            sentence_ac_mask[ac_i][:sent_df.shape[0]] = mask.astype(np.int8)
+                            ac_i += 1
 
 
-        Parameters
-        ----------
-        data : List[dict]
-            list of dict, where each dict contains the paramaters for add_sample()
+                if enc == "deprel":
+                    sample_encs["sent2root"] = sent2root
 
+                if self.prediction_level == "ac":
+                    sample_encs["ac2sentence"] = ac2sentence
+                    sample_encs["sent_ac_mask"] = sentence_ac_mask
+                    
 
-        TODO: 
+            else:
+                inc_ac = self.prediction_level == "ac" and not self.tokens_per_sample
+                shape = self.__get_shape(
+                                        ac=inc_ac,
+                                        token=enc in set(["words", "bert_encs", "chars", "pos","deprel", "dephead" ]),
+                                        char=enc == "chars",
+                                        feature_dim=None
+                                        )
+                sample_m = np.zeros(shape)
+
+                if inc_ac:
+
+                    acs = sample.groupby("ac_id")
+                    for ac_i,(_, ac ) in enumerate(acs):                        
+                        sample_m[ac_i][:ac.shape[0]] = np.stack(ac[enc].to_numpy())
+
+                else:
+                    sample_m[:sample.shape[0]] = np.stack(sample[enc].to_numpy())
+                
+            sample_encs[enc] = sample_m
         
-        
-        -- multiprocessing
-        problem: 
-        as we are infering global ids from the order of processing
-        we cannot just pass the data to multiprocessing and add to
-        a shared stacked dict.
-        Instead we need to make sure the data storing is NOT shared 
-        across the processes, then when combining the processed data
-        we need to know which split/batch was first and update
-        the next split ids appropriately.
+        return sample_encs
 
-        e.g. if we have 2 splits of 1000 samples
-        both ids will range from 1-1000, hence for the 2nd split
-        we just need to append 1000 to all of the global ids.
+
+    def __get_feature_data(self, sample):
+        
+        mask_dict = {}
+        feature_dict = {}
+        masks_not_added = True
+
+        if self.prediction_level == "ac":
+            mask_dict["am_token_mask"] = np.zeros((self.max_seq, self.max_seq_tok))
+            mask_dict["ac_token_mask"] = np.zeros((self.max_seq, self.max_seq_tok))
+            mask_dict["ac_mask"] = np.zeros(self.max_seq)
+    
+        if self.tokens_per_sample:
+            mask_dict["token_mask"] = np.zeros(self.max_tok)
+
+        if self.prediction_level == "token":
+            mask_dict["token_mask"] = np.zeros(self.max_tok)
+
+    
+        for feature, fm in self.feature2model.items():
+            
+            if hotam.preprocessing.settings["STORE_FEATURES"] and hasattr(fm, "_store_features"):
+                self.__feature_store_setup(fm)
+
+            if self.prediction_level == "ac":
+                if self.tokens_per_sample:
+                    if fm.level == "doc":
+                        inc_ac = True
+                    else:
+                        inc_ac = False
+                else:
+                    inc_ac = True
+            else:
+                inc_ac = False
+
+            shape = self.__get_shape(
+                                    ac=inc_ac,
+                                    token=fm.level == "word",
+                                    #char=enc == "chars",
+                                    feature_dim=fm.feature_dim
+                                    )  
+
+            feature_matrix = np.zeros(shape)
+            sample_length = sample.shape[0]
+
+            
+            if self.prediction_level == "ac" and inc_ac:
+                    
+                feature_matrix, am_mask, ac_mask = self.__extract_ADU_features(fm, sample, sample_shape=feature_matrix.shape)
+
+                if feature in self.__word_features and not np.sum(mask_dict["ac_token_mask"]):
+                    mask_dict["am_token_mask"] = am_mask
+                    mask_dict["ac_token_mask"] = ac_mask
+
+                    if not sum(mask_dict["ac_mask"]):
+                        mask_dict["ac_mask"] = np.max(ac_mask, axis=-1)
+                else:
+                    mask_dict["ac_mask"] = ac_mask
+           
+            else:
+                
+                # context is for embeddings such as Bert and Flair where the word embeddings are dependent on the surrounding words
+                # so for these types we need to extract the embeddings per context. E.g. if we have a document and want Flair embeddings
+                # we first divide the document up in sentences, extract the embeddigns and the put them back into the 
+                # ducument shape.
+                # Have chosen to not extract flair embeddings with context larger than "sentence".
+                if fm.context and fm.context != self.sample_level:
+
+                    contexts = sample.groupby(f"{fm.context}_id")
+
+                    sample_embs = []
+                    for _, context_data in contexts:
+                        sample_embs.extend(fm.extract(context_data)[:context_data.shape[0]])
+
+                    if fm.level == "word":
+                        feature_matrix[:sample_length] = np.array(sample_embs)
+                    else:
+                        raise NotImplementedError
+                
+                else:
+                    feature_matrix[:sample_length] = fm.extract(sample)[:sample_length]
+                
+
+                mask_dict["token_mask"][:sample_length] = np.ones(sample_length)
+
+
+            if fm.group not in feature_dict:
+                feature_dict[fm.group] = []
+
+            feature_dict[fm.group].append(feature_matrix)
+
+        feature_dict = {k: np.concatenate(v, axis=-1) if len(v) > 1 else v[0] for k,v in feature_dict.items()}
+        feature_dict.update(mask_dict)
+
+        return feature_dict
+
+
+    def __extract_ADU_features(self, fm, sample, sample_shape=None):
+
+        sentences  = sample.groupby("sentence_id")
+
+        sample_matrix = np.zeros(sample_shape)
+        ac_mask_matrix = np.zeros(sample_shape[:-1])
+        am_mask_matrix = np.zeros(sample_shape[:-1])
+
+
+        ac_i = 0
+        for _, sent in sentences:
+
+            sent.index = sent.pop("sentence_id")
+            
+            #for word embeddings we use the sentence as context (even embeddings which doesnt need contex as
+            # while it takes more space its simpler to treat them all the same).
+            # we get the word embeddings then we index the span we want, e.g. Argumnet Discourse Unit
+            # as these are assumed to be within a sentence
+            if fm.level == "word":
+                sent_word_embs = fm.extract(sent)[:sent.shape[0]]  
+                acs = sent.groupby("ac_id")
+
+                for ac_id , ac in acs:
+
+                    am_mask = sent["am_id"].to_numpy() == ac_id
+                    ac_mask = sent["ac_id"].to_numpy() == ac_id
+                    adu_mask = am_mask + ac_mask
+
+                    am_mask = am_mask[adu_mask]
+                    ac_mask = ac_mask[adu_mask]
+
+                    adu_embs = sent_word_embs[adu_mask]
+                    adu_len = adu_embs.shape[0]
+
+                    sample_matrix[ac_i][:adu_len] = sent_word_embs[adu_mask]
+                    ac_mask_matrix[ac_i][:adu_len] = ac_mask.astype(np.int8)
+                    am_mask_matrix[ac_i][:adu_len] = am_mask.astype(np.int8)
+                    ac_i += 1
+                
+            # for features such as bow we want to pass only the Argument Discourse Unit
+            else:
+
+                acs = sent.groupby("ac_id")
+                for ac_id, ac in acs:
+                    sent.index = sent["id"]
+                    am = sent[sent["am_id"] == ac_id]
+                    ac = sent[sent["ac_id"] == ac_id]
+                    adu = pd.concat((am,ac))
+                    adu.index = adu.pop("ac_id")
+                    sample_matrix[ac_i] = fm.extract(adu)
+                    ac_mask_matrix[ac_i] = 1
+                    ac_i += 1
+
+        return sample_matrix, am_mask_matrix, ac_mask_matrix
+
+
+    def __get_am_ac_spans(self, sample):
+        """
+        for each sample we get the spans of am, ac and the whole adu.
+        if there is no am, we still add an am span to keep the am and ac spans
+        aligned. But we set the values to 0 and start the adu from the start of the ac instead
+        of the am.
+
+        NOTE!! that the end
 
         """
-        # if not hasattr(self, "dataset_level"):
-        #     self.__init_setup(data[0]["text_type"])
+        
+        am_spans = []
+        ac_spans = []
+        adu_spans = []
 
-        # manager = mp.Manager()
-        # stack = manager.dict()
-        # pool = mp.Pool(processes=8)
-        # for k,v in self.stack_level_data.items():
-        #     stack[k] = v
-        # self.stack_level_data = stack
+        ac_goups = sample.groupby("ac_id")
 
-        # pool.map(self.add_sample,data)
-        # pool.close()
-        # pool.join()p
+        for ac_id, gdf in ac_goups:
+            
+            am = sample[sample["am_id"]==ac_id]
+            
+            has_am = True
+            if am.shape[0] == 0:
+                am_start = 0
+                am_end = 0
+                am_span = (am_start, am_end)
+                has_am = False
+            else:
+                am_start = min(am[f"{self.sample_level}_token_id"])
+                am_end = max(am[f"{self.sample_level}_token_id"])
+                am_span = (am_start, am_end)
 
-        for sample in tqdm(data, desc="preprocessing data"):
-            self.add_sample(**sample, _Preprocessor__single=False)
+            ac_start = min(gdf[f"{self.sample_level}_token_id"])
+            ac_end = max(gdf[f"{self.sample_level}_token_id"])
+            ac_span = (ac_start, ac_end)
 
-        self._clear_stack()
+            if has_am:
+                adu_span = (am_start, ac_end)
+            else:
+                adu_span = (ac_start, ac_end)
+
+            am_spans.append(am_span)
+            ac_spans.append(ac_span)
+            adu_spans.append(adu_span)
+
+        return {"am_spans":am_spans, "ac_spans":ac_spans, "adu_spans":adu_spans}
+
+
+
+
+
+    # def _get_nr_tokens(self, level):
+    #     """
+    #     Gets the max number of words for each of the levels in the heirarchy. E.g. max words in documents, 
+    #     sentences, paragraphs.
+
+    #     """
+    #     # return max(len(g) for i,g in self.level_dfs["token"].groupby(level+"_id"))
+    #     return max(len(g) for i,g in self.data.groupby(level+"_id"))
+  
+
+    # def _get_max_nr_seq(self, level):
+    #     # samples = self.level_dfs["token"].groupby(self.sample_level+"_id")
+    #     samples = self.data.groupby(self.sample_level+"_id")
+    #     return max(len(sample.groupby(level+"_id")) for i, sample in samples)
+
+
+        
+
+ 
+
+# #basic
+# import numpy as np
+# from tqdm import tqdm
+# import os
+# import webbrowser
+# import pandas as pd
+# from IPython.display import display, Image
+# from typing import Union, List, Dict, Tuple
+# import random
+# import copy
+# import json
+# from pathlib import Path
+# import time
+# import glob
+# import hashlib
+# import shutil
+# import shelve
+# from copy import deepcopy
+# from pprint import pprint
+# import warnings
+
+
+# #hotam
+# import hotam
+# from hotam.utils import ensure_numpy, load_pickle_data, pickle_data, to_tensor, one_tqdm, timer
+# from hotam import get_logger
+# from .encoder import DatasetEncoder
+# from .preprocessor import Preprocessor
+# from .labeler import Labeler
+# from .split_utils import SplitUtils
+
+# #pytorch lightning
+# import pytorch_lightning as ptl
+
+# #pytroch
+# from torch.utils.data import Dataset, DataLoader
+# from torch.utils.data import BatchSampler
+# import torch
+
+# #hotviz
+# from hotviz import hot_tree, hot_text
+
+# logger = get_logger("DATASET")
+
+
+# class Batch(dict):
+
+
+#     def __init__(self, input_dict, tasks:list, prediction_level:str, length=int):
+#         super().__init__(input_dict)
+#         self.tasks = tasks
+#         self.prediction_level = prediction_level
+#         self._len = length
+#         self.current_epoch = None
+
+
+#     def __len__(self):
+#         return self._len
+
+
+#     def to(self, device):
+#         self.device = device
+#         for k,v in self.items():
+#             if torch.is_tensor(v):
+#                 self[k] = v.to(self.device)
+
+#         return self
     
 
-    def add_sample(self, text:str, text_type:str, sample_id:int, label=None, __single:bool=True):
-        """
+#     def change_pad_value(self, new_value):
+#         for task in self.tasks:
+#             self[task][~self[f"{self.prediction_level}_mask"].type(torch.bool)] = -1
+     
 
-        Preprocess a text sample.
+# class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labeler, SplitUtils):    
 
-        The type of the first text sample given will be assumed to be the dataset_level, i.e.
-        the level on which the samples are.
 
-        Parameters
-        ----------
-        text : str
-            the text sample
-        text_type : str
-            the type of the text sample, e.g. "sentence", "document"
-        sample_id : int
-            id of the text sample
-        label : [type], optional
-            if the text sample has a label one can add it, by default None
-        __single : bool, optional
-            internal paramters for keeping the add_sample fucntion from calling _clear_stack after
-            each text sample processed. Useful when processing samples with add_samples(), by default True
+#     def __init__(self, name, data_path:str="", device:"cpu"=None):
+#         super().__init__()
+#         self._name = name
+#         self.device = device
 
-        Raises
-        ------
-        ValueError
-            [description]
-        """
+#         if os.path.exists(data_path):
+#             self.load(data_path)
 
-        text_type = text_type if text_type else self.__infer_text_type(text)
+#         self.level2parents = {
+#                                 "token": ["sentence", "paragraph", "document"],
+#                                 "sentence": ["paragraph", "document"],
+#                                 "paragraph": ["document"],
+#                                 "document": []
+#                                 }
 
-        if not hasattr(self, "dataset_level"):
-            self.__init_setup(text_type)
+#         self.parent2children = {
+#                                 "document": ["paragraph","sentence", "token"],
+#                                 "paragraph": ["sentence", "token"],
+#                                 "sentence": ["token"],
+#                                 "token": []
+#                                 }
+#         self.encoders = {}
+#         self.__cutmap = {"doc_embs":"seq"}
+#         self._setup_done = False
+
+
+#     def __getitem__(self, key):
+
+#         if isinstance(key, int):
+#             key = [key]
         
-        # if isinstance(text_id,int):
-        #     if text_id in self.stack_level_data[text_type]:
-        #         raise ValueError("that id already exists")
-        # else:
-        #     text_id = self.stack_level_data[text_type.shape[0]
 
-        self.__build_level_dfs(text, text_type, sample_id, label)
+#         if hotam.preprocessing.settings["CACHE_SAMPLES"]:
+#             samples_data = self.__load_samples(key)
+        
+#             if None in samples_data:
+#                 samples_data = self.__extract_sample_data(key)
+#                 self.__store_samples(key, samples_data)
+#         else:
+#             samples_data = self.__extract_sample_data(key)
 
-        if __single:
-            self._clear_stack()
+
+#         if self.prediction_level == "token":
+#             samples_data = sorted(samples_data, key=lambda x:x["lengths_tok"], reverse=True)
+#             max_tok = samples_data[0]["lengths_tok"]
+#         else:
+#             samples_data = sorted(samples_data, key=lambda x:x["lengths_seq"], reverse=True)
+#             max_seq = samples_data[0]["lengths_seq"]
+#             max_tok = max(s["lengths_tok"] for s in samples_data)
+#             max_seq_tok = max([max(s["lengths_seq_tok"]) for s in samples_data])
+
+#         if hasattr(self, "max_sent"):
+#             max_sent = max(s["lengths_sent"] for s in samples_data)
+#             max_sent_tok = max([max(s["lengths_sent_tok"]) for s in samples_data])
+        
+#         #unpack and turn to tensors
+#         unpacked_data = {}
+#         k2dtype = { 
+#                     "word_embs":torch.float, 
+#                     "doc_embs": torch.float, 
+#                     "ac_mask":torch.uint8,
+#                     "token_mask":torch.uint8,
+#                     "am_token_mask":torch.uint8,
+#                     "am_token_mask":torch.uint8,
+#                     }
+
+#         for k in samples_data[0].keys():
+#             try:
+#                 h = np.stack([s[k] for s in samples_data])
+#                 cut = self.__cutmap.get(k, "seq" if self.prediction_level == "ac" else "tok")
+    
+#                 if cut == "seq":
+
+#                     if len(h.shape) == 2:
+#                         h = h[:, :max_seq]
+
+#                     elif len(h.shape) > 2:
+#                         if "embs" in k:
+#                             h = h[:, :max_seq, :]
+#                         else:                        
+#                             h = h[:, :max_seq, :max_seq_tok]
+
+#                 elif cut == "tok":
+
+#                     #print(k, h , h.shape, max_tok)
+#                     h = h[:, :max_tok]
+                
+#                 # specific cutting when using dependency information
+#                 # here we cut on max words per sentence and nr of sentences.
+#                 elif cut == "sent":
+
+#                     if len(h.shape) == 2:
+#                         h = h[:, :max_sent]
+
+#                     elif len(h.shape) > 2:
+#                         h = h[:, :max_sent, :max_sent_tok]
+                
+#             except ValueError as e:
+#                 h = [s[k] for s in samples_data]
+            
+#             except IndexError as e:
+#                 h = h 
+
+
+#             #print(k, h, type(h), k2dtype.get(k, torch.long))
+#             unpacked_data[k] = to_tensor(h, dtype=k2dtype.get(k, torch.long))
+
+
+#         # return samples_data
+#         return Batch(
+#                         deepcopy(unpacked_data), 
+#                         tasks=self.tasks,
+#                         prediction_level=self.prediction_level,
+#                         length=len(unpacked_data["ids"])
+#                     )
+    
+
+#     def __len__(self):
+#         return self.nr_samples
+
+
+#     @property
+#     def name(self):
+#         return self._name
+
+
+#     def __extract_sample_data(self, key):
+
+#         #samples = self.level_dfs["token"].loc[key,].groupby(self.sample_level+"_id")
+#         samples = self.data.loc[key,].groupby(self.sample_level+"_id")
+#         #samples = sorted(samples, key=lambda x:len(x), reverse=True)
+
+#         sample_data = []
+#         for i, sample in samples:
+
+#             sample_dict = {"ids": i}
+
+#             if self.prediction_level == "ac":
+#                 acs_grouped = sample.groupby("ac_id")
+#                 sample_dict.update({
+#                                     "lengths_tok":len(sample), 
+#                                     "lengths_seq":len(acs_grouped), 
+#                                     "lengths_seq_tok": [len(g) for i, g in acs_grouped],
+#                                     })
+#             else:
+#                 sample_dict.update({"lengths_tok":len(sample)})
+
+                
+
+#             if hasattr(self, "max_sent"):
+#                 sent_grouped = sample.groupby("sentence_id")
+#                 sample_dict.update({
+#                                     "lengths_sent": len(sent_grouped),
+#                                     "lengths_sent_tok": [len(g) for i, g in sent_grouped]
+#                                     })
+
+#             sample_dict.update(self.__get_text(sample))
+#             sample_dict.update(self.__get_labels(sample))
+#             sample_dict.update(self.__get_encs(sample))
+#             sample_dict.update(self.__get_feature_data(sample))
+
+#             if self.prediction_level == "ac":
+#                 sample_dict.update(self.__get_am_ac_spans(sample))
+
+#             sample_data.append(sample_dict)
+
+#         return sample_data
+  
+
+#     def __load_samples(self, key):
+#         d = self.__TMP_SAMPLE_MEMMAP[key]
+#         return d
+        
+
+#     def __store_samples(self, key, samples_data):
+#         self.__TMP_SAMPLE_MEMMAP[key] = samples_data
+
+
+#     @one_tqdm(desc="setting up memmaping for cache samples")
+#     def __setup_cache(self):
+#         feature_str = "".join(self.features)
+#         enc_str = "".join(self.encodings)
+#         tasks_str = "".join(self.all_tasks)
+#         big_str = feature_str + tasks_str + enc_str + self.sample_level + self.prediction_level + self._name
+#         hash_obj = hashlib.md5(big_str.encode())
+#         h = hash_obj.hexdigest()
+
+#         base_dir = "/tmp/"
+#         dirpath = f"{base_dir}{h}-MEMMAP-TMP-hotam/"
+
+#         # we remove temp memmap for previous experiments so we dont take up too much space
+#         dir_exists = os.path.exists(dirpath)
+#         if not dir_exists:
+#             dirs = glob.glob(f"{base_dir}*MEMMAP-TMP-hotam")
+#             for d in dirs:
+#                 shutil.rmtree(d)
+            
+#             os.makedirs(dirpath)
+
+#         memmap_file = f"{dirpath}sample_memmap.dat"
+
+#         self.__TMP_SAMPLE_MEMMAP = np.memmap(
+#                                             memmap_file, 
+#                                             dtype="O", 
+#                                             mode="w+", 
+#                                             shape=self.nr_samples + 1
+#                                             )
+
+
+#     def __get_text(self, sample):
+#         sample_text = {"text": ""}
+
+#         if self.prediction_level == "ac":
+#             acs = sample.groupby(f"ac_id")
+#             text = []
+#             for _, ac in acs:
+#                 text.append(ac["text"].to_numpy())
+
+#             sample_text["text"] = np.array(text)
+#         else:
+#             sample_text["text"] = sample["text"].to_numpy()
+        
+#         return sample_text
+
+
+#     def __get_shape(self, sentence:bool=False, ac:bool=False, token:bool=False, char:bool=False, feature_dim:int=False):
+
+#         shape = []
+
+#         if sentence:
+#             shape.append(self.max_sent)
+
+#         if ac:
+#             shape.append(self.max_seq)
+
+#         if token and ac:
+#             shape.append(self.max_seq_tok)
+#         elif token:
+#             shape.append(self.max_tok)
+
+        
+#         if char:
+#             shape.append(self.encoders["chars"].max_word_length)
+
+#         if feature_dim:
+#             shape.append(feature_dim)
+        
+#         return tuple(shape)
+
+
+#     def __get_labels(self, sample):
+
+#         sample_labels = {}
+#         for task in self.all_tasks:
+
+#             ac_task_matrix = np.zeros(self.max_seq)
+
+#             ac_i = 0
+#             acs = sample.groupby(f"ac_id")
+#             for _, ac in acs:
+#                 ac_task_matrix[ac_i] = np.nanmax(ac[task].to_numpy())
+#                 ac_i += 1
+
+
+
+#             #if self.prediction_level == "token":
+#             task_matrix = np.zeros(self.max_tok)
+#             task_matrix[:sample.shape[0]]  = sample[task].to_numpy()
+
+
+#             sample_labels[f"ac_{task}"] = ac_task_matrix
+#             sample_labels[f"token_{task}"] = task_matrix
+
+        
+#         return sample_labels
+    
+
+#     def __get_encs(self, sample):
+
+#         sample_encs = {}
+#         for enc in self.encodings:
+
+#             # for dependency information we need to perserve the sentences 
+#             #
+#             if self.sample_level != "sentence" and enc in ["deprel", "dephead"]:
+#                 sample_m = np.zeros((self.max_sent, self.max_sent_tok))      
+                
+#                 #information about the root
+#                 if enc == "deprel":
+#                     sent2root = np.zeros(self.max_sent)
+
+#                 sentences  = sample.groupby("sentence_id")
+
+#                 ac_i = 0
+
+#                 #create a mask
+#                 if self.prediction_level == "ac":
+                    
+#                     #information about which ac belong in which sentence
+#                     ac2sentence = np.zeros(self.max_seq)
+
+#                     # given information from ac2sentence, we can get the mask for a sentnece for a particular ac
+#                     # so we know what tokens belong to ac and not
+#                     sentence_ac_mask = np.zeros((self.max_seq, self.max_sent_tok))
+
+
+#                 for sent_i, (sent_id, sent_df) in enumerate(sentences):
+#                     enc_data = sent_df[enc].to_numpy()
+#                     sample_m[sent_i][:sent_df.shape[0]] = enc_data
+                    
+#                     if enc == "deprel":
+#                         root_id = self.encode_list(["root"], "deprel")[0]
+#                         root_idx = int(np.where(enc_data == root_id)[0])
+#                         sent2root[sent_i] = root_idx
+                                    
+#                     #create a mask
+#                     if self.prediction_level == "ac":
+#                         acs = sent_df.groupby("ac_id")
+
+#                         for ac_id, ac_df in acs:
+#                             ac2sentence[ac_i] = sent_i
+
+#                             ac_ids = sent_df["ac_id"].to_numpy()
+#                             mask = ac_ids == ac_id
+#                             sentence_ac_mask[ac_i][:sent_df.shape[0]] = mask.astype(np.int8)
+#                             ac_i += 1
+
+
+#                 if enc == "deprel":
+#                     sample_encs["sent2root"] = sent2root
+
+#                 if self.prediction_level == "ac":
+#                     sample_encs["ac2sentence"] = ac2sentence
+#                     sample_encs["sent_ac_mask"] = sentence_ac_mask
+                    
+
+#             else:
+#                 inc_ac = self.prediction_level == "ac" and not self.tokens_per_sample
+#                 shape = self.__get_shape(
+#                                         ac=inc_ac,
+#                                         token=enc in set(["words", "bert_encs", "chars", "pos","deprel", "dephead" ]),
+#                                         char=enc == "chars",
+#                                         feature_dim=None
+#                                         )
+#                 sample_m = np.zeros(shape)
+
+#                 if inc_ac:
+
+#                     acs = sample.groupby("ac_id")
+#                     for ac_i,(_, ac ) in enumerate(acs):                        
+#                         sample_m[ac_i][:ac.shape[0]] = np.stack(ac[enc].to_numpy())
+
+#                 else:
+#                     sample_m[:sample.shape[0]] = np.stack(sample[enc].to_numpy())
+                
+#             sample_encs[enc] = sample_m
+        
+#         return sample_encs
+
+
+#     def __get_feature_data(self, sample):
+        
+#         mask_dict = {}
+#         feature_dict = {}
+#         masks_not_added = True
+
+#         if self.prediction_level == "ac":
+#             mask_dict["am_token_mask"] = np.zeros((self.max_seq, self.max_seq_tok))
+#             mask_dict["ac_token_mask"] = np.zeros((self.max_seq, self.max_seq_tok))
+#             mask_dict["ac_mask"] = np.zeros(self.max_seq)
+    
+#         if self.tokens_per_sample:
+#             mask_dict["token_mask"] = np.zeros(self.max_tok)
+
+#         if self.prediction_level == "token":
+#             mask_dict["token_mask"] = np.zeros(self.max_tok)
+
+    
+#         for feature, fm in self.feature2model.items():
+            
+#             if hotam.preprocessing.settings["STORE_FEATURES"] and hasattr(fm, "_store_features"):
+#                 self.__feature_store_setup(fm)
+
+#             if self.prediction_level == "ac":
+#                 if self.tokens_per_sample:
+#                     if fm.level == "doc":
+#                         inc_ac = True
+#                     else:
+#                         inc_ac = False
+#                 else:
+#                     inc_ac = True
+#             else:
+#                 inc_ac = False
+
+#             shape = self.__get_shape(
+#                                     ac=inc_ac,
+#                                     token=fm.level == "word",
+#                                     #char=enc == "chars",
+#                                     feature_dim=fm.feature_dim
+#                                     )  
+
+#             feature_matrix = np.zeros(shape)
+#             sample_length = sample.shape[0]
+
+            
+#             if self.prediction_level == "ac" and inc_ac:
+                    
+#                 feature_matrix, am_mask, ac_mask = self.__extract_ADU_features(fm, sample, sample_shape=feature_matrix.shape)
+
+#                 if feature in self.__word_features and not np.sum(mask_dict["ac_token_mask"]):
+#                     mask_dict["am_token_mask"] = am_mask
+#                     mask_dict["ac_token_mask"] = ac_mask
+
+#                     if not sum(mask_dict["ac_mask"]):
+#                         mask_dict["ac_mask"] = np.max(ac_mask, axis=-1)
+#                 else:
+#                     mask_dict["ac_mask"] = ac_mask
+           
+#             else:
+                
+#                 # context is for embeddings such as Bert and Flair where the word embeddings are dependent on the surrounding words
+#                 # so for these types we need to extract the embeddings per context. E.g. if we have a document and want Flair embeddings
+#                 # we first divide the document up in sentences, extract the embeddigns and the put them back into the 
+#                 # ducument shape.
+#                 # Have chosen to not extract flair embeddings with context larger than "sentence".
+#                 if fm.context and fm.context != self.sample_level:
+
+#                     contexts = sample.groupby(f"{fm.context}_id")
+
+#                     sample_embs = []
+#                     for _, context_data in contexts:
+#                         sample_embs.extend(fm.extract(context_data)[:context_data.shape[0]])
+
+#                     if fm.level == "word":
+#                         feature_matrix[:sample_length] = np.array(sample_embs)
+#                     else:
+#                         raise NotImplementedError
+                
+#                 else:
+#                     feature_matrix[:sample_length] = fm.extract(sample)[:sample_length]
+                
+
+#                 mask_dict["token_mask"][:sample_length] = np.ones(sample_length)
+
+
+#             if fm.group not in feature_dict:
+#                 feature_dict[fm.group] = []
+
+#             feature_dict[fm.group].append(feature_matrix)
+
+#         feature_dict = {k: np.concatenate(v, axis=-1) if len(v) > 1 else v[0] for k,v in feature_dict.items()}
+#         feature_dict.update(mask_dict)
+
+#         return feature_dict
+
+
+#     def __extract_ADU_features(self, fm, sample, sample_shape=None):
+
+#         sentences  = sample.groupby("sentence_id")
+
+#         sample_matrix = np.zeros(sample_shape)
+#         ac_mask_matrix = np.zeros(sample_shape[:-1])
+#         am_mask_matrix = np.zeros(sample_shape[:-1])
+
+
+#         ac_i = 0
+#         for _, sent in sentences:
+
+#             sent.index = sent.pop("sentence_id")
+            
+#             #for word embeddings we use the sentence as context (even embeddings which doesnt need contex as
+#             # while it takes more space its simpler to treat them all the same).
+#             # we get the word embeddings then we index the span we want, e.g. Argumnet Discourse Unit
+#             # as these are assumed to be within a sentence
+#             if fm.level == "word":
+#                 sent_word_embs = fm.extract(sent)[:sent.shape[0]]  
+#                 acs = sent.groupby("ac_id")
+
+#                 for ac_id , ac in acs:
+
+#                     am_mask = sent["am_id"].to_numpy() == ac_id
+#                     ac_mask = sent["ac_id"].to_numpy() == ac_id
+#                     adu_mask = am_mask + ac_mask
+
+#                     am_mask = am_mask[adu_mask]
+#                     ac_mask = ac_mask[adu_mask]
+
+#                     adu_embs = sent_word_embs[adu_mask]
+#                     adu_len = adu_embs.shape[0]
+
+#                     sample_matrix[ac_i][:adu_len] = sent_word_embs[adu_mask]
+#                     ac_mask_matrix[ac_i][:adu_len] = ac_mask.astype(np.int8)
+#                     am_mask_matrix[ac_i][:adu_len] = am_mask.astype(np.int8)
+#                     ac_i += 1
+                
+#             # for features such as bow we want to pass only the Argument Discourse Unit
+#             else:
+
+#                 acs = sent.groupby("ac_id")
+#                 for ac_id, ac in acs:
+#                     sent.index = sent["id"]
+#                     am = sent[sent["am_id"] == ac_id]
+#                     ac = sent[sent["ac_id"] == ac_id]
+#                     adu = pd.concat((am,ac))
+#                     adu.index = adu.pop("ac_id")
+#                     sample_matrix[ac_i] = fm.extract(adu)
+#                     ac_mask_matrix[ac_i] = 1
+#                     ac_i += 1
+
+#         return sample_matrix, am_mask_matrix, ac_mask_matrix
+
+
+#     def __get_am_ac_spans(self, sample):
+#         """
+#         for each sample we get the spans of am, ac and the whole adu.
+#         if there is no am, we still add an am span to keep the am and ac spans
+#         aligned. But we set the values to 0 and start the adu from the start of the ac instead
+#         of the am.
+
+#         NOTE!! that the end
+
+#         """
+        
+#         am_spans = []
+#         ac_spans = []
+#         adu_spans = []
+
+#         ac_goups = sample.groupby("ac_id")
+
+#         for ac_id, gdf in ac_goups:
+            
+#             am = sample[sample["am_id"]==ac_id]
+            
+#             has_am = True
+#             if am.shape[0] == 0:
+#                 am_start = 0
+#                 am_end = 0
+#                 am_span = (am_start, am_end)
+#                 has_am = False
+#             else:
+#                 am_start = min(am[f"{self.sample_level}_token_id"])
+#                 am_end = max(am[f"{self.sample_level}_token_id"])
+#                 am_span = (am_start, am_end)
+
+#             ac_start = min(gdf[f"{self.sample_level}_token_id"])
+#             ac_end = max(gdf[f"{self.sample_level}_token_id"])
+#             ac_span = (ac_start, ac_end)
+
+#             if has_am:
+#                 adu_span = (am_start, ac_end)
+#             else:
+#                 adu_span = (ac_start, ac_end)
+
+#             am_spans.append(am_span)
+#             ac_spans.append(ac_span)
+#             adu_spans.append(adu_span)
+
+#         return {"am_spans":am_spans, "ac_spans":ac_spans, "adu_spans":adu_spans}
+
+
+#     def __feature_store_setup(self, fm):
+            
+#         if fm.level == "word":
+#             #nr_sentence = len(self.level_dfs["token"]["sentence_id"].unique())
+#             nr_sentence = len(self.data["sentence_id"].unique())
+#             shape = (nr_sentence, self._get_nr_tokens("sentence"), fm.feature_dim)
+#             feature_name = fm.name
+        
+#         elif self.prediction_level == "ac":
+#             #body, suffix = self._feature2memmap[feature].rsplit(".",1)
+#             #self._feature2memmap[feature] = body + "_ac_" + suffix
+#             feature_name = fm.name + "_ac"
+
+#             #nr_acs = int(self.level_dfs["token"]["ac_id"].max())
+#             nr_acs = int(self.data["ac_id"].max())
+#             shape = (nr_acs, fm.feature_dim)
+
+#         else:
+#             raise NotImplementedError("Not supported yet")
+            
+#         fm._init_feature_save(
+#                                 dataset_name = self.name,
+#                                 feature_name = feature_name,
+#                                 shape = shape,
+#                                 dtype = fm.dtype,
+#                                 )
+
+
+#     def info(self):
+#         doc = f"""
+#             Info:
+
+#             {self.about}
+
+#             Tasks: 
+#             {self.dataset_tasks}
+
+#             Task Labels:
+#             {self.dataset_task_labels}
+
+#             Source:
+#             {self.url}
+#             """
+#         print(doc)
+
+
+#     def stats(self, override=False):
+
+#         """
+
+#         Returns
+#         -------
+#         [type]
+#             [description]
+
+#         """
+
+    
+#         if not self._setup_done:
+
+#             #nr samples
+#             nr_samples = len(self.data.groupby(self.dataset_level+"_id"))
+#             acs = self.data.groupby("ac_id")
+      
+#             rows = []
+#             for task in self.dataset_tasks:
+#                 task_label_counts = acs.first()[task].value_counts()
+
+#                 total = 0
+#                 for l, c in task_label_counts.items():
+#                     rows.append((task,l,c))
+#                     total += c
+#                 rows.append((task,"TOTAL",total))
+            
+#             print("------ DATASET STATS ------ \n")
+#             print(f"Number Samples ({self.dataset_level}):", nr_samples)
+#             print("Label stats:")
+#             df = pd.DataFrame(rows, columns=["task","label", "count"])
+#             df.index = df.pop("task")
+
+#             return df
+
+
+
+#         if hasattr(self, "_stats") and not override:
+#             return self._stats
+        
+#         rows = []
+
+#         ac_df = self.data.groupby("ac_id").first()
+
+#         # we go through each of the different splits (e.g. each cross validation set. For non-cross validation there will only be one)
+#         for split_id, split_set in self.splits.items():
+
+#             #we got through every split type (train, test ,val)
+#             for split_type, ids in split_set.items():
+                
+                
+#                 rows.append({
+#                                 "type":self.sample_level,
+#                                 "task":"",
+#                                 "split":split_type,
+#                                 "split_id":split_id,
+#                                 "value": len(ids)
+
+#                             })
+
+#                 for task in self.all_tasks:
+
+#                     if "seg" in task:
+#                         label_counts = dict(self.data[self.data[f"{self.sample_level}_id"].isin(ids)][task].value_counts())
+#                     else:
+#                         label_counts = dict(ac_df[ac_df[f"{self.sample_level}_id"].isin(ids)][task].value_counts())
+
+#                     #if self.prediction_level == "ac" and "None" in label_counts:
+
+                    
+#                     label_counts.update({l:0 for l in self.task2labels[task] if l not in label_counts.keys()})
+#                     label_counts = dict(sorted(list(label_counts.items()), key=lambda x:x[0]))
+
+#                     if "None" in label_counts and task == "ac":
+#                         label_counts.pop("None")
+
+#                     for l,nr in label_counts.items():
+            
+#                         rows.append({
+#                                         "type":l,
+#                                         "task":task,
+#                                         "split":split_type,
+#                                         "split_id":split_id,
+#                                         "value": nr
+#                                     })
+
+#         self._stats = pd.DataFrame(rows)
+#         #df.index = df.pop("type")
+
+#         return self._stats
+
+
+#     @one_tqdm(desc="Saving Preprocessed Dataset")
+#     def save(self, pkl_path:str):
+#         """saves the preprocessed dataset, save dataset_level
+
+#         Parameters
+#         ----------
+#         pkl_path : str
+#             string path
+#         """
+#         pickle_data([self.data, self.dataset_level, self.dataset_tasks], pkl_path)
+
+
+#     @one_tqdm(desc="Loading Preprocessed Dataset")
+#     def load(self, pkl_path:str):
+#         """
+#         loads the data and creates the stacks for preprocessing (if one wanted to add data)
+
+#         Parameters
+#         ----------
+#         pkl_path : 
+#             path string
+
+#         Raises
+#         ------
+#         RuntimeError
+#             if data already exist it will break loading.
+#         """
+#         if hasattr(self, "level_dfs"):
+#             raise RuntimeError("data already exist. Overwriting is currently unsupported with load()")
+
+#         self.data, self.dataset_level, self.dataset_tasks = load_pickle_data(pkl_path)
+#         # self.stack_level_data = {l:[] for l in self.level_dfs.keys()}
+#         self._data_stack = []
+
+
+#     @one_tqdm(desc="Save Encoded State")
+#     def __save_enc_state(self):
+
+#         state_dict = {}
+#         # state_dict["data"] = self.level_dfs["token"].to_dict()
+#         state_dict["data"] = self.data.to_dict()
+#         state_dict["all_tasks"] = self.all_tasks
+#         state_dict["subtasks"] = self.subtasks
+#         state_dict["main_tasks"] = self.main_tasks
+#         state_dict["task2subtasks"] = self.task2subtasks
+#         state_dict["task2labels"] = self.task2labels
+#         state_dict["stats"] =  self._stats.to_dict()
+
+
+#         with open(self._enc_file_name,"w") as f:
+#             json.dump(state_dict, f)
+
+
+#     @one_tqdm(desc="Load Encoded State")
+#     def __load_enc_state(self):
+#         with open(self._enc_file_name,"r") as f:
+#             state_dict = json.load(f)
+
+#         # self.level_dfs["token"] = pd.DataFrame(state_dict["data"])
+#         self.data = pd.DataFrame(state_dict["data"])
+#         self.all_tasks = state_dict["all_tasks"]
+#         self.subtasks = state_dict["subtasks"]
+#         self.task2subtasks = state_dict["task2subtasks"]
+#         self.task2labels = state_dict["task2labels"]
+#         self.main_tasks = state_dict["main_tasks"]
+#         self._stats = pd.DataFrame(state_dict["stats"])
+
+#     @one_tqdm(desc="Finding task and subtasks")
+#     def __fix_tasks(self):
+        
+#         subtasks_set = set()
+#         self.task2subtasks = {}
+
+#         #labels are collected subtask and tasks
+#         all_task = set()
+
+#         all_task.update(self.tasks)
+
+#         for task in self.tasks:
+            
+#             subtasks = task.split("_")
+
+#             if len(subtasks) <= 1:
+#                 #subtasks_set.update(subtasks)
+#                 all_task.update(subtasks)
+#                 break
+        
+#             self.task2subtasks[task] = subtasks
+
+#             #subtasks_set.update(subtasks)
+#             all_task.update(subtasks)
+
+        
+#         self.all_tasks = sorted(list(all_task))
+#         self.subtasks = [t for t in all_task if "_" not in t]
+
+
+#     @one_tqdm(desc="Getting task labels")
+#     def __get_task2labels(self):
+#         self.task2labels = {}
+#         for task in self.all_tasks:
+
+#             # if task == "relation" and self.prediction_level == "ac":
+#             #     self.task2labels[task] = range(self.max_relation+1)
+#             # else:
+#             #     # self.task2labels[task] = sorted(list(self.level_dfs["token"][task].unique()))
+
+#             # for i, row in self.data.iterrows():
+#             #     if type(row["seg"]) == type(np.nan):
+#             #         print(row)
+
+#             # print(task, self.data[task].unique().tolist())
+#             self.task2labels[task] = sorted(self.data[task].unique().tolist())
+
+#             if isinstance(self.task2labels[task][0], (np.int, np.int64, np.int32, np.int16)):
+#                 self.task2labels[task] = [int(i) for i in self.task2labels[task]]
+
+#         # if we only predict on acs we dont need "None" label
+#         if self.prediction_level == "ac" and "ac" in self.all_tasks:
+#             self.task2labels["ac"].remove("None")
+        
+        
+#     @one_tqdm(desc="Reformating Labels")
+#     def __fuse_subtasks(self):
+
+#         for task in self.tasks:
+#             subtasks = task.split("_")
+            
+#             if len(subtasks) <= 1:
+#                 continue
+
+#             # subtask_labels  = self.level_dfs["token"][subtasks].apply(lambda row: '_'.join([str(x) for x in row]), axis=1)
+#             # self.level_dfs["token"][task] = subtask_labels
+#             subtask_labels  = self.data[subtasks].apply(lambda row: '_'.join([str(x) for x in row]), axis=1)
+#             self.data[task] = subtask_labels
+
+
+#     def _get_nr_tokens(self, level):
+#         """
+#         Gets the max number of words for each of the levels in the heirarchy. E.g. max words in documents, 
+#         sentences, paragraphs.
+
+#         """
+#         # return max(len(g) for i,g in self.level_dfs["token"].groupby(level+"_id"))
+#         return max(len(g) for i,g in self.data.groupby(level+"_id"))
+  
+
+#     def _get_max_nr_seq(self, level):
+#         # samples = self.level_dfs["token"].groupby(self.sample_level+"_id")
+#         samples = self.data.groupby(self.sample_level+"_id")
+#         return max(len(sample.groupby(level+"_id")) for i, sample in samples)
+
+
+#     @one_tqdm(desc="Removing Duplicates")
+#     def remove_duplicates(self):
+#         """
+#         Removes duplicate on the dataset level based on the text and also updates the splits to match the pruned dataset.
+
+#         text filed which is used to check duplicates is the original text.
+
+#         """
+#         raise NotImplementedError(" TO BE IMPLEMENTED")
+
+
+#         # def __get_duplicate_set(df):
+
+#         #     # TODO: solve this with groupby isntead???
+#         #     duplicate_mask_all = df.duplicated(subset="text",  keep=False).to_frame(name="bool")
+#         #     duplicate_ids_all = duplicate_mask_all[duplicate_mask_all["bool"]==True].index.values
+
+#         #     dup_ids = df.loc[duplicate_ids_all]["id"]
+#         #     dup_items = df.loc[duplicate_ids_all]["text"]
+#         #     dup_dict = dict(enumerate(set(dup_items)))
+#         #     dup_pairs = {i:[] for i in range(len(dup_dict))}
+#         #     for i, item in dup_dict.items():
+#         #         for ID, item_q in zip(dup_ids, dup_items):
+#         #             if item == item_q:
+#         #                 dup_pairs[i].append(ID)
+
+#         #     return list(dup_pairs.values())
+
+#         # target_level = self.dataset_level
+#         # # df = self.level_dfs[target_level]
+#         # # df = self.data
+#         # duplicate_sets = __get_duplicate_set(df)
+#         # duplicate_ids = np.array([i for duplicate_ids in duplicate_sets for i in  duplicate_ids[1:]])
+
+#         # df = df[~df["id"].isin(duplicate_ids)]
+#         # df.reset_index(drop=True, inplace=True)
+#         # self.level_dfs[target_level] = df
+
+
+#         # for level, df in self.level_dfs.items():
+
+#         #     if level == target_level:
+#         #         continue
+
+#         #     df = df[~df[f"{target_level}_id"].isin(duplicate_ids)]
+#         #     df.reset_index(drop=True, inplace=True)
+#         #     self.level_dfs[level] = df
+
+        
+#         # self.duplicate_ids = duplicate_ids
+
+#         # if hasattr(self, "splits"):
+#         #     self._update_splits()
+
+#         # logger.info(f"Removed {len(duplicate_ids)} duplicates from dataset. Duplicates: {duplicate_sets}")
+
+
+#     def get_subtask_position(self, task:str, subtask:str) -> int:
+#         """fetches the position of the subtask in the the task label. Return the index of the subtask in the task.
+
+#         Parameters
+#         ----------
+#         task : str
+#             task
+#         subtask : str
+#             subtask
+
+#         Returns
+#         -------
+#         int
+#             id for the subtask in the task
+            
+#         """
+#         return self.task2subtasks[task].index(subtask)
+
+
+#     def __get_tree_data(self, example):
+
+#         acs_grouped = example.groupby("ac_id")
+#         relations = [ac_df["relation"].unique()[0] for ac_id, ac_df in acs_grouped]
+#         acs = [ac_df["ac"].unique()[0] for ac_id, ac_df in acs_grouped]
+#         tree_data = []
+        
+#         if self.name.lower() == "pe":
+#             major_claim_idxes = [i for i, (ac_id, ac_df) in enumerate(acs_grouped) if ac_df["ac"].unique()[0] == "MajorClaim"]
+#             if len(major_claim_idxes):
+#                 major_claim_idx = major_claim_idxes[0]
+#             else:
+#                 major_claim_idx = None
+
+
+#         for i, (ac_id, ac_df) in enumerate(acs_grouped):
+#             text = " ".join(ac_df["text"])
+#             ac = ac_df["ac"].unique()[0]
+
+#             if self._setup_done:
+#                 if "ac" in self.all_tasks:
+#                     ac = self.encoders["ac"].decode(ac)
+
+#             ac = ac_df["ac"].unique()[0]
+
+#             relation = int(ac_df["relation"].unique()[0])
+#             relation = relation if self._setup_done else i + relation
+#             stance = ac_df["stance"].unique()[0]
+
+#             if ac == "MajorClaim" and self.name.lower() == "pe":
+#                 relation = major_claim_idx
+#                 stance = "Paraphrase"
+     
+#             if ac == "Claim" and self.name.lower() == "pe" and major_claim_idx is not None:
+#                 relation  = major_claim_idx
+
+#             tree_data.append({
+#                                 'label': ac,
+#                                 'link': relation,
+#                                 'link_label': stance,
+#                                 'text': text
+#                                 })
+#         return tree_data
+    
+
+#     def __get_span_data(self, example):
+#         text_span_data = []
+#         for i, row in example.iterrows():
+#             span_id = row["ac_id"] if not np.isnan(row["ac_id"]) else None
+#             label = row["ac"]
+
+#             if self._setup_done:
+#                 if "ac" in self.all_tasks:
+#                     label = self.encoders["ac"].decode(label)
+
+#             score = 1.0 if label != None else 0.0
+            
+#             text_span_data.append({
+#                                 'token': row["text"],
+#                                 'pred': {
+#                                             "span_id": span_id,
+#                                             "label": label,
+#                                             "score": score,
+#                                             },
+#                                 'gold':{
+#                                             "span_id": span_id,
+#                                             "label": label,
+#                                             "score": score,
+#                                             },
+#                                 }) 
+#         return text_span_data
+
+
+#     def example(self, sample_id="random", level="document", span_params:dict={}, tree_params:dict={}):
+        
+
+#         if sample_id == "random":
+#             if self._setup_done:
+#                 sample_id = random.choice(set(self.data.index.to_numpy()))
+
+#             else:
+#                 sample_id = random.choice(self.data[level+"_id"].unique())
+
+        
+#         if self._setup_done:
+#             example = self.data.loc[sample_id]
+#             can_do_tree = "relation" in self.all_tasks
+#             can_do_spans = "seg" in self.all_tasks or "ac" in self.all_tasks
+#             show_scores = "ac" in self.all_tasks
+#         else:
+#             example = self.data.loc[self.data[level+"_id"] == sample_id, :]
+#             can_do_spans = True
+#             can_do_tree = False if self.dataset_level == "sentence" or level=="sentence" else True
+#             show_scores = True
+
+
+#         if self.dataset_level == "document" and level != "document":
+#             doc_id = int(example["document_id"].unique()[0])
+#             print(f"Belong to Document {doc_id}")
+
+#         if can_do_spans:
+#             text_span_data = self.__get_span_data(example)
+
+#             hot_text_args = dict(labels=self.dataset_task_labels["ac"], 
+#                                 save_path="/tmp/hot_text.png", 
+#                                 show_scores=show_scores,
+#                                 show_gold=False,
+#                                 height=600)
+#             hot_text_args.update(span_params)
+
+#             hot_text(text_span_data, **hot_text_args)
+#             display(Image(filename=hot_text_args["save_path"]))
+
+#         if can_do_tree:
+#             fig = hot_tree(self.__get_tree_data(example), **tree_params)
+#             fig.show()
+
+#         #fig.show()
+#         #if can_do_spans and can_do_tree:
+#         #display(Image(filename=hot_text_args["save_path"])), fig.show()
+
+#         # elif can_do_spans:
+#         #     display(Image(filename=hot_text_args["save_path"])),
+
+#         # elif can_do_tree:
+#         #      fig.show()
+
+
+#     def setup(  self,
+#                 tasks:list,
+#                 prediction_level:str,
+#                 sample_level:str, 
+#                 features:list=[],
+#                 encodings:list=[],
+#                 remove_duplicates:bool=False,
+#                 tokens_per_sample:bool=False,
+#                 override:bool=False,
+#                 ):
+#         """prepares the data
+#         """
+
+#         if prediction_level == "ac" and [t for t in tasks if "seg" in t]:
+#             raise ValueError("If prediction level is ac you cannot have segmentation as a task")
+
+#         feature_levels = set([fm.level for fm in features])
+#         if "doc" in feature_levels and prediction_level == "token":
+#             raise ValueError("Having features on doc level is not supported when prediction level is on word level.")
+
+#         self._setup_done = True
+#         self.prediction_level = prediction_level
+#         self.sample_level = sample_level
+#         self.tokens_per_sample = tokens_per_sample
+#         self.main_tasks = tasks
+#         self.tasks = tasks
+#         self.encodings = encodings
+
+#         self.feature2model = {fm.name:fm for fm in features}
+#         self.features = list(self.feature2model.keys())
+#         self._feature_groups = set([fm.group for fm in features])
+#         self.feature2dim = {fm.name:fm.feature_dim for fm in features}
+#         self.feature2dim.update({
+#                                 group:sum([fm.feature_dim for fm in features if fm.group == group]) 
+#                                 for group in self._feature_groups
+#                                 })
+
+#         #self.feature2dim["word_embs"] = sum(fm.feature_dim for fm in features if fm.level == "word")
+#         #self.feature2dim["doc_embs"] = sum(fm.feature_dim for fm in features if fm.level == "doc")
+#         self.__word_features = [fm.name for fm in self.feature2model.values() if fm.level == "word"]
+
+#         # to later now how we cut some of the padding for each batch
+#         if self.tokens_per_sample:
+#             self.__cutmap.update({k:"tok" for k in  encodings + ["word_embs"]})
+
+#         #create a hash encoding for the exp config
+#         #self._exp_hash = self.__create_exp_hash()
+#         self._enc_file_name = os.path.join("/tmp/", f"{'-'.join(self.tasks+self.encodings)+self.prediction_level}_enc.json")
+
+#         # if remove_duplicates:
+#         #     self.remove_duplicates()
+
+#         # #remove duplicates from splits
+#         # if remove_duplicates:
+#         #     if self.duplicate_ids.any():
+#         #         self.update_splits()
+
+
+#         #if self.prediction_level == "token" or self.tokens_per_sample:
+#         #   self.max_tok = self._get_nr_tokens(self.sample_level)
+#         #if self.prediction_level == "ac":
+        
+#         self.max_tok = self._get_nr_tokens(self.sample_level)
+#         self.max_seq = self._get_max_nr_seq("ac")
+#         self.max_seq_tok = self._get_nr_tokens(self.prediction_level)
+    
+#         if self.sample_level != "sentence" and ("deprel" in self.encodings or  "dephead" in self.encodings):
+#             self.max_sent = self._get_max_nr_seq("sentence")
+#             self.max_sent_tok = self._get_nr_tokens("sentence")
+#             self.__cutmap["dephead"] = "sent"
+#             self.__cutmap["deprel"] = "sent"
+        
+
+#         enc_data_exit = os.path.exists(self._enc_file_name)
+#         if enc_data_exit and not override:
+#             self.__load_enc_state()
+#             self._create_data_encoders()
+#             self._create_label_encoders()
+    
+#         else:
+#             self.__fix_tasks()
+#             self._create_data_encoders()
+#             self._encode_data() 
+#             self.__fuse_subtasks()
+#             self.__get_task2labels()
+#             self._create_label_encoders()
+#             self.stats(override=True)
+#             self._encode_labels()
+#             self.__save_enc_state()
+        
+        
+#         # self.level_dfs["token"].index = self.level_dfs["token"][f"{sample_level}_id"].to_numpy() #.pop(f"{sample_level}_id")
+#         self.data.index = self.data[f"{sample_level}_id"].to_numpy() #.pop(f"{sample_level}_id")
+        
+#         # self.nr_samples = len(self.level_dfs[self.sample_level].shape[0]
+#         self.nr_samples = len(self.data[self.sample_level+"_id"].unique())
+
+#         if self.sample_level != self.dataset_level:
+#             self._change_split_level()
+        
+
+#         self.config = {
+#                         "prediction_level":prediction_level,
+#                         "sample_level": sample_level,
+#                         "tasks": tasks,
+#                         "subtasks": self.subtasks,
+#                         "encodings": encodings,
+#                         "features": self.features,
+#                         "remove_duplicates": remove_duplicates,
+#                         "task_labels": self.task2labels,
+#                         "tracked_sample_ids": {str(s): ids["val"][:20].tolist() for s, ids in self.splits.items()}
+#                     }
+
+#         if hotam.preprocessing.settings["CACHE_SAMPLES"]:
+#             self.__setup_cache()
+        
+
+#     def train_dataloader(self):
+#         sampler = BatchSampler(self.splits[self.split_id]["train"], batch_size=self.batch_size, drop_last=False)
+#         return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0]) #, shuffle=True)
+
+
+#     def val_dataloader(self):
+#         sampler = BatchSampler(self.splits[self.split_id]["val"], batch_size=self.batch_size, drop_last=False)
+#         return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0]) #, shuffle=True)
+
+
+#     def test_dataloader(self):
+#         sampler = BatchSampler(self.splits[self.split_id]["test"], batch_size=self.batch_size, drop_last=False)
+#         return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0])

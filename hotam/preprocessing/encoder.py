@@ -12,7 +12,7 @@ from hotam.utils import one_tqdm
 
 logger = get_logger("ENCODER")
 
-class DatasetEncoder:
+class Encoder:
     """Class for encoding dataset.
 
     for each given encoding type creates a encoder class and stores it
@@ -21,6 +21,9 @@ class DatasetEncoder:
 
     """
 
+    def __init__encoder(self):
+        self.encoders = {}
+        
 
     @one_tqdm(desc="Creating Label Encoders")
     def _create_label_encoders(self):
@@ -95,6 +98,7 @@ class DatasetEncoder:
                 raise KeyError(f'"{enc_type}" is not a supported encoding')
             
             self.enc2padvalue[enc_type] = 0
+
 
     @one_tqdm(desc="Encoding Data")
     def _encode_data(self):
