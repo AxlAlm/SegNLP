@@ -231,3 +231,24 @@ def unzip(zip_path:str, save_path:str):
 
     with zipfile.ZipFile(zip_path, 'r') as zipf:
         zipf.extractall(save_path)
+
+
+
+def dynamic_update(src, v): 
+
+    a = np.array(list(src.shape[1:]))
+    b = np.array(list(v.shape))
+    new_shape = np.maximum(a, b)
+    new_src = np.zeros((src.shape[0]+1, *new_shape))
+
+    if len(v.shape) > 2:
+        new_src[:src.shape[0],:src.shape[1], :src.shape[2]] = src
+        new_src[src.shape[0],:v.shape[0], :v.shape[1]] = v
+    #if len(v.shape) == 2:
+    #    new_src[:src.shape[0],:src.shape[1], :] = src
+    #    new_src[src.shape[0],:v.shape[0], :] = v
+    else:
+        new_src[:src.shape[0],:src.shape[1]] = src
+        new_src[src.shape[0],:v.shape[0]] = v
+
+    return new_src
