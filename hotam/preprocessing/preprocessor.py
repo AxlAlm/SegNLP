@@ -22,7 +22,7 @@ import warnings
 
 #hotam
 import hotam
-from hotam.utils import ensure_numpy, load_pickle_data, pickle_data, to_tensor, one_tqdm, timer
+from hotam.utils import ensure_numpy, load_pickle_data, pickle_data, to_tensor, one_tqdm, timer, dynamic_update
 from hotam import get_logger
 
 from .encoder import Encoder
@@ -87,11 +87,17 @@ class ModelInput(dict):
      
 
     def add(self, k, v):
-
+        
         if k not in self:
-            self[k] = np.expand_dims(v, axis=0)
+            if isinstance(v, np.ndarray):
+                self[k] = np.expand_dims(v, axis=0)
+            else:
+                self[k] = [v]
         else:
-            self[k] = dynamic_update(self[k],v)
+            if isinstance(v, int):
+                self[k].append(v)
+            else:
+                self[k] = dynamic_update(self[k],v)
 
 
 
