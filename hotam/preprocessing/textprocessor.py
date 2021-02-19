@@ -41,7 +41,7 @@ class TextProcesser:
     """
     """
 
-    def __init__preprocessor(self, level:str):
+    def _init_preprocessor(self):
         """
         sets up the stacks where we will add the processed units of each level,
         also set the datset level, e.g. on what level are the samples, and corrects
@@ -53,7 +53,6 @@ class TextProcesser:
             the level of the unit to be processed, e.g. "sentence", "document", "token" etc
             as this function is called at first processing sample its assumed to be the dataset level. 
         """
-        self.dataset_level = level
         self.level2parents = {
                                 "token": ["sentence", "paragraph", "document"],
                                 "sentence": ["paragraph", "document"],
@@ -204,7 +203,7 @@ class TextProcesser:
         level_row = self._level_row_cache[level]
         #level_row = self.stack_level_data[level][-1]
 
-        if level_row[f"{self.dataset_level}_id"] != top_parent_row["id"]:
+        if level_row[f"{self.input_level}_id"] != top_parent_row["id"]:
             current_idx = 0
         else:
             current_idx = level_row["char_end"]
@@ -534,11 +533,11 @@ class TextProcesser:
         what to process.
         """
 
-        new_level2parents = {self.dataset_level:[]}
+        new_level2parents = {self.input_level:[]}
         for k, v in self.level2parents.items():
 
-            if k in self.parent2children[self.dataset_level]:
-                new_level2parents[k] = v[:v.index(self.dataset_level)+1]
+            if k in self.parent2children[self.input_level]:
+                new_level2parents[k] = v[:v.index(self.input_level)+1]
         
         self.level2parents = new_level2parents
 
@@ -571,20 +570,20 @@ class TextProcesser:
             if a text type that is not of the valid ones an error will be thrown. Text type 
             has to be either document, paragraph or sentence.
         """
-        self._level_row_cache[text_type] = {
-                                            "id":text_id,
-                                            "text":doc
-                                            }
+        self._level_row_cache[self.input_level] = {
+                                                    "id":text_id,
+                                                    "text":doc
+                                                    }
         
         self.__data_stack = []
-        if text_type == "document":
+        if self.input_level == "document":
             self.__build_paragraphs()
-        elif text_type == "paragraph":
+        elif self.input_level == "paragraph":
             self.__build_sentences()      
-        elif text_type == "sentence":
-            self.__build_tokens()   
+        elif self.input_level == "sentence":
+            self.__build_tokens(next(self.nlp(doc).sents))   
         else:
-            raise NotImplementedError(f'"{text_type}" is not a understood type')
+            raise NotImplementedError(f'"{self.input_level}" is not a understood type')
 
         df = self.__clean(pd.DataFrame(self.__data_stack))
         return df

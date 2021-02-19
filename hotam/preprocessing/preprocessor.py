@@ -24,21 +24,21 @@ import warnings
 import hotam
 from hotam.utils import ensure_numpy, load_pickle_data, pickle_data, to_tensor, one_tqdm, timer
 from hotam import get_logger
-from .encoder import DatasetEncoder
-from .preprocessor import Preprocessor
+
+from .encoder import Encoder
+from .textprocessor import TextProcesser
 from .labeler import Labeler
-from .split_utils import SplitUtils
 
 #pytorch lightning
 import pytorch_lightning as ptl
 
 #pytroch
-from torch.utils.data import Dataset, DataLoader
-from torch.utils.data import BatchSampler
+# from torch.utils.data import Dataset, DataLoader
+# from torch.utils.data import BatchSampler
 import torch
 
 #hotviz
-from hotviz import hot_tree, hot_text
+#from hotviz import hot_tree, hot_text
 
 logger = get_logger("DATASET")
 
@@ -46,11 +46,11 @@ logger = get_logger("DATASET")
 class ModelInput(dict):
 
 
-    def __init__(self, tasks:list, prediction_level:str, shape:tuple):
+    def __init__(self, 
+                #all_tasks:list
+                ):
         super().__init__()
-        self.tasks = tasks
-        self.prediction_level = prediction_level
-        self._len = length
+        #self.all_tasks = all_tasks
         self.current_epoch = None
         self.pad_value = 0
 
@@ -80,9 +80,9 @@ class ModelInput(dict):
         pass
 
 
-    def change_pad_value(self, new_value):
-        for task in self.tasks:
-            self[task][self[task] == self.pad_value] = new_value
+    def change_pad_value(self, task, new_value):
+        #for task in self.all_tasks:
+        self[task][self[task] == self.pad_value] = new_value
             # self[task][~self[f"{self.prediction_level}_mask"].type(torch.bool)] = -1
      
 
@@ -100,22 +100,34 @@ class Preprocessor(Encoder, TextProcesser, Labeler):
 
 
     def __init__(self,
-                tasks:list,
                 prediction_level:str,
-                sample_level:str, 
-                features:list=[],
-                encodings:list=[],
-                remove_duplicates:bool=False,
+                sample_level:str,
+                input_level:str,
+                tasks:list = None,
+                task2labels:list = None,
+                features:list = [],
+                encodings:list = [],
                 tokens_per_sample:bool=False,
-                override:bool=False,
                 ):
         super().__init__()
 
         self.prediction_level = prediction_level
         self.sample_level = sample_level
+        self.input_level = input_level
         self.tokens_per_sample = tokens_per_sample
-        self.main_tasks = tasks
-        self.tasks = tasks
+
+        self.__labeling = False
+        self.__need_bio = False
+        if tasks:
+            self.__labeling = True
+            self.tasks = tasks
+            self.subtasks = self.__get_subtasks(tasks)
+            self.all_tasks = sorted(set(tasks + self.subtasks))
+            self.task2label = task2labels
+            self.__need_bio = "seg" in subtasks
+
+        self.argumentative_markers = False
+
         self.encodings = encodings
 
         self.feature2model = {fm.name:fm for fm in features}
@@ -126,33 +138,32 @@ class Preprocessor(Encoder, TextProcesser, Labeler):
                                 group:sum([fm.feature_dim for fm in features if fm.group == group]) 
                                 for group in self._feature_groups
                                 })
-        self.__word_features = [fm.name for fm in self.feature2model.values() if fm.level == "word"]
+        #self.__word_features = [fm.name for fm in self.feature2model.values() if fm.level == "word"]
 
-        self.__need_bio = if self.prediction_level == "token"
+        
 
-        self.__init__preprocessor()
-        self.__init__encoder()
+        self._init_preprocessor()
+        self._init_encoder()
         self._create_data_encoders()
-        self._create_label_encoders()
+
+        if self.__labeling:
+            self._create_label_encoders()
 
 
-    def __getitem__(self, docs:List[str], text_level:str,  token_labels:List[List[dict]] = None, span_labels:List[dict] = None):
+    def parse(self, docs:List[str], token_labels:List[List[dict]] = None, span_labels:List[dict] = None):
         model_input = self.__extract_data(docs, token_labels, span_labels)
         return model_input
 
 
-    def __extract_data(self, docs:List[str], text_level:str, token_labels:List[List[dict]] = None, span_labels:List[dict] = None):
+    def __extract_data(self, docs:List[str],token_labels:List[List[dict]] = None, span_labels:List[dict] = None):
 
-        #data = {k:[] for k in ["lengths_tok", "lengths_seq", "lengths_seq_tok"] + self.all_tasks + self.encodings + self.feature_names}
         Input = ModelInput()
         
-        #src dynamic_update(src,v)
-
         for i, doc in enumerate(docs):
 
             doc_df = self._process_doc(doc, text_id=i)
 
-            if text_level != self.sample_level:
+            if self.input_level != self.sample_level:
                 samples = doc_df.groupby(f"{self.sample_level}_id")
             else:
                 samples = [(i,doc_df)]
@@ -166,25 +177,24 @@ class Preprocessor(Encoder, TextProcesser, Labeler):
                     sample = self._label_tokens(sample, token_labels)
                 
                 if self.__need_bio:
-                    sample = self._add_bios(sample)
+                    sample = self._label_bios(sample)
 
                 if self.argumentative_markers:
-                    sample = self.__mark_ams(sample)
+                    sample = self._label_ams(sample)
 
-                self._encode_labels(sample)
+                if self.__labeling:
+                    self._encode_labels(sample)
                 
                 if self.encodings:
                     self._encode_data(sample)
 
-                Input.add("id", i, i)
-
-
-                #if self.prediction_level == "ac":
-                acs_grouped = sample.groupby("ac_id")
+                Input.add("id", i)
                 Input.add("lengths_tok", len(sample))
 
-                Input.add("lengths_seq", len(acs_grouped))
-                Input.add("lengths_seq_tok", [len(g) for i, g in acs_grouped])
+                if self.prediction_level == "ac":
+                    acs_grouped = sample.groupby("ac_id")
+                    Input.add("lengths_seq", len(acs_grouped))
+                    Input.add("lengths_seq_tok", [len(g) for i, g in acs_grouped])
 
                 # if hasattr(self, "max_sent"):
                 #     sent_grouped = sample.groupby("sentence_id")
@@ -193,18 +203,13 @@ class Preprocessor(Encoder, TextProcesser, Labeler):
                 #                         "lengths_sent_tok": [len(g) for i, g in sent_grouped]
                 #                         })
 
-                shape = self.__get_shape(
-                                    ac=inc_ac,
-                                    token=fm.level == "word",
-                                    #char=enc == "chars",
-                                    feature_dim=fm.feature_dim
-                                    )  
-
-
                 self.__get_text(Input, sample)
-                self.__get_labels(Input, sample)
                 self.__get_encs(Input, sample)
                 self.__get_feature_data(Input, sample)
+            
+                if self.__labeling:
+                    self.__get_labels(Input, sample)
+
 
                 if self.prediction_level == "ac":
                     sample_dict.update(self.__get_am_ac_spans(Input, sample, i))
@@ -213,89 +218,66 @@ class Preprocessor(Encoder, TextProcesser, Labeler):
         return Input
   
 
-    # def __get_shape(self, sentence:bool=False, ac:bool=False, token:bool=False, char:bool=False, feature_dim:int=False):
-
-    #     shape = []
-
-    #     if sentence:
-    #         shape.append(self.max_sent)
-
-    #     if ac:
-    #         shape.append(self.max_seq)
-
-    #     if token and ac:
-    #         shape.append(self.max_seq_tok)
-    #     elif token:
-    #         shape.append(self.max_tok)
-
-        
-    #     if char:
-    #         shape.append(self.encoders["chars"].max_word_length)
-
-    #     if feature_dim:
-    #         shape.append(feature_dim)
-        
-    #     return tuple(shape)
-
-
     def __get_text(self, Input:ModelInput, sample:pd.DataFrame):
 
         if self.prediction_level == "ac":
             acs = sample.groupby(f"ac_id")
             text = []
             for _, ac in acs:
-                text.append(ac["text"].to_numpy())
+                text.append(ac["text"].to_numpy().astype("U30"))
 
             Input.add("text", text)
             #sample_text["text"] = np.array(text)
         else:
-            Input.add("text", sample["text"].to_numpy().tolist())
+            Input.add("text", sample["text"].to_numpy().astype("U30"))
             #sample_text["text"] = sample["text"].to_numpy()
         
         #return sample_text
 
 
-    def __get_labels(self, sample):
+    def __get_labels(self, Input:ModelInput, sample:pd.DataFrame):
 
         sample_labels = {}
         for task in self.all_tasks:
 
-            ac_task_matrix = np.zeros(self.max_seq)
-            task_matrix = np.zeros(self.max_tok)
-
             ac_i = 0
             acs = sample.groupby(f"ac_id")
+            ac_task_matrix = np.zeros(len(acs))
             for _, ac in acs:
                 ac_task_matrix[ac_i] = np.nanmax(ac[task].to_numpy())
                 ac_i += 1
 
             #if self.prediction_level == "token":
-            task_matrix = np.zeros(self.max_tok)
-            task_matrix[:sample.shape[0]]  = sample[task].to_numpy()
-
-
-            sample_labels[f"ac_{task}"] = ac_task_matrix
-            sample_labels[f"token_{task}"] = task_matrix
-
+            #task_matrix = np.zeros(len(sample.index))
+            #task_matrix[:sample.shape[0]] = sample[task].to_numpy()
+            
+            Input.add(f"token_{task}", sample[task].to_numpy())
+            Input.add(f"ac_{task}", ac_task_matrix)
         
         return sample_labels
     
 
-    def __get_encs(self, sample):
+    def __get_encs(self, Input:ModelInput, sample:pd.DataFrame):
 
-        sample_encs = {}
+        #sample_encs = {}
         for enc in self.encodings:
 
             # for dependency information we need to perserve the sentences 
             #
             if self.sample_level != "sentence" and enc in ["deprel", "dephead"]:
-                sample_m = np.zeros((self.max_sent, self.max_sent_tok))      
                 
+                sentences  = sample.groupby("sentence_id")
+                acs = sample.groupby("ac_id")
+                nr_acs  = len(acs)
+                nr_sents = len(sentences)
+                nr_tok_sents = max([len(s) for s in sentences])
+
+                sample_m = np.zeros((nr_sents, nr_tok_sents))      
+
                 #information about the root
                 if enc == "deprel":
-                    sent2root = np.zeros(self.max_sent)
+                    sent2root = np.zeros(nr_sents)
 
-                sentences  = sample.groupby("sentence_id")
 
                 ac_i = 0
 
@@ -303,11 +285,11 @@ class Preprocessor(Encoder, TextProcesser, Labeler):
                 if self.prediction_level == "ac":
                     
                     #information about which ac belong in which sentence
-                    ac2sentence = np.zeros(self.max_seq)
+                    ac2sentence = np.zeros(len(acs))
 
                     # given information from ac2sentence, we can get the mask for a sentnece for a particular ac
                     # so we know what tokens belong to ac and not
-                    sentence_ac_mask = np.zeros((self.max_seq, self.max_sent_tok))
+                    sentence_ac_mask = np.zeros((nr_acs, nr_sents))
 
 
                 for sent_i, (sent_id, sent_df) in enumerate(sentences):
@@ -331,44 +313,52 @@ class Preprocessor(Encoder, TextProcesser, Labeler):
                             sentence_ac_mask[ac_i][:sent_df.shape[0]] = mask.astype(np.int8)
                             ac_i += 1
 
-
                 if enc == "deprel":
-                    sample_encs["sent2root"] = sent2root
+                    Input.add("sent2root", sent2root)
+                    #sample_encs["sent2root"] = sent2root
 
                 if self.prediction_level == "ac":
-                    sample_encs["ac2sentence"] = ac2sentence
-                    sample_encs["sent_ac_mask"] = sentence_ac_mask
+                    Input.add("ac2sentence",ac2sentence)
+                    Input.add("sent_ac_mask", sentence_ac_mask)
+
+                #     sample_encs["ac2sentence"] = ac2sentence
+                #     sample_encs["sent_ac_mask"] = sentence_ac_mask
                     
 
             else:
                 inc_ac = self.prediction_level == "ac" and not self.tokens_per_sample
-                shape = self.__get_shape(
-                                        ac=inc_ac,
-                                        token=enc in set(["words", "bert_encs", "chars", "pos","deprel", "dephead" ]),
-                                        char=enc == "chars",
-                                        feature_dim=None
-                                        )
-                sample_m = np.zeros(shape)
+                # shape = self.__get_shape(
+                #                         ac=inc_ac,
+                #                         token=enc in set(["words", "bert_encs", "chars", "pos","deprel", "dephead" ]),
+                #                         char=enc == "chars",
+                #                         feature_dim=None
+                #                         )
+                #sample_m = np.zeros(shape)
 
-                if inc_ac:
+                if self.prediction_level == "ac" and not self.tokens_per_sample:
 
                     acs = sample.groupby("ac_id")
+                    nr_tok_acs = max([len(ac) for ac in acs])
+                    ac_matrix  = np.zeros(len(acs), nr_tok_acs)
                     for ac_i,(_, ac ) in enumerate(acs):                        
                         sample_m[ac_i][:ac.shape[0]] = np.stack(ac[enc].to_numpy())
 
+                    Input.add(enc, ac_matrix)
+
                 else:
-                    sample_m[:sample.shape[0]] = np.stack(sample[enc].to_numpy())
+                    #sample_m[:sample.shape[0]] = np.stack(sample[enc].to_numpy())
+                    Input.add(enc, np.stack(sample[enc].to_numpy()))
                 
-            sample_encs[enc] = sample_m
+            #sample_encs[enc] = sample_m
         
-        return sample_encs
+        #return sample_encs
 
 
-    def __get_feature_data(self, sample):
+    def __get_feature_data(self, Input:ModelInput, sample:pd.DataFrame):
         
         mask_dict = {}
         feature_dict = {}
-        masks_not_added = True
+        #masks_not_added = True
 
         # if self.prediction_level == "ac":
         #     mask_dict["am_token_mask"] = np.zeros((self.max_seq, self.max_seq_tok))
@@ -381,83 +371,115 @@ class Preprocessor(Encoder, TextProcesser, Labeler):
         # if self.prediction_level == "token":
         #     mask_dict["token_mask"] = np.zeros(self.max_tok)
 
-    
+        ac_mask_added = False
+        token_mask_added = False
+
         for feature, fm in self.feature2model.items():
             
-            if hotam.preprocessing.settings["STORE_FEATURES"] and hasattr(fm, "_store_features"):
-                self.__feature_store_setup(fm)
+            # if hotam.preprocessing.settings["STORE_FEATURES"] and hasattr(fm, "_store_features"):
+            #     self.__feature_store_setup(fm)
 
-            if self.prediction_level == "ac":
-                if self.tokens_per_sample:
-                    if fm.level == "doc":
-                        inc_ac = True
-                    else:
-                        inc_ac = False
-                else:
-                    inc_ac = True
-            else:
-                inc_ac = False
+            # if self.prediction_level == "ac":
+            #     if self.tokens_per_sample:
+            #         if fm.level == "doc":
+            #             inc_ac = True
+            #         else:
+            #             inc_ac = False
+            #     else:
+            #         inc_ac = True
+            # else:
+            #     inc_ac = False
 
-            shape = self.__get_shape(
-                                    ac=inc_ac,
-                                    token=fm.level == "word",
-                                    #char=enc == "chars",
-                                    feature_dim=fm.feature_dim
-                                    )  
+            # shape = self.__get_shape(
+            #                         ac=inc_ac,
+            #                         token=fm.level == "word",
+            #                         #char=enc == "chars",
+            #                         feature_dim=fm.feature_dim
+            #                         )  
 
-            feature_matrix = np.zeros(shape)
+            #feature_matrix = np.zeros(shape)
             sample_length = sample.shape[0]
 
             
             if self.prediction_level == "ac" and inc_ac:
-                    
+                
+                nr_acs = len(sample.groupby("ac_id"))
+
+                if fm.level == "word":
+                    nr_tok_acs = max([len(ac) for ac in acs])
+                    feature_matrix = np.zeros(nr_acs, nr_tok_acs, fm.feature_dim)
+                else: 
+                    fm.feature_dim = np.zeros(nr_acs, fm.feature_dim)
+
+
                 feature_matrix, am_mask, ac_mask = self.__extract_ADU_features(fm, sample, sample_shape=feature_matrix.shape)
 
-                if feature in self.__word_features and not np.sum(mask_dict["ac_token_mask"]):
-                    mask_dict["am_token_mask"] = am_mask
-                    mask_dict["ac_token_mask"] = ac_mask
-
-                    if not sum(mask_dict["ac_mask"]):
+                if fm.level == "word" and not ac_mask_token_added:
+                    Input.add("am_token_mask", am_mask)
+                    Input.add("ac_token_mask", ac_mask)
+                
+                if not ac_mask_token_added:
+                    
+                    if fm.level == "word":
                         mask_dict["ac_mask"] = np.max(ac_mask, axis=-1)
-                else:
-                    mask_dict["ac_mask"] = ac_mask
+                    else:
+                        mask_dict["ac_mask"] = ac_mask
            
             else:
                 
-                # context is for embeddings such as Bert and Flair where the word embeddings are dependent on the surrounding words
-                # so for these types we need to extract the embeddings per context. E.g. if we have a document and want Flair embeddings
-                # we first divide the document up in sentences, extract the embeddigns and the put them back into the 
-                # ducument shape.
-                # Have chosen to not extract flair embeddings with context larger than "sentence".
-                if fm.context and fm.context != self.sample_level:
 
-                    contexts = sample.groupby(f"{fm.context}_id")
+                if fm.level == "word":
+                    # context is for embeddings such as Bert and Flair where the word embeddings are dependent on the surrounding words
+                    # so for these types we need to extract the embeddings per context. E.g. if we have a document and want Flair embeddings
+                    # we first divide the document up in sentences, extract the embeddigns and the put them back into the 
+                    # ducument shape.
+                    # Have chosen to not extract flair embeddings with context larger than "sentence".
+                    if fm.context and fm.context != self.sample_level:
 
-                    sample_embs = []
-                    for _, context_data in contexts:
-                        sample_embs.extend(fm.extract(context_data)[:context_data.shape[0]])
+                        contexts = sample.groupby(f"{fm.context}_id")
 
-                    if fm.level == "word":
-                        feature_matrix[:sample_length] = np.array(sample_embs)
+                        sample_embs = []
+                        for _, context_data in contexts:
+                            sample_embs.extend(fm.extract(context_data)[:context_data.shape[0]])
+
+                        # if fm.level == "word":
+                            #Input.add(feature_name, np.array(sample_embs))
+                            #feature_matrix[:sample_length] = np.array(sample_embs)
+                        # else:
+                        #     raise NotImplementedError
+
+                        feature_matrix = np.array(sample_embs)
+                
                     else:
-                        raise NotImplementedError
-                
-                else:
-                    feature_matrix[:sample_length] = fm.extract(sample)[:sample_length]
-                
+                        #feature_matrix[:sample_length] = fm.extract(sample)[:sample_length]
+                        feature_matrix = fm.extract(sample)[:sample_length]
 
-                mask_dict["token_mask"][:sample_length] = np.ones(sample_length)
+
+                    if not token_mask_added:
+                        #mask_dict["token_mask"][:sample_length] = np.ones(sample_length)
+                        Input.add("token_mask", np.ones(sample_length))
+
+                else:
+                    feature_matrix = fm.extract(sample)[:sample_length]
 
 
             if fm.group not in feature_dict:
                 feature_dict[fm.group] = []
-
+                
             feature_dict[fm.group].append(feature_matrix)
 
-        feature_dict = {k: np.concatenate(v, axis=-1) if len(v) > 1 else v[0] for k,v in feature_dict.items()}
-        feature_dict.update(mask_dict)
 
-        return feature_dict
+        for group_name, feature_arrays in feature_dict.items():
+            if len(v) > 1:
+                Input.add(group_name, np.concatenate(feature_arrays, axis=-1))
+            else:
+                Input.add(group_name, feature_arrays[0])
+
+
+        # feature_dict = {k: np.concatenate(v, axis=-1) if len(v) > 1 else v[0] for k,v in feature_dict.items()}
+        # feature_dict.update(mask_dict)
+
+        # return feature_dict
 
 
     def __extract_ADU_features(self, fm, sample, sample_shape=None):
@@ -516,14 +538,12 @@ class Preprocessor(Encoder, TextProcesser, Labeler):
         return sample_matrix, am_mask_matrix, ac_mask_matrix
 
 
-    def __get_am_ac_spans(self, sample):
+    def __get_am_ac_spans(self, Input:ModelInput, sample:pd.DataFrame):
         """
         for each sample we get the spans of am, ac and the whole adu.
         if there is no am, we still add an am span to keep the am and ac spans
         aligned. But we set the values to 0 and start the adu from the start of the ac instead
         of the am.
-
-        NOTE!! that the end
 
         """
         
@@ -561,7 +581,22 @@ class Preprocessor(Encoder, TextProcesser, Labeler):
             ac_spans.append(ac_span)
             adu_spans.append(adu_span)
 
-        return {"am_spans":am_spans, "ac_spans":ac_spans, "adu_spans":adu_spans}
+        Input.add("am_spans", np.array(am_spans))
+        Input.add("ac_spans", np.array(ac_spans))
+        Input.add("adu_spans", np.array(adu_spans))
+
+        #return {"am_spans":am_spans, "ac_spans":ac_spans, "adu_spans":adu_spans}
+
+
+    def __get_subtasks(self, tasks):
+        subtasks = []
+        for task in tasks:
+            subtasks.extend(task.split("_"))
+        print(subtasks)
+        return subtasks
+
+
+
 
 
 

@@ -223,7 +223,6 @@ class LSTM_DIST(nn.Module):
         lstm_out, _ = self.word_lstm(word_embs[sorted_indices], sorted_lengths_tok)
         lstm_out = lstm_out[original_indices]
 
-
         # 2
         # create span representation for Argument Components and Argumentative Markers
         am_minus_embs = self.__minus_span(lstm_out, batch["am_spans"])
@@ -240,7 +239,6 @@ class LSTM_DIST(nn.Module):
 
         # 5
         final_out, _ = self.adu_lstm(contex_emb, lengths_seq)
-
 
         # 6
         # Classification of AC and Stance is pretty straight forward

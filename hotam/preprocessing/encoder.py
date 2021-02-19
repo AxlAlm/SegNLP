@@ -21,11 +21,10 @@ class Encoder:
 
     """
 
-    def __init__encoder(self):
+    def _init_encoder(self):
         self.encoders = {}
 
 
-    @one_tqdm(desc="Creating Label Encoders")
     def _create_label_encoders(self):
         
         for task in self.all_tasks:

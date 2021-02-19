@@ -116,9 +116,11 @@ class PTLBase(ptl.LightningModule):
         self.output.clear()
         
         #add batch to output
-        self.output.batch = self.batch
+        self.output.batch = self.batch  
 
         #pass on the whole batch to the model
+        self.output = ModelOutput()
+
         self.model.forward(self.batch)
 
         # get the metrics and the loss (gpu grad loss)

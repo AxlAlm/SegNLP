@@ -130,8 +130,16 @@ class LSTM_CRF(nn.Module):
             tasks_preds[task] = torch.tensor(zero_pad(preds), dtype=torch.long)
             tasks_loss[task] = loss
 
-        return {    
-                    "loss":tasks_loss, 
-                    "preds":tasks_preds,
-                    "probs": {}
-                }
+
+        output.add_loss(task="total",    data=total_loss)
+        output.add_loss(task="relation", data=relation_loss)
+        output.add_loss(task="ac",       data=ac_loss)
+        output.add_loss(task="stance",   data=stance_loss)
+
+        output.add_preds(task="relation", level="ac", data=relations_preds)
+        output.add_preds(task="ac",       level="ac", data=ac_preds)
+        output.add_preds(task="stance",   level="ac", data=stance_preds)
+
+        output.add_probs(task="relation", level="ac", data=relation_probs)
+        output.add_probs(task="ac",       level="ac", data=ac_probs)
+        output.add_probs(task="stance",   level="ac", data=stance_probs)

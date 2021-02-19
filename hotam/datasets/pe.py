@@ -333,14 +333,15 @@ class PE_Dataset:
             
 
             label = {   
-                        "seg":"O",
+                        #"seg":"O",
                         "ac": ac_id2ac.get(ac_id,"None"), 
                         "stance": ac_id2stance.get(ac_id,"None"), 
-                        "relation": ac_id2relation.get(ac_id, 0)
+                        "relation": ac_id2relation.get(ac_id, 0),
+                        "ac_id":ac_id,
                         }
             
 
-            span2label[span] = [label, ac_id]
+            span2label[span] = label #[label, ac_id]
 
         return span2label
 
