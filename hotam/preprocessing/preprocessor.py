@@ -87,7 +87,11 @@ class ModelInput(dict):
      
 
     def add(self, k, v):
-        
+        # if k not in self:
+        #     self[k] = [v]
+        # else:
+        #     self[k].append(v)
+         
         if k not in self:
             if isinstance(v, np.ndarray):
                 self[k] = np.expand_dims(v, axis=0)
@@ -109,8 +113,6 @@ class Preprocessor(Encoder, TextProcesser, Labeler):
                 prediction_level:str,
                 sample_level:str,
                 input_level:str,
-                tasks:list = None,
-                task2labels:list = None,
                 features:list = [],
                 encodings:list = [],
                 tokens_per_sample:bool=False,
@@ -123,15 +125,6 @@ class Preprocessor(Encoder, TextProcesser, Labeler):
         self.tokens_per_sample = tokens_per_sample
 
         self.__labeling = False
-        self.__need_bio = False
-        if tasks:
-            self.__labeling = True
-            self.tasks = tasks
-            self.subtasks = self.__get_subtasks(tasks)
-            self.all_tasks = sorted(set(tasks + self.subtasks))
-            self.task2label = task2labels
-            self.__need_bio = "seg" in subtasks
-
         self.argumentative_markers = False
 
         self.encodings = encodings
@@ -146,22 +139,13 @@ class Preprocessor(Encoder, TextProcesser, Labeler):
                                 })
         #self.__word_features = [fm.name for fm in self.feature2model.values() if fm.level == "word"]
 
-        
 
         self._init_preprocessor()
         self._init_encoder()
         self._create_data_encoders()
+    
 
-        if self.__labeling:
-            self._create_label_encoders()
-
-
-    def parse(self, docs:List[str], token_labels:List[List[dict]] = None, span_labels:List[dict] = None):
-        model_input = self.__extract_data(docs, token_labels, span_labels)
-        return model_input
-
-
-    def __extract_data(self, docs:List[str],token_labels:List[List[dict]] = None, span_labels:List[dict] = None):
+    def __call__(self, docs:List[str],token_labels:List[List[dict]] = None, span_labels:List[dict] = None):
 
         Input = ModelInput()
         
@@ -476,7 +460,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler):
 
 
         for group_name, feature_arrays in feature_dict.items():
-            if len(v) > 1:
+            if len(feature_arrays) > 1:
                 Input.add(group_name, np.concatenate(feature_arrays, axis=-1))
             else:
                 Input.add(group_name, feature_arrays[0])
@@ -602,8 +586,19 @@ class Preprocessor(Encoder, TextProcesser, Labeler):
         return subtasks
 
 
+    def expect_labels(self, tasks:list, task2label:dict)
+        self.__need_bio = False
+        self.__labeling = True
+        self.tasks = tasks
+        self.subtasks = self.__get_subtasks(tasks)
+        self.all_tasks = sorted(set(tasks + self.subtasks))
+        self.task2label = task2labels
+        self.__need_bio = "seg" in subtasks
 
+        if self.__need_bio:
+            self.task2label["seg"] = ["B","I","O"]
 
+        self._create_label_encoders()
 
 
 

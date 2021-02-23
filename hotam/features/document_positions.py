@@ -1,6 +1,5 @@
 
-from hotam.features.base import FeatureModel, feature_memory
-from hotam.preprocessing import DataSet
+from hotam.features.base import FeatureModel
 import pandas as pd
 import numpy as np
 
@@ -19,7 +18,7 @@ class DocPos(FeatureModel):
     and Whether the AC  is  in  an  opening,  body,  or  closing  paragraph."
     """
 
-    def __init__(self, dataset:DataSet, prediction_level:str, group:str="doc_embs"):
+    def __init__(self, dataset:None, prediction_level:str, group:str="doc_embs"):
         self._feature_dim = 2
         self._name = "docpos"
 

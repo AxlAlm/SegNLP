@@ -11,12 +11,11 @@ import torch
 from torch.nn.functional import one_hot
 
 #hotam
-from hotam.features.base import FeatureModel, feature_memory
+from hotam.features.base import FeatureModel
 import hotam.utils as u
 from hotam import get_logger
 from hotam.resources.deps import dep_labels_eng
 from hotam.resources.pos import pos_labels
-from hotam.preprocessing import DataSet
 
 
 class OneHots(FeatureModel):

@@ -252,3 +252,13 @@ def dynamic_update(src, v):
         new_src[src.shape[0],:v.shape[0]] = v
 
     return new_src
+
+
+def set_random_seed(nr, using_gpu:bool=False):
+    random.seed(nr)
+    np.random.seed(nr)
+    torch.manual_seed(nr)
+
+    if using_gpu:
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False

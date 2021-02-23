@@ -18,7 +18,6 @@ from typing import Tuple, List, Dict
 # hotam
 from hotam import get_logger
 import hotam.utils as u
-from hotam import DataSet
 from hotam.utils import RangeDict
 
 
@@ -73,12 +72,12 @@ Dataset Specs:
 ''' 
 
 
-# # TODO: is this  the cleanest solution to avoid .load() ??
-def PE(dump_path:str="/tmp/"):
-    return PE_Dataset(dump_path=dump_path).load()
+# # # TODO: is this  the cleanest solution to avoid .load() ??
+# def PE(dump_path:str="/tmp/"):
+#     return PE_Dataset(dump_path=dump_path).load()
 
 
-class PE_Dataset:
+class PE:
 
     """Class for downloading, reading and parsing the Pursuasive Essay dataset found here: 
 
@@ -93,9 +92,33 @@ class PE_Dataset:
         self.name = "pe"
         self.dump_path = dump_path
         #self._dataset_path = "datasets/pe/data"
-        self.dataset_url = "https://www.informatik.tu-darmstadt.de/media/ukp/data/fileupload_2/argument_annotated_news_articles/ArgumentAnnotatedEssays-2.0.zip"
+        self._download_url = "https://www.informatik.tu-darmstadt.de/media/ukp/data/fileupload_2/argument_annotated_news_articles/ArgumentAnnotatedEssays-2.0.zip"
         self._dataset_path = self.__download_data()
         self.splits = self.__splits()
+        self._stance2new_stance = {
+                                    "supports":"PRO", 
+                                    "Against":"CON", 
+                                    "For":"PRO", 
+                                    "attacks":"CON"
+                                    }
+        self.tasks = ["ac", "relation", "stance"]
+        self.task_labels = {
+                            "ac":["MajorClaim", "Claim", "Premise"],
+
+                            # Originally stance labels are For and Against for Claims and MajorClaims
+                            # and for premsies supports or attacks. 
+                            # However, Against and attacks are functional equivalent so will use CON for both
+                            # and for For and supports we will use PRO
+                            #"stance":["For", "Against", "supports", "attacks"],
+                            "stance": ["PRO", "CON"],
+                            "relation": set()
+                            }
+
+        self.about = """The corpus consists of argument annotated persuasive essays including annotations of argument components and argumentative relations.
+                        """
+        self.url = "https://www.informatik.tu-darmstadt.de/ukp/research_6/data/argumentation_mining_1/argument_annotated_essays_version_2/index.en.jsp"
+
+        self.data = self.__process_data()
 
 
     def __download_data(self, force=False) -> str:
@@ -117,7 +140,7 @@ class PE_Dataset:
         
         if not os.path.exists(zip_dump_path):
             desc = f"Downloading ArgumentAnnotatedEssays-2.0"
-            u.download(url=self.dataset_url, save_path=zip_dump_path, desc=desc)
+            u.download(url=self._download_url, save_path=zip_dump_path, desc=desc)
 
         u.unzip(zip_dump_path, self.dump_path)
         u.unzip(data_folder + ".zip", parent_folder)
@@ -265,21 +288,10 @@ class PE_Dataset:
 
         # sort the span
         ac_id2span_storted = sorted(ac_id2span.items(), key= lambda x:x[1][0])
-        #print("AC_SPAN SORTED", ac_id2span_storted)
-
         ac_id2idx = {AC_ID:i for i, (AC_ID, *_) in enumerate(ac_id2span_storted)}
-
-        #print("AC2IDX", ac_id2idx)
-
         ac_id2relation = {AC_ID: ac_id2idx[AC_REL_ID] - ac_id2idx[AC_ID]  for AC_ID, AC_REL_ID in ac_id2relation.items()}
-
-        # if -11 in ac_id2relation.keys():
-        #     print(ac_id2relation)
-
-        # if 10 in ac_id2relation.keys():
-        #     print(ac_id2relation)
-
-        #print("AC_ID2RELATION", ac_id2relation)
+        
+        #self.task_labels.extend(list(ac_id2relation.values()))
 
         # fill in some spans
         prev_span_end = 0
@@ -330,13 +342,17 @@ class PE_Dataset:
         span2label = RangeDict()
         current_ac_idx = 0
         for i, (ac_id, span) in enumerate(ac_id2span.items()):
-            
+
+
+            relation = ac_id2relation.get(ac_id, 0)
+
+            self.task_labels["relation"].add(relation)
 
             label = {   
                         #"seg":"O",
                         "ac": ac_id2ac.get(ac_id,"None"), 
-                        "stance": ac_id2stance.get(ac_id,"None"), 
-                        "relation": ac_id2relation.get(ac_id, 0),
+                        "stance": self._stance2new_stance.get(ac_id2stance.get(ac_id,"None"), "None"), 
+                        "relation": relation,
                         "ac_id":ac_id,
                         }
             
@@ -425,7 +441,7 @@ class PE_Dataset:
                 }
 
 
-    def load(self) -> DataSet:
+    def __process_data(self):
         """loads the Pursuasive Essay data and parse it into a DataSet. Also dumps the dataset 
         locally so that one does not need to parse it again, only load the parsed data.
 
@@ -437,57 +453,46 @@ class PE_Dataset:
             
         """
         
-        dump_path = "/tmp/pe_dataset.pkl"
-        dataset = DataSet("pe", data_path=dump_path)
-        dataset.add_splits(self.splits)
-
-        dataset.dataset_tasks = ["ac", "relation", "stance"]
-        dataset.dataset_task_labels = {"ac":["MajorClaim", "Claim", "Premise"], "stance":["For", "Against", "supports", "attacks"]}
-        dataset.about = """The corpus consists of argument annotated persuasive essays including annotations of argument components and argumentative relations.
-                        """
-        dataset.url = "https://www.informatik.tu-darmstadt.de/ukp/research_6/data/argumentation_mining_1/argument_annotated_essays_version_2/index.en.jsp"
+        #dump_path = "/tmp/pe_dataset.pkl"
+        #dataset = DataSet("pe", data_path=dump_path)
+        #dataset.add_splits(self.splits)
 
 
-        if not hasattr(dataset, "data"):
+        #if not hasattr(dataset, "data"):
             
-            ann_files = sorted(glob(self._dataset_path+"/*.ann"))
-            text_files = sorted(glob(self._dataset_path+"/*.txt"))
-            number_files = len(ann_files) + len(text_files)
-            logger.info("found {} files".format(number_files))
+        ann_files = sorted(glob(self._dataset_path+"/*.ann"))
+        text_files = sorted(glob(self._dataset_path+"/*.txt"))
+        number_files = len(ann_files) + len(text_files)
+        logger.info("found {} files".format(number_files))
 
-            samples = []
-            sample_span_labels = []
-            grouped_files = list(zip(ann_files, text_files))
-            for ann_file,txt_file in tqdm(grouped_files, desc="reading and formating PE files"):
+        data = []
+        grouped_files = list(zip(ann_files, text_files))
+        for ann_file,txt_file in tqdm(grouped_files, desc="reading and formating PE files"):
 
-                # -1 one as we want index 0 to be sample 1
-                file_id = int(re.sub(r'[^0-9]', "", ann_file.rsplit("/",1)[-1])) #-1
+            # -1 one as we want index 0 to be sample 1
+            file_id = int(re.sub(r'[^0-9]', "", ann_file.rsplit("/",1)[-1])) #-1
 
-                # if file_id != 202:
-                #     continue
+            text = self.__read_file(txt_file)
+            ann = self.__read_file(ann_file)
 
-                # print(f"______________________{file_id}______________________")
+            # extract annotation spans
+            ac_id2span, ac_id2ac,ac_id2stance, ac_id2relation = self.__parse_ann_file(ann, len(text))
 
-                text = self.__read_file(txt_file)
-                ann = self.__read_file(ann_file)
-
-                # extract annotation spans
-                ac_id2span, ac_id2ac,ac_id2stance, ac_id2relation = self.__parse_ann_file(ann, len(text))
-
-                span2label = self.__get_label_dict(ac_id2span, ac_id2ac,ac_id2stance, ac_id2relation)
-                            
-                samples.append({
-                                "sample_id":file_id,
-                                "text":text, 
-                                "text_type":"document"
-                                })
-                sample_span_labels.append((file_id,span2label))
+            span2label = self.__get_label_dict(ac_id2span, ac_id2ac,ac_id2stance, ac_id2relation)
+                        
+            data.append({
+                            "sample_id":file_id,
+                            "text":text, 
+                            "text_type":"document",
+                            "span2label": span2label
+                            })
+            #data.append((file_id,span2label))
             
-            dataset.add_samples(samples)
-            dataset.charspan2label(sample_span_labels)
-            dataset.create_ams()
-            dataset.save(dump_path)
+            #dataset.add_samples(samples)
+            ##dataset.charspan2label(sample_span_labels)
+            #dataset.create_ams()
+            #dataset.save(dump_path)
             
-
-        return dataset
+        self.task_labels["relation"] = sorted(self.task_labels["relation"])
+        return data
         

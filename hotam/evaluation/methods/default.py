@@ -1,21 +1,15 @@
 
-def normal(    self, 
+def default(    self, 
                     trainer:Trainer, 
                     ptl_model:PTLBase,
                     dataset:DataSet,
                     save_model_choice:str,
-                    run_test:bool
+                    train_set = None,
+                    val_set = None,
+                    test_set = None
                     ):
 
         # self.dataset.split_id = 0
-        # plt_model = PTLBase(   
-        #                     model = model,
-        #                     dataset=self.dataset, 
-        #                     hyperparamaters=hyperparamaters,
-        #                     metrics=metrics,
-        #                     monitor_metric=monitor_metric,
-        #                     progress_bar_metrics=progress_bar_metrics,
-        #                     )
 
         logger.info("Starting Evalutation (training, validation and testing (optional) ) ... ")
         trainer.fit(    
@@ -24,7 +18,7 @@ def normal(    self,
                         val_dataloaders=self.dataset.val_dataloader()
                         )
 
-        if run_test:
+        if test_set is not None:
             
             if save_model_choice == "last":
                 trainer.test(

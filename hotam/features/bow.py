@@ -12,7 +12,7 @@ from sklearn.pipeline import Pipeline
 
 
 #hotam
-from hotam.features.base import FeatureModel, feature_memory
+from hotam.features.base import FeatureModel
 import hotam.utils as u
 from hotam.resources.corpus import BNC
 from hotam import get_logger

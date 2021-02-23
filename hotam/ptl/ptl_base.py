@@ -51,56 +51,23 @@ class PTLBase(ptl.LightningModule):
 
     def __init__(   self,  
                     model, 
-                    dataset:None, 
                     hyperparamaters:dict,
-                    #metrics:List[dict],
-                    monitor_metric:str, 
-                    #progress_bar_metrics:list,
-                    
+                    task2labels:dict,
+                    feature2dim:dict,
                     ):
         super().__init__()
         
         #self.dataset = dataset
         self.hyperparamaters = hyperparamaters
+        self.monitor_metric = hyperparamaters["monitor_metric"]
         self.model = model(
                             hyperparamaters=hyperparamaters,
-                            task2labels={t:ls for t,ls in self.dataset.task2labels.items() if t in self.dataset.main_tasks},
-                            feature2dim=self.dataset.feature2dim,
+                            task2labels=task2labels,
+                            feature2dim=feature2dim,
                             )
-
-
-        #self._segmentation = "seg" in self.dataset.subtasks
-        #self.monitor_metric = monitor_metric
-        #self.progress_bar_metrics = progress_bar_metrics
-        #self.metrics, self.metric_names, self.class_metric_names = self.metrics()
-    
-
                     
     def forward(self) -> dict:
         raise NotImplementedError()
-
-
-    # def log_progress_bar(self, result, metrics):
-
-    #     #prog_dict = super().get_progress_bar_dict()
-    #     #prog_dict.pop("v_num", None)
-        
-    #     for metric in self.progress_bar_metrics+[self.monitor_metric]:
-
-    #         if metric not in metrics:
-    #             continue
-            
-    #         result.log(
-    #                     metric, 
-
-    #                     metrics[metric],
-    #                     on_step=True, 
-    #                     on_epoch=True, 
-    #                     prog_bar=True,
-    #                     reduce_fx=my_mean, 
-    #                     tbptt_reduce_fx=my_mean,
-    #                     logger=False
-    #                     )
 
 
     def _step(self, batch, split):
@@ -138,11 +105,8 @@ class PTLBase(ptl.LightningModule):
         loss, metrics = self._step(batch_ids, "train")
         result = ptl.TrainResult(  
                                     minimize=loss,
-                                    #early_stop_on=torch.Tensor([metrics[].get(self.monitor_metric,None)]), 
-                                    #checkpoint_on=torch.Tensor([metrics[self.monitor_metric]])       
-                                )
 
-        #self.log_progress_bar(result, metrics)
+                                )
         result.log_dict(metrics, on_epoch=True, reduce_fx=my_mean, tbptt_reduce_fx=my_mean)
         return result
 
@@ -153,7 +117,6 @@ class PTLBase(ptl.LightningModule):
                                     early_stop_on=torch.Tensor([metrics[self.monitor_metric]]), 
                                     checkpoint_on=torch.Tensor([metrics[self.monitor_metric]])
                                 )
-        #self.log_progress_bar(result, metrics)
         result.log_dict(metrics, on_epoch=True, reduce_fx=my_mean, tbptt_reduce_fx=my_mean)
         return result
 
@@ -203,66 +166,6 @@ class PTLBase(ptl.LightningModule):
         else:
             return opt
      
-
-
-
-
-
-    # def __reformat_outputs(self, output_dict):
-
-    #     ids_to_log = np.array(self.dataset.config["tracked_sample_ids"]["0"])
-
-    #     length_type = "lengths_seq" if self.batch.prediction_level == "ac" else "lengths_tok"
-    #     id2idx = {  
-    #                 str(ID):(i, length) for i, (ID, length) in 
-    #                 enumerate(zip(ensure_numpy(self.batch["ids"]), ensure_numpy(self.batch[length_type])))
-    #                 if ID in ids_to_log
-    #                 }
-
-    #     if ids_to_log.shape[0] == 0:
-    #         return {}
-
-    #     outputs = {ID:{"preds":{}, "probs":{}, "gold":{}, "text":{}} for ID in id2idx.keys()}
-
-    #     for ID, (i, length) in id2idx.items():
-            
-    #         #NOTE! this should not be needed.. fix the origin problem thx
-    #         if self.batch.prediction_level == "ac":
-    #             outputs[ID]["text"] = [t.tolist() if isinstance(t, np.ndarray) else t for t in self.batch["text"][i].tolist()]
-    #         else:
-    #             outputs[ID]["text"] = self.batch["text"][i].tolist()
-
-
-    #         spans_added = False
-
-    #         for task in self.dataset.subtasks:
-    #             task_preds = ensure_numpy(output_dict["preds"][task])
-    #             task_gold = ensure_numpy(self.batch[task])
-
-    #             # as relation prediction are assumed to be indexes to related span, we want to perserve them as such for later graphics
-    #             if task == "relation":
-    #                 outputs[ID]["preds"][task] = task_preds[i][:length].tolist()
-    #                 outputs[ID]["gold"][task] = task_gold[i][:length].tolist()
-    #             else:
-    #                 outputs[ID]["preds"][task] = self.dataset.decode_list(task_preds[i][:length], task).tolist()
-    #                 outputs[ID]["gold"][task] = self.dataset.decode_list(task_gold[i][:length], task).tolist()
-
-    #             if task == "seg" and not spans_added:
-    #                 outputs[ID]["preds"]["span_ids"] = self.__BIO_decode(outputs[ID]["preds"][task])
-    #                 outputs[ID]["gold"]["span_ids"] = self.__BIO_decode(outputs[ID]["gold"][task])
-    #                 spans_added = True
-
-    #             if not output_dict["probs"]:
-    #                 continue
-
-    #             if task not in output_dict["probs"]:
-    #                 continue
-
-    #             task_probs = ensure_numpy(output_dict["preds"][task])
-    #             outputs[ID]["probs"][task] = {"columns":self.dataset.task2labels[task], "data": task_probs[i][:length].tolist()}
-            
-
-    #     return outputs
 
 
 
