@@ -199,7 +199,7 @@ class LSTM_DIST(nn.Module):
         return minus_reps
 
 
-    def forward(self, batch):
+    def forward(self, Input, Output):
 
         word_embs = batch["word_embs"] 
         lengths_tok  = batch["lengths_tok"]
@@ -305,35 +305,24 @@ class LSTM_DIST(nn.Module):
         output.add_probs(task="relation", level="ac", data=relation_probs)
         output.add_probs(task="ac",       level="ac", data=ac_probs)
         output.add_probs(task="stance",   level="ac", data=stance_probs)
-
         return output
 
        
 
     
 
-        return {    
-                    "loss": {   
-                                "total": total_loss,
-                                }, 
-                    "preds": {
-                                "ac": ac_preds, 
-                                "relation": stance_preds,
-                                "stance": stance_preds
-                            },
-                    "probs": {
-                                "ac": ac_probs, 
-                                "relation": relation_probs,
-                                "stance": stance_probs
-                            },
-                }
-
-
-
-class Output:
-
-    self __init__():
-    pass
-
-
-class 
+        # return {    
+        #             "loss": {   
+        #                         "total": total_loss,
+        #                         }, 
+        #             "preds": {
+        #                         "ac": ac_preds, 
+        #                         "relation": stance_preds,
+        #                         "stance": stance_preds
+        #                     },
+        #             "probs": {
+        #                         "ac": ac_probs, 
+        #                         "relation": relation_probs,
+        #                         "stance": stance_probs
+        #                     },
+        #         }

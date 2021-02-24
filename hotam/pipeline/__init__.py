@@ -1,6 +1,8 @@
 
-from hotam.manager.experiment_manager import ExperimentManager 
+from hotam.pipeline.pipeline import Pipeline 
+from hotam.pipeline.chained_pipeline import ChainedPipeline 
 
 __all__ = [
-            "ExperimentManager"
+            "Pipeline",
+            "ChainedPipeline"
             ]

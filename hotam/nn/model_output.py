@@ -1,17 +1,48 @@
 
 
+#basics
+from typing import Union, List
+import numpy as np
 
-from hotam.evaluation.metrics import calc_metrics, calc_seg_metrics
-from typing import Union
+
+#hotam
+from hotam.evaluation.metrics import calc_metrics
+from hotam.nn import ModelInput
+
+#pytorch
+import torch
+
+
+
 
 class ModelOutput:
 
-    def __init__(self, dataset, calc_metrics:bool=True, return_output=Union[List[int], bool]):
+    def __init__(self, 
+                batch:ModelInput,
+                return_output:Union[List[int], bool], 
+                label_encoders:dict, 
+                all_tasks:list,
+                prediction_level:str,
+                calc_metrics:bool=True, 
+                ):
 
-        self.dataset = dataset
+        self.return_output = return_output
+        self.calc_metrics = calc_metrics
+        self.label_encoders = label_encoders
+        self.all_tasks = all_tasks
+        self.prediction_level = prediction_level
+        self.batch = batch
+        self._total_loss_added = False
+        self.loss = {}
+
+        
+        # self.dataset.get_subtask_position(task, subtask) 
+        # #self.dataset.decode_list(preds[i][:lenghts[i]], task)
+        # self.dataset.prediction_level
+        # self.dataset.all_tasks
+        # self.dataset = dataset
         #self._need_seg_lens = if self.dataset.prediction_level == "token"
         #self._seg_lens_added = False
-        self._total_loss_added = False
 
         # if "seg" in self.dataset.subtasks:
         #     seg_task = [t for t in self.dataset.tasks if "seg" in task][0]
@@ -25,9 +56,7 @@ class ModelOutput:
         #                             )
         
 
-        #self.seg = {}
-        self.loss = {}
-        self.batch = None
+        #self.seg = {}  
 
 
     def __get_subtask_preds(decoded_labels:list, task:str):
@@ -39,17 +68,15 @@ class ModelOutput:
         tasks hence we can break the predictions so we cant get scores for each of the tasks.
         """
         subtasks_predictions = {}
-        for subtask in task.split("_"):
+        subtasks = task.split("_")
+        for subtask in subtasks:
 
             # get the positon of the subtask in the joint label
             # e.g. for  labels following this, B_MajorClaim, 
             # BIO is at position 0, and AC is at position 1
-            subtask_position = self.dataset.get_subtask_position(task, subtask)
+            subtask_position = subtasks.index(subtask)
             subtask_labels = [p.split("_")[subtask_position] for p in decoded_labels]
 
-            # remake joint labels to subtask labels
-            #subtask_preds = torch.LongTensor(self.dataset.encode_list([p.split("_")[subtask_position] for p in decoded_labels], subtask))
-            #subtasks_predictions[subtask] = subtask_preds.view(original_shape)
             subtasks_predictions[subtask] = subtask_labels
 
         return subtasks_predictions
@@ -61,7 +88,8 @@ class ModelOutput:
         size = preds.shape[0]
         decoded_preds = np.zeros((size, max(lengths)), dtype=dtype)
         for i, sample_preds in range(size):
-            decoded_preds[i][:lenghts[i]] = self.dataset.decode_list(preds[i][:lenghts[i]], task)
+            decoded_preds[i][:lenghts[i]] = self.label_encoders[task].decode_list(preds[i][:lenghts[i]])
+            #decoded_preds[i][:lenghts[i]] = self.dataset.decode_list(preds[i][:lenghts[i]], task)
         
         return decoded_preds
 
@@ -107,7 +135,6 @@ class ModelOutput:
         pass
 
 
-
     def add_loss(self, task:str, data=torch.tensor):
 
         assert torch.is_tensor(data), f"{task} loss need to be a tensor"
@@ -130,7 +157,7 @@ class ModelOutput:
 
     def add_preds(self, task:str, level:str, data:torch.tensor, decoded:bool=False, sample_ids="same"):
 
-        assert task in set(self.dataset.all_tasks), f"{task} is not a supported task. Supported tasks are: {self.dataset.all_tasks}"
+        assert task in set(self.all_tasks), f"{task} is not a supported task. Supported tasks are: {self.all_tasks}"
         assert level in set(["token", "ac"]), f"{level} is not a supported level. Only 'token' or 'ac' are supported levels"
         assert torch.is_tensor(data), f"{task} preds need to be a tensor"
         assert len(data.shape) == 2, f"{task} preds need to be a 2D tensor"
@@ -141,16 +168,16 @@ class ModelOutput:
         # and same applies if input level i token and prediction level is AC
         #
         # However, if the prediction level is token and the input level is AC, we need to use the prediction lengths derived from our segmentation predictions
-        if level == "ac" and self.dataset.prediction_level == "ac":
+        if level == "ac" and self.prediction_level == "ac":
             lengths = self.batch["lengths_seq"]
 
-        elif level == "token" and self.dataset.prediction_level == "token":
+        elif level == "token" and self.prediction_level == "token":
             lengths = self.batch["lengths_tok"]
 
-        elif level == "token" and self.dataset.prediction_level == "ac":
+        elif level == "token" and self.prediction_level == "ac":
             lengths = self.batch["lengths_tok"]
 
-       elif level == "ac" and self.dataset.prediction_level == "token":
+        elif level == "ac" and self.prediction_level == "token":
             #lengths = self.seg["lenghts_seq"]
             raise NotImplementedError()
 
@@ -159,8 +186,8 @@ class ModelOutput:
             self.__handle_complex_tasks(
                                         data=data,
                                         level=level,
-                                        lengths=lengths
-                                        task=task,
+                                        lengths=lengths,
+                                        task=task
                                         )
             return
 
@@ -229,11 +256,10 @@ class ModelOutput:
         pass
         
 
-
-    def clear(self):
-        self.batch = None
-        self.loss = {}
-        self.output = {}
+    # def clear(self):
+    #     self.batch = None
+    #     self.loss = {}
+    #     self.output = {}
 
 
 

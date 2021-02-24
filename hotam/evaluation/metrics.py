@@ -23,7 +23,7 @@ from sklearn.metrics import confusion_matrix
 #import segeval
 
 #am 
-from hotam.preprocessing import DataSet
+#from hotam.datasets.base.dataset import DataSet
 from hotam.utils import ensure_flat, ensure_numpy
 from hotam import get_logger
 
@@ -82,9 +82,9 @@ def calc_metrics(targets:np.ndarray, preds:np.ndarray, mask:np.ndarray, task:str
 
     df = pd.DataFrame(rows)
     avrg_scores = [
-                        {"name":f"{prefix}-{task}-precision", "metric": "precision", "value": df[df["metric"]=="precision"].mean()}
-                        {"name":f"{prefix}-{task}-recall", "metric": "recall", "value": df[df["metric"]=="recall"].mean()}
-                        {"name":f"{prefix}-{task}-f1", "metric": "f1", "value": df[df["metric"]=="f1"].mean()}
+                        {"name":f"{prefix}-{task}-precision", "metric": "precision", "value": df[df["metric"]=="precision"].mean()},
+                        {"name":f"{prefix}-{task}-recall", "metric": "recall", "value": df[df["metric"]=="recall"].mean()},
+                        {"name":f"{prefix}-{task}-f1", "metric": "f1", "value": df[df["metric"]=="f1"].mean()},
                     ]
 
     scores = df.to_dict("record") + avrg_metrics

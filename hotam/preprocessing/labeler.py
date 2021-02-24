@@ -32,9 +32,13 @@ class Labeler:
 
 
     def _label_bios(self, sample):
-        sample["BIO"] = "O"
+        sample["seg"] = "O"
         acs = sample.groupby("ac_id")
-        for g, ac_df in acs:
+        for ac_id, ac_df in acs:
+
+            if "None" in ac_id:
+                continue
+
             sample.loc[ac_df.index,"BIO"] = ["B"] +  (["I"] * (ac_df.shape[0]-1))
         return sample
 

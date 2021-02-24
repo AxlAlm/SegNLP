@@ -19,7 +19,7 @@ from typing import Tuple, List, Dict
 from hotam import get_logger
 import hotam.utils as u
 from hotam.utils import RangeDict
-
+from hotam.datasets.base import DataSet
 
 #
 # string
@@ -68,16 +68,10 @@ Dataset Specs:
 3) All relations are within paragraphs
 
 
-
 ''' 
 
 
-# # # TODO: is this  the cleanest solution to avoid .load() ??
-# def PE(dump_path:str="/tmp/"):
-#     return PE_Dataset(dump_path=dump_path).load()
-
-
-class PE:
+class PE(DataSet):
 
     """Class for downloading, reading and parsing the Pursuasive Essay dataset found here: 
 
@@ -89,20 +83,21 @@ class PE:
     """
 
     def __init__(self, dump_path:str="/tmp/"):
-        self.name = "pe"
+        #super().__init__()
+        self._name = "pe"
         self.dump_path = dump_path
         #self._dataset_path = "datasets/pe/data"
         self._download_url = "https://www.informatik.tu-darmstadt.de/media/ukp/data/fileupload_2/argument_annotated_news_articles/ArgumentAnnotatedEssays-2.0.zip"
         self._dataset_path = self.__download_data()
-        self.splits = self.__splits()
+        self._splits = self.__splits()
         self._stance2new_stance = {
                                     "supports":"PRO", 
                                     "Against":"CON", 
                                     "For":"PRO", 
                                     "attacks":"CON"
                                     }
-        self.tasks = ["ac", "relation", "stance"]
-        self.task_labels = {
+        self._tasks = ["ac", "relation", "stance"]
+        self.__task_labels = {
                             "ac":["MajorClaim", "Claim", "Premise"],
 
                             # Originally stance labels are For and Against for Claims and MajorClaims
@@ -120,6 +115,8 @@ class PE:
 
         self.data = self.__process_data()
 
+    def __len__(self):
+        return self._size
 
     def __download_data(self, force=False) -> str:
         """downloads the data from sourse website
@@ -343,10 +340,11 @@ class PE:
         current_ac_idx = 0
         for i, (ac_id, span) in enumerate(ac_id2span.items()):
 
-
+            
+            #print(ac_id)
             relation = ac_id2relation.get(ac_id, 0)
 
-            self.task_labels["relation"].add(relation)
+            self.__task_labels["relation"].add(relation)
 
             label = {   
                         #"seg":"O",
@@ -484,15 +482,12 @@ class PE:
                             "sample_id":file_id,
                             "text":text, 
                             "text_type":"document",
-                            "span2label": span2label
+                            "span_labels": span2label
                             })
-            #data.append((file_id,span2label))
-            
-            #dataset.add_samples(samples)
-            ##dataset.charspan2label(sample_span_labels)
-            #dataset.create_ams()
-            #dataset.save(dump_path)
-            
-        self.task_labels["relation"] = sorted(self.task_labels["relation"])
-        return data
+
+        self._size = len(data)
+        self.__task_labels["relation"] = sorted(self.__task_labels["relation"])
+        self._task_labels = self.__task_labels
+        del self.__task_labels
+        return np.array(data)
         

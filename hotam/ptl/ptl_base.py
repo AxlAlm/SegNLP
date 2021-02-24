@@ -23,7 +23,7 @@ from transformers import get_constant_schedule_with_warmup
 from hotam.utils import ensure_numpy, ensure_flat
 from hotam.trainer.metrics import Metrics
 from hotam import get_logger
-
+from hotam.nn import Input
 
 logger = get_logger("PTLBase (ptl.LightningModule)")
 
@@ -52,14 +52,19 @@ class PTLBase(ptl.LightningModule):
     def __init__(   self,  
                     model, 
                     hyperparamaters:dict,
+                    all_tasks:list,
+                    label_encoders:dict,
+                    prediction_level:str,
                     task2labels:dict,
                     feature2dim:dict,
+                    Output_params:dict
                     ):
         super().__init__()
-        
-        #self.dataset = dataset
         self.hyperparamaters = hyperparamaters
         self.monitor_metric = hyperparamaters["monitor_metric"]
+        self.prediction_level = prediction_level
+        self.all_tasks = all_tasks
+        self.label_encoders = label_encoders
         self.model = model(
                             hyperparamaters=hyperparamaters,
                             task2labels=task2labels,
@@ -70,33 +75,32 @@ class PTLBase(ptl.LightningModule):
         raise NotImplementedError()
 
 
-    def _step(self, batch, split):
+    def _step(self, batch:Input, split):
 
         # fetches the device so we can place tensors on the correct memmory
         device = f"cuda:{next(self.parameters()).get_device()}" if self.on_gpu else "cpu"
-
-        self.batch = batch
         self.split = split 
-        self.batch.current_epoch = self.current_epoch
+        batch.current_epoch = self.current_epoch
 
-        #clear output from previous step
-        self.output.clear()
-        
-        #add batch to output
-        self.output.batch = self.batch  
-
-        #pass on the whole batch to the model
-        self.output = ModelOutput()
-
-        self.model.forward(self.batch)
+        output = self.model.forward(
+                                    batch, 
+                                    Output(
+                                            batch=batch,
+                                            calc_metrics=True, 
+                                            return_output=True, 
+                                            label_encoders=self.label_encoders, 
+                                            all_tasks=self.all_tasks,
+                                            prediction_level=self.prediction_level,
+                                            )
+                                    )
 
         # get the metrics and the loss (gpu grad loss)
-        metrics = self.output.metrics
-        total_loss = self.output.loss["total"]
+        metrics = output.metrics
+        total_loss = output.loss["total"]
 
         # if we are on val and test we can log our output
         if self.logger and split in ["val", "test"]:
-            self.logger.log_outputs(self.output.outputs)
+            self.logger.log_outputs(output.outputs)
             
         return  total_loss, metrics
     

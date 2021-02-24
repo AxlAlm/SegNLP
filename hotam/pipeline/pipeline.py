@@ -6,11 +6,22 @@ import itertools
 import json
 import warnings
 import numpy as np
+import hashlib
+import os
+import shutil
 
 #pytorch Lightning
 from pytorch_lightning.loggers import LightningLoggerBase
 
 
+#hotam
+from hotam.datasets import DataSet
+from hotam.default_hyperparamaters import get_default_hps
+from hotam.preprocessing import Preprocessor
+from hotam.preprocessing.dataset_preprocessor import PreProcessedDataset
+from hotam import get_logger
+
+logger = get_logger("PIPELINE")
 
 default_trainer_args = {
                             "logger":None,
@@ -31,23 +42,26 @@ class Pipeline:
     
     def __init__(self,
                 name:str,
-                project=:str,
-                tasks=List[str],
+                project:str,
+                tasks:List[str],
                 prediction_level:str,
                 sample_level:str,
                 input_level:str,
                 features:list =[],
                 encodings:list =[],
-                model:None,
+                model=None,
                 model_load_path:str = None,
                 tokens_per_sample:bool=False,
-                dataset:DataSet = None,
+                dataset:Union[DataSet, PreProcessedDataset] = None,
                 process_dataset:bool = True,
                 hyperparamaters:dict = None,
-                save_all_models:Union[bool,int] = 1 #saving best        
-                )
-    
-
+                save_all_models:Union[bool,int] = 1, #saving best 
+                root_dir:str = "/tmp/hotam/pipelines"       
+                ):
+        
+        pipe_hash = self.__pipeline_hash(prediction_level, sample_level, dataset.name, tasks, features, encodings)
+        pipeline_folder_path = self.__create_pipe_folder(root_dir=root_dir, pipe_hash=pipe_hash)
+        
         self.preprocessor = Preprocessor(                
                                     prediction_level=prediction_level,
                                     sample_level=sample_level, 
@@ -56,15 +70,32 @@ class Pipeline:
                                     encodings=encodings,
                                     tokens_per_sample=tokens_per_sample,
                                     )
-        
-        if dataset:
-            self.preprocessor.expect_labels(
-                                        tasks=tasks, 
-                                        task2label={k:v for k,v in dataset.task_labels if k in tasks}
-                                        )
 
-        if process_dataset:
-            self.dataset.process(self.preprocessor)
+        if dataset:
+            if isinstance(dataset, PreProcessedDataset):
+                self.dataset = dataset
+            else:
+                data_fp = self.__check_for_preprocessed_data(pipeline_folder_path)
+
+                if data_fp:
+                    logger.info(f"Loading preprocessed data from {data_fp}")
+                    self.dataset = PreProcessedDataset(
+                                                        h5py_file_path=data_fp, 
+                                                        splits=dataset.splits
+                                                        )
+                else:
+                    try:
+                        self.preprocessor.expect_labels(
+                                                        tasks=tasks, 
+                                                        task2labels={k:v for k,v in dataset.task_labels.items() if k in tasks}
+                                                        )
+
+                        self.dataset = self.preprocessor.process_dataset(dataset, dump_dir=pipeline_folder_path)
+                    except BaseException as e:
+                        shutil.rmtree(pipeline_folder_path)
+                        raise e
+
+            
 
 
         self._set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
@@ -91,6 +122,27 @@ class Pipeline:
         self._trained_model = None
         if self._many_models:
             self._trained_model = []
+
+
+
+    def __check_for_preprocessed_data(self, pipeline_folder_path:str):
+        fp = os.path.join(pipeline_folder_path, "data.hdf5")
+        if os.path.exists(fp):
+            return fp
+        else:
+            return None
+
+
+    def __pipeline_hash(self, prediction_level, sample_level, dataset_name, tasks, features, encodings):
+        big_string = "%".join([prediction_level, sample_level, dataset_name] + tasks + features + encodings)
+        hash_encoding = hashlib.sha224(big_string.encode()).hexdigest()
+        return hash_encoding
+
+
+    def __create_pipe_folder(self, root_dir:str, pipe_hash:str):
+        pipeline_folder_path = os.path.join(root_dir, pipe_hash)
+        os.makedirs(pipeline_folder_path, exist_ok=True)
+        return pipeline_folder_path
 
 
     def __config(self, experiment_id:str, hyperparamaters:dict, random_seed:int, evaluation_method:str, save_model_choice:str):
@@ -168,7 +220,7 @@ class Pipeline:
 
     def fit(    self,   
                 exp_logger:LightningLoggerBase,  
-                ptl_trn_args:dict=default, 
+                ptl_trn_args:dict=default_trainer_args, 
                 mode:str = "all", 
                 save_model_choice:str = None, 
                 evaluation_method:str = "default", 
@@ -184,6 +236,8 @@ class Pipeline:
 
             experiment_id = "_".join([model_name, str(uuid.uuid4())[:8]])
 
+
+            ptl_trn_args["logger"] = exp_logger
             trainer = self.get_ptl_trainer( 
                                             experiment_id=experiment_id, 
                                             trainer_args=ptl_trn_args, 

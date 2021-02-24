@@ -18,6 +18,7 @@ import shelve
 from copy import deepcopy
 from pprint import pprint
 import warnings
+from time import time
 
 
 #hotam
@@ -28,85 +29,21 @@ from hotam import get_logger
 from .encoder import Encoder
 from .textprocessor import TextProcesser
 from .labeler import Labeler
+from .dataset_preprocessor import DataPreprocessor
+
+from hotam.nn import ModelInput
 
 #pytorch lightning
 import pytorch_lightning as ptl
 
 #pytroch
-# from torch.utils.data import Dataset, DataLoader
-# from torch.utils.data import BatchSampler
 import torch
 
-#hotviz
-#from hotviz import hot_tree, hot_text
 
 logger = get_logger("DATASET")
 
 
-class ModelInput(dict):
-
-
-    def __init__(self, 
-                #all_tasks:list
-                ):
-        super().__init__()
-        #self.all_tasks = all_tasks
-        self.current_epoch = None
-        self.pad_value = 0
-
-
-    def __len__(self):
-        return self._len
-
-    
-    def __add__(self):
-        pass
-
-
-    def to(self, device):
-        self.device = device
-        for k,v in self.items():
-            if torch.is_tensor(v):
-                self[k] = v.to(self.device)
-
-        return self
-    
-
-    def to_tensor(self, device):
-        pass
-
-
-    def to_numpy(self, device):
-        pass
-
-
-    def change_pad_value(self, task, new_value):
-        #for task in self.all_tasks:
-        self[task][self[task] == self.pad_value] = new_value
-            # self[task][~self[f"{self.prediction_level}_mask"].type(torch.bool)] = -1
-     
-
-    def add(self, k, v):
-        # if k not in self:
-        #     self[k] = [v]
-        # else:
-        #     self[k].append(v)
-         
-        if k not in self:
-            if isinstance(v, np.ndarray):
-                self[k] = np.expand_dims(v, axis=0)
-            else:
-                self[k] = [v]
-        else:
-            if isinstance(v, int):
-                self[k].append(v)
-            else:
-                self[k] = dynamic_update(self[k],v)
-
-
-
-
-class Preprocessor(Encoder, TextProcesser, Labeler):    
+class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):    
 
 
     def __init__(self,
@@ -145,13 +82,19 @@ class Preprocessor(Encoder, TextProcesser, Labeler):
         self._create_data_encoders()
     
 
-    def __call__(self, docs:List[str],token_labels:List[List[dict]] = None, span_labels:List[dict] = None):
+    def __call__(self, docs:List[Union[dict, str]]) -> ModelInput: #docs:List[str],token_labels:List[List[dict]] = None, span_labels:List[dict] = None):
 
         Input = ModelInput()
         
         for i, doc in enumerate(docs):
 
+            if isinstance(doc,dict):
+                span_labels = doc.get("span_labels", None)
+                token_labels = doc.get("token_labels", None)
+                doc = doc["text"]
+
             doc_df = self._process_doc(doc, text_id=i)
+
 
             if self.input_level != self.sample_level:
                 samples = doc_df.groupby(f"{self.sample_level}_id")
@@ -159,24 +102,27 @@ class Preprocessor(Encoder, TextProcesser, Labeler):
                 samples = [(i,doc_df)]
 
             for i, sample in samples:
-
-                if token_labels:
-                    sample = self._label_spans(sample, span_labels)
-                    
-                if span_labels:
-                    sample = self._label_tokens(sample, token_labels)
                 
-                if self.__need_bio:
-                    sample = self._label_bios(sample)
+                if self.__labeling:
+                    if span_labels:
+                        sample = self._label_spans(sample, span_labels)
+
+                    if token_labels:
+                        sample = self._label_tokens(sample, token_labels)
+                    
+                    if self.__need_bio:
+                        sample = self._label_bios(sample)
+
+                    self._encode_labels(sample)
+
 
                 if self.argumentative_markers:
                     sample = self._label_ams(sample)
-
-                if self.__labeling:
-                    self._encode_labels(sample)
                 
                 if self.encodings:
                     self._encode_data(sample)
+
+
 
                 Input.add("id", i)
                 Input.add("lengths_tok", len(sample))
@@ -196,13 +142,15 @@ class Preprocessor(Encoder, TextProcesser, Labeler):
                 self.__get_text(Input, sample)
                 self.__get_encs(Input, sample)
                 self.__get_feature_data(Input, sample)
-            
+
+
+
                 if self.__labeling:
                     self.__get_labels(Input, sample)
 
-
-                if self.prediction_level == "ac":
-                    sample_dict.update(self.__get_am_ac_spans(Input, sample, i))
+            
+                # if self.prediction_level == "ac":
+                #     sample_dict.update(self.__get_am_ac_spans(Input, sample, i))
 
 
         return Input
@@ -214,11 +162,13 @@ class Preprocessor(Encoder, TextProcesser, Labeler):
             acs = sample.groupby(f"ac_id")
             text = []
             for _, ac in acs:
-                text.append(ac["text"].to_numpy().astype("U30"))
+                #text.append(ac["text"].to_numpy().astype("U30"))
+                text.append(ac["text"].to_numpy().tolist())
 
-            Input.add("text", text)
+            Input.add("text", np.array(text, dtype="U30"))
             #sample_text["text"] = np.array(text)
         else:
+            #Input.add("text", sample["text"].to_numpy().astype("S"))
             Input.add("text", sample["text"].to_numpy().astype("U30"))
             #sample_text["text"] = sample["text"].to_numpy()
         
@@ -582,24 +532,22 @@ class Preprocessor(Encoder, TextProcesser, Labeler):
         subtasks = []
         for task in tasks:
             subtasks.extend(task.split("_"))
-        print(subtasks)
         return subtasks
 
 
-    def expect_labels(self, tasks:list, task2label:dict)
+    def expect_labels(self, tasks:list, task2labels:dict):
         self.__need_bio = False
         self.__labeling = True
         self.tasks = tasks
         self.subtasks = self.__get_subtasks(tasks)
         self.all_tasks = sorted(set(tasks + self.subtasks))
-        self.task2label = task2labels
-        self.__need_bio = "seg" in subtasks
+        self.task2labels = task2labels
+        self.__need_bio = "seg" in self.subtasks
 
         if self.__need_bio:
-            self.task2label["seg"] = ["B","I","O"]
+            self.task2labels["seg"] = ["B","I","O"]
 
         self._create_label_encoders()
-
 
 
 

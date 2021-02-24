@@ -9,5 +9,5 @@ from hotam.preprocessing.preprocessor import Preprocessor
 #             }
 
 __all__ = [
-            Preprocessor,
+            "Preprocessor",
             ]
