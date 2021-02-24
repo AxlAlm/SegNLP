@@ -79,6 +79,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
         self._init_preprocessor()
         self._init_encoder()
+        self._init_DataPreprocessor()
         self._create_data_encoders()
     
 
@@ -95,6 +96,25 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
             doc_df = self._process_doc(doc, text_id=i)
 
+            if self.__labeling:
+                if span_labels:
+                    doc_df = self._label_spans(doc_df, span_labels)
+
+                if token_labels:
+                    doc_df = self._label_tokens(doc_df, token_labels)
+                
+                if self.__need_bio:
+                    doc_df = self._label_bios(doc_df)
+                
+                self._encode_labels(doc_df)
+
+
+            if self.argumentative_markers:
+                doc_df = self._label_ams(doc_df)
+            
+            if self.encodings:
+                self._encode_data(doc_df)
+
 
             if self.input_level != self.sample_level:
                 samples = doc_df.groupby(f"{self.sample_level}_id")
@@ -102,28 +122,6 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 samples = [(i,doc_df)]
 
             for i, sample in samples:
-                
-                if self.__labeling:
-                    if span_labels:
-                        sample = self._label_spans(sample, span_labels)
-
-                    if token_labels:
-                        sample = self._label_tokens(sample, token_labels)
-                    
-                    if self.__need_bio:
-                        sample = self._label_bios(sample)
-
-                    self._encode_labels(sample)
-
-
-                if self.argumentative_markers:
-                    sample = self._label_ams(sample)
-                
-                if self.encodings:
-                    self._encode_data(sample)
-
-
-
                 Input.add("id", i)
                 Input.add("lengths_tok", len(sample))
 
@@ -148,12 +146,11 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 if self.__labeling:
                     self.__get_labels(Input, sample)
 
-            
                 # if self.prediction_level == "ac":
                 #     sample_dict.update(self.__get_am_ac_spans(Input, sample, i))
 
 
-        return Input
+        return Input.to_numpy()
   
 
     def __get_text(self, Input:ModelInput, sample:pd.DataFrame):
@@ -190,7 +187,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             #if self.prediction_level == "token":
             #task_matrix = np.zeros(len(sample.index))
             #task_matrix[:sample.shape[0]] = sample[task].to_numpy()
-            
+
             Input.add(f"token_{task}", sample[task].to_numpy())
             Input.add(f"ac_{task}", ac_task_matrix)
         
@@ -543,6 +540,9 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         self.all_tasks = sorted(set(tasks + self.subtasks))
         self.task2labels = task2labels
         self.__need_bio = "seg" in self.subtasks
+
+        print(self.all_tasks)
+        print(self.subtasks)
 
         if self.__need_bio:
             self.task2labels["seg"] = ["B","I","O"]

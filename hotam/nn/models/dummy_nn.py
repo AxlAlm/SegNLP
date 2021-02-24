@@ -15,21 +15,18 @@ import hotam.utils as u
 class DummyNN(nn.Module):
 
 
-    def __init__(self, hyperparamaters:dict, task2labels:dict, feature2dim:dict):
+    def __init__(self, hyperparamaters:dict, task_dims:dict, feature_dims:dict):
         super().__init__()
         self.OPT = hyperparamaters["optimizer"]
         self.LR = hyperparamaters["lr"]
         self.HIDDEN_DIM = hyperparamaters["hidden_dim"]
         self.NUM_LAYERS = hyperparamaters["num_layers"]
 
-        self.task2labels = task2labels
         self.output_layers = nn.ModuleDict()
-        for task, labels in task2labels.items():
+        for task, output_dim in task_dims.items():
 
             if task == "relation":
                 output_dim = 100
-            else:
-                output_dim = len(labels)
 
             self.output_layers[task] = nn.Linear(feature2dim["dummy"], output_dim)
 

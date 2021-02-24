@@ -50,27 +50,27 @@ class PTLBase(ptl.LightningModule):
 
 
     def __init__(   self,  
-                    model, 
+                    model:torch.nn.Module, 
                     hyperparamaters:dict,
                     all_tasks:list,
                     label_encoders:dict,
                     prediction_level:str,
-                    task2labels:dict,
-                    feature2dim:dict,
-                    Output_params:dict
+                    task_dims:dict,
+                    feature_dims:dict,
                     ):
         super().__init__()
         self.hyperparamaters = hyperparamaters
-        self.monitor_metric = hyperparamaters["monitor_metric"]
+        self.monitor_metric = hyperparamaters.get("monitor_metric", "loss")
         self.prediction_level = prediction_level
         self.all_tasks = all_tasks
         self.label_encoders = label_encoders
         self.model = model(
                             hyperparamaters=hyperparamaters,
-                            task2labels=task2labels,
-                            feature2dim=feature2dim,
+                            task_dims=task_dims,
+                            feature_dims=feature_dims,
                             )
                     
+
     def forward(self) -> dict:
         raise NotImplementedError()
 

@@ -20,6 +20,7 @@ import h5py
 
 # hotam
 from hotam.datasets.base import DataSet
+from hotam.nn import ModelInput
 from hotam.nn.model_input import ModelInput
 from hotam.utils import ensure_numpy
 
@@ -27,14 +28,35 @@ from hotam.utils import ensure_numpy
 class PreProcessedDataset(ptl.LightningDataModule):
 
     def __init__(self, h5py_file_path:str,  splits:dict):
-        self.data = h5py.File(h5py_file_path, "r")
+        self._fp = h5py_file_path
+        self.data = h5py.File(self._fp, "r")
         self.splits = splits
+        self._size = self.data["id"].shape[0]
 
 
     def __getitem__(self, key:Union[np.ndarray, list]) -> ModelInput:
+        Input = ModelInput()
         for dset in self.data:
-            Input.add(k, dset[key])
+            Input.add(dset, self.data[dset][key])
         return Input
+    
+
+    def __len__(self):
+        return self._size
+
+
+    def info(self):
+        s = f"""
+            keys            = {[dset for dset in self.data]}
+            size            = {self._size}
+            file size (MBs) = {str(round(os.path.getsize(self._fp) / (1024 * 1024), 3))}
+            file path       = {self._fp}
+            """
+        print(s)
+
+
+    def stats(self):
+        
 
 
     def train_dataloader(self):
@@ -55,6 +77,8 @@ class PreProcessedDataset(ptl.LightningDataModule):
 
 class DataPreprocessor:
 
+    def _init_DataPreprocessor(self):
+        self.__init_storage_done = False
 
     def __setup_h5py(self, file_path:str):
         self.h5py_f = h5py.File(file_path, 'w')
@@ -114,7 +138,7 @@ class DataPreprocessor:
         for i in range(0, len(dataset), chunks):
             Input = self(dataset[i:i+chunks])
 
-            if not hasattr(self, "__init_storage_done"):
+            if not self.__init_storage_done:
                 self.__init_store(Input)
             else:
                 self.__append_store(Input)

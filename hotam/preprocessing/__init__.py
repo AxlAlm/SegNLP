@@ -1,7 +1,7 @@
 
 
 from hotam.preprocessing.preprocessor import Preprocessor
-
+from hotam.preprocessing.dataset_preprocessor import PreProcessedDataset
 
 # settings = {
 #             "CACHE_SAMPLES": True,
@@ -10,4 +10,5 @@ from hotam.preprocessing.preprocessor import Preprocessor
 
 __all__ = [
             "Preprocessor",
+            "PreProcessedDataset"
             ]

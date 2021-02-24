@@ -52,7 +52,7 @@ class LSTM_DIST(nn.Module):
 
     """
 
-    def __init__(self,  hyperparamaters:dict, task2labels:dict, feature2dim:dict):
+    def __init__(self,  hyperparamaters:dict, task_dims:dict, feature_dims:dict):
         super().__init__()
 
         self.BATCH_SIZE = hyperparamaters["batch_size"]
@@ -64,8 +64,8 @@ class LSTM_DIST(nn.Module):
         self.ALPHA = hyperparamaters["alpha"]
         self.BETA = hyperparamaters["beta"]
         
-        self.WORD_FEATURE_DIM = feature2dim["word_embs"]
-        self.DOC_FEATURE_DIM = feature2dim["doc_embs"]
+        self.WORD_FEATURE_DIM = feature_dims["word_embs"]
+        self.DOC_FEATURE_DIM = feature_dims["doc_embs"]
 
         # if this is true we will make a distinction between ams and acs
         #self.DISTICTION = hyperparamaters["distinction"]
@@ -105,8 +105,8 @@ class LSTM_DIST(nn.Module):
         #self.max_rel = len(task2labels["relation"])
         #self.relation_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), MAX_NR_AC)
         self.relation_clf = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), 1)
-        self.stance_clf = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), len(task2labels["stance"]))
-        self.ac_clf = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), len(task2labels["ac"]))
+        self.stance_clf = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), task_dims["stance"])
+        self.ac_clf = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), task_dims["ac"])
     
         self.loss = nn.CrossEntropyLoss(reduction="sum", ignore_index=-1)
 

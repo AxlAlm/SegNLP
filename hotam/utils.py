@@ -160,8 +160,6 @@ def one_tqdm(desc:str):
     return decorator
 
 
-
-
 def get_timestamp():
     sweden = pytz.timezone('Europe/Stockholm')
     timestamp = datetime.now().astimezone(sweden).timestamp()
@@ -206,7 +204,6 @@ def copy_and_vet_dict(input_dict:dict, filter_key:str=None):
     return output_dict
 
 
-
 def download(url:str, save_path:str, desc:str):
 
     response = requests.get(url, stream=True)
@@ -231,7 +228,6 @@ def unzip(zip_path:str, save_path:str):
 
     with zipfile.ZipFile(zip_path, 'r') as zipf:
         zipf.extractall(save_path)
-
 
 
 def dynamic_update(src, v): 
@@ -262,3 +258,16 @@ def set_random_seed(nr, using_gpu:bool=False):
     if using_gpu:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
+
+
+def tensor_dtype(numpy_dtype):
+
+    if numpy_dtype == np.float:
+        return torch.float
+
+    if numpy_dtype == np.int:
+        return torch.long
+
+    if numpy_dtype == np.bool:
+        return torch.bool
+

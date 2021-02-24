@@ -59,8 +59,19 @@ class Pipeline:
                 root_dir:str = "/tmp/hotam/pipelines"       
                 ):
         
-        pipe_hash = self.__pipeline_hash(prediction_level, sample_level, dataset.name, tasks, features, encodings)
+        pipe_hash = self.__pipeline_hash(prediction_level, sample_level, dataset.name, tasks, features, encodings)                         
         pipeline_folder_path = self.__create_pipe_folder(root_dir=root_dir, pipe_hash=pipe_hash)
+        self.__dump_pipe_config(
+                                config = dict(
+                                            prediction_level=prediction_level, 
+                                            sample_level=sample_level, 
+                                            dataset_name=dataset.name, 
+                                            tasks=tasks, 
+                                            features=[f.name for f in features], 
+                                            encodings=encodings
+                                            ),
+                                pipeline_folder_path=pipeline_folder_path
+                                )       
         
         self.preprocessor = Preprocessor(                
                                     prediction_level=prediction_level,
@@ -90,39 +101,51 @@ class Pipeline:
                                                         task2labels={k:v for k,v in dataset.task_labels.items() if k in tasks}
                                                         )
 
-                        self.dataset = self.preprocessor.process_dataset(dataset, dump_dir=pipeline_folder_path)
+                        self.dataset = self.preprocessor.process_dataset(dataset, dump_dir=pipeline_folder_path, chunks=5)
                     except BaseException as e:
                         shutil.rmtree(pipeline_folder_path)
                         raise e
 
             
 
+        if hyperparamaters:
+            assert model, "No model have been added"
 
-        self._set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
+            self._set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
 
-        self._many_models = False
-        self._nr_models = len(self._set_hyperparamaters)
-        if self._nr_models > 1:
-            self._many_models = True
-
-        self._model_loaded = False
-        if model_load_path:
-            self._model_loaded = True
-            assert not self._many_models, "If loading a model you can continue training it but you are not allowed to trainer other models with other hyperparamaters. Make sure you hyperparamaters do not have multiple values."
-
-            self._trained_model = PTLBase(   
-                                model = model,
-                                hyperparamaters = self._set_hyperparamaters,
-                                task2outdim = task2outdim,
-                                features2dim = features2dim,
-                                )
-            self._trained_model.load_from_checkpoint(model_load_path)
+            self._many_models = False
+            self._nr_models = len(self._set_hyperparamaters)
+            if self._nr_models > 1:
+                self._many_models = True
 
 
-        self._trained_model = None
-        if self._many_models:
-            self._trained_model = []
+            self._model_loaded = False
+            if model_load_path:
+                self._model_loaded = True
+                assert not self._many_models, "If loading a model you can continue training it but you are not allowed to trainer other models with other hyperparamaters. Make sure you hyperparamaters do not have multiple values."
 
+                self._trained_model = PTLBase(   
+                                                model=model, 
+                                                hyperparamaters=hyperparamaters,
+                                                all_tasks=self.preprocessor.all_tasks,
+                                                label_encoders=self.preprocessor.encoders,
+                                                prediction_level=prediction_level,
+                                                task_dims=task_dims,
+                                                feature_dims=feature_dims,
+                                                )
+                self._trained_model.load_from_checkpoint(model_load_path)
+
+
+            self._trained_model = None
+            if self._many_models:
+                self._trained_model = []
+
+
+    def __dump_pipe_config(self, config:dict, pipeline_folder_path:str):
+        fp = os.path.join(pipeline_folder_path, "config.json")
+        if not os.path.exists(fp):
+            with open(fp, "w") as f:
+                json.dump(config, f)
 
 
     def __check_for_preprocessed_data(self, pipeline_folder_path:str):
@@ -262,12 +285,15 @@ class Pipeline:
                 ptl_model = self._trained_model
             else:
                 ptl_model = PTLBase(   
-                                    model = model,
-                                    hyperparamaters = hyperparamaters,
-                                    task2label = task2label,
-                                    features2dim = features2dim,
-                                    monitor_metric = monitor_metric,
+                                    model=model, 
+                                    hyperparamaters=hyperparamater,
+                                    all_tasks=self.preprocessor.all_tasks,
+                                    label_encoders=self.preprocessor.encoders,
+                                    prediction_level=prediction_level,
+                                    task_dims=task_dims,
+                                    feature_dims=feature_dims,
                                     )
+
 
                 if self._many_models:
                     self._trained_model.append(ptl_model)

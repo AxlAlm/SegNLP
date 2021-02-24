@@ -190,7 +190,7 @@ class JointPN(nn.Module):
 
     """
     
-    def __init__(self, hyperparamaters:dict, task2labels:dict, feature2dim:dict):
+    def __init__(self, hyperparamaters:dict, task_dims:dict, feature_dims:dict):
         super().__init__()
         self.OPT = hyperparamaters["optimizer"]
         self.LR = hyperparamaters["lr"]
@@ -204,7 +204,7 @@ class JointPN(nn.Module):
         self.ENC_DROPOUT = hyperparamaters["encoder_dropout"]
         self.DEC_DROPOUT = hyperparamaters["decoder_dropout"]
 
-        self.FEATURE_DIM = feature2dim["word_embs"] + 2 # FOR DOC POS
+        self.FEATURE_DIM = feature_dims["doc_embs"]
 
         # α∈[0,1], will specify how much to weight the two task in the loss function
         self.TASK_WEIGHT = hyperparamaters["task_weight"]
@@ -234,9 +234,7 @@ class JointPN(nn.Module):
                                 )
 
 
-        nr_ac_labels = len(task2labels["ac"])
-        self.ac_clf_layer = nn.Linear(self.ENCODER_HIDDEN_DIM*(2 if self.ENCODER_BIDIR else 1), nr_ac_labels)
-
+        self.ac_clf_layer = nn.Linear(self.ENCODER_HIDDEN_DIM*(2 if self.ENCODER_BIDIR else 1), task_dims["ac"])
         self.loss = nn.NLLLoss(reduction="sum", ignore_index=-1)
 
 

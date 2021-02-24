@@ -70,7 +70,7 @@ class LSTM_CNN_CRF(nn.Module):
 
     """ 
 
-    def __init__(self, hyperparamaters:dict, task2labels:dict, feature2dim:dict):
+    def __init__(self, hyperparamaters:dict, task_dims:dict, feature_dims:dict):
         super().__init__()
         self.OPT = hyperparamaters["optimizer"]
         self.LR = hyperparamaters["lr"]
@@ -81,7 +81,7 @@ class LSTM_CNN_CRF(nn.Module):
         self.NUM_LAYERS = hyperparamaters["num_layers"]
         self.BI_DIR = hyperparamaters["bidir"]
 
-        self.WORD_EMB_DIM = feature2dim["word_embs"]
+        self.WORD_EMB_DIM = feature_dims["word_embs"]
 
         self.lstm = LSTM_LAYER(  
                                 input_size=self.WORD_EMB_DIM+self.CHAR_DIM,
@@ -105,8 +105,7 @@ class LSTM_CNN_CRF(nn.Module):
         self.crf_layers = nn.ModuleDict()
 
 
-        for task, labels in task2labels.items():
-            output_dim = len(labels)
+        for task, output_dim in task_dims.items():
             self.output_layers[task] = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), output_dim)
             self.crf_layers[task] = CRF(num_tags=output_dim, batch_first=True)
 

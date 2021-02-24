@@ -18,39 +18,39 @@ logger = get_logger("LABELER")
 class Labeler:
 
 
-    def _label_spans(self, sample:pd.DataFrame, span_labels:dict):
+    def _label_spans(self, df:pd.DataFrame, span_labels:dict):
 
         def label_f(row, span_labels):
             return span_labels.get(int(row["char_end"]),{})
 
-        sample = pd.concat([sample,sample.apply(label_f, axis=1, result_type="expand", args=(span_labels,))], axis=1)
-        return sample
+        df = pd.concat([df,df.apply(label_f, axis=1, result_type="expand", args=(span_labels,))], axis=1)
+        return df
 
 
     def _label_tokens(self):
         pass
 
 
-    def _label_bios(self, sample):
-        sample["seg"] = "O"
-        acs = sample.groupby("ac_id")
+    def _label_bios(self, df):
+        df["seg"] = "O"
+        acs = df.groupby("ac_id")
         for ac_id, ac_df in acs:
-
+            
             if "None" in ac_id:
                 continue
 
-            sample.loc[ac_df.index,"BIO"] = ["B"] +  (["I"] * (ac_df.shape[0]-1))
-        return sample
+            df.loc[ac_df.index, "seg"] = ["B"] +  (["I"] * (ac_df.shape[0]-1))
+        return df
 
 
-    def _label_ams(self, sample):
-        sample = self.__ams_as_pre(sample)
-        return sample
+    def _label_ams(self, df):
+        df = self.__ams_as_pre(df)
+        return df
 
 
-    def __ams_as_pre(self,sample):
-        sample["am_id"] = np.nan
-        groups = sample.groupby("sentence_id")
+    def __ams_as_pre(self,df):
+        df["am_id"] = np.nan
+        groups = df.groupby("sentence_id")
 
         for sent_id, sent_df in groups:
             
@@ -68,3 +68,5 @@ class Labeler:
                 # self.level_dfs["token"]["am_id"].iloc[idxs] = ac_id
                 sample["am_id"].iloc[idxs] = ac_id
                 prev_ac_end = ac_end
+
+        return df
