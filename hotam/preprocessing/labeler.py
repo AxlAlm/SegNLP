@@ -33,13 +33,13 @@ class Labeler:
 
     def _label_bios(self, df):
         df["seg"] = "O"
-        acs = df.groupby("ac_id")
-        for ac_id, ac_df in acs:
+        spans = df.groupby("span_id")
+        for span_id, span_df in spans:
             
-            if "None" in ac_id:
+            if "None" in span_id:
                 continue
 
-            df.loc[ac_df.index, "seg"] = ["B"] +  (["I"] * (ac_df.shape[0]-1))
+            df.loc[span_df.index, "seg"] = ["B"] +  (["I"] * (span_df.shape[0]-1))
         return df
 
 
@@ -54,7 +54,7 @@ class Labeler:
 
         for sent_id, sent_df in groups:
             
-            acs = sent_df.groupby("ac_id")
+            acs = sent_df.groupby("span_id")
             prev_ac_end = 0
             for ac_id, ac_df in acs:
                 

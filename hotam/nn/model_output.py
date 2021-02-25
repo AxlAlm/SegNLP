@@ -84,7 +84,7 @@ class ModelOutput:
 
     def __decode_labels(self, preds:list, lengths:list, task:str):
 
-        dtype = str if task == "relation" else np.int16
+        dtype = str if task == "link" else np.int16
         size = preds.shape[0]
         decoded_preds = np.zeros((size, max(lengths)), dtype=dtype)
         for i, sample_preds in range(size):
@@ -118,12 +118,12 @@ class ModelOutput:
                             )
 
 
-    def __unfold_ac_labels(self, ac_labels:np.ndarray, span_indexes:np.ndarray, max_nr_token:int):
+    def __unfold_span_labels(self, span_labels:np.ndarray, span_indexes:np.ndarray, max_nr_token:int):
 
-        tok_labels = np.zeros((ac_labels.shape[0], max_nr_token))
+        tok_labels = np.zeros((span_labels.shape[0], max_nr_token))
         for i in range(batch_size):
             for start,end in span_indexes[i]:
-                tok_labels[i][start:end] = ac_labels[i][j]
+                tok_labels[i][start:end] = span_labels[i][j]
         return tok_labels
         
 
@@ -158,7 +158,7 @@ class ModelOutput:
     def add_preds(self, task:str, level:str, data:torch.tensor, decoded:bool=False, sample_ids="same"):
 
         assert task in set(self.all_tasks), f"{task} is not a supported task. Supported tasks are: {self.all_tasks}"
-        assert level in set(["token", "ac"]), f"{level} is not a supported level. Only 'token' or 'ac' are supported levels"
+        assert level in set(["token", "span"]), f"{level} is not a supported level. Only 'token' or 'span' are supported levels"
         assert torch.is_tensor(data), f"{task} preds need to be a tensor"
         assert len(data.shape) == 2, f"{task} preds need to be a 2D tensor"
 
@@ -168,16 +168,16 @@ class ModelOutput:
         # and same applies if input level i token and prediction level is AC
         #
         # However, if the prediction level is token and the input level is AC, we need to use the prediction lengths derived from our segmentation predictions
-        if level == "ac" and self.prediction_level == "ac":
+        if level == "span" and self.prediction_level == "span":
             lengths = self.batch["lengths_seq"]
 
         elif level == "token" and self.prediction_level == "token":
             lengths = self.batch["lengths_tok"]
 
-        elif level == "token" and self.prediction_level == "ac":
+        elif level == "token" and self.prediction_level == "span":
             lengths = self.batch["lengths_tok"]
 
-        elif level == "ac" and self.prediction_level == "token":
+        elif level == "span" and self.prediction_level == "token":
             #lengths = self.seg["lenghts_seq"]
             raise NotImplementedError()
 
@@ -192,16 +192,16 @@ class ModelOutput:
             return
 
 
-        if level == "ac":
-            if self.prediction_level == "ac":
-                ac_span_indexes = self.batch["ac_spans"]
+        if level == "span":
+            if self.prediction_level == "span":
+                span_indexes = self.batch["span_idxs"]
             else:
                 raise NotImplementedError()
 
-            # turn labels for each AC to labels across all tokens in sample
-            data = self.__unfold_ac_labels(
+            # turn labels for each span to labels across all tokens in sample
+            data = self.__unfold_span_labels(
                                             ac_labels=data,
-                                            span_indexes=ac_span_indexes,
+                                            span_indexes=span_indexes,
                                             max_nr_token=max(self.batch["lengths_tok"]),
                                         )
 
@@ -218,7 +218,7 @@ class ModelOutput:
         if task == "seg":
             decoded_labels = self.__correct_segmentation(decoded_labels)
 
-        if task == "relation":
+        if task == "link":
             decoded_labels = self.__correct_relations(decoded_labels)
 
 

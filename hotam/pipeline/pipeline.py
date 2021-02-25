@@ -59,7 +59,15 @@ class Pipeline:
                 root_dir:str = "/tmp/hotam/pipelines"       
                 ):
         
-        pipe_hash = self.__pipeline_hash(prediction_level, sample_level, dataset.name, tasks, features, encodings)                         
+
+        pipe_hash = self.__pipeline_hash(
+                                            prediction_level, 
+                                            sample_level, 
+                                            dataset.name, 
+                                            tasks, 
+                                            features, 
+                                            encodings
+                                            )                         
         pipeline_folder_path = self.__create_pipe_folder(root_dir=root_dir, pipe_hash=pipe_hash)
         self.__dump_pipe_config(
                                 config = dict(
@@ -139,6 +147,14 @@ class Pipeline:
             self._trained_model = None
             if self._many_models:
                 self._trained_model = []
+
+    
+
+    def __dump_pipe_config(self, config:dict, pipeline_folder_path:str):
+        fp = os.path.join(pipeline_folder_path, "config.json")
+        if not os.path.exists(fp):
+            with open(fp, "w") as f:
+                json.dump(config, f)
 
 
     def __dump_pipe_config(self, config:dict, pipeline_folder_path:str):

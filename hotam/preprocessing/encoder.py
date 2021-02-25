@@ -30,14 +30,14 @@ class Encoder:
         for task in self.all_tasks:
             
 
-            if task == "relation":
+            if task == "link":
                 relations = self.task2labels[task]
                 _min_rel_value = min(relations)
                 _max_rel_value = max(relations)
                 max_back_relation = 0 if _min_rel_value > 0 else _min_rel_value
                 max_forward_relation = 0 if _max_rel_value < 0 else _max_rel_value
-                max_acs = self._get_max_nr_seq("ac")
-                self.encoders[task] = RelationEncoder(name=task, max_back_relation=max_back_relation, max_forward_relation=max_forward_relation, max_acs=max_acs)
+                max_spans = self._get_max_nr_seq("span")
+                self.encoders[task] = RelationEncoder(name=task, max_back_relation=max_back_relation, max_forward_relation=max_forward_relation, max_acs=max_spans)
             else:
                 self.encoders[task] = LabelEncoder(name=task, labels=self.task2labels[task])
 
@@ -47,20 +47,20 @@ class Encoder:
         for task in self.all_tasks:
             # self.level_dfs["token"][task] = self.level_dfs["token"][task].apply(lambda x: self.encode(x, task))
 
-            if task == "relation":
+            if task == "link":
                 
-                df["_relation"] = df["relation"].to_numpy()
+                df["_link"] = df["link"].to_numpy()
                 #samples = df.groupby(self.sample_level+"_id")
                 
                 #for s_id, df in tqdm(samples, desc="encoding relations"):
-                acs = df.groupby("ac_id")
-                relations = [ac_df["relation"].unique()[0] for ac_id, ac_df in acs]
+                spans = df.groupby("span_id")
+                relations = [span_df["link"].unique()[0] for span_id, span_df in spans]
                 enc_relations = self.encode_list(relations, task)
   
-                for i, (ac_id, ac_df) in enumerate(acs):
-                    df.loc[ac_df.index,"_relation"] = enc_relations[i]
+                for i, (span_id, span_df) in enumerate(spans):
+                    df.loc[span_df.index,"_link"] = enc_relations[i]
 
-                df["relation"] = self.data.pop("_relation")
+                df["link"] = self.data.pop("_link")
 
             else:
                 df[task] = df[task].apply(lambda x: self.encode(x, task))

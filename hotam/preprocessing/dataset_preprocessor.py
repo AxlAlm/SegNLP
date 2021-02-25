@@ -56,7 +56,7 @@ class PreProcessedDataset(ptl.LightningDataModule):
 
 
     def stats(self):
-        
+        pass
 
 
     def train_dataloader(self):
@@ -135,8 +135,12 @@ class DataPreprocessor:
         self.__setup_h5py(file_path=file_path) 
 
         progress_bar = tqdm(total=len(dataset), desc="Processing and Storing Dataset")
+        last_id = 0
         for i in range(0, len(dataset), chunks):
             Input = self(dataset[i:i+chunks])
+
+            Input["id"] + last_id
+            last_id = Input["id"][-1]
 
             if not self.__init_storage_done:
                 self.__init_store(Input)

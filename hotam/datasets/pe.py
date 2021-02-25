@@ -96,17 +96,18 @@ class PE(DataSet):
                                     "For":"PRO", 
                                     "attacks":"CON"
                                     }
-        self._tasks = ["ac", "relation", "stance"]
+        #self._tasks = ["ac", "relation", "stance"]
+        self._tasks = ["span_label", "link", "link_label"]
         self.__task_labels = {
-                            "ac":["MajorClaim", "Claim", "Premise"],
+                            "span_label":["MajorClaim", "Claim", "Premise"],
 
                             # Originally stance labels are For and Against for Claims and MajorClaims
                             # and for premsies supports or attacks. 
                             # However, Against and attacks are functional equivalent so will use CON for both
                             # and for For and supports we will use PRO
                             #"stance":["For", "Against", "supports", "attacks"],
-                            "stance": ["PRO", "CON"],
-                            "relation": set()
+                            "link_label": ["PRO", "CON"],
+                            "link": set()
                             }
 
         self.about = """The corpus consists of argument annotated persuasive essays including annotations of argument components and argumentative relations.
@@ -344,14 +345,14 @@ class PE(DataSet):
             #print(ac_id)
             relation = ac_id2relation.get(ac_id, 0)
 
-            self.__task_labels["relation"].add(relation)
+            self.__task_labels["link"].add(relation)
 
             label = {   
                         #"seg":"O",
-                        "ac": ac_id2ac.get(ac_id,"None"), 
-                        "stance": self._stance2new_stance.get(ac_id2stance.get(ac_id,"None"), "None"), 
-                        "relation": relation,
-                        "ac_id":ac_id,
+                        "span_label": ac_id2ac.get(ac_id,"None"), 
+                        "link_label": self._stance2new_stance.get(ac_id2stance.get(ac_id,"None"), "None"), 
+                        "link": relation,
+                        "span_id":ac_id,
                         }
             
 
@@ -486,8 +487,9 @@ class PE(DataSet):
                             })
 
         self._size = len(data)
-        self.__task_labels["relation"] = sorted(self.__task_labels["relation"])
+        self.__task_labels["link"] = sorted(self.__task_labels["link"])
         self._task_labels = self.__task_labels
+
         del self.__task_labels
         return np.array(data)
         

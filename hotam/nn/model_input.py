@@ -22,12 +22,7 @@ class ModelInput(dict):
 
 
     def __len__(self):
-        return self._size
-
-
-    def __set_size(self, i):
-        if i > self._size:
-            self._size = i
+        return self["id"].shape[0]
 
 
     def to(self, device):
@@ -47,7 +42,10 @@ class ModelInput(dict):
     def to_numpy(self):
         for k,v in self.items():
 
-            if isinstance(v[0], np.ndarray):
+            if isinstance(v, np.ndarray):
+                continue
+            
+            if isinstance(v[0], np.ndarray)
                 dtype = v[0].dtype
             else:
                 dtype = np.int
@@ -63,21 +61,20 @@ class ModelInput(dict):
      
 
     def add(self, k, v):
-        if k not in self:
-            self[k] = [v]
-        else:
-            self[k].append(v)
-         
         # if k not in self:
-        #     if isinstance(v, np.ndarray):
-        #         self[k] = np.expand_dims(v, axis=0)
-        #     else:
-        #         self[k] = [v]
+        #     self[k] = [v]
         # else:
-        #     if isinstance(v, int):
-        #         self[k].append(v)
-        #     else:
-        #         self[k] = dynamic_update(self[k],v)
+        #     self[k].append(v)
+         
+        if k not in self:
+            if isinstance(v, np.ndarray):
+                self[k] = np.expand_dims(v, axis=0)
+            else:
+                self[k] = [v]
+        else:
+            if isinstance(v, int):
+                self[k].append(v)
+            else:
+                self[k] = dynamic_update(self[k],v)
 
-        self.__set_size(len(v))
 
