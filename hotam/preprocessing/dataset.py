@@ -381,6 +381,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labeler, Sp
 
                 for sent_i, (sent_id, sent_df) in enumerate(sentences):
 
+
                     deprel_m[sent_i][:sent_df.shape[0]] = sent_df["deprel"].to_numpy()
                     dephead_m[sent_i][:sent_df.shape[0]] = sent_df["dephead"].to_numpy()
 

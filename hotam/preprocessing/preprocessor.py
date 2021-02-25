@@ -355,9 +355,7 @@ class Preprocessor:
 
         normalized_indexes = np.arange(len(spacy_sentence))
 
-        i = 0
-        for tok in spacy_sentence:
-        #for i, tok in enumerate(spacy_sentence):
+        for i, tok in enumerate(spacy_sentence):
             token = tok.text
 
             if "\t" in token or "\n" in token:
@@ -378,16 +376,14 @@ class Preprocessor:
             end = start + token_len
             dephead = tok.head.i - spacy_sentence.start
 
-            normalize_dephead = normalized_indexes[dephead]
-
             row =  {
                     "id": self.__get_global_id("token"),
-                    "sentence_token_id": i,
+                    "sentence_token_id": normalized_indexes[i],
                     "char_start": start,
                     "char_end": end,
                     "text": token.lower(),
                     "pos": tok.tag_,
-                    "dephead": normalize_dephead,
+                    "dephead": normalized_indexes[dephead],
                     "deprel": tok.dep_
                     #
                     }
@@ -402,7 +398,6 @@ class Preprocessor:
 
             current_token_idx = end
 
-            i += 1
         
         # if parent_ids["sentence_id"] == 74:
         #     print(pd.DataFrame([r for r in self._data_stack if r["sentence_id"] == 74]))
