@@ -195,84 +195,78 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         return sample_labels
     
 
+    def __get_dep_encs(self,  Input:ModelInput, sample:pd.DataFrame):
+
+        deprel_m = np.zeros((self.max_sent, self.max_sent_tok))      
+        dephead_m = np.zeros((self.max_sent, self.max_sent_tok))      
+        sent2root = np.zeros(self.max_sent)
+        sentences  = sample.groupby("sentence_id")
+
+        sentences  = sample.groupby("sentence_id")
+        spans = sample.groupby("span_id")
+        nr_spans  = len(spans)
+        nr_sents = len(sentences)
+        nr_tok_sents = max([len(s) for s in sentences])
+        sample_m = np.zeros((nr_sents, nr_tok_sents))      
+
+        span_i = 0
+
+        #create a mask
+        if self.prediction_level == "span":
+            
+            #information about which span belong in which sentence
+            span2sentence = np.zeros(len(spans))
+
+            # given information from span2sentence, we can get the mask for a sentnece for a particular span
+            # so we know what tokens belong to span and not
+            sentence_span_mask = np.zeros((nr_spans, nr_sents))
+
+
+        for sent_i, (sent_id, sent_df) in enumerate(sentences):
+
+            deprel_m[sent_i][:sent_df.shape[0]] = sent_df["deprel"].to_numpy()
+            dephead_m[sent_i][:sent_df.shape[0]] = sent_df["dephead"].to_numpy()
+
+            root_id = self.encode_list(["root"], "deprel")[0]
+            root_idx = int(np.where(sent_df["deprel"].to_numpy() == root_id)[0])
+            sent2root[sent_i] = root_idx
+                            
+            #create a mask
+            if self.prediction_level == "span":
+                spans = sent_df.groupby("span_id")
+
+                for span_id, span_df in spans:
+                    span2sentence[span_i] = sent_i
+
+                    span_ids = sent_df["span_id"].to_numpy()
+                    mask = span_ids == span_id
+                    sentence_span_mask[span_i][:sent_df.shape[0]] = mask.astype(np.int8)
+                    span_i += 1
+
+
+        if self.prediction_level == "span":
+            Input.add("span2sentence",span2sentence)
+            Input.add("sent_span_mask", sentence_span_mask)
+
+
+        Input.add("sent2root", sent2root)
+        Input.add("deprel", deprel_m)
+        Input.add("dephead", dephead_m)
+  
+
     def __get_encs(self, Input:ModelInput, sample:pd.DataFrame):
 
-        #sample_encs = {}
+        deps_done = False
         for enc in self.encodings:
 
-            # for dependency information we need to perserve the sentences 
-            #
             if self.sample_level != "sentence" and enc in ["deprel", "dephead"]:
-                
-                sentences  = sample.groupby("sentence_id")
-                spans = sample.groupby("span_id")
-                nr_spans  = len(spans)
-                nr_sents = len(sentences)
-                nr_tok_sents = max([len(s) for s in sentences])
 
-                sample_m = np.zeros((nr_sents, nr_tok_sents))      
+                if deps_done:
+                    continue
 
-                #information about the root
-                if enc == "deprel":
-                    sent2root = np.zeros(nr_sents)
-
-
-                span_i = 0
-
-                #create a mask
-                if self.prediction_level == "span":
-                    
-                    #information about which span belong in which sentence
-                    span2sentence = np.zeros(len(spans))
-
-                    # given information from span2sentence, we can get the mask for a sentnece for a particular span
-                    # so we know what tokens belong to span and not
-                    sentence_span_mask = np.zeros((nr_spans, nr_sents))
-
-
-                for sent_i, (sent_id, sent_df) in enumerate(sentences):
-                    enc_data = sent_df[enc].to_numpy()
-                    sample_m[sent_i][:sent_df.shape[0]] = enc_data
-                    
-                    if enc == "deprel":
-                        root_id = self.encode_list(["root"], "deprel")[0]
-                        root_idx = int(np.where(enc_data == root_id)[0])
-                        sent2root[sent_i] = root_idx
-                                    
-                    #create a mask
-                    if self.prediction_level == "span":
-                        spans = sent_df.groupby("span_id")
-
-                        for span_id, span_df in spans:
-                            span2sentence[span_i] = sent_i
-
-                            span_ids = sent_df["span_id"].to_numpy()
-                            mask = span_ids == span_id
-                            sentence_span_mask[span_i][:sent_df.shape[0]] = mask.astype(np.int8)
-                            span_i += 1
-
-                if enc == "deprel":
-                    Input.add("sent2root", sent2root)
-                    #sample_encs["sent2root"] = sent2root
-
-                if self.prediction_level == "span":
-                    Input.add("span2sentence",span2sentence)
-                    Input.add("sent_span_mask", sentence_span_mask)
-
-                #     sample_encs["span2sentence"] = span2sentence
-                #     sample_encs["sent_span_mask"] = sentence_span_mask
-                    
+                self.__get_dep_encs(Input=Input, sample=sample)
 
             else:
-                inc_span = self.prediction_level == "span" and not self.tokens_per_sample
-                # shape = self.__get_shape(
-                #                         span=inc_span,
-                #                         token=enc in set(["words", "bert_encs", "chars", "pos","deprel", "dephead" ]),
-                #                         char=enc == "chars",
-                #                         feature_dim=None
-                #                         )
-                #sample_m = np.zeros(shape)
-
                 if self.prediction_level == "span" and not self.tokens_per_sample:
 
                     spans = sample.groupby("span_id")
@@ -287,59 +281,34 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                     #sample_m[:sample.shape[0]] = np.stspank(sample[enc].to_numpy())
                     Input.add(enc, np.stspank(sample[enc].to_numpy()))
                 
-            #sample_encs[enc] = sample_m
-        
-        #return sample_encs
-
-
+  
     def __get_feature_data(self, Input:ModelInput, sample:pd.DataFrame):
         
         mask_dict = {}
         feature_dict = {}
-        #masks_not_added = True
 
-        # if self.prediction_level == "span":
-        #     mask_dict["am_token_mask"] = np.zeros((self.max_seq, self.max_seq_tok))
-        #     mask_dict["span_token_mask"] = np.zeros((self.max_seq, self.max_seq_tok))
-        #     mask_dict["span_mask"] = np.zeros(self.max_seq)
-    
-        # if self.tokens_per_sample:
-        #     mask_dict["token_mask"] = np.zeros(self.max_tok)
-
-        # if self.prediction_level == "token":
-        #     mask_dict["token_mask"] = np.zeros(self.max_tok)
 
         span_mask_added = False
         token_mask_added = False
 
         for feature, fm in self.feature2model.items():
-            
-            # if hotam.preprocessing.settings["STORE_FEATURES"] and hasattr(fm, "_store_features"):
-            #     self.__feature_store_setup(fm)
+    
+            if self.prediction_level == "span":
+                if self.tokens_per_sample:
+                    if fm.level == "doc":
+                        alt1 = True
+                    else:
+                        alt1 = False
+                else:
+                    alt1 = True
+            else:
+                alt1 = False
 
-            # if self.prediction_level == "span":
-            #     if self.tokens_per_sample:
-            #         if fm.level == "doc":
-            #             inc_span = True
-            #         else:
-            #             inc_span = False
-            #     else:
-            #         inc_span = True
-            # else:
-            #     inc_span = False
-
-            # shape = self.__get_shape(
-            #                         span=inc_span,
-            #                         token=fm.level == "word",
-            #                         #char=enc == "chars",
-            #                         feature_dim=fm.feature_dim
-            #                         )  
-
-            #feature_matrix = np.zeros(shape)
+    
             sample_length = sample.shape[0]
 
-            
-            if self.prediction_level == "span" and inc_span:
+            if alt:
+            #if self.prediction_level == "span" and not self.tokens_per_sample:
                 
                 nr_spans = len(sample.groupby("span_id"))
 
@@ -412,12 +381,6 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 Input.add(group_name, np.concatenate(feature_arrays, axis=-1))
             else:
                 Input.add(group_name, feature_arrays[0])
-
-
-        # feature_dict = {k: np.concatenate(v, axis=-1) if len(v) > 1 else v[0] for k,v in feature_dict.items()}
-        # feature_dict.update(mask_dict)
-
-        # return feature_dict
 
 
     def __extract_ADU_features(self, fm, sample, sample_shape=None):

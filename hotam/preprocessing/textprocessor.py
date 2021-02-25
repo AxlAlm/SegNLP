@@ -312,9 +312,21 @@ class TextProcesser:
         doc, sentence = self.__get_parent_text("token")
         current_token_idx = self.__get_char_idx("token")
 
-        #print("HELLO DOC", doc)
+        # we create a mapping of all tokens indexes. Then when we encounter a token that we need to remove
+        # we update the portion after the token we removed so the indexes after fill in the cap of the removed token
+        # e.g. we change indexes so the final version of normalized_indexes contain a range between two number if we ignore 
+        # the indexes of ignored tokens. example = [1,2,2,3,4,5,6,6,7,8,9] 
+        normalized_indexes = np.arange(len(spacy_sentence))
+
+        #i = 0
+        #for tok in spacy_sentence:
         for i, tok in enumerate(spacy_sentence):
             token = tok.text
+
+            if "\t" in token or "\n" in token:
+                normalized_indexes = np.concatenate((normalized_indexes[:i],normalized_indexes[i:]-1))
+                continue
+
             token_len = len(token)
             token = strange_characters.get(token, token)
 
@@ -324,22 +336,19 @@ class TextProcesser:
                 # -2 here is just to start searching from a few characters back 
                 # it allows the tokenizer idxes to be a bit off and we will still find the correct
                 # char index in the origial text. 
-                start = doc.find(token, max(0, current_token_idx-2)) 
-
-            assert tok.i - spacy_sentence.start == i
-            assert tok.head.i - spacy_sentence.start >= 0
-            assert tok.head.i - spacy_sentence.start < len(sentence)
-
+                start = doc.find(token, max(0, current_token_idx-2))
             
             end = start + token_len
+            dephead = tok.head.i - spacy_sentence.start
+            
             row =  {
                     "id": self.__get_global_id("token"),
-                    "sentence_token_id": i,
+                    "sentence_token_id": normalized_indexes[i],
                     "char_start": start,
                     "char_end": end,
                     "text": token.lower(),
                     "pos": tok.tag_,
-                    "dephead": tok.head.i - spacy_sentence.start,
+                    "dephead": normalized_indexes[dephead],
                     "deprel": tok.dep_
                     #
                     }
@@ -350,10 +359,11 @@ class TextProcesser:
             row.update(parent_ids)
 
             self._level_row_cache["token"] = row
-            self.__data_stack.append(row)
+            self._data_stack.append(row)
 
             current_token_idx = end
 
+            #i += 1
 
         # stanza_doc = self.nlp(sentence)
         # spacy_doc = self.nlp(sentence)
@@ -541,12 +551,6 @@ class TextProcesser:
         
         self.level2parents = new_level2parents
 
-   
-    def __clean(self, df):
-        df = df[~df.text.str.contains("\n")]
-        df = df[~df.text.str.contains("\t")]
-        return df.reset_index()
-
 
     def _process_doc(self, doc:str, text_id:int, label:str=None):
         """given a text string processes it appropriately. Meaning, if the string is a document
@@ -585,7 +589,7 @@ class TextProcesser:
         else:
             raise NotImplementedError(f'"{self.input_level}" is not a understood type')
 
-        df = self.__clean(pd.DataFrame(self.__data_stack))
+        df = pd.DataFrame(self.__data_stack)
         return df
 
 
