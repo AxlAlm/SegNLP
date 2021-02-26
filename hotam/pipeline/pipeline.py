@@ -13,28 +13,20 @@ import shutil
 #pytorch Lightning
 from pytorch_lightning.loggers import LightningLoggerBase
 
+#pytorch
+import torch
 
 #hotam
 from hotam.datasets import DataSet
-from hotam.default_hyperparamaters import get_default_hps
 from hotam.preprocessing import Preprocessor
 from hotam.preprocessing.dataset_preprocessor import PreProcessedDataset
+from hotam.ptl import get_ptl_trainer, PTLBase
+from hotam.ptl.ptl_trainer_setup import default_trainer_args
 from hotam import get_logger
+from hotam.utils import set_random_seed
+from hotam.evaluation_methods import get_evaluation_method
 
 logger = get_logger("PIPELINE")
-
-default_trainer_args = {
-                            "logger":None,
-                            "checkpoint_callback":False,
-                            "early_stop_callback":False,
-                            "progress_bar_refresh_rate":1,
-                            "check_val_every_n_epoch":1,
-                            "gpus":None,
-                            #"gpus": [1],
-                            "num_sanity_val_steps":1,  
-                            #"overfit_batches":0.7
-                            }
-
 
 
 
@@ -49,16 +41,14 @@ class Pipeline:
                 input_level:str,
                 features:list =[],
                 encodings:list =[],
-                model=None,
                 model_load_path:str = None,
                 tokens_per_sample:bool=False,
                 dataset:Union[DataSet, PreProcessedDataset] = None,
-                process_dataset:bool = True,
-                hyperparamaters:dict = None,
-                save_all_models:Union[bool,int] = 1, #saving best 
                 root_dir:str = "/tmp/hotam/pipelines"       
                 ):
         
+        self.project = project
+        self.name = name
 
         pipe_hash = self.__pipeline_hash(
                                             prediction_level, 
@@ -82,15 +72,21 @@ class Pipeline:
                                 )       
         
         self.preprocessor = Preprocessor(                
-                                    prediction_level=prediction_level,
-                                    sample_level=sample_level, 
-                                    input_level=input_level,
-                                    features=features,
-                                    encodings=encodings,
-                                    tokens_per_sample=tokens_per_sample,
-                                    )
+                                        prediction_level=prediction_level,
+                                        sample_level=sample_level, 
+                                        input_level=input_level,
+                                        features=features,
+                                        encodings=encodings,
+                                        tokens_per_sample=tokens_per_sample,
+                                        )
 
         if dataset:
+
+            self.preprocessor.expect_labels(
+                                            tasks=tasks, 
+                                            task_labels=dataset.task_labels
+                                            )
+
             if isinstance(dataset, PreProcessedDataset):
                 self.dataset = dataset
             else:
@@ -104,10 +100,6 @@ class Pipeline:
                                                         )
                 else:
                     try:
-                        self.preprocessor.expect_labels(
-                                                        tasks=tasks, 
-                                                        task_labels=dataset.task_labels
-                                                        )
 
                         self.dataset = self.preprocessor.process_dataset(dataset, dump_dir=pipeline_folder_path, chunks=5)
                     except BaseException as e:
@@ -115,40 +107,40 @@ class Pipeline:
                         raise e
 
             
+        if model_load_path:
+            raise NotImplementedError
 
-        if hyperparamaters:
-            assert model, "No model have been added"
-
-            self._set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
-
-            self._many_models = False
-            self._nr_models = len(self._set_hyperparamaters)
-            if self._nr_models > 1:
-                self._many_models = True
+        # if hyperparamaters:
+            # assert model, "No model have been added"
 
 
-            self._model_loaded = False
-            if model_load_path:
-                self._model_loaded = True
-                assert not self._many_models, "If loading a model you can continue training it but you are not allowed to trainer other models with other hyperparamaters. Make sure you hyperparamaters do not have multiple values."
-
-                self._trained_model = PTLBase(   
-                                                model=model, 
-                                                hyperparamaters=hyperparamaters,
-                                                all_tasks=self.preprocessor.all_tasks,
-                                                label_encoders=self.preprocessor.encoders,
-                                                prediction_level=prediction_level,
-                                                task_dims=task_dims,
-                                                feature_dims=feature_dims,
-                                                )
-                self._trained_model.load_from_checkpoint(model_load_path)
+            # self._many_models = False
+            # self._nr_models = len(self._set_hyperparamaters)
+            # if self._nr_models > 1:
+            #     self._many_models = True
 
 
-            self._trained_model = None
-            if self._many_models:
-                self._trained_model = []
+            # self._model_loaded = False
+            # if model_load_path:
+            #     self._model_loaded = True
+            #     assert not self._many_models, "If loading a model you can continue training it but you are not allowed to trainer other models with other hyperparamaters. Make sure you hyperparamaters do not have multiple values."
 
-    
+                # self._trained_model = PTLBase(   
+                #                                 model=model, 
+                #                                 hyperparamaters=hyperparamaters,
+                #                                 all_tasks=self.preprocessor.all_tasks,
+                #                                 label_encoders=self.preprocessor.encoders,
+                #                                 prediction_level=prediction_level,
+                #                                 task_dims=task_dims,
+                #                                 feature_dims=feature_dims,
+                #                                 )
+                # self._trained_model.load_from_checkpoint(model_load_path)
+
+
+            # self._trained_model = None
+            # if self._many_models:
+            #     self._trained_model = []
+
 
     def __dump_pipe_config(self, config:dict, pipeline_folder_path:str):
         fp = os.path.join(pipeline_folder_path, "config.json")
@@ -184,20 +176,16 @@ class Pipeline:
         return pipeline_folder_path
 
 
-    def __config(self, experiment_id:str, hyperparamaters:dict, random_seed:int, evaluation_method:str, save_model_choice:str):
+    def __config(self, experiment_id:str, hyperparamaters:dict, evaluation_method:str, save_choice:str, model_name:str):
 
         exp_config = {}
 
         #same for whole pipeline
+        exp_config["experiment_id"] = experiment_id
         exp_config["project"] = self.project
         exp_config["dataset"] = self.dataset.name
-        exp_config["model"] = self.model.name()
-        exp_config["dataset_config"] = self.dataset.config
+        exp_config["model"] = model_name
         exp_config["dataset_stats"] = self.dataset.stats().to_dict()
-        exp_config["task2label"] = self.dataset.task2labels
-        exp_config["tasks"] = self.dataset.tasks
-        exp_config["subtasks"] = self.dataset.subtasks
-        exp_config["experiment_id"] = experiment_id
         exp_config["start_timestamp"] = get_timestamp()
         exp_config["trainer_args"] = trainer_args
         exp_config["status"] = "ongoing"
@@ -205,7 +193,9 @@ class Pipeline:
         #for each exp / model
         exp_config["hyperparamaters"] = hyperparamaters
         exp_config["evaluation_method"] = evaluation_method
-        exp_config["model_selection"] = save_model_choice
+        exp_config["model_selection"] = save_choice
+
+        exp_config.update(self.preprocessor.config)
 
         return config
 
@@ -233,113 +223,101 @@ class Pipeline:
         return set_hyperparamaters
 
 
-    def __get_test_model_choice(self, trainer_args:dict):
-        """we need to know, when testing, if we are selecting the last model or teh best model
-        when testing. This simply return "last" or "best" so we know whick model the testing was done with.
+    # def __get_test_model_choice(self, trainer_args:dict):
+    #     """we need to know, when testing, if we are selecting the last model or teh best model
+    #     when testing. This simply return "last" or "best" so we know whick model the testing was done with.
 
-        Parameters
-        ----------
-        exp_config : dict
-            experiment configuration
-        """
+    #     Parameters
+    #     ----------
+    #     exp_config : dict
+    #         experiment configuration
+    #     """
 
-        test_model_choice = "last"
-        save_top_k = trainer_args.get("save_top_k", 0)
-        #using_callback = True if exp_config["trainer_args"]["checkpoint_callback"] else False
-        #test_model = "best"
+    #     test_model_choice = "last"
+    #     save_top_k = trainer_args.get("save_top_k", 0)
+    #     #using_callback = True if exp_config["trainer_args"]["checkpoint_callback"] else False
+    #     #test_model = "best"
 
-        #if save_top_k == 0:
-            #is_saving = False
+    #     #if save_top_k == 0:
+    #         #is_saving = False
 
-        if save_top_k != 0 and save_top_k:
-            test_model_choice = "best"
+    #     if save_top_k != 0 and save_top_k:
+    #         test_model_choice = "best"
         
-        return test_model_choice
+    #     return test_model_choice
 
 
     def fit(    self,   
-                exp_logger:LightningLoggerBase,  
+                model:torch.nn.Module,
+                hyperparamaters:dict,
+                exp_logger:LightningLoggerBase = None,  
                 ptl_trn_args:dict=default_trainer_args, 
                 mode:str = "all", 
-                save_model_choice:str = None, 
+                save:str = None, 
                 evaluation_method:str = "default", 
                 model_dump_path:str = "/tmp/hotam_models/",
                 run_test:bool = True, 
                 ):
         
-        
-        if save_model_choice is None:
-            save_model_choice  = self.__get_test_model_choice(ptl_trn_args)
 
-        for hyperparamater in self._set_hyperparamaters:
+        set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
 
-            experiment_id = "_".join([model_name, str(uuid.uuid4())[:8]])
+        print(set_hyperparamaters)
+
+        # if save is None:
+        #     save  = self.__get_test_model_choice(ptl_trn_args)
 
 
-            ptl_trn_args["logger"] = exp_logger
-            trainer = self.get_ptl_trainer( 
-                                            experiment_id=experiment_id, 
-                                            trainer_args=ptl_trn_args, 
-                                            hyperparamaters=hyperparamater, 
-                                            model_dump_path=model_dump_path, 
-                                            )
+        for hyperparamater in set_hyperparamaters:
+
+            experiment_id = "_".join([model.name(), str(uuid.uuid4())[:8]])
+
+            if exp_logger:
+                ptl_trn_args["logger"] = exp_logger
+
+            trainer = get_ptl_trainer( 
+                                        experiment_id=experiment_id, 
+                                        trainer_args=ptl_trn_args, 
+                                        hyperparamaters=hyperparamater, 
+                                        model_dump_path=model_dump_path,
+                                        save_choice=save, 
+                                        )
 
             if "random_seed" not in hyperparamater:
                 hyperparamater["random_seed"] = 42
             
             set_random_seed(hyperparamater["random_seed"])
 
-            exp_config = self.__config(
-                                        experiment_id = experiment_id,
-                                        hyperparamaters = hyperparamater,
-                                        evaluation_method = evaluation_method, 
-                                        save_model_choice = save_model_choice
-                                        )
+            # exp_config = self.__config(
+            #                             experiment_id = experiment_id,
+            #                             hyperparamaters = hyperparamater,
+            #                             evaluation_method = evaluation_method, 
+            #                             save_choice = save,
+            #                             model_name=model.name()
+            #                             )
 
-
-            if self._model_loaded:
-                ptl_model = self._trained_model
-            else:
-                ptl_model = PTLBase(   
-                                    model=model, 
-                                    hyperparamaters=hyperparamater,
-                                    all_tasks=self.preprocessor.all_tasks,
-                                    label_encoders=self.preprocessor.encoders,
-                                    prediction_level=prediction_level,
-                                    task_dims=task_dims,
-                                    feature_dims=feature_dims,
-                                    )
-
-
-                if self._many_models:
-                    self._trained_model.append(ptl_model)
-                else:
-                    self._trained_model = ptl_model
-
+            ptl_model = PTLBase(   
+                                model=model, 
+                                hyperparamaters=hyperparamater,
+                                all_tasks=self.preprocessor.all_tasks,
+                                label_encoders=self.preprocessor.encoders,
+                                prediction_level=self.preprocessor.prediction_level,
+                                task_dims={t:len(l) for t,l in self.preprocessor.task2labels.items()},
+                                feature_dims=self.preprocessor.feature2dim,
+                                )
 
             self.dataset.batch_size = hyperparamaters["batch_size"]
-            train_set = self.dataset.train_dataloader()
-            val_set = self.dataset.val_dataloader()
-
-            test_set = None
-            if run_test:
-                test_set = self.dataset.test_dataloader()  
-
-            eval_f = get_eval_method(evaluation_method)
-
 
             if exp_logger:
                 exp_logger.log_experiment(exp_config)
 
             try:
-                eval_f(
-                        trainer = trainer, 
-                        ptl_model = ptl_model,
-                        save_model_choice = save_model_choice,
-                        train_set = train_set,
-                        val_set = val_set,
-                        test_set = test_set                    
-                    )
+                get_evaluation_method(evaluation_method)(
+                                                        trainer = trainer, 
+                                                        ptl_model = ptl_model,
+                                                        dataset=self.dataset,
+                                                        save_choice = save,
+                                                        )
 
             except BaseException as e:
                 if exp_logger:

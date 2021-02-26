@@ -2,6 +2,10 @@
 
 import numpy as np
 
+
+#pytroch 
+import torch
+
 #hotam 
 from hotam.utils import dynamic_update, tensor_dtype
 
@@ -35,6 +39,12 @@ class ModelInput(dict):
 
     def to_tensor(self):
         for k,v in self.items():
+
+            if k == "text":
+                continue
+
+
+            print(k, tensor_dtype(v.dtype), v.dtype)
             self[k] = torch.tensor(v, dtype=tensor_dtype(v.dtype))
         return self
 
@@ -76,5 +86,3 @@ class ModelInput(dict):
                 self[k].append(v)
             else:
                 self[k] = dynamic_update(self[k],v)
-
-

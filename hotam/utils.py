@@ -262,7 +262,7 @@ def set_random_seed(nr, using_gpu:bool=False):
 
 def tensor_dtype(numpy_dtype):
 
-    if numpy_dtype == np.float:
+    if numpy_dtype == np.float or numpy_dtype == np.float32:
         return torch.float
 
     if numpy_dtype == np.int:

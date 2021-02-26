@@ -29,24 +29,7 @@ from hotam import get_logger
 
 
 
-# def calc_seg_metrics(target_seg_lens:np.ndarray, pred_seg_lens:np.ndarray):
-
-#     scores = Counter(dict(""))
-#     zipped = zip(target_seg_lens, pred_seg_lens)
-#     size = len(target_seg_lens)
-#     for target, pred in zipped:
-#         conf_matrix = segeval.boundary_confusion_matrix(hypo,ref)
-#         segeval.precision(conf_matrix)
-#         segeval.recall(conf_matrix)
-#         segeval.fmeasure(conf_matrix)
-
-#     scores  = scores / size
-
-#     return scores
-
-
-
-def calc_metrics(targets:np.ndarray, preds:np.ndarray, mask:np.ndarray, task:str, prefix:str):
+def token_metrics(targets:np.ndarray, preds:np.ndarray, mask:np.ndarray, task:str, prefix:str):
 
     preds = ensure_flat(ensure_numpy(preds), mask=mask)
     targets = ensure_flat(ensure_numpy(targets), mask=mask)

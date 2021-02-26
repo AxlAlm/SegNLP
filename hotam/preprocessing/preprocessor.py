@@ -83,6 +83,21 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         self._init_DataPreprocessor()
         self._create_data_encoders()
     
+    @property
+    def config(self):
+        return {
+                "tasks": None if not hasattr(self, tasks) else self.tasks,
+                "subtasks": None if not hasattr(self, tasks) else self.subtasks,
+                "all_tasks": None if not hasattr(self, tasks) else self.all_tasks,
+                "task2labels":None if not hasattr(self, tasks) else self.task2labels,
+                "prediction_level": self.prediction_level,
+                "sample_level": self.sample_level,
+                "input_level": self.input_level,
+                "token_per_sample":self.tokens_per_sample,
+                "feature2dim": self.feature2dim,
+                "encodings":self.encodings
+                }
+
 
     def __call__(self, docs:List[Union[dict, str]]) -> ModelInput: #docs:List[str],token_labels:List[List[dict]] = None, span_labels:List[dict] = None):
 
@@ -191,8 +206,8 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             #task_matrix = np.zeros(len(sample.index))
             #task_matrix[:sample.shape[0]] = sample[task].to_numpy()
 
-            Input.add(f"token_{task}", sample[task].to_numpy())
-            Input.add(f"span_{task}", span_task_matrix)
+            Input.add(f"token_{task}", sample[task].to_numpy().astype(np.int))
+            Input.add(f"span_{task}", span_task_matrix.astype(np.int))
         
         return sample_labels
     
@@ -273,7 +288,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
                     spans = sample.groupby("span_id")
                     nr_tok_spans = max([len(span) for span in spans])
-                    span_matrix  = np.zeros(len(spans), nr_tok_spans)
+                    span_matrix  = np.zeros(len(spans), nr_tok_spans, dtype=np.int)
                     for span_i,(_, span ) in enumerate(spans):                        
                         sample_m[span_i][:span.shape[0]] = np.stack(span[enc].to_numpy())
 
@@ -281,8 +296,8 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
                 else:
                     #sample_m[:sample.shape[0]] = np.stspank(sample[enc].to_numpy())
-                    Input.add(enc, np.stack(sample[enc].to_numpy()))
-                
+                    Input.add(enc, np.stack(sample[enc].to_numpy()).astype(np.int))
+            
   
     def __get_feature_data(self, Input:ModelInput, sample:pd.DataFrame):
         
@@ -324,8 +339,8 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 feature_matrix, am_mask, span_mask = self.__extract_ADU_features(fm, sample, sample_shape=feature_matrix.shape)
 
                 if fm.level == "word" and not span_mask_token_added:
-                    Input.add("am_token_mask", am_mask)
-                    Input.add("span_token_mask", span_mask)
+                    Input.add("am_token_mask", am_mask.astype(np.int))
+                    Input.add("span_token_mask", span_mask.astype(np.int))
                 
                 if not span_mask_token_added:
                     
@@ -533,12 +548,13 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             combs = list(itertools.product(*label_groups))
 
             if has_seg:
-                none_label = "O" + "_".join(["None"] * len(subtasks))
+                none_label = ["O"] + ["None" if s != "link" else "0" for s in task2labels if s != "seg"]
                 combs.insert(0,none_label)
 
-            task2labels[task] = combs
+            task2labels[task] = ["_".join([str(c) for c in comb]) for comb in combs]
         
         return task2labels
+
 
 
     def expect_labels(self, tasks:list, task_labels:dict):

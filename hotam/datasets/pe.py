@@ -94,7 +94,7 @@ class PE(DataSet):
                                     "supports":"PRO", 
                                     "Against":"CON", 
                                     "For":"PRO", 
-                                    "attacks":"CON"
+                                    "attacks":"CON",
                                     }
         #self._tasks = ["ac", "relation", "stance"]
         self._tasks = ["span_label", "link", "link_label"]
@@ -106,14 +106,13 @@ class PE(DataSet):
                             # However, Against and attacks are functional equivalent so will use CON for both
                             # and for For and supports we will use PRO
                             #"stance":["For", "Against", "supports", "attacks"],
-                            "link_label": ["PRO", "CON"],
+                            "link_label": ["PRO", "CON", "None"],
                             "link": set()
                             }
-
+        self.level = "document"
         self.about = """The corpus consists of argument annotated persuasive essays including annotations of argument components and argumentative relations.
                         """
         self.url = "https://www.informatik.tu-darmstadt.de/ukp/research_6/data/argumentation_mining_1/argument_annotated_essays_version_2/index.en.jsp"
-
         self.data = self.__process_data()
 
     def __len__(self):
@@ -341,14 +340,12 @@ class PE(DataSet):
         current_ac_idx = 0
         for i, (ac_id, span) in enumerate(ac_id2span.items()):
 
-            
-            #print(ac_id)
             relation = ac_id2relation.get(ac_id, 0)
-
             self.__task_labels["link"].add(relation)
+            ac = ac_id2ac.get(ac_id,"None")
+            stance = self._stance2new_stance.get(ac_id2stance.get(ac_id,"None"), "None")
 
             label = {   
-                        #"seg":"O",
                         "span_label": ac_id2ac.get(ac_id,"None"), 
                         "link_label": self._stance2new_stance.get(ac_id2stance.get(ac_id,"None"), "None"), 
                         "link": relation,

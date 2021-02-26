@@ -6,7 +6,7 @@ import numpy as np
 
 
 #hotam
-from hotam.evaluation.metrics import calc_metrics
+from hotam.metrics import token_metrics
 from hotam.nn import ModelInput
 
 #pytorch
@@ -223,7 +223,7 @@ class ModelOutput:
 
 
         if calc_metrics:
-            task_metrics = calc_metrics(
+            task_metrics = token_metrics(
                                         targets=self.batch[f"token_{task}"],
                                         preds=decoded_labels,
                                         mask=self.batch["token_mask"],

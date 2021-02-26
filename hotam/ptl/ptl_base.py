@@ -21,9 +21,9 @@ from transformers import get_constant_schedule_with_warmup
 
 #am 
 from hotam.utils import ensure_numpy, ensure_flat
-from hotam.trainer.metrics import Metrics
 from hotam import get_logger
-from hotam.nn import Input
+from hotam.nn import ModelInput, ModelOutput
+
 
 logger = get_logger("PTLBase (ptl.LightningModule)")
 
@@ -75,7 +75,7 @@ class PTLBase(ptl.LightningModule):
         raise NotImplementedError()
 
 
-    def _step(self, batch:Input, split):
+    def _step(self, batch:ModelInput, split):
 
         # fetches the device so we can place tensors on the correct memmory
         device = f"cuda:{next(self.parameters()).get_device()}" if self.on_gpu else "cpu"
@@ -84,7 +84,7 @@ class PTLBase(ptl.LightningModule):
 
         output = self.model.forward(
                                     batch, 
-                                    Output(
+                                    ModelOutput(
                                             batch=batch,
                                             calc_metrics=True, 
                                             return_output=True, 

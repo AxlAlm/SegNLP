@@ -115,7 +115,7 @@ class LSTM_CNN_CRF(nn.Module):
         return "LSTM_CNN_CRF"
 
 
-    def forward(self, batch):
+    def forward(self, batch, output):
 
         lengths = batch["lengths_tok"]
         mask = batch["token_mask"]
@@ -124,6 +124,7 @@ class LSTM_CNN_CRF(nn.Module):
         word_embs = batch["word_embs"]
 
         #2
+        print(batch["chars"].shape)
         char_embs = self.char_cnn(batch["chars"])
 
         #3
@@ -132,9 +133,6 @@ class LSTM_CNN_CRF(nn.Module):
         #4 feed packed to lstm
         lstm_out, _ = self.lstm(cat_emb, lengths)
 
-        tasks_preds = {}
-        tasks_loss = {}
-        tasks_probs = {}
         for task, output_layer in self.output_layers.items():
 
             target_tags = batch[task]
@@ -157,14 +155,8 @@ class LSTM_CNN_CRF(nn.Module):
                                 mask=mask
                                 )
 
-            tasks_preds[task] = torch.tensor(zero_pad(preds), dtype=torch.long)
-            tasks_loss[task] = loss
-
-        return {    
-                    "loss":tasks_loss, 
-                    "preds":tasks_preds,
-                    "probs": {}
-                }
-
-
+            output.add_loss(task=task,   data=loss)
+            output.add_preds(task=task, level="token", data=torch.tensor(zero_pad(preds), dtype=torch.long))
+            
+        return output
 

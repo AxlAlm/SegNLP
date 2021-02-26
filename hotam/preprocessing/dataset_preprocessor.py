@@ -36,8 +36,18 @@ class PreProcessedDataset(ptl.LightningDataModule):
 
     def __getitem__(self, key:Union[np.ndarray, list]) -> ModelInput:
         Input = ModelInput()
+        key = ensure_numpy(key)
+        sorted_idx = np.argsort(key)
+        original_idx = np.argsort(sorted_idx)
+        sorted_key = key[sorted_idx]
+
+        lengths = self.data["lengths_tok"][sorted_key]
+        lengths_decending = np.argsort(lengths[::-1])
+
         for dset in self.data:
-            Input.add(dset, self.data[dset][key])
+            data = self.data[dset][sorted_key]
+            Input[dset] =  data[original_idx]
+        Input.to_tensor()
         return Input
     
 
@@ -61,7 +71,7 @@ class PreProcessedDataset(ptl.LightningDataModule):
 
     def train_dataloader(self):
         sampler = BatchSampler(self.splits[self.split_id]["train"], batch_size=self.batch_size, drop_last=False)
-        return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0]) #, shuffle=True)
+        return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0])
 
 
     def val_dataloader(self):
@@ -79,6 +89,7 @@ class DataPreprocessor:
 
     def _init_DataPreprocessor(self):
         self.__init_storage_done = False
+
 
     def __setup_h5py(self, file_path:str):
         self.h5py_f = h5py.File(file_path, 'w')
@@ -139,7 +150,7 @@ class DataPreprocessor:
         for i in range(0, len(dataset), chunks):
             Input = self(dataset[i:i+chunks])
 
-            Input["id"] + last_id
+            Input["id"] = Input["id"] + (last_id+1)
             last_id = Input["id"][-1]
 
             if not self.__init_storage_done:
@@ -152,7 +163,12 @@ class DataPreprocessor:
         progress_bar.close()
 
         self.h5py_f.close()
-        return PreProcessedDataset(file_path, splits=dataset.splits)
+
+        splits = dataset.splits
+        if self.sample_level != dataset.level:
+            splits = create_new_splits()
+
+        return PreProcessedDataset(file_path, splits=splits)
 
 
         # if self._data_is_stored:
