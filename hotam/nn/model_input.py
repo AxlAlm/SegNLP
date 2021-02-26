@@ -45,7 +45,7 @@ class ModelInput(dict):
             if isinstance(v, np.ndarray):
                 continue
             
-            if isinstance(v[0], np.ndarray)
+            if isinstance(v[0], np.ndarray):
                 dtype = v[0].dtype
             else:
                 dtype = np.int

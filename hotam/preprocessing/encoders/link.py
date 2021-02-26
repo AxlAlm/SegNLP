@@ -18,10 +18,10 @@ class LinkEncoder(Encoder):
 
     """
 
-    def __init__(self, name:str, max_span:int):
+    def __init__(self, name:str, max_spans:int):
         self._name = name
-        self._labels = [i for i in range(-int(max_span/2), int(max_span/2))]
-        self._ids = [i for i in range(max_span)]
+        self._labels = [i for i in range(-int(max_spans/2), int(max_spans/2))]
+        self._ids = [i for i in range(max_spans)]
 
     @property
     def labels(self):

@@ -359,7 +359,7 @@ class TextProcesser:
             row.update(parent_ids)
 
             self._level_row_cache["token"] = row
-            self._data_stack.append(row)
+            self.__data_stack.append(row)
 
             current_token_idx = end
 

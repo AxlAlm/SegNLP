@@ -108,7 +108,6 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                     doc_df = self._label_bios(doc_df)
                 
                 self.__fuse_subtasks(doc_df)
-                print(doc_df)
                 self._encode_labels(doc_df)
 
 
@@ -276,13 +275,13 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                     nr_tok_spans = max([len(span) for span in spans])
                     span_matrix  = np.zeros(len(spans), nr_tok_spans)
                     for span_i,(_, span ) in enumerate(spans):                        
-                        sample_m[span_i][:span.shape[0]] = np.stspank(span[enc].to_numpy())
+                        sample_m[span_i][:span.shape[0]] = np.stack(span[enc].to_numpy())
 
                     Input.add(enc, span_matrix)
 
                 else:
                     #sample_m[:sample.shape[0]] = np.stspank(sample[enc].to_numpy())
-                    Input.add(enc, np.stspank(sample[enc].to_numpy()))
+                    Input.add(enc, np.stack(sample[enc].to_numpy()))
                 
   
     def __get_feature_data(self, Input:ModelInput, sample:pd.DataFrame):
@@ -310,7 +309,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
     
             sample_length = sample.shape[0]
 
-            if alt:
+            if alt1:
             #if self.prediction_level == "span" and not self.tokens_per_sample:
                 
                 nr_spans = len(sample.groupby("span_id"))
@@ -507,8 +506,9 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
     def __get_subtasks(self, tasks):
         subtasks = []
         for task in tasks:
-            subtasks.extend(task.split("_"))
+            subtasks.extend(task.split("+"))
         return subtasks
+
 
     def __get_task_labels(self, task, task_labels):
         
@@ -520,21 +520,21 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             label_groups = []
             has_seg = False
             for st in subtasks:
-                task2labels[task_labels[st]]
+                task2labels[st] = task_labels[st]
 
                 if st == "seg":
-                    BIO = task2labels["seg"].copy
+                    BIO = task2labels["seg"].copy()
                     BIO.remove("O")
                     label_groups.append(BIO)
                     has_seg = True
                 else:
                     label_groups.append(task2labels[st])
 
-            combs = itertools.product(*label_groups)
+            combs = list(itertools.product(*label_groups))
 
             if has_seg:
                 none_label = "O" + "_".join(["None"] * len(subtasks))
-                comb.insert(0,none_label)
+                combs.insert(0,none_label)
 
             task2labels[task] = combs
         
@@ -551,7 +551,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
         if self.__need_bio:
             task_labels["seg"] = ["B","I","O"]
-
+        
         self.task2labels = self.__get_task_labels(tasks, task_labels)
         self._create_label_encoders()
 

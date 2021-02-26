@@ -65,7 +65,7 @@ class Pipeline:
                                             sample_level, 
                                             dataset.name, 
                                             tasks, 
-                                            features, 
+                                            [f.name for f in features], 
                                             encodings
                                             )                         
         pipeline_folder_path = self.__create_pipe_folder(root_dir=root_dir, pipe_hash=pipe_hash)
@@ -106,7 +106,7 @@ class Pipeline:
                     try:
                         self.preprocessor.expect_labels(
                                                         tasks=tasks, 
-                                                        task2labels={k:v for k,v in dataset.task_labels.items() if k in tasks}
+                                                        task_labels=dataset.task_labels
                                                         )
 
                         self.dataset = self.preprocessor.process_dataset(dataset, dump_dir=pipeline_folder_path, chunks=5)
