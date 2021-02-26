@@ -10,7 +10,7 @@ pe.setup(
         "relation",
         "stance",
     ],
-    multitasks=[],
+    # multitasks=[],
     sample_level="document",
     prediction_level="token",
     encodings=["pos", "deprel", "dephead"],

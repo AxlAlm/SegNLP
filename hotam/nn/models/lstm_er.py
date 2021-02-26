@@ -50,12 +50,14 @@ D. Abbreviation:
 ---------------------
     B      : Batch size
     H      : LSTM's Hidden size
-    NE-E   : Entity label embedding size
-    SEQ    : Max Sequence length
-    W-E    : Word embedding size
+    E      : Embedding size, feature size
+    SEQ    : Max Sequence length in the batch
+    SEQ_S  : Max Sequence length per sentence
+    SNT_N  : Max Number of sentences in the batch
     NE-OUT : Output dimension for NER module
     Nt     : total number of nodes (Nt) in the batch
     Nchn   : Number of children nodes in the batch
+    DEP    : Dependency embedding size
 
 E. TreeLSTMCell Impelementation:
 --------------------------------
@@ -191,15 +193,160 @@ E. TreeLSTMCell Impelementation:
 
 from collections import defaultdict
 import itertools as it
+from typing import List, Dict, Tuple
+
+from math import exp
+from random import random
 
 import numpy as np
-import dgl
-
 import torch as th
+from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
 
+import networkx as nx
+import dgl
+from dgl import heterograph
+from dgl.traversal import topological_nodes_generator as traverse_topo
+
 from hotam.nn.layers.lstm import LSTM_LAYER
+
+
+class Graph():
+    def __init__(
+        self,
+        V: Tensor,
+        lengthes: List[List],
+        pad_mask: Tensor,
+        roots_id: Tensor,
+        graph_buid_type=0,
+    ) -> None:
+        """Construct a batch of graphs form token head tensor
+        V:                  Tensor, (B, SNT_N, SEQ_S)
+                            Destination nodes, depedency head
+
+        lengthes:           List[List]
+                            Lengthes of sentences
+
+        pad_mask:           Tensor (B, SEQ)
+                            Mask od pad tokens
+
+        roots_id:           Tensor (B, SNT_N)
+                            token_id of the root of each sentence
+
+        graph_buid_type:    int
+                            Type of the graphes to be build
+
+        """
+        self.roots_g = []
+        self.G = []
+        device = th.device("cpu")
+
+        V = V.detach().cpu()
+        pad_mask = pad_mask.detach().cpu()
+        roots_id = roots_id.detach().cpu()
+        for i, data in enumerate(zip(lengthes, V, roots_id, pad_mask)):
+            lens_, v_i, root_id, p_mask = data
+            lens = th.tensor(lens_ + [-1] * (v_i.size(0) - len(lens_)))
+            mask = lens[:, None] > th.arange(v_i.size(1))
+            # token_ids of the depdency heads are w.r.t. sentence. So, in v_i
+            # token_id = 1, could be in sentence_1 or sentence_2. However, we
+            # deal with ids w.r.t. sample, meaning that id sentence_0 has 5
+            # tokens, then token_id=0 in sentence_1 will be 6
+            # Calculate Acculmulative sum for length, to get absolute ids
+            lens_accum = th.cumsum(th.tensor(lens), dim=0)
+            delta2abs = lens_accum[:-1]  # (SNT_N - 1)
+            v_i_abs = v_i + th.cat((th.tensor([0]), delta2abs))[:, None]
+
+            v = th.masked_select(v_i_abs, mask=mask)  # select non pad token
+            u = th.arange(th.squeeze(mask).sum(), dtype=th.long, device=device)
+
+            # convert root_id to absolute ids w.r.t sample just as we did with
+            # v_i
+            roots_abs = root_id + th.cat((th.tensor([0]), delta2abs))
+            roots_abs = roots_abs[:len(lens_)]  # select based on sent length
+            # Connect sentences in each sample sample
+            u_g, v_g, roots_g = self.connect_sents(u, v, roots_abs,
+                                                   lens_accum[:len(lens_)],
+                                                   graph_buid_type)
+            # create graph and initialize nodes data
+            g = dgl.graph((u_g, v_g), device=device)
+            # get ids for non pad tokens
+            root_num = len(list(traverse_topo(g))[-1])
+            assert root_num == 1
+
+            self.G.append(g)  # type: heterograph
+            self.device = device
+
+        # self.G = dgl.batch(all_graph)
+        self.mask = pad_mask  # (B, n_tokens)
+        # self.nonpad_idx = th.squeeze(th.nonzero(pad_mask.view(-1)))
+        # self.batch_update_nodes(ndata=ndata)
+
+    def connect_sents(self, u: Tensor, v: Tensor, roots: Tensor,
+                      lengths_accum: Tensor,
+                      graph_buid_type: int) -> Tuple[Tensor, Tensor, Tensor]:
+        if graph_buid_type == 0:
+            # connect the root of the current sent to the end of the prev sent
+            v[roots[1:]] = lengths_accum[:-1] - 1
+            # remove the self connection of the first root
+            u = th.cat((u[:roots[0]], u[roots[0] + 1:]))
+            v = th.cat((v[:roots[0]], v[roots[0] + 1:]))
+            # self.token_rmvd.append(roots[0].item())
+            roots = roots[1:]
+        return u, v, roots
+
+    def __extract_graph(self, g, g_nx, start_n: list, end_n: list,
+                        sub_graph_type: int):
+        if sub_graph_type == 0:
+            thepath = nx.shortest_path(g_nx, source=start_n, target=end_n)
+            sub_g = dgl.node_subgraph(g, thepath)
+            root = list(traverse_topo(sub_g))[-1]
+            assert len(root) == 1
+            sub_g.ndata["type_n"] = th.zeros(sub_g.number_of_nodes(),
+                                             device=self.device)
+        elif sub_graph_type == 1:
+            # get subtree
+            pass
+        return sub_g, root.item()
+
+    def get_subgraphs(
+        self,
+        starts: list,
+        ends: list,
+        batch_num: int,
+        sub_graph_type: int = 0,
+    ):
+        g = self.G[batch_num]
+        g_nx = g.to_networkx().to_undirected()
+        graphs_sub = []
+        roots = []
+        for src, dst in zip(starts.tolist(), ends.tolist()):
+            g_sub, root = self.__extract_graph(g, g_nx, src, dst,
+                                               sub_graph_type)
+            g_sub_r, root_r = self.__extract_graph(g, g_nx, dst, src,
+                                                   sub_graph_type)
+            graphs_sub.extend([g_sub, g_sub_r])
+            roots.extend([root, root_r])
+
+        return dgl.batch(graphs_sub), roots
+
+    def update_batch(self, ndata_dict: Dict[str, Tensor]) -> None:
+        """update graph node data
+        """
+        G_batch = dgl.batch(self.G)
+        for n_data_name in ndata_dict:
+            # node data size is either (B, SEQ, embedding_size) or (B, SEQ)
+            # Change dim to (B*SEQ, embedding_size) or (B*SEQ), then select non
+            # pad tokens Batch graph, updat node data, unbatch again
+            n_data = ndata_dict[n_data_name]
+            emb_size = n_data.size(-1)
+            dim_3d = bool(len(n_data.size()) == 3)
+            n_data = n_data.view(-1, emb_size) if dim_3d else n_data.view(-1)
+            n_data = n_data[self.mask.view(-1), :]
+            G_batch.ndata[n_data_name] = n_data
+
+        self.G = dgl.unbatch(G_batch)
 
 
 class TreeLSTMCell(nn.Module):
@@ -229,8 +376,8 @@ class TreeLSTMCell(nn.Module):
 
         # Step 1
         type_n = nodes.mailbox["type_n"]  # (Nt)
-        type_n0_id = type_n == 0  # 1.a
-        type_n1_id = type_n == 1  # 1.a
+        type_n0_id = type_n == 0
+        type_n1_id = type_n == 1
 
         # 1.b: creat mask matrix with the same size of h and c with zeros at
         # either type_0 node ids or type_1 node ids
@@ -299,22 +446,29 @@ class TreeLSTM(nn.Module):
 
         self.bidirectional = bidirectional
         self.TeeLSTM_cell = TreeLSTMCell(embedding_dim, h_size)
-        self.dropout = nn.Dropout(dropout)
+        # self.dropout = nn.Dropout(dropout)
 
-    def forward(self, g, root, leaves, h, c):
-        """Compute modified N-ary tree-lstm (LSTM-ER) prediction given a batch.
-        Parameters.
+    def forward(self, g, roots, leaves, h, c):
+        """A modified N-ary tree-lstm (LSTM-ER) network
         ----------
-        g : dgl.DGLGraph
-            Batch of Trees for computation.
-        h : Tensor
-            Initial hidden state.
-        c : Tensor
-            Initial cell state.
+        g :     dgl.DGLGraph
+                Batch of Trees for computation
+        roots:  list
+                tree root id for each tree in the graph batch
+        leaves: list
+                leaves id for each tree in the graph batch
+        h :     Tensor
+                Initial hidden state.
+        c :     Tensor
+                Initial cell state.
         Returns
         -------
-        logits : Tensor
-            The hidden state of each node.
+        logits_bt : Tensor
+                    The hidden state of bottom-up direction =
+                    trees roots' hidden state.
+        logits_tb : Tensor
+                    The hidden state of of up-bottom direction =
+                    leaves nodes' hidden state
         """
 
         # Tree-LSTM (LSTM-ER) according to arXiv:1601.00770v3 sections 3.3 & 3.4
@@ -332,7 +486,7 @@ class TreeLSTM(nn.Module):
             reduce_func=self.TeeLSTM_cell.reduce_func,
             apply_node_func=self.TeeLSTM_cell.apply_node_func,
         )
-        logits = g.ndata.pop("h")[root, :]
+        logits_bt = g.ndata.pop("h")[roots, :]
 
         if self.bidirectional:
             # propagate top bottom direction
@@ -343,11 +497,10 @@ class TreeLSTM(nn.Module):
                 apply_node_func=self.TeeLSTM_cell.apply_node_func,
                 reverse=True,
             )
-            h_tb = g_copy.ndata.pop("h")[leaves, :]
+            logits_tb = g_copy.ndata.pop("h")[leaves, :]
             # concatenate both tree directions
-            logits = th.cat((logits, h_tb), dim=1)
 
-        return logits
+        return logits_bt, logits_tb
 
 
 class NELabelEmbedding(nn.Module):
@@ -365,7 +518,7 @@ class NELabelEmbedding(nn.Module):
         return label_one_hot
 
 
-class NerModule(nn.Module):
+class AC_Seg_Module(nn.Module):
     def __init__(
         self,
         token_embedding_size,
@@ -377,7 +530,7 @@ class NerModule(nn.Module):
         num_layers=1,
         dropout=0,
     ):
-        super(NerModule, self).__init__()
+        super(AC_Seg_Module, self).__init__()
 
         self.model_param = nn.Parameter(th.empty(0))
         self.label_embedding_size = label_embedding_size
@@ -390,6 +543,9 @@ class NerModule(nn.Module):
             bidirectional=bidirectional,
             num_layers=num_layers,
         )
+
+        self.dropout = nn.Dropout(dropout)
+
         # Entity prediction layer: two layers feedforward network
         # The input to this layer is the the predicted label of the previous
         # word and the current hidden state.
@@ -398,13 +554,13 @@ class NerModule(nn.Module):
         self.ner_decoder = nn.Sequential(
             nn.Linear(ner_input_size, ner_hidden_size),
             nn.Tanh(),
+            self.dropout,
             nn.Linear(ner_hidden_size, ner_output_size),
         )
 
+        # self.label_embs_size = label_embedding_size
         self.entity_embedding = NELabelEmbedding(
             encode_size=label_embedding_size)
-
-        self.dropout = nn.Dropout(dropout)
 
     def forward(self,
                 batch_embedded,
@@ -414,33 +570,24 @@ class NerModule(nn.Module):
                 return_type=0,
                 h=None,
                 c=None):
-        """Compute logits of and predict entities' label.
+        """
         ----------
-        g :     dgl.DGLGraph
-                Tree for computation.
-        h :     Tensor
-                Intial hidden state for the sequential LSTM
-        c :     Tensor
-                Cell hidden state for the sequential LSTM
+
 
         Returns
         -------
-        logits : Tensor
-                 (B, SEQ, NE-OUT)
-                 logits for entities' label prediction
 
-        label_id_predicted: Tensor
-                            (B, SEQ)
-                            The predicted labels id
         """
         device = self.model_param.device
 
-        # LSTM layer;
-        # dropout input,
+        # LSTM layer
+        # ============
         # sort batch according to the sample length
         batch_embedded = self.dropout(batch_embedded)
+        batch_embedded = batch_embedded.rename(None)
         lengths_sorted, ids_sorted = th.sort(lengths, descending=True)
         _, ids_original = th.sort(ids_sorted, descending=False)
+
         if h is not None and c is not None:
             lstm_out, _ = self.seqLSTM(
                 (batch_embedded[ids_sorted], h.detach(), c.detach()),
@@ -454,6 +601,7 @@ class NerModule(nn.Module):
         logits = []  # out_list_len=SEQ, inner_list_of_list_len=(B, NE-OUT)
         prob_dis = []
         label_id_predicted = []  # list_of_list_len=(SEQ, 1)
+        label_predicted_embs = []
 
         # construct initial previous predicted label, v_{t-1}:v_0
         batch_size = lstm_out.size(0)
@@ -468,15 +616,13 @@ class NerModule(nn.Module):
             # QSTN is this order is correct? Is the dim is correct? what is
             # dim=-1?
             logits_i = self.ner_decoder(ner_input)  # (B, NE-OUT)
-            logits_i = self.dropout(logits_i)
-            logits_i_copy = logits_i.detach().clone()
-            mask_i = mask[:, i].type(th.bool)
-            logits_i_copy[~mask_i] = float('-inf')
-            prob_dist = F.softmax(logits_i_copy, dim=1)  # (B, NE-OUT)
+            prob_dist = F.softmax(logits_i, dim=1)  # (B, NE-OUT)
             prediction_id = th.max(prob_dist, dim=1)[1]
 
             # entity label embedding
             label_one_hot = self.entity_embedding(prediction_id, device)
+            label_one_hot = self.dropout(label_one_hot)
+            label_predicted_embs.append(label_one_hot.detach().tolist())
             # save data
             label_id_predicted.append(prediction_id.detach().tolist())
             logits.append(logits_i.detach().tolist())
@@ -494,11 +640,15 @@ class NerModule(nn.Module):
                              dtype=th.float,
                              requires_grad=True).view(batch_size, seq_length,
                                                       -1)
-        label_id_predicted = th.tensor(label_id_predicted,
+        label_id_pred = th.tensor(label_id_predicted,
+                                  device=device,
+                                  dtype=th.float).view(batch_size, -1)
+        label_id_pred_embs = th.tensor(label_predicted_embs,
                                        device=device,
-                                       dtype=th.float).view(batch_size, -1)
+                                       dtype=th.float).view(
+                                           batch_size, seq_length, -1)
         # TODO return type: what to return according to the input return_type
-        return logits, prob_dis, label_id_predicted
+        return logits, prob_dis, label_id_pred, label_id_pred_embs, lstm_out
 
 
 class LSTM_RE(nn.Module):
@@ -514,18 +664,20 @@ class LSTM_RE(nn.Module):
         self.model_param = nn.Parameter(th.empty(0))
 
         self.graph_buid_type = hyperparamaters["graph_buid_type"]
-        self.node_type_set = hyperparamaters["node_type_set"]
+        self.sub_graph_type = hyperparamaters["sub_graph_type"]
 
         self.OPT = hyperparamaters["optimizer"]
         self.LR = hyperparamaters["lr"]
         self.BATCH_SIZE = hyperparamaters["batch_size"]
 
+        self.k = hyperparamaters["k"]
+
         # Embed dimension for tokens
-        token_embs_size = feature2dim["word_embs"]
+        token_embs_size = feature2dim["word_embs"] + feature2dim["pos_embs"]
         # Embed dimension for entity labels
         label_embs_size = num_ne + 1
         # Embed dimension for dependency labels
-        dep_embs_size = feature2dim["deprel"]
+        dep_embs_size = feature2dim["deprel_embs"]
         # Sequential LSTM hidden size
         seq_lstm_h_size = hyperparamaters["seq_lstm_h_size"]
         # Tree LSTM hidden size
@@ -546,15 +698,16 @@ class LSTM_RE(nn.Module):
         tree_bidirectional = hyperparamaters["tree_bidirectional"]
         dropout = hyperparamaters["dropout"]
 
-        # Entity recognition module
-        self.module_ner = NerModule(token_embedding_size=token_embs_size,
-                                    label_embedding_size=label_embs_size,
-                                    h_size=seq_lstm_h_size,
-                                    ner_hidden_size=ner_hidden_size,
-                                    ner_output_size=ner_output_size,
-                                    bidirectional=lstm_bidirectional,
-                                    num_layers=seq_lstm_num_layers,
-                                    dropout=dropout)
+        # Argument module
+        self.module_ac_seg = AC_Seg_Module(
+            token_embedding_size=token_embs_size,
+            label_embedding_size=label_embs_size,
+            h_size=seq_lstm_h_size,
+            ner_hidden_size=ner_hidden_size,
+            ner_output_size=ner_output_size,
+            bidirectional=lstm_bidirectional,
+            num_layers=seq_lstm_num_layers,
+            dropout=dropout)
 
         # Relation extraction module
         nt = 3 if tree_bidirectional else 1
@@ -569,6 +722,8 @@ class LSTM_RE(nn.Module):
             nn.Linear(re_input_size, re_hidden_size), nn.Tanh(),
             nn.Linear(re_hidden_size, re_output_size))
 
+        self.label_one_hot = NELabelEmbedding(label_embs_size)
+
         self.loss = nn.CrossEntropyLoss(reduction="sum", ignore_index=-1)
 
     @classmethod
@@ -576,7 +731,7 @@ class LSTM_RE(nn.Module):
         return "LSTM_ER"
 
     def forward(self, batch):
-        """Compute logits of and predict entities' label.
+        """Compute logits of and predict argument components label.
         ----------
 
 
@@ -585,105 +740,108 @@ class LSTM_RE(nn.Module):
 
         """
         device = self.model_param.device
-        token_embs = batch["word_embs"]  # (B, SEQ, W-E)
-        # token_head_id = batch["dephead"]  # (B, SEQ)
-        batch_size = token_embs.size(0)  # B
+        d_cpu = th.device('cpu')
 
-        # number of tokens in each sample - torch size (B, Sent_len)
-        lengths_sent_tok = batch["lengths_sent_tok"]
-        lengths_per_sample = batch["lengths_tok"]
-        #   I. Sentence_id for each token: token2sent_id
-        #    list of list: (B, Sent_len)
-        #  II. Character start position for each sentence in each sample:
-        #      sent_strt: list of list: (B, Sent_len)
-        # III. Character end position for each sentence in each sample:
-        #      sent_end: list of list: (B, Sent_len)
-        token2sent_id = [
-            list(
-                it.chain.from_iterable(
-                    it.repeat(val, cnt) for val, cnt in enumerate(lengths)))
-            for lengths in lengths_sent_tok
-        ]
-        sent_strt = [[0] + list(it.accumulate(lengths_))[:-1]
-                     for lengths_ in lengths_sent_tok]
-        sent_end = [[s + len_ - 1 for s, len_ in zip(start, length)]
-                    for start, length in zip(sent_strt, lengths_sent_tok)]
-        mask = batch["token_mask"]
+        # Batch data:
+        # ================
+        # Embeddings:
+        # ----------
+        token_embs = batch["word_embs"]  # Tensor["B", "SEQ", "E"]
+        pos_embs = batch["pos_embs"]  # Tensor["B", "SEQ", "E"]
+        dep_embs = batch["deprel_embs"]  # Tensor["B", "SEQ", "E"]
 
-        # get token head absolute idx in format of list of list
-        heads_abs = []
-        for i, token_head_sample in enumerate(batch["dephead"].tolist()):
-            head_abs_sample = []
-            sent_strt_sample = sent_strt[i]
-            sent_num = batch["lengths_sent"].tolist()[i]
-            for j, heads in enumerate(token_head_sample[0:sent_num]):
-                head_sample = heads[0:lengths_sent_tok[i][j]]
-                sent_strt_l = [sent_strt_sample[j]] * len(head_sample)
-                head_abs_sample += [
-                    x + y for x, y in zip(head_sample, sent_strt_l)
-                ]
-            heads_abs.append(head_abs_sample)
+        # Token data:
+        # ----------
+        token_head = batch["dephead"]  # Tensor["B", "SENT_NUM", "SEQ"]
+        pad_mask = batch["token_mask"]  # pad token mask. Tensor["B", "SEQ"]
 
-        # NER Module:
-        # ===========
+        # Sample information:
+        # -------------------
+        lengths_sent_tok = batch["lengths_sent_tok"]  # type: list[list]
+        lengths_per_sample = batch["lengths_tok"]  # type: list
+
+        # NOTE sents_root dim1 is not correct, have to fixe it here
+        sents_root = batch["sent2root"]  # Tensor[B, SENT_NUM]
+        if (sents_root.size(1) >= token_head.size(1)):
+            _SENT_NUM_ = token_head.size(1)
+            sents_root = sents_root[:, :_SENT_NUM_]
+
+        batch_size = token_embs.size(0)
+
+        # AC Segmentation Module:
+        # =======================
         # NOTE Is it important to initialize h, c?
-        logitss_ner, prob_ner, ne_predtd = self.module_ner(
-            token_embs, lengths_per_sample, mask)
+        input_ac_seg = th.cat((token_embs, pos_embs), dim=2)
+        ac_seg_pred = self.module_ac_seg(input_ac_seg, lengths_per_sample,
+                                         pad_mask)
+        logitss_seg, prob_seg, pred_seg, pred_embs_seg, h_seg = ac_seg_pred
 
-        # Get all possible relations in both direction between the last token
+        # Get relations
+        # =============
+        # all possible  relations in both directions between the last tokens
         # of the detected entities.
-        graphs = [None] * batch_size
-        g_empty = dgl.graph([])
-        relations_data = sub_batch(ne_predtd, mask, self.last_tkn_data)
+        schdule_sampling = self.k / (self.k +
+                                     exp(batch.current_epoch / self.k))
+        # schdule sampling
+        coin_flip = random()
+        if schdule_sampling > coin_flip:
+            # use golden standard
+            seg_ac_used = batch['seg_ac']
+            # one hot encoding of golden standard
+            seg_ac_used_embs = self.label_one_hot(seg_ac_used.view(-1), device)
+            enc_size = seg_ac_used_embs.size(-1)
+            seg_ac_used_embs = seg_ac_used_embs.view(batch_size, -1, enc_size)
+            # assert th.equal(th.argmax(seg_ac_used_embs, dim=-1), seg_ac_used)
+
+        else:
+            seg_ac_used = pred_seg
+            seg_ac_used_embs = pred_embs_seg
+
+        # Build Graph for the batch:
+        # ==========================
+        graphs = Graph(V=token_head,
+                       lengthes=lengths_sent_tok,
+                       pad_mask=pad_mask,
+                       roots_id=sents_root,
+                       graph_buid_type=self.graph_buid_type)
+        nodes_input = th.cat((h_seg, dep_embs, pred_embs_seg), dim=-1)
+        # update graph data
+        graphs.update_batch(ndata_dict={"emb": nodes_input})
+        relations_data = sub_batch(seg_ac_used, pad_mask, self.last_tkn_data)
         # NOTE loop is needed because the sentence lengthes differ across
-        for r1, r2, sample_ids in relations_data:
+        rel_graphs = []
+        rel_roots = []
+        for r1, r2, sample_id in relations_data:
             # no relations, build empty graphs
             if r1.nelement() == 0:
-                for i in sample_ids:
-                    graphs[i] = g_empty
                 continue
-            # get sentence id for tokens in r1 and r2
-            # samples. We use relations as in
-            sent_id = th.tensor(token2sent_id[sample_ids],
-                                device=device,
-                                dtype=th.long)
-            # NOTE U is range of
-            sent_src_id = th.index_select(sent_id, dim=0, index=r1)
-            sent_dist_id = th.index_select(sent_id, dim=0, index=r2)
-            # not practical: epoch=0, we have 113050 graph!
-            U = [
-                list(range(sent_strt[sample_ids][u], sent_end[sample_ids][v]))
-                for u, v in zip(sent_src_id, sent_dist_id)
-            ]
-            V = [[heads_abs[sample_ids][token] for token in U]]
 
+            sub_graphs, roots = graphs.get_subgraphs(r1, r2, sample_id)
+            rel_graphs.append(sub_graphs)
+            rel_roots.append(roots)
 
         # Calculation of losses:
         # =======================
         # Entity Recognition Module.
         # (B, SEQ, NE-OUT) --> (B*SEQ, NE-OUT)
-        # QSTN Pad token ignoring, should I change it to -1 in the ground
-        # truth?
-        # QSTN batch change pad value ddoes not work, either in
-        # batch["word_embs"] or batch["seg_ac"]
-        logitss_ner = logitss_ner.view(-1, logitss_ner.size(2))
+        logitss_seg = logitss_seg.view(-1, logitss_seg.size(-1))
         batch.change_pad_value(-1)  # ignore -1 in the loss function
         ground_truth_ner = batch["seg_ac"].view(-1)
-        loss_ner = self.loss(logitss_ner, ground_truth_ner)
+        loss_seg = self.loss(logitss_seg, ground_truth_ner)
 
         # Relation Extraction Module.
-        loss_total = loss_ner
+        loss_total = loss_seg
         return {
             "loss": {
                 "total": loss_total,
             },
             "preds": {
-                "seg_ac": ne_predtd,
+                "seg_ac": pred_seg,
                 # "relation": stance_preds,
                 # "stance": stance_preds
             },
             "probs": {
-                "seg_ac": prob_ner,
+                "seg_ac": prob_seg,
                 # "relation": relation_probs,
                 # "stance": stance_probs
             },
@@ -712,7 +870,6 @@ def last_word_pattern(ne_labels):
                     B_Idash_I_Idash.append([i, j])
 
     return B_B + B_O + IB_IO + B_Idash_I_Idash
-
 
 
 def sub_batch(predictions, token_mask, last_token_pattern: list):
@@ -762,12 +919,6 @@ def sub_batch(predictions, token_mask, last_token_pattern: list):
     last_word_mask = (p_zipped[:, :,
                                None] == last_token_pattern).all(-1).any(-1)
 
-    # # step: 2: group tensors that have the same number of last words
-    # group_data = defaultdict(list)
-    # num_last_tkns = last_word_mask.sum(dim=1)
-    # for i, num in enumerate(num_last_tkns.detach().tolist()):
-    #     group_data[num].append(i)
-
     # step: 2
     # NOTE For loop is needed is the number of items are different
     for i in range(last_word_mask.size(0)):
@@ -788,20 +939,3 @@ def sub_batch(predictions, token_mask, last_token_pattern: list):
         r1 = th.tensor(r[0], device=d)
         r2 = th.tensor(r[1], device=d)
         yield r1, r2, i
-
-
-# - deprel,  e.g. "nmod" etc  (shape = (nr_sentence, max_tok_in_sent  ))
-
-# - dephead, e.g. for each token on which idx is it's head (shape =
-#   (nr_sentence, max_tok_in_sent))
-
-# - lengths_sent,  nr sentence is sample
-
-# - lengths_sent_tok, nr token in each sentence in the sample, given this we
-#   can get is_sent_end.
-
-# - ac2sentence, which is vector where ac2sentence[ac_idx] given u the idx of
-#   the sentence the ac is in
-
-# - sent_ac_mask, which given an ac_idx gives you a mask over a sentence
-#   telling you which tokens belong to the ac.
