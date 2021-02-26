@@ -29,15 +29,10 @@ class Encoder:
         
         for task in self.all_tasks:
             
-
             if task == "link":
                 relations = self.task2labels[task]
-                _min_rel_value = min(relations)
-                _max_rel_value = max(relations)
-                max_back_relation = 0 if _min_rel_value > 0 else _min_rel_value
-                max_forward_relation = 0 if _max_rel_value < 0 else _max_rel_value
-                max_spans = self._get_max_nr_seq("span")
-                self.encoders[task] = RelationEncoder(name=task, max_back_relation=max_back_relation, max_forward_relation=max_forward_relation, max_acs=max_spans)
+                max_spans = max(abs(min(relations)),abs(max(relations))) * 2
+                self.encoders[task] = LinkEncoder(name=task,  max_spans=max_spans)
             else:
                 self.encoders[task] = LabelEncoder(name=task, labels=self.task2labels[task])
 
@@ -60,7 +55,7 @@ class Encoder:
                 for i, (span_id, span_df) in enumerate(spans):
                     df.loc[span_df.index,"_link"] = enc_relations[i]
 
-                df["link"] = self.data.pop("_link")
+                df["link"] = df.pop("_link")
 
             else:
                 df[task] = df[task].apply(lambda x: self.encode(x, task))

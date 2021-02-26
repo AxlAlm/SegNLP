@@ -19,6 +19,7 @@ from copy import deepcopy
 from pprint import pprint
 import warnings
 from time import time
+import itertools
 
 
 #hotam
@@ -106,6 +107,8 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 if self.__need_bio:
                     doc_df = self._label_bios(doc_df)
                 
+                self.__fuse_subtasks(doc_df)
+                print(doc_df)
                 self._encode_labels(doc_df)
 
 
@@ -489,25 +492,67 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         #return {"am_spans":am_spans, "span_spans":span_spans, "adu_spans":adu_spans}
 
 
+    def __fuse_subtasks(self, df):
+
+        for task in self.tasks:
+            subtasks = task.split("+")
+            
+            if len(subtasks) <= 1:
+                continue
+
+            subtask_labels  = df[subtasks].apply(lambda row: '_'.join([str(x) for x in row]), axis=1)
+            df[task] = subtask_labels
+
+
     def __get_subtasks(self, tasks):
         subtasks = []
         for task in tasks:
             subtasks.extend(task.split("_"))
         return subtasks
 
+    def __get_task_labels(self, task, task_labels):
+        
+        task2labels = {}
+        for task in task:
 
-    def expect_labels(self, tasks:list, task2labels:dict):
+            subtasks = task.split("+")
+
+            label_groups = []
+            has_seg = False
+            for st in subtasks:
+                task2labels[task_labels[st]]
+
+                if st == "seg":
+                    BIO = task2labels["seg"].copy
+                    BIO.remove("O")
+                    label_groups.append(BIO)
+                    has_seg = True
+                else:
+                    label_groups.append(task2labels[st])
+
+            combs = itertools.product(*label_groups)
+
+            if has_seg:
+                none_label = "O" + "_".join(["None"] * len(subtasks))
+                comb.insert(0,none_label)
+
+            task2labels[task] = combs
+        
+        return task2labels
+
+
+    def expect_labels(self, tasks:list, task_labels:dict):
         self.__need_bio = False
         self.__labeling = True
         self.tasks = tasks
         self.subtasks = self.__get_subtasks(tasks)
         self.all_tasks = sorted(set(tasks + self.subtasks))
-        self.task2labels = task2labels
         self.__need_bio = "seg" in self.subtasks
 
         if self.__need_bio:
-            self.task2labels["seg"] = ["B","I","O"]
+            task_labels["seg"] = ["B","I","O"]
 
+        self.task2labels = self.__get_task_labels(tasks, task_labels)
         self._create_label_encoders()
 
 

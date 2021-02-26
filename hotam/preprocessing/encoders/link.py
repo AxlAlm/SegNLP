@@ -5,7 +5,7 @@ from typing import List, Union, Dict
 import numpy as np
 
 
-class RelationEncoder(Encoder):
+class LinkEncoder(Encoder):
 
 
     """
@@ -18,11 +18,10 @@ class RelationEncoder(Encoder):
 
     """
 
-    def __init__(self, name:str, max_back_relation:int, max_forward_relation:int, max_acs:int):
+    def __init__(self, name:str, max_span:int):
         self._name = name
-        #max_relations = max_forward_relation - max_back_relation
-        self._labels =[i for i in range(max_back_relation, max_forward_relation)]
-        self._ids = [i for i in range(max_acs)]
+        self._labels = [i for i in range(-int(max_span/2), int(max_span/2))]
+        self._ids = [i for i in range(max_span)]
 
     @property
     def labels(self):
