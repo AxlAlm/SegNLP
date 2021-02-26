@@ -3,32 +3,28 @@
 # from hotam.default_hyperparamaters.lstm_crf import joint_pointer_nn_hps
 # from hotam.default_hyperparamaters.lstm_crf import lstm_dist_hps
 
-
-
-lstm_crf_hps =  {
-                    "optimizer": "sgd",
-                    "lr": 0.001,
-                    "hidden_dim": 256,
-                    "num_layers": 2,
-                    "bidir": True,
-                    "fine_tune_embs": False,
-                    "batch_size": 32,
-                    "max_epochs":100,
-                    }
-
+lstm_crf_hps = {
+    "optimizer": "sgd",
+    "lr": 0.001,
+    "hidden_dim": 256,
+    "num_layers": 2,
+    "bidir": True,
+    "fine_tune_embs": False,
+    "batch_size": 32,
+    "max_epochs": 100,
+}
 
 lstm_cnn_crf_hps = {
-                    "optimizer": "adam",
-                    "lr": 0.001,
-                    "hidden_dim": 250,
-                    "char_dim": 100,
-                    "kernel_size": 3,
-                    "num_layers": 1,
-                    "bidir": True,
-                    "batch_size": 32,
-                    "max_epochs":100,
-                    }
-
+    "optimizer": "adam",
+    "lr": 0.001,
+    "hidden_dim": 250,
+    "char_dim": 100,
+    "kernel_size": 3,
+    "num_layers": 1,
+    "bidir": True,
+    "batch_size": 32,
+    "max_epochs": 100,
+}
 
 joint_pointer_nn_hps = {
     "optimizer": "adam",
@@ -69,8 +65,9 @@ lstm_er = {
     "seq_lstm_num_layers": 1,  # Sequential LSTM number of layer
     "lstm_bidirectional": True,  # Sequential LSTM bidirection
     "tree_bidirectional": True,  # Tree LSTM bidirection
-    "graph_buid_type": 1,
-    "node_type_set": 1,
+    "k": 10,  # hyperparameter for scheduled sampling
+    "graph_buid_type": 0,
+    "sub_graph_type": 0,
     "dropout": 0.5,
     "optimizer": "adam",
     "lr": 0.0001,
@@ -79,13 +76,13 @@ lstm_er = {
 }
 
 dummy_hps = {
-        "optimizer": "adam",
-        "lr": 0.001,
-        "hidden_dim": 100,
-        "num_layers": 1,
-        "batch_size": 32,
-        "max_epochs":100,
-        }
+    "optimizer": "adam",
+    "lr": 0.001,
+    "hidden_dim": 100,
+    "num_layers": 1,
+    "batch_size": 32,
+    "max_epochs": 100,
+}
 
 
 def get_default_hps(model_name):
