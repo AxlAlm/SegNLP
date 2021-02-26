@@ -96,7 +96,7 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labeler, Sp
                                 "token": []
                                 }
         self.encoders = {}
-        self.__cutmap = {"doc_embs":"seq"}
+        self.__cutmap = {"doc_embs":"seq", "sent2root":"sent", "ac2sentence":"sent", "sent_ac_mask":"sent"}
         self._setup_done = False
 
 
@@ -164,13 +164,13 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labeler, Sp
                 # specific cutting when using dependency information
                 # here we cut on max words per sentence and nr of sentences.
                 elif cut == "sent":
-
+                    
                     if len(h.shape) == 2:
                         h = h[:, :max_sent]
 
                     elif len(h.shape) > 2:
                         h = h[:, :max_sent, :max_sent_tok]
-                
+                                    
             except ValueError as e:
                 h = [s[k] for s in samples_data]
             
@@ -347,16 +347,22 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labeler, Sp
     def __get_encs(self, sample):
 
         sample_encs = {}
+        deps_done = False
+
         for enc in self.encodings:
 
             # for dependency information we need to perserve the sentences 
             #
             if self.sample_level != "sentence" and enc in ["deprel", "dephead"]:
-                sample_m = np.zeros((self.max_sent, self.max_sent_tok))      
                 
-                #information about the root
-                if enc == "deprel":
-                    sent2root = np.zeros(self.max_sent)
+                if deps_done:
+                    continue
+                
+                deps_done = True
+
+                deprel_m = np.zeros((self.max_sent, self.max_sent_tok))      
+                dephead_m = np.zeros((self.max_sent, self.max_sent_tok))      
+                sent2root = np.zeros(self.max_sent)
 
                 sentences  = sample.groupby("sentence_id")
 
@@ -374,13 +380,14 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labeler, Sp
 
 
                 for sent_i, (sent_id, sent_df) in enumerate(sentences):
-                    enc_data = sent_df[enc].to_numpy()
-                    sample_m[sent_i][:sent_df.shape[0]] = enc_data
-                    
-                    if enc == "deprel":
-                        root_id = self.encode_list(["root"], "deprel")[0]
-                        root_idx = int(np.where(enc_data == root_id)[0])
-                        sent2root[sent_i] = root_idx
+
+
+                    deprel_m[sent_i][:sent_df.shape[0]] = sent_df["deprel"].to_numpy()
+                    dephead_m[sent_i][:sent_df.shape[0]] = sent_df["dephead"].to_numpy()
+
+                    root_id = self.encode_list(["root"], "deprel")[0]
+                    root_idx = int(np.where(sent_df["deprel"].to_numpy() == root_id)[0])
+                    sent2root[sent_i] = root_idx
                                     
                     #create a mask
                     if self.prediction_level == "ac":
@@ -395,13 +402,15 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labeler, Sp
                             ac_i += 1
 
 
-                if enc == "deprel":
-                    sample_encs["sent2root"] = sent2root
-
                 if self.prediction_level == "ac":
                     sample_encs["ac2sentence"] = ac2sentence
                     sample_encs["sent_ac_mask"] = sentence_ac_mask
-                    
+
+
+                sample_encs["sent2root"] = sent2root
+                sample_encs["deprel"] = deprel_m
+                sample_encs["dephead"] = dephead_m
+
 
             else:
                 inc_ac = self.prediction_level == "ac" and not self.tokens_per_sample
@@ -422,8 +431,10 @@ class DataSet(ptl.LightningDataModule, DatasetEncoder, Preprocessor, Labeler, Sp
                 else:
                     sample_m[:sample.shape[0]] = np.stack(sample[enc].to_numpy())
                 
-            sample_encs[enc] = sample_m
+                sample_encs[enc] = sample_m
         
+
+
         return sample_encs
 
 

@@ -353,9 +353,15 @@ class Preprocessor:
         doc, sentence = self.__get_parent_text("token")
         current_token_idx = self.__get_char_idx("token")
 
-        #print("HELLO DOC", doc)
+        normalized_indexes = np.arange(len(spacy_sentence))
+
         for i, tok in enumerate(spacy_sentence):
             token = tok.text
+
+            if "\t" in token or "\n" in token:
+                normalized_indexes = np.concatenate((normalized_indexes[:i],normalized_indexes[i:]-1))
+                continue
+
             token_len = len(token)
             token = strange_characters.get(token, token)
 
@@ -367,20 +373,17 @@ class Preprocessor:
                 # char index in the origial text.
                 start = doc.find(token, max(0, current_token_idx-2))
 
-            assert tok.i - spacy_sentence.start == i
-            assert tok.head.i - spacy_sentence.start >= 0
-            assert tok.head.i - spacy_sentence.start < len(sentence)
-
-
             end = start + token_len
+            dephead = tok.head.i - spacy_sentence.start
+
             row =  {
                     "id": self.__get_global_id("token"),
-                    "sentence_token_id": i,
+                    "sentence_token_id": normalized_indexes[i],
                     "char_start": start,
                     "char_end": end,
                     "text": token.lower(),
                     "pos": tok.tag_,
-                    "dephead": tok.head.i - spacy_sentence.start,
+                    "dephead": normalized_indexes[dephead],
                     "deprel": tok.dep_
                     #
                     }
@@ -394,6 +397,12 @@ class Preprocessor:
             self._data_stack.append(row)
 
             current_token_idx = end
+
+
+        # if parent_ids["sentence_id"] == 74:
+        #     print(pd.DataFrame([r for r in self._data_stack if r["sentence_id"] == 74]))
+        #     print(lol)
+
 
 
         # stanza_doc = self.nlp(sentence)
@@ -533,7 +542,6 @@ class Preprocessor:
         doc, _ = self.__get_parent_text("paragraph")
         current_para_idx = self.__get_char_idx("paragraph")
 
-
         paras = self.__paragraph_tokenize(doc)
 
         for i,para in enumerate(paras):
@@ -669,7 +677,7 @@ class Preprocessor:
         """
         if self.data.shape == (0,0):
             self.data = pd.DataFrame(self._data_stack)
-            self._clean()
+            #self._clean()
         else:
             raise NotImplementedError
 
@@ -680,10 +688,10 @@ class Preprocessor:
         # self.stack_level_data = {l:[] for l in self.stack_level_data.keys()}
 
 
-    def _clean(self):
-        self.data = self.data[~self.data.text.str.contains("\n")]
-        self.data = self.data[~self.data.text.str.contains("\t")]
-        self.data.reset_index(inplace=True)
+    # def _clean(self):
+    #     self.data = self.data[~self.data.text.str.contains("\n")]
+    #     self.data = self.data[~self.data.text.str.contains("\t")]
+    #     self.data.reset_index(inplace=True)
 
 
 
