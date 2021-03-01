@@ -36,17 +36,22 @@ class PreProcessedDataset(ptl.LightningDataModule):
 
     def __getitem__(self, key:Union[np.ndarray, list]) -> ModelInput:
         Input = ModelInput()
-        key = ensure_numpy(key)
-        sorted_idx = np.argsort(key)
-        original_idx = np.argsort(sorted_idx)
-        sorted_key = key[sorted_idx]
+        sorted_key = np.sort(key)
+        # original_idx = np.argsort(sorted_idx)
+        # sorted_key = key[sorted_idx]
 
         lengths = self.data["lengths_tok"][sorted_key]
-        lengths_decending = np.argsort(lengths[::-1])
+        max_tok_len = max(lengths)
+        lengths_decending = np.argsort(lengths)[::-1]
 
         for dset in self.data:
             data = self.data[dset][sorted_key]
-            Input[dset] =  data[original_idx]
+
+            if len(data.shape) > 1:
+                data = data[:, :max_tok_len]
+                
+            Input[dset] =  data[lengths_decending]
+            
         Input.to_tensor()
         return Input
     

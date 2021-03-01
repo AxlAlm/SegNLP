@@ -141,7 +141,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             for i, sample in samples:
 
                 Input.add("id", i)
-                Input.add("lengths_tok", len(sample))
+                Input.add("lengths_tok", sample.shape[0])
 
                 if self.prediction_level == "span":
                     spans_grouped = sample.groupby("span_id")
@@ -339,15 +339,15 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 feature_matrix, am_mask, span_mask = self.__extract_ADU_features(fm, sample, sample_shape=feature_matrix.shape)
 
                 if fm.level == "word" and not span_mask_token_added:
-                    Input.add("am_token_mask", am_mask.astype(np.int))
-                    Input.add("span_token_mask", span_mask.astype(np.int))
+                    Input.add("am_token_mask", am_mask.astype(np.uint8))
+                    Input.add("span_token_mask", span_mask.astype(np.uint8))
                 
                 if not span_mask_token_added:
                     
                     if fm.level == "word":
-                        mask_dict["span_mask"] = np.max(span_mask, axis=-1)
+                        mask_dict["span_mask"] = np.max(span_mask, axis=-1).astype(np.uint8)
                     else:
-                        mask_dict["span_mask"] = span_mask
+                        mask_dict["span_mask"] = span_mask.astype(np.uint8)
            
             else:
                 
@@ -381,7 +381,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
                     if not token_mask_added:
                         #mask_dict["token_mask"][:sample_length] = np.ones(sample_length)
-                        Input.add("token_mask", np.ones(sample_length))
+                        Input.add("token_mask", np.ones(sample_length, dtype=np.uint8))
 
                 else:
                     feature_matrix = fm.extract(sample)[:sample_length]
@@ -389,7 +389,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
             if fm.group not in feature_dict:
                 feature_dict[fm.group] = []
-                
+            
             feature_dict[fm.group].append(feature_matrix)
 
 
@@ -554,7 +554,6 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             task2labels[task] = ["_".join([str(c) for c in comb]) for comb in combs]
         
         return task2labels
-
 
 
     def expect_labels(self, tasks:list, task_labels:dict):

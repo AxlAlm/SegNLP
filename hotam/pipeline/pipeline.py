@@ -299,10 +299,11 @@ class Pipeline:
             ptl_model = PTLBase(   
                                 model=model, 
                                 hyperparamaters=hyperparamater,
+                                tasks=self.preprocessor.tasks,
                                 all_tasks=self.preprocessor.all_tasks,
                                 label_encoders=self.preprocessor.encoders,
                                 prediction_level=self.preprocessor.prediction_level,
-                                task_dims={t:len(l) for t,l in self.preprocessor.task2labels.items()},
+                                task_dims={t:len(l) for t,l in self.preprocessor.task2labels.items() if t in self.preprocessor.tasks},
                                 feature_dims=self.preprocessor.feature2dim,
                                 )
 

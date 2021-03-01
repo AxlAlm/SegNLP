@@ -47,9 +47,8 @@ class LabelEncoder(Encoder):
 
 
     def encode(self, label):
-        l = self.label2id.get(label, -1)
-        return self.label2id.get(label, -1)
+        return self.label2id.get(str(label), -1)
 
 
     def decode(self, i):
-        return self.id2label.get(i, "None")
+        return self.id2label.get(int(i), "None")

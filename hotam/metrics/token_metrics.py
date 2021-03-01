@@ -8,6 +8,8 @@ import pandas as pd
 from typing import List, Dict, Union, Tuple
 import re
 from copy import deepcopy
+from collections import Counter
+
 
 #pytroch
 import torch
@@ -29,25 +31,23 @@ from hotam import get_logger
 
 
 
-def token_metrics(targets:np.ndarray, preds:np.ndarray, mask:np.ndarray, task:str, prefix:str):
-
+def token_metrics(targets:np.ndarray, preds:np.ndarray, mask:np.ndarray, task:str, labels:list, prefix:str):
+    
     preds = ensure_flat(ensure_numpy(preds), mask=mask)
     targets = ensure_flat(ensure_numpy(targets), mask=mask)
 
     assert targets.shape == preds.shape, f"shape missmatch for {task}: Targets:{targets.shape} | Preds: {preds.shape}"
 
-    label_counts = Counter(preds+targets)
-    labels = self.dataset.encoders[task].labels
     label_counts = Counter({l:0 for l in labels})
-    label_counts += Counter(preds+targets)
+    label_counts += Counter(preds.tolist()+targets.tolist())
 
-    if task != "relation":
-        confusion_matrix = confusion_matrix(targets, preds, label=labels)
+    if task != "link":
+        conf_m = confusion_matrix(targets, preds, labels=labels)
 
-    rs = recall_score(targets, preds, label=labels)
-    ps = precision_score(targets, preds, label=labels)
-
-    label_scores = []
+    rs = recall_score(targets, preds, labels=labels, average=None)
+    ps = precision_score(targets, preds, labels=labels, average=None)
+    
+    label_metrics = []
     for i,label in enumerate(labels):
 
         # if a label is not present in the targets or the predictions we ignore is so it doesn count towards the average
@@ -57,23 +57,25 @@ def token_metrics(targets:np.ndarray, preds:np.ndarray, mask:np.ndarray, task:st
         p = ps[i]
         r = rs[i]
         f1 = 2 * ((p*r) / (p+r))
+        
+        if np.isnan(f1):
+            f1 = 0
 
-        rows.append({"name":f"{prefix}-{label}-precision", "metric": "precision" , "value":p})
-        rows.append({"name":f"{prefix}-{label}-recall", "metric": "recall", "value":r })
-        rows.append({"name":f"{prefix}-{label}-f1", "metric": "f1", "value": f1})
+        label_metrics.append({"name":f"{prefix}-{task}-{label}-precision", "metric": "precision" , "value":p})
+        label_metrics.append({"name":f"{prefix}-{task}-{label}-recall", "metric": "recall", "value":r })
+        label_metrics.append({"name":f"{prefix}-{task}-{label}-f1", "metric": "f1", "value": f1})
 
 
-    df = pd.DataFrame(rows)
-    avrg_scores = [
-                        {"name":f"{prefix}-{task}-precision", "metric": "precision", "value": df[df["metric"]=="precision"].mean()},
-                        {"name":f"{prefix}-{task}-recall", "metric": "recall", "value": df[df["metric"]=="recall"].mean()},
-                        {"name":f"{prefix}-{task}-f1", "metric": "f1", "value": df[df["metric"]=="f1"].mean()},
+    df = pd.DataFrame(label_metrics)
+    task_metrics = [
+                        {"name":f"{prefix}-{task}-precision", "metric": "precision", "value": int(df[df["metric"]=="precision"].mean())},
+                        {"name":f"{prefix}-{task}-recall", "metric": "recall", "value": int(df[df["metric"]=="recall"].mean())},
+                        {"name":f"{prefix}-{task}-f1", "metric": "f1", "value": int(df[df["metric"]=="f1"].mean())},
                     ]
 
-    scores = df.to_dict("record") + avrg_metrics
-
-
-    return scores
+    df = pd.DataFrame(label_metrics + task_metrics) #.loc[:, ["name", "value"]].to_dict("record")
+    
+    return df["name"].to_numpy().tolist(), df["value"].to_numpy().tolist()
     
 
 

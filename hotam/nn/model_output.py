@@ -8,6 +8,7 @@ import numpy as np
 #hotam
 from hotam.metrics import token_metrics
 from hotam.nn import ModelInput
+from hotam.utils import ensure_numpy
 
 #pytorch
 import torch
@@ -20,21 +21,28 @@ class ModelOutput:
     def __init__(self, 
                 batch:ModelInput,
                 return_output:Union[List[int], bool], 
-                label_encoders:dict, 
+                label_encoders:dict,
+                tasks:list,
                 all_tasks:list,
                 prediction_level:str,
-                calc_metrics:bool=True, 
+                split:str,
+                calc_metrics:bool=True,
                 ):
 
         self.return_output = return_output
         self.calc_metrics = calc_metrics
         self.label_encoders = label_encoders
+        self.tasks = tasks
         self.all_tasks = all_tasks
         self.prediction_level = prediction_level
         self.batch = batch
         self._total_loss_added = False
-        self.loss = {}
+        self.split  = split
 
+        self.loss = {}
+        self.metrics_keys = []
+        self.metric_values = []
+        self.outputs = []
         
         # self.dataset.get_subtask_position(task, subtask) 
         # #self.dataset.decode_list(preds[i][:lenghts[i]], task)
@@ -57,9 +65,12 @@ class ModelOutput:
         
 
         #self.seg = {}  
+    @property
+    def metrics(self):
+        return self.metrics_keys, self.metric_values
 
 
-    def __get_subtask_preds(decoded_labels:list, task:str):
+    def __add_subtask_preds(self, decoded_labels:np.ndarray, lengths:np.ndarray, level:str,  task:str):
         """
         given that some labels are complexed, i.e. 2 plus tasks in one, we can break these apart and 
         get the predictions for each of the task so we can get metric for each of them. 
@@ -67,29 +78,46 @@ class ModelOutput:
         for example, if one task is Segmentation+Arugment Component Classification, this task is actually two
         tasks hence we can break the predictions so we cant get scores for each of the tasks.
         """
+
+
+        #sum_lens = np.sum(lengths)
+        max_len = max(lengths)
+        size = decoded_labels.shape[0]
         subtasks_predictions = {}
-        subtasks = task.split("_")
+        subtasks = task.split("+")
         for subtask in subtasks:
 
-            # get the positon of the subtask in the joint label
-            # e.g. for  labels following this, B_MajorClaim, 
-            # BIO is at position 0, and AC is at position 1
             subtask_position = subtasks.index(subtask)
-            subtask_labels = [p.split("_")[subtask_position] for p in decoded_labels]
 
-            subtasks_predictions[subtask] = subtask_labels
+            if subtask == "link":
+                dtype = np.int16
+                decoder = lambda x: int(str(x).split("_")[subtask_position])
+            else:
+                dtype = decoded_labels.dtype
+                decoder = lambda x: str(x).split("_")[subtask_position]
 
-        return subtasks_predictions
+
+            subtask_preds = np.zeros((size, max_len), dtype=dtype)
+            for i in range(size):
+                subtask_preds[i][:lengths[i]] = [decoder(x) for x in decoded_labels[i][:lengths[i]] ]
+
+
+            self.add_preds(
+                            task=subtask, 
+                            level=level, 
+                            data=subtask_preds,
+                            decoded=True,
+                            )
     
 
     def __decode_labels(self, preds:list, lengths:list, task:str):
 
-        dtype = str if task == "link" else np.int16
+        dtype = "<U30" if task != "link" else np.int16
         size = preds.shape[0]
         decoded_preds = np.zeros((size, max(lengths)), dtype=dtype)
-        for i, sample_preds in range(size):
-            decoded_preds[i][:lenghts[i]] = self.label_encoders[task].decode_list(preds[i][:lenghts[i]])
-            #decoded_preds[i][:lenghts[i]] = self.dataset.decode_list(preds[i][:lenghts[i]], task)
+        for i in range(size):
+            decoded_preds[i][:lengths[i]] = self.label_encoders[task].decode_list(preds[i][:lengths[i]])
+            #decoded_preds[i][:lengths[i]] = self.dataset.decode_list(preds[i][:lengths[i]], task)
         
         return decoded_preds
 
@@ -103,19 +131,22 @@ class ModelOutput:
                                                 lengths=lengths,
                                                 task=task,
                                                 )
+        
 
-        subtask_preds = self.__get_subtask_preds(
-                                                decoded_labels=decoded_labels, 
+        subtask_preds = self.__add_subtask_preds(
+                                                decoded_labels=decoded_labels,
+                                                lengths=lengths,
+                                                level=level,
                                                 task=task
                                                 )
         
-        for stask, sdata in subtask_preds.items():
-            self.add_preds(
-                            task=stask, 
-                            level=level, 
-                            data=sdata,
-                            decoded=True,
-                            )
+        # for stask, sdata in subtask_preds.items():
+        #     self.add_preds(
+        #                     task=stask, 
+        #                     level=level, 
+        #                     data=sdata,
+        #                     decoded=True,
+        #                     )
 
 
     def __unfold_span_labels(self, span_labels:np.ndarray, span_indexes:np.ndarray, max_nr_token:int):
@@ -138,28 +169,29 @@ class ModelOutput:
     def add_loss(self, task:str, data=torch.tensor):
 
         assert torch.is_tensor(data), f"{task} loss need to be a tensor"
-        assert data.requires_grad, f"{task} loss tensor should require grads"
+        #assert data.requires_grad, f"{task} loss tensor should require grads"
 
         if task == "total":
-            loss["total"] = data
+            self.loss["total"] = data
         else:
-            loss[task] = data
+            self.loss[task] = data
 
             if not self._total_loss_added:
 
-                if "total" in loss:
-                    loss["total"] = data
+                if "total" not in self.loss:
+                    self.loss["total"] = data
                 else:
-                    loss["total"] += data
+                    self.loss["total"] += data
     
-        self.metrics[f"{task}-loss"] = ensure_numpy(data)
+        self.metrics_keys.append(f"{task}-loss")
+        self.metric_values.append(int(data))
 
 
     def add_preds(self, task:str, level:str, data:torch.tensor, decoded:bool=False, sample_ids="same"):
 
-        assert task in set(self.all_tasks), f"{task} is not a supported task. Supported tasks are: {self.all_tasks}"
+        #assert task in set(self.tasks), f"{task} is not a supported task. Supported tasks are: {self.tasks}"
         assert level in set(["token", "span"]), f"{level} is not a supported level. Only 'token' or 'span' are supported levels"
-        assert torch.is_tensor(data), f"{task} preds need to be a tensor"
+        assert torch.is_tensor(data) or isinstance(data, np.ndarray), f"{task} preds need to be a tensor or numpy.ndarray"
         assert len(data.shape) == 2, f"{task} preds need to be a 2D tensor"
 
     
@@ -182,7 +214,8 @@ class ModelOutput:
             raise NotImplementedError()
 
 
-        if "_" in task:
+        if "+" in task:
+            print(task, data)
             self.__handle_complex_tasks(
                                         data=data,
                                         level=level,
@@ -206,46 +239,61 @@ class ModelOutput:
                                         )
 
         if not decoded:
-            decoded_labels = self.__decode_labels(
+            decoded_preds = self.__decode_labels(
                                                 preds=data, 
-                                                lengths=self.batch["lengths_tok"]
+                                                lengths=self.batch["lengths_tok"],
+                                                task=task
                                                 )
         else:
-            decoded_labels = data
+            decoded_preds = data
 
 
+        # if task == "seg":
+        #     decoded_labels = self.__correct_segmentation(decoded_labels)
 
-        if task == "seg":
-            decoded_labels = self.__correct_segmentation(decoded_labels)
+        # if task == "link":
+        #     decoded_labels = self.__correct_relations(decoded_labels)
 
-        if task == "link":
-            decoded_labels = self.__correct_relations(decoded_labels)
+        # print(task)
+        # print("DECODED PREDS", decoded_labels)
+        # print("TARGETS", self.batch[f"token_{task}"])
+        if self.calc_metrics:
+            #self.batch[f"token_{task}"]
+            decoded_targets = self.__decode_labels(
+                                                preds=self.batch[f"token_{task}"], 
+                                                lengths=self.batch["lengths_tok"],
+                                                task=task
+                                                )
 
+            keys, values = token_metrics(
+                                                targets=decoded_targets,
+                                                preds=decoded_preds,
+                                                mask=self.batch["token_mask"],
+                                                task=task,
+                                                labels=self.label_encoders[task].labels,
+                                                prefix=self.split,
+                                                )
+            self.metrics_keys.extend(keys)
+            self.metric_values.extend(values)
 
-        if calc_metrics:
-            task_metrics = token_metrics(
-                                        targets=self.batch[f"token_{task}"],
-                                        preds=decoded_labels,
-                                        mask=self.batch["token_mask"],
-                                        task=task,
-                                        prefix=self.current_split,
-                                        )
+   
+                            
 
         
-        if return_output:
+        # if return_output:
 
 
-            if sample_ids == "same":
+        #     if sample_ids == "same":
 
-                if isinstance(return_output) == bool:
+        #         if isinstance(return_output) == bool:
 
-                    set(ensure_numpy(self.batch["ids"]).tolist()).union(set(return_output))
+        #             set(ensure_numpy(self.batch["ids"]).tolist()).union(set(return_output))
 
-            else:
-                raise NotImplementedError()
+        #     else:
+        #         raise NotImplementedError()
 
 
-        #self.preds[task] = seg_labels
+        # #self.preds[task] = seg_labels
 
 
     def add_probs(self, task:str, level:str, data:torch.tensor):

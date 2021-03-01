@@ -124,7 +124,6 @@ class LSTM_CNN_CRF(nn.Module):
         word_embs = batch["word_embs"]
 
         #2
-        print(batch["chars"].shape)
         char_embs = self.char_cnn(batch["chars"])
 
         #3
@@ -135,7 +134,7 @@ class LSTM_CNN_CRF(nn.Module):
 
         for task, output_layer in self.output_layers.items():
 
-            target_tags = batch[task]
+            target_tags = batch[f"token_{task}"]
 
             #5
             dense_out = output_layer(lstm_out)

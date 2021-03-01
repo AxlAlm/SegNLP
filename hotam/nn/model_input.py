@@ -43,8 +43,6 @@ class ModelInput(dict):
             if k == "text":
                 continue
 
-
-            print(k, tensor_dtype(v.dtype), v.dtype)
             self[k] = torch.tensor(v, dtype=tensor_dtype(v.dtype))
         return self
 

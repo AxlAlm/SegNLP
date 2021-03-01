@@ -40,7 +40,7 @@ class Encoder:
         #         padded[i] = self.encode(item)
         #     return padded
         # else:
-        return np.array([self.encode(item) for item in item_list])
+        return [self.encode(item) for item in item_list]
 
 
     def decode_list(self, item_list:List[int]) -> List[int]:
@@ -58,4 +58,4 @@ class Encoder:
         List[int]
             list of decoded strings
         """
-        return np.array([self.decode(int(item)) for item in item_list])
+        return [self.decode(item) for item in item_list]

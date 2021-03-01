@@ -52,6 +52,7 @@ class PTLBase(ptl.LightningModule):
     def __init__(   self,  
                     model:torch.nn.Module, 
                     hyperparamaters:dict,
+                    tasks:list,
                     all_tasks:list,
                     label_encoders:dict,
                     prediction_level:str,
@@ -62,6 +63,7 @@ class PTLBase(ptl.LightningModule):
         self.hyperparamaters = hyperparamaters
         self.monitor_metric = hyperparamaters.get("monitor_metric", "loss")
         self.prediction_level = prediction_level
+        self.tasks = tasks
         self.all_tasks = all_tasks
         self.label_encoders = label_encoders
         self.model = model(
@@ -86,50 +88,79 @@ class PTLBase(ptl.LightningModule):
                                     batch, 
                                     ModelOutput(
                                             batch=batch,
-                                            calc_metrics=True, 
                                             return_output=True, 
                                             label_encoders=self.label_encoders, 
+                                            tasks=self.tasks,
                                             all_tasks=self.all_tasks,
                                             prediction_level=self.prediction_level,
+                                            split = split,
+                                            calc_metrics=True, 
+
                                             )
                                     )
+        #total_loss = output.loss["total"]
 
-        # get the metrics and the loss (gpu grad loss)
-        metrics = output.metrics
-        total_loss = output.loss["total"]
+        # # if we are on val and test we can log our output
+        # if self.logger and split in ["val", "test"]:
+        #     self.logger.log_outputs(output)
 
-        # if we are on val and test we can log our output
-        if self.logger and split in ["val", "test"]:
-            self.logger.log_outputs(output.outputs)
-            
-        return  total_loss, metrics
+        self.metric_keys, metric_values = output.metrics
+
+        print(metric_values)
+
+        return  output.loss["total"], output.outputs, metric_values
     
 
     def training_step(self, batch_ids, batch_idx):
-        loss, metrics = self._step(batch_ids, "train")
-        result = ptl.TrainResult(  
-                                    minimize=loss,
-
-                                )
-        result.log_dict(metrics, on_epoch=True, reduce_fx=my_mean, tbptt_reduce_fx=my_mean)
-        return result
+        return self._step(batch_ids, "train")
 
 
     def validation_step(self, batch_ids, batch_idx):
-        loss, metrics = self._step(batch_ids, "val")
-        result = ptl.EvalResult(
-                                    early_stop_on=torch.Tensor([metrics[self.monitor_metric]]), 
-                                    checkpoint_on=torch.Tensor([metrics[self.monitor_metric]])
-                                )
-        result.log_dict(metrics, on_epoch=True, reduce_fx=my_mean, tbptt_reduce_fx=my_mean)
-        return result
-
+        return self._step(batch_ids, "val")
 
     def test_step(self, batch_ids, batch_idx):
-        loss, metrics = self._step(batch_ids, "test")
-        result = ptl.EvalResult()
-        result.log_dict(metrics, on_epoch=True, reduce_fx=my_mean, tbptt_reduce_fx=my_mean)
-        return result
+        return self._step(batch_ids, "test")
+
+     
+    def _end_of_epoch(self, step_outputs, split):
+        size = len(step_outputs)
+        _, outputs, metrics  = zip(*step_outputs)
+
+        epoch_metrics = dict(zip(self.metric_keys, (np.sum(metrics, axis=0) / size).tolist()))
+        print(epoch_metrics)
+        self.exp_logger.log_metrics(epoch_metrics)
+
+        if split != "train":
+            outputs = ""
+            logger.log_outputs(outputs)
+
+
+    def on_train_epoch_end(self, step_outputs):
+        self._end_of_epoch(step_outputs, "train")
+
+    def on_validation_epoch_end(self, step_outputs):
+        self._end_of_epoch(step_outputs, "val")
+
+    def on_test_epoch_end(self, step_outputs):
+        self._end_of_epoch(step_outputs, "test")
+
+
+
+    # def validation_step(self, batch_ids, batch_idx):
+    #     loss, metrics = self._step(batch_ids, "val")
+    #     # result = ptl.EvalResult(
+    #     #                             early_stop_on=torch.Tensor([metrics[self.monitor_metric]]), 
+    #     #                             checkpoint_on=torch.Tensor([metrics[self.monitor_metric]])
+    #     #                         )
+    #     # result.log_dict(metrics, on_epoch=True, reduce_fx=my_mean, tbptt_reduce_fx=my_mean)
+    #     #return result
+
+
+    # def test_step(self, batch_ids, batch_idx):
+    #     loss, metrics = self._step(batch_ids, "test")
+    #     result = ptl.EvalResult()
+    #     result.log_dict(metrics, on_epoch=True, reduce_fx=my_mean, tbptt_reduce_fx=my_mean)
+    #     #return result
      
 
     def configure_optimizers(self):
