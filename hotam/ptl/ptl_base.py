@@ -30,21 +30,45 @@ logger = get_logger("PTLBase (ptl.LightningModule)")
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 
-def my_mean(scores):
+# def my_mean(scores):
 
-    scores = ensure_numpy(scores)
+#     scores = ensure_numpy(scores)
     
-    if scores.shape[0] == 0:
-        return scores[0]
+#     if scores.shape[0] == 0:
+#         return scores[0]
 
-    if torch.is_tensor(scores):
-        return torch.mean(scores)
+#     if torch.is_tensor(scores):
+#         return torch.mean(scores)
     
-    if len(scores.shape) > 1:
-        return np.mean(scores, axis=0)
-    else:
-        return np.mean(scores)
+#     if len(scores.shape) > 1:
+#         return np.mean(scores, axis=0)
+#     else:
+#         return np.mean(scores)
     
+class MetricContainer(dict):
+
+    def __init__(self):
+        for k in ["train", "val"]:
+            self[k] = {"metrics":None, "keys":None}
+
+        self._nr_adds = 0
+
+
+    def add(self, keys:list, values:np.ndarray, split:str):
+
+        if self[split]["metrics"] is None:
+            self[split]["keys"] = keys
+            self[split]["metrics"]  = values
+        else:
+            self[split]["metrics"] += values
+        
+        self._nr_adds += 1
+        
+    
+    def get_mean(self, split:str):
+        return dict(zip(self[split]["keys"], self[split]["metrics"] / self._nr_adds))
+
+
 
 class PTLBase(ptl.LightningModule):
 
@@ -71,6 +95,8 @@ class PTLBase(ptl.LightningModule):
                             task_dims=task_dims,
                             feature_dims=feature_dims,
                             )
+        
+        self._metrics = MetricContainer()
                     
 
     def forward(self) -> dict:
@@ -81,9 +107,7 @@ class PTLBase(ptl.LightningModule):
 
         # fetches the device so we can place tensors on the correct memmory
         device = f"cuda:{next(self.parameters()).get_device()}" if self.on_gpu else "cpu"
-        self.split = split 
         batch.current_epoch = self.current_epoch
-
         output = self.model.forward(
                                     batch, 
                                     ModelOutput(
@@ -93,22 +117,15 @@ class PTLBase(ptl.LightningModule):
                                             tasks=self.tasks,
                                             all_tasks=self.all_tasks,
                                             prediction_level=self.prediction_level,
-                                            split = split,
                                             calc_metrics=True, 
 
                                             )
                                     )
-        #total_loss = output.loss["total"]
 
-        # # if we are on val and test we can log our output
-        # if self.logger and split in ["val", "test"]:
-        #     self.logger.log_outputs(output)
-
-        self.metric_keys, metric_values = output.metrics
-
-        print(metric_values)
-
-        return  output.loss["total"], output.outputs, metric_values
+        metric_keys, metric_values = output.metrics
+        self._metrics.add(metric_keys, metric_values, split)
+        
+        return  output.loss["total"]
     
 
     def training_step(self, batch_ids, batch_idx):
@@ -118,31 +135,49 @@ class PTLBase(ptl.LightningModule):
     def validation_step(self, batch_ids, batch_idx):
         return self._step(batch_ids, "val")
 
+
     def test_step(self, batch_ids, batch_idx):
         return self._step(batch_ids, "test")
 
+
+    # def training_step_end(self, outs):
+    #     return outs
+
+
+    # def validation_step_end(self, outs):
+    #     return outs
+
+
+    # def test_step_end(self, outs):
+    #     return outs
      
-    def _end_of_epoch(self, step_outputs, split):
-        size = len(step_outputs)
-        _, outputs, metrics  = zip(*step_outputs)
 
-        epoch_metrics = dict(zip(self.metric_keys, (np.sum(metrics, axis=0) / size).tolist()))
-        print(epoch_metrics)
-        self.exp_logger.log_metrics(epoch_metrics)
+    def _end_of_epoch(self, split):
+        
+        if self.logger is not None:
+            epoch_metrics = self._metrics.get_mean(split)
+            self.logger.log_metrics(
+                                    metrics=epoch_metrics,
+                                    epoch=self.current_epoch,
+                                    split=split,
+                                    )
 
-        if split != "train":
-            outputs = ""
-            logger.log_outputs(outputs)
+            if split != "train":
+                outputs = ""
+                self.logger.log_outputs(outputs)
+            
+        self._metrics = MetricContainer()
+        self._epoch_outputs = None
 
 
-    def on_train_epoch_end(self, step_outputs):
-        self._end_of_epoch(step_outputs, "train")
+    def on_train_epoch_end(self):
+        self._end_of_epoch("train")
 
-    def on_validation_epoch_end(self, step_outputs):
-        self._end_of_epoch(step_outputs, "val")
+    def on_validation_epoch_end(self):
+        self._end_of_epoch("val")
 
-    def on_test_epoch_end(self, step_outputs):
-        self._end_of_epoch(step_outputs, "test")
+    def on_test_epoch_end(self):
+        self._end_of_epoch("test")
 
 
 

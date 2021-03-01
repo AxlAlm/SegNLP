@@ -275,7 +275,6 @@ class LSTM_DIST(nn.Module):
         #relation_out = relation_out_new
 
 
-
         stance_probs = F.softmax(stance_out, dim=-1)
         ac_probs = F.softmax(ac_out, dim=-1)
 
@@ -283,13 +282,13 @@ class LSTM_DIST(nn.Module):
         stance_preds = torch.argmax(stance_out, dim=-1)
         ac_preds = torch.argmax(ac_out, dim=-1)
 
+
         # we want to ignore -1  in the loss function so we set pad_values to -1, default is 0
         batch.change_pad_value(-1)
         
         relation_loss = self.loss(torch.flatten(relation_out, end_dim=-2), batch["relation"].view(-1))
         stance_loss = self.loss(torch.flatten(stance_out, end_dim=-2), batch["stance"].view(-1))
         ac_loss = self.loss(torch.flatten(ac_out, end_dim=-2), batch["ac"].view(-1))
-        
         total_loss = (self.ALPHA * relation_loss) + (self.BETA * stance_loss) + ( (1 - (self.ALPHA-self.BETA)) * ac_loss) 
 
 

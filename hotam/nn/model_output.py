@@ -25,7 +25,6 @@ class ModelOutput:
                 tasks:list,
                 all_tasks:list,
                 prediction_level:str,
-                split:str,
                 calc_metrics:bool=True,
                 ):
 
@@ -37,7 +36,6 @@ class ModelOutput:
         self.prediction_level = prediction_level
         self.batch = batch
         self._total_loss_added = False
-        self.split  = split
 
         self.loss = {}
         self.metrics_keys = []
@@ -67,7 +65,7 @@ class ModelOutput:
         #self.seg = {}  
     @property
     def metrics(self):
-        return self.metrics_keys, self.metric_values
+        return self.metrics_keys, np.array(self.metric_values)
 
 
     def __add_subtask_preds(self, decoded_labels:np.ndarray, lengths:np.ndarray, level:str,  task:str):
@@ -271,7 +269,6 @@ class ModelOutput:
                                                 mask=self.batch["token_mask"],
                                                 task=task,
                                                 labels=self.label_encoders[task].labels,
-                                                prefix=self.split,
                                                 )
             self.metrics_keys.extend(keys)
             self.metric_values.extend(values)

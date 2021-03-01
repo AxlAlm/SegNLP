@@ -6,6 +6,7 @@ from tqdm import tqdm
 import numpy as np
 from typing import Union, Sequence
 import os
+import json
 
 #pytroch lighnting
 import pytorch_lightning as ptl
@@ -31,26 +32,34 @@ class PreProcessedDataset(ptl.LightningDataModule):
         self._fp = h5py_file_path
         self.data = h5py.File(self._fp, "r")
         self.splits = splits
-        self._size = self.data["id"].shape[0]
+        self._size = self.data["ids"].shape[0]
+        self.prediction_level = "token"
 
 
     def __getitem__(self, key:Union[np.ndarray, list]) -> ModelInput:
         Input = ModelInput()
-        sorted_key = np.sort(key)
-        # original_idx = np.argsort(sorted_idx)
-        # sorted_key = key[sorted_idx]
 
-        lengths = self.data["lengths_tok"][sorted_key]
-        max_tok_len = max(lengths)
+        sorted_key = np.sort(key)
+        lengths = self.data[self.prediction_level]["lengths"][sorted_key]
+        max_len = max(lengths)
         lengths_decending = np.argsort(lengths)[::-1]
 
-        for dset in self.data:
-            data = self.data[dset][sorted_key]
+        Input._ids = self.data["ids"][sorted_key][lengths_decending]
+        
+        for group in self.data:
 
-            if len(data.shape) > 1:
-                data = data[:, :max_tok_len]
+            if group == "ids":
+                continue
+            
+            Input[group] = {}
+            for k, v in self.data[group].items():
                 
-            Input[dset] =  data[lengths_decending]
+                a = v[sorted_key]
+            
+                if len(a.shape) > 1:
+                    a = a[:, :max_len]
+            
+                Input[group][k] = a[lengths_decending]
             
         Input.to_tensor()
         return Input
@@ -61,11 +70,27 @@ class PreProcessedDataset(ptl.LightningDataModule):
 
 
     def info(self):
+        
+        structure = { }
+        for group in self.data.keys():
+
+            if group == "ids":
+                structure["ids"] = f'dtype={str(self.data["ids"].dtype)}, shape={self.data["ids"].shape}'
+                continue
+
+            structure[group] = {}
+            for k, v in self.data[group].items():
+                structure[group][k] = f"dtype={str(v.dtype)}, shape={v.shape}"
+
+
         s = f"""
-            keys            = {[dset for dset in self.data]}
-            size            = {self._size}
-            file size (MBs) = {str(round(os.path.getsize(self._fp) / (1024 * 1024), 3))}
-            file path       = {self._fp}
+            Structure:        
+            
+            {json.dumps(structure, indent=4)}
+
+            Size            = {self._size}
+            File Size (MBs) = {str(round(os.path.getsize(self._fp) / (1024 * 1024), 3))}
+            Filepath       = {self._fp}
             """
         print(s)
 
@@ -101,44 +126,56 @@ class DataPreprocessor:
 
 
     def __init_store(self, Input:ModelInput):
+        
+        self.h5py_f.create_dataset("ids", data=Input.ids, dtype=np.int16, chunks=True, maxshape=(None,))
 
-        for k,v in Input.items():
-            v = ensure_numpy(v)
-            #dynamic_shape = tuple([None for v in enumerate(v.shape)])
-            #self.h5py_f.create_dataset(k, dynamic_shape, dtype=v.dtype)
-            max_shape = tuple([None for v in enumerate(v.shape)])
-            if "<U" in str(v.dtype):
-                self.h5py_f.create_dataset(k, data=v.tolist(), chunks=True, maxshape=max_shape)
-            else:
-                self.h5py_f.create_dataset(k, data=v, dtype=v.dtype, chunks=True, maxshape=max_shape)
+        for level in Input.levels:
+            
+            for k,v in Input[level].items():
+                v = ensure_numpy(v)
+                #dynamic_shape = tuple([None for v in enumerate(v.shape)])
+                #self.h5py_f.create_dataset(k, dynamic_shape, dtype=v.dtype)
+                max_shape = tuple([None for v in enumerate(v.shape)])
+
+                name = f"/{level}/{k}"
+                if "<U" in str(v.dtype):
+                    self.h5py_f.create_dataset(name, data=v.tolist(), chunks=True, maxshape=max_shape)
+                else:
+                    self.h5py_f.create_dataset(name, data=v, dtype=v.dtype, chunks=True, maxshape=max_shape)
 
         self.__init_storage_done = True
     
 
     def __append_store(self, Input:ModelInput):
 
-        for k,v in Input.items():
-            #try:
-            v = ensure_numpy(v)
+        last_sample_i = self.h5py_f["ids"].shape[0]
+        self.h5py_f["ids"].resize((self.h5py_f["ids"].shape[0] + Input.ids.shape[0],))
+        self.h5py_f["ids"][last_sample_i:] = Input.ids
 
-            last_sample_i = self.h5py_f[k].shape[0]
+        for level in Input.levels:
+            for k,v in Input[level].items():
+                v = ensure_numpy(v)
+                k = f"/{level}/{k}"
 
-            nr_dims = len(v.shape)
-            if nr_dims == 1:
-                new_shape = (self.h5py_f[k].shape[0] + v.shape[0],)
-            else:
-                nr_rows = self.h5py_f[k].shape[0] + v.shape[0]
-                max_shape = np.maximum(self.h5py_f[k].shape[1:], v.shape[1:])
-                new_shape = (nr_rows, *max_shape)
-        
-            self.h5py_f[k].resize(new_shape)
+                last_sample_i = self.h5py_f[k].shape[0]
 
-            if nr_dims > 2:
-                self.h5py_f[k][last_sample_i:,:v.shape[1], :v.shape[2]] = v
-            elif nr_dims == 2:
-                self.h5py_f[k][last_sample_i:,:v.shape[1]] = v
-            else:
-                self.h5py_f[k][last_sample_i:] = v
+                nr_dims = len(v.shape)
+                if nr_dims == 1:
+                    new_shape = (self.h5py_f[k].shape[0] + v.shape[0],)
+                else:
+                    nr_rows = self.h5py_f[k].shape[0] + v.shape[0]
+                    max_shape = np.maximum(self.h5py_f[k].shape[1:], v.shape[1:])
+                    new_shape = (nr_rows, *max_shape)
+                
+            
+                self.h5py_f[k].resize(new_shape)
+
+                if nr_dims > 2:
+                    self.h5py_f[k][last_sample_i:,:v.shape[1], :v.shape[2]] = v
+                elif nr_dims == 2:
+                    self.h5py_f[k][last_sample_i:,:v.shape[1]] = v
+                else:
+                    self.h5py_f[k][last_sample_i:] = v
 
 
     def load_preprocessed_dataset(self, file_path):
@@ -155,8 +192,8 @@ class DataPreprocessor:
         for i in range(0, len(dataset), chunks):
             Input = self(dataset[i:i+chunks])
 
-            Input["id"] = Input["id"] + (last_id+1)
-            last_id = Input["id"][-1]
+            Input._ids = Input._ids + (last_id + 1)
+            last_id = Input.ids[-1]
 
             if not self.__init_storage_done:
                 self.__init_store(Input)

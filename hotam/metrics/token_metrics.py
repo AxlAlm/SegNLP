@@ -31,7 +31,7 @@ from hotam import get_logger
 
 
 
-def token_metrics(targets:np.ndarray, preds:np.ndarray, mask:np.ndarray, task:str, labels:list, prefix:str):
+def token_metrics(targets:np.ndarray, preds:np.ndarray, mask:np.ndarray, task:str, labels:list):
     
     preds = ensure_flat(ensure_numpy(preds), mask=mask)
     targets = ensure_flat(ensure_numpy(targets), mask=mask)
@@ -61,16 +61,16 @@ def token_metrics(targets:np.ndarray, preds:np.ndarray, mask:np.ndarray, task:st
         if np.isnan(f1):
             f1 = 0
 
-        label_metrics.append({"name":f"{prefix}-{task}-{label}-precision", "metric": "precision" , "value":p})
-        label_metrics.append({"name":f"{prefix}-{task}-{label}-recall", "metric": "recall", "value":r })
-        label_metrics.append({"name":f"{prefix}-{task}-{label}-f1", "metric": "f1", "value": f1})
+        label_metrics.append({"name":f"{task}-{label}-precision", "metric": "precision" , "value":p})
+        label_metrics.append({"name":f"{task}-{label}-recall", "metric": "recall", "value":r })
+        label_metrics.append({"name":f"{task}-{label}-f1", "metric": "f1", "value": f1})
 
 
     df = pd.DataFrame(label_metrics)
     task_metrics = [
-                        {"name":f"{prefix}-{task}-precision", "metric": "precision", "value": int(df[df["metric"]=="precision"].mean())},
-                        {"name":f"{prefix}-{task}-recall", "metric": "recall", "value": int(df[df["metric"]=="recall"].mean())},
-                        {"name":f"{prefix}-{task}-f1", "metric": "f1", "value": int(df[df["metric"]=="f1"].mean())},
+                        {"name":f"{task}-precision", "metric": "precision", "value": int(df[df["metric"]=="precision"].mean())},
+                        {"name":f"{task}-recall", "metric": "recall", "value": int(df[df["metric"]=="recall"].mean())},
+                        {"name":f"{task}-f1", "metric": "f1", "value": int(df[df["metric"]=="f1"].mean())},
                     ]
 
     df = pd.DataFrame(label_metrics + task_metrics) #.loc[:, ["name", "value"]].to_dict("record")

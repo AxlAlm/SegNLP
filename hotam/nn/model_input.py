@@ -1,6 +1,7 @@
 
 
 import numpy as np
+from collections import defaultdict 
 
 
 #pytroch 
@@ -8,8 +9,6 @@ import torch
 
 #hotam 
 from hotam.utils import dynamic_update, tensor_dtype
-
-
 
 
 class ModelInput(dict):
@@ -23,64 +22,92 @@ class ModelInput(dict):
         self.current_epoch = None
         self.pad_value = 0
         self._size = 0
+        self._ids = []
 
 
     def __len__(self):
-        return self["id"].shape[0]
+        return len(self.id)
 
+    @property
+    def ids(self):
+        return self._ids
+
+    @property
+    def levels(self):
+        return list(self.keys())
 
     def to(self, device):
         self.device = device
-        for k,v in self.items():
-            if torch.is_tensor(v):
-                self[k] = v.to(self.device)
+        for level in self:
+            for k,v in self[level].items():
+                if torch.is_tensor(v):
+                    self[level][k] = v.to(self.device)
         return self
     
 
     def to_tensor(self):
-        for k,v in self.items():
 
-            if k == "text":
-                continue
+        for level in self:
+            for k,v in self[level].items():
 
-            self[k] = torch.tensor(v, dtype=tensor_dtype(v.dtype))
+                if k == "text":
+                    continue
+                self[level][k] = torch.tensor(v, dtype=tensor_dtype(v.dtype))
         return self
 
 
     def to_numpy(self):
-        for k,v in self.items():
 
-            if isinstance(v, np.ndarray):
-                continue
-            
-            if isinstance(v[0], np.ndarray):
-                dtype = v[0].dtype
-            else:
-                dtype = np.int
+        self._ids = np.array(self._ids)
+        for level in self:
 
-            self[k] = np.array(v, dtype=dtype)
+            for k,v in self[level].items():
+                
+                if isinstance(v, np.ndarray):
+                    continue
+                
+                if isinstance(v[0], np.ndarray):
+                    dtype = v[0].dtype
+                else:
+                    dtype = np.int
+
+                self[level][k] = np.array(v, dtype=dtype)
+
         return self
 
 
-    def change_pad_value(self, task, new_value):
+    def change_pad_value(self, level:str, task:str, new_value:int):
         #for task in self.all_tasks:
-        self[task][self[task] == self.pad_value] = new_value
+        self[level][task][self[level][task] == self.pad_value] = new_value
             # self[task][~self[f"{self.prediction_level}_mask"].type(torch.bool)] = -1
      
 
-    def add(self, k, v):
+    def add(self, k, v, level):
         # if k not in self:
         #     self[k] = [v]
         # else:
         #     self[k].append(v)
+        # if k == "id":
+        #     if "id" in k:
+        #         self[k] = [v]
+        #     else:
+        #         self[k].append(v)
+
+
+        if k == "id":
+            self._ids.append(v)
+            return
+        
+        if level not in self:
+            self[level] = {}
          
-        if k not in self:
+        if k not in self[level]:
             if isinstance(v, np.ndarray):
-                self[k] = np.expand_dims(v, axis=0)
+                self[level][k] = np.expand_dims(v, axis=0)
             else:
-                self[k] = [v]
+                self[level][k] = [v]
         else:
             if isinstance(v, int):
-                self[k].append(v)
+                self[level][k].append(v)
             else:
-                self[k] = dynamic_update(self[k],v)
+                self[level][k] = dynamic_update(self[level][k], v)
