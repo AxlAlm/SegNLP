@@ -117,14 +117,14 @@ class LSTM_CNN_CRF(nn.Module):
 
     def forward(self, batch, output):
 
-        lengths = batch["lengths_tok"]
-        mask = batch["token_mask"]
+        lengths = batch["token"]["lengths"]
+        mask = batch["token"]["mask"]
 
         #1
-        word_embs = batch["word_embs"]
+        word_embs = batch["token"]["word_embs"]
 
         #2
-        char_embs = self.char_cnn(batch["chars"])
+        char_embs = self.char_cnn(batch["token"]["chars"])
 
         #3
         cat_emb = torch.cat((word_embs, char_embs), dim=-1)
@@ -134,13 +134,14 @@ class LSTM_CNN_CRF(nn.Module):
 
         for task, output_layer in self.output_layers.items():
 
-            target_tags = batch[f"token_{task}"]
+            target_tags = batch["token"][task]
 
             #5
             dense_out = output_layer(lstm_out)
             
             #6
             crf = self.crf_layers[task]
+
             loss = -crf( 
                         emissions=dense_out,
                         tags=target_tags,

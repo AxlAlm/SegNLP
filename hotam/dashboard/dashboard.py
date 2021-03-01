@@ -1315,8 +1315,7 @@ class Dashboard:
         if current_exp == experiment_id and status == "done":
             return dash.no_update
 
-        filter_by = get_filter(experiment=experiment_id)
-        last_epoch = self.db.get_last_epoch(filter_by)
+        last_epoch = self.db.get_last_epoch(experiment_id=experiment_id)
 
         # if there is now new epoch to update for
         if last_epoch == prev_epoch:

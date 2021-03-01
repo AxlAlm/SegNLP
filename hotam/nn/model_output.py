@@ -199,13 +199,13 @@ class ModelOutput:
         #
         # However, if the prediction level is token and the input level is AC, we need to use the prediction lengths derived from our segmentation predictions
         if level == "span" and self.prediction_level == "span":
-            lengths = self.batch["lengths_seq"]
+            lengths = self.batch["span"]["lengths"]
 
         elif level == "token" and self.prediction_level == "token":
-            lengths = self.batch["lengths_tok"]
+            lengths = self.batch["token"]["lengths"]
 
         elif level == "token" and self.prediction_level == "span":
-            lengths = self.batch["lengths_tok"]
+            lengths = self.batch["token"]["lengths"]
 
         elif level == "span" and self.prediction_level == "token":
             #lengths = self.seg["lenghts_seq"]
@@ -213,7 +213,6 @@ class ModelOutput:
 
 
         if "+" in task:
-            print(task, data)
             self.__handle_complex_tasks(
                                         data=data,
                                         level=level,
@@ -225,7 +224,7 @@ class ModelOutput:
 
         if level == "span":
             if self.prediction_level == "span":
-                span_indexes = self.batch["span_idxs"]
+                span_indexes = self.batch["span"]["span_idxs"]
             else:
                 raise NotImplementedError()
 
@@ -233,13 +232,13 @@ class ModelOutput:
             data = self.__unfold_span_labels(
                                             ac_labels=data,
                                             span_indexes=span_indexes,
-                                            max_nr_token=max(self.batch["lengths_tok"]),
+                                            max_nr_token=max(self.batch["token"]["lengths"]),
                                         )
 
         if not decoded:
             decoded_preds = self.__decode_labels(
                                                 preds=data, 
-                                                lengths=self.batch["lengths_tok"],
+                                                lengths=self.batch["token"]["lengths"],
                                                 task=task
                                                 )
         else:
@@ -258,15 +257,15 @@ class ModelOutput:
         if self.calc_metrics:
             #self.batch[f"token_{task}"]
             decoded_targets = self.__decode_labels(
-                                                preds=self.batch[f"token_{task}"], 
-                                                lengths=self.batch["lengths_tok"],
+                                                preds=self.batch["token"][task], 
+                                                lengths=self.batch["token"]["lengths"],
                                                 task=task
                                                 )
 
             keys, values = token_metrics(
                                                 targets=decoded_targets,
                                                 preds=decoded_preds,
-                                                mask=self.batch["token_mask"],
+                                                mask=self.batch["token"]["mask"],
                                                 task=task,
                                                 labels=self.label_encoders[task].labels,
                                                 )

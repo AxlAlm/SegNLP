@@ -26,7 +26,7 @@ class ModelInput(dict):
 
 
     def __len__(self):
-        return len(self.id)
+        return len(self._ids)
 
     @property
     def ids(self):

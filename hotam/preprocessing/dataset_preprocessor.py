@@ -40,6 +40,7 @@ class PreProcessedDataset(ptl.LightningDataModule):
         Input = ModelInput()
 
         sorted_key = np.sort(key)
+        print(sorted_key)
         lengths = self.data[self.prediction_level]["lengths"][sorted_key]
         max_len = max(lengths)
         lengths_decending = np.argsort(lengths)[::-1]

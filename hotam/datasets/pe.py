@@ -410,8 +410,8 @@ class PE(DataSet):
        			else:
        				test_set.append(essay_id)
 
-        dev_set = [13, 38, 41, 115, 140, 152, 156, 159, 162, 164, 201, 257,291, 324, 343, 361, 369, 371, 387, 389, 400]
-        #dev_set = []
+        #dev_set = [13, 38, 41, 115, 140, 152, 156, 159, 162, 164, 201, 257,291, 324, 343, 361, 369, 371, 387, 389, 400]
+        dev_set = []
 
         if dev_set:
             for i in dev_set:
@@ -428,14 +428,15 @@ class PE(DataSet):
         random.shuffle(dev_set)
         random.shuffle(test_set)
 
-       	return {
+        # as pe start on 1 we shift all ids so it start at 0
+        splits = {
                     0:{
-                        "train":np.array(train_set), 
-                        "val":np.array(dev_set),
-                        "test": np.array(test_set)
+                        "train":np.array(train_set)-1, 
+                        "val":  np.array(dev_set)-1,
+                        "test": np.array(test_set)-1
                     }
                 }
-
+       	return splits
 
     def __process_data(self):
         """loads the Pursuasive Essay data and parse it into a DataSet. Also dumps the dataset 
