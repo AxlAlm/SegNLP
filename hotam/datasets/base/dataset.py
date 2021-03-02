@@ -47,7 +47,7 @@ class DataSet:
             for i, row in self.data.iterrows():
                 span_labels = row["span_labels"]
                 sdf = pd.DataFrame(list(span_labels.values()))
-                sdf = sdf[~sdf["span_id"].str.contains("None")]
+                sdf = sdf[~sdf["unit_id"].isna()]
 
                 for task in self.tasks:
                     counts = sdf[task].value_counts().to_dict()

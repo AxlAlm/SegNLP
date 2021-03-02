@@ -51,9 +51,7 @@ class LinkEncoder(Encoder):
         return np.array([str(int(item)-i) for i,item in enumerate(item_list)])
 
 
-    def decode_token_links(self, item:List[str], lengths:List[int], none_spans:List[int]) -> List[int]:
-        assert sum(lengths) == len(item), f"{sum(lengths)} {len(item)}"
-
+    def decode_token_links(self, item:List[str], span_token_lengths:List[int], none_spans:List[int]) -> List[int]:
 
         # first we collect the spans labels form the token labels
         # NOTE! decodding and encoding of links can only be done between labeled spans, e.g. spans that have labels
@@ -62,7 +60,7 @@ class LinkEncoder(Encoder):
         j = 0
         idx_mapping = []
         span_items = []
-        for i,length in enumerate(lengths):
+        for i,length in enumerate(span_token_lengths):
 
             if none_spans[i]:
                 span = item[start:start+length]
@@ -76,15 +74,15 @@ class LinkEncoder(Encoder):
             start += length 
                 
         decoded_links = self.decode_list(span_items)
+        #print(item, span_items, decoded_links, none_spans)
 
         #then we reconstruct the token labels from the decoded span labels
         decoded = []
         for i,j in enumerate(idx_mapping):
-            
             if j is None:
-                decoded.extend([i]*lengths[i])
+                decoded.extend([0]*span_token_lengths[i])
             else:
-                decoded.extend([decoded_links[j]]*lengths[i])
+                decoded.extend([decoded_links[j]]*span_token_lengths[i])
 
 
         return decoded

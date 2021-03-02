@@ -189,9 +189,8 @@ class DataPreprocessor:
                     self.h5py_f[k][last_sample_i:] = v
 
 
-    def load_preprocessed_dataset(self, file_path):
-
-        return PreProcessedDataset(h5py_file_path)
+    def load_preprocessed_dataset(self, dir_path):
+        return PreProcessedDataset(dir_path)
 
     def __set_splits(self, dump_dir:str, dataset:DataSet):
 
@@ -213,7 +212,7 @@ class DataPreprocessor:
         lengths = self.h5py_f[self.prediction_level]["lengths"][:]
         span_lengths = self.h5py_f["span"]["lengths_tok"][:]
         lengths_span = self.h5py_f["span"]["lengths"][:]
-        non_spans = self.h5py_f["span"]["non_spans"][:]
+        non_spans_mask = self.h5py_f["span"]["mask"][:]
 
         ids  = self.h5py_f["ids"]
         for task in self.all_tasks:
@@ -222,10 +221,19 @@ class DataPreprocessor:
             sample_iter = enumerate(zip(ids, lengths, encoded_labels))
             for i, (ID, length, labels) in sample_iter:
 
-                if task == "link":
+                if task == "link" and self.prediction_level == "token":
+
+                    #we have the span labels so just use them and expand them?
                     stl = span_lengths[i][:lengths_span[i]]
-                    ns = non_spans[i][:lengths_span[i]]
-                    decoded_labels = self.decode_token_links(labels[:length].tolist(), stlm, ns)
+                    ns = non_spans_mask[i][:lengths_span[i]]
+                    print("BEFORE", labels[:length].tolist())
+                    decoded_labels = self.decode_token_links(
+                                                            labels[:length].tolist(), 
+                                                            span_token_lengths = stl, 
+                                                            none_spans = ns
+                                                            )
+                    print("AFTER", decoded_labels)
+                    print(lol)
                 else:
                     decoded_labels = self.decode_list(labels[:length].tolist(), task)
 

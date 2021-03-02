@@ -97,9 +97,9 @@ class PE(DataSet):
                                     "attacks":"CON",
                                     }
         #self._tasks = ["ac", "relation", "stance"]
-        self._tasks = ["span_label", "link", "link_label"]
+        self._tasks = ["label", "link", "link_label"]
         self.__task_labels = {
-                            "span_label":["MajorClaim", "Claim", "Premise"],
+                            "label":["MajorClaim", "Claim", "Premise"],
 
                             # Originally stance labels are For and Against for Claims and MajorClaims
                             # and for premsies supports or attacks. 
@@ -339,7 +339,7 @@ class PE(DataSet):
         """
 
         span2label = RangeDict()
-        current_ac_idx = 0
+        unit_id = 0
         for i, (ac_id, span) in enumerate(ac_id2span.items()):
 
             relation = ac_id2relation.get(ac_id, 0)
@@ -347,12 +347,14 @@ class PE(DataSet):
             ac = ac_id2ac.get(ac_id,"None")
             stance = self._stance2new_stance.get(ac_id2stance.get(ac_id,"None"), "None")
 
+
             label = {   
-                        "span_label": ac_id2ac.get(ac_id,"None"), 
+                        "label": ac_id2ac.get(ac_id,"None"), 
                         "link_label": self._stance2new_stance.get(ac_id2stance.get(ac_id,"None"), "None"), 
                         "link": relation,
-                        "span_id":ac_id,
-                        }
+                        "span_id": i,
+                        "unit_id": None if "None" in ac_id else i,
+                    }
             
 
             span2label[span] = label #[label, ac_id]

@@ -143,30 +143,33 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
                 Input.add("id",i, None)
                 Input.add("lengths", sample.shape[0], "token")
-
-                #if self.prediction_level == "span":
+                
                 spans_grouped = sample.groupby("span_id")
                 Input.add("lengths", len(spans_grouped), "span")
                 Input.add("lengths_tok", np.array([g.shape[0] for i, g in spans_grouped]), "span")
-                Input.add("non_spans", np.array([0 if "None" in i else 1 for i,g in spans_grouped]), "span")
 
-                # if hasattr(self, "max_sent"):
-                #     sent_grouped = sample.groupby("sentence_id")
-                #     Input.add("lengths", len(sent_grouped), "sentence")
-                #     Input.add("lengths_tok", [len(g) for i, g in sent_grouped], "sentence")
+                non_span_mask = (~np.isnan(sample.groupby("span_id").first()["unit_id"].to_numpy())).astype(np.uint8)
+                Input.add("mask", non_span_mask, "span")
 
+                if self.prediction_level == "unit":
+                    units = sample.groupby("unit_id")
+                    Input.add("lengths", len(units), "unit")
+                    Input.add("lengths_tok", np.array([g.shape[0] for i, g in units]), "unit")
+
+                # # if hasattr(self, "max_sent"):
+                # #     sent_grouped = sample.groupby("sentence_id")
+                # #     Input.add("lengths", len(sent_grouped), "sentence")
+                # #     Input.add("lengths_tok", [len(g) for i, g in sent_grouped], "sentence")
+ 
                 self.__get_text(Input, sample)
                 self.__get_encs(Input, sample)
                 self.__get_feature_data(Input, sample)
-
 
                 if self.__labeling:
                     self.__get_labels(Input, sample)
 
                 if self.prediction_level == "span":
-                    self.__get_am_span_idxs(Input, sample)
-
-
+                    self.__get_am_unit_idxs(Input, sample)
 
         return Input.to_numpy()
   
@@ -174,7 +177,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
     def __get_text(self, Input:ModelInput, sample:pd.DataFrame):
 
         if self.prediction_level == "span":
-            spans = sample.groupby(f"span_id")
+            spans = sample.groupby(f"unit_id")
             text = []
             for _, span in spans:
                 #text.append(span["text"].to_numpy().astype("U30"))
@@ -196,9 +199,9 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         for task in self.all_tasks:
 
             span_i = 0
-            spans = sample.groupby(f"span_id")
+            spans = sample.groupby(f"unit_id")
             span_task_matrix = np.zeros(len(spans))
-            for span_id, span in spans:
+            for unit_id, span in spans:
                 span_task_matrix[span_i] = np.nanmax(span[task].to_numpy())
                 span_i += 1
 
@@ -220,7 +223,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         sentences  = sample.groupby("sentence_id")
 
         sentences  = sample.groupby("sentence_id")
-        spans = sample.groupby("span_id")
+        spans = sample.groupby("unit_id")
         nr_spans  = len(spans)
         nr_sents = len(sentences)
         nr_tok_sents = max([len(s) for s in sentences])
@@ -250,13 +253,13 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                             
             #create a mask
             if self.prediction_level == "span":
-                spans = sent_df.groupby("span_id")
+                spans = sent_df.groupby("unit_id")
 
-                for span_id, span_df in spans:
+                for unit_id, span_df in spans:
                     span2sentence[span_i] = sent_i
 
-                    span_ids = sent_df["span_id"].to_numpy()
-                    mask = span_ids == span_id
+                    unit_ids = sent_df["unit_id"].to_numpy()
+                    mask = unit_ids == unit_id
                     sentence_span_mask[span_i][:sent_df.shape[0]] = mask.astype(np.int8)
                     span_i += 1
 
@@ -286,7 +289,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             else:
                 if self.prediction_level == "span" and not self.tokens_per_sample:
 
-                    spans = sample.groupby("span_id")
+                    spans = sample.groupby("unit_id")
                     nr_tok_spans = max([len(span) for span in spans])
                     span_matrix  = np.zeros(len(spans), nr_tok_spans, dtype=np.int)
                     for span_i,(_, span ) in enumerate(spans):                        
@@ -327,7 +330,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             if alt1:
             #if self.prediction_level == "span" and not self.tokens_per_sample:
                 
-                nr_spans = len(sample.groupby("span_id"))
+                nr_spans = len(sample.groupby("unit_id"))
 
                 if fm.level == "word":
                     nr_tok_spans = max([len(span) for span in spans])
@@ -423,12 +426,12 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             # as these are assumed to be within a sentence
             if fm.level == "word":
                 sent_word_embs = fm.extract(sent)[:sent.shape[0]]  
-                spans = sent.groupby("span_id")
+                spans = sent.groupby("unit_id")
 
-                for span_id , span in spans:
+                for unit_id , span in spans:
 
-                    am_mask = sent["am_id"].to_numpy() == span_id
-                    span_mask = sent["span_id"].to_numpy() == span_id
+                    am_mask = sent["am_id"].to_numpy() == unit_id
+                    span_mask = sent["unit_id"].to_numpy() == unit_id
                     adu_mask = am_mask + span_mask
 
                     am_mask = am_mask[adu_mask]
@@ -445,13 +448,13 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             # for features such as bow we want to pass only the Argument Discourse Unit
             else:
 
-                spans = sent.groupby("span_id")
-                for span_id, span in spans:
+                spans = sent.groupby("unit_id")
+                for unit_id, span in spans:
                     sent.index = sent["id"]
-                    am = sent[sent["am_id"] == span_id]
-                    span = sent[sent["span_id"] == span_id]
+                    am = sent[sent["am_id"] == unit_id]
+                    span = sent[sent["unit_id"] == unit_id]
                     adu = pd.concat((am,span))
-                    adu.index = adu.pop("span_id")
+                    adu.index = adu.pop("unit_id")
                     sample_matrix[span_i] = fm.extract(adu)
                     span_mask_matrix[span_i] = 1
                     span_i += 1
@@ -459,7 +462,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         return sample_matrix, am_mask_matrix, span_mask_matrix
 
 
-    def __get_am_span_idxs(self, Input:ModelInput, sample:pd.DataFrame):
+    def __get_am_unit_idxs(self, Input:ModelInput, sample:pd.DataFrame):
         """
         for each sample we get the spans of am, span and the whole adu.
         if there is no am, we still add an am span to keep the am and span spans
@@ -472,11 +475,11 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         span_spans = []
         adu_spans = []
 
-        span_goups = sample.groupby("span_id")
+        span_goups = sample.groupby("unit_id")
 
-        for span_id, gdf in span_goups:
+        for unit_id, gdf in span_goups:
             
-            am = sample[sample["am_id"]==span_id]
+            am = sample[sample["am_id"]==unit_id]
             
             has_am = True
             if am.shape[0] == 0:
@@ -502,9 +505,9 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             span_spans.append(span_span)
             adu_spans.append(adu_span)
 
-        Input.add("span_idx", np.array(am_spans), "am")
-        Input.add("span_idx", np.array(span_spans), "span")
-        Input.add("span_idx", np.array(adu_spans), "adu")
+        Input.add("unit_idx", np.array(am_spans), "am")
+        Input.add("unit_idx", np.array(span_spans), "span")
+        Input.add("unit_idx", np.array(adu_spans), "adu")
 
         #return {"am_spans":am_spans, "span_spans":span_spans, "adu_spans":adu_spans}
 

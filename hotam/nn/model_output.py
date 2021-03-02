@@ -196,7 +196,7 @@ class ModelOutput:
     def add_preds(self, task:str, level:str, data:torch.tensor, decoded:bool=False, sample_ids="same"):
 
         #assert task in set(self.tasks), f"{task} is not a supported task. Supported tasks are: {self.tasks}"
-        assert level in set(["token", "span"]), f"{level} is not a supported level. Only 'token' or 'span' are supported levels"
+        assert level in set(["token", "unit"]), f"{level} is not a supported level. Only 'token' or 'span' are supported levels"
         assert torch.is_tensor(data) or isinstance(data, np.ndarray), f"{task} preds need to be a tensor or numpy.ndarray"
         assert len(data.shape) == 2, f"{task} preds need to be a 2D tensor"
 
@@ -206,16 +206,16 @@ class ModelOutput:
         # and same applies if input level i token and prediction level is AC
         #
         # However, if the prediction level is token and the input level is AC, we need to use the prediction lengths derived from our segmentation predictions
-        if level == "span" and self.prediction_level == "span":
-            lengths = self.batch["span"]["lengths"]
+        if level == "unit" and self.prediction_level == "unit":
+            lengths = self.batch["unit"]["lengths"]
 
         elif level == "token" and self.prediction_level == "token":
             lengths = self.batch["token"]["lengths"]
 
-        elif level == "token" and self.prediction_level == "span":
+        elif level == "token" and self.prediction_level == "unit":
             lengths = self.batch["token"]["lengths"]
 
-        elif level == "span" and self.prediction_level == "token":
+        elif level == "unit" and self.prediction_level == "token":
             #lengths = self.seg["lenghts_seq"]
             raise NotImplementedError()
 
@@ -230,18 +230,18 @@ class ModelOutput:
             return
 
 
-        if level == "span":
-            if self.prediction_level == "span":
-                span_indexes = self.batch["span"]["span_idxs"]
+        if level == "unit":
+            if self.prediction_level == "unit":
+                span_indexes = self.batch["unit"]["span_idxs"]
             else:
                 raise NotImplementedError()
 
             # turn labels for each span to labels across all tokens in sample
             data = self.__unfold_span_labels(
-                                            ac_labels=data,
+                                            unit_labels=data,
                                             span_indexes=span_indexes,
                                             max_nr_token=max(self.batch["token"]["lengths"]),
-                                        )
+                                            )
 
         if not decoded:
             decoded_preds = self.__decode_labels(
@@ -266,10 +266,10 @@ class ModelOutput:
             #self.batch[f"token_{task}"]
 
             if task == "link" and level == "token":
-                self.__decode_token_link_labels(
+                decoded_targets = self.__decode_token_link_labels(
                                                     preds=self.batch["token"][task], 
                                                     lengths=self.batch["token"]["lengths"],
-                                                    span_lengths="?????"
+                                                    span_lengths=self.batch["span"]["lengths_tok"]
                                                     )
             else:
                 decoded_targets = self.__decode_labels(
@@ -288,8 +288,6 @@ class ModelOutput:
                                 )
 
    
-                            
-
         
         # if return_output:
 

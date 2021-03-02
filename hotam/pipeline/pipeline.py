@@ -91,13 +91,11 @@ class Pipeline:
             if isinstance(dataset, PreProcessedDataset):
                 self.dataset = dataset
             else:
-                data_fp = self.__check_for_preprocessed_data(pipeline_folder_path)
 
-                if data_fp:
-                    logger.info(f"Loading preprocessed data from {data_fp}")
+                if self.__check_for_preprocessed_data(pipeline_folder_path):
+                    logger.info(f"Loading preprocessed data from {pipeline_folder_path}")
                     self.dataset = PreProcessedDataset(
-                                                        h5py_file_path=data_fp, 
-                                                        splits=dataset.splits
+                                                        dir_path=pipeline_folder_path, 
                                                         )
                 else:
                     try:
@@ -129,11 +127,8 @@ class Pipeline:
 
     def __check_for_preprocessed_data(self, pipeline_folder_path:str):
         fp = os.path.join(pipeline_folder_path, "data.hdf5")
-        if os.path.exists(fp):
-            return fp
-        else:
-            return None
-
+        return os.path.exists(fp)
+     
 
     def __pipeline_hash(self, prediction_level, sample_level, dataset_name, tasks, features, encodings):
         big_string = "%".join([prediction_level, sample_level, dataset_name] + tasks + features + encodings)

@@ -187,8 +187,12 @@ class Encoder:
         return self.encoders[name].encode_list(item)
 
 
-    def decode_token_links(self, item:List[str], lengths:List[int]) -> List[int]:
-        return self.encoders["link"].decode_token_links(item, lengths)
+    def decode_token_links(self, item:List[str], span_token_lengths:List[int], none_spans:list) -> List[int]:
+        return self.encoders["link"].decode_token_links(
+                                                        item, 
+                                                        span_token_lengths=span_token_lengths, 
+                                                        none_spans=none_spans
+                                                        )
 
 
 
