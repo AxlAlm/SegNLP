@@ -7,6 +7,10 @@ import numpy as np
 from typing import Union, Sequence
 import os
 import json
+import pickle
+from collections import Counter
+import pandas as pd
+from IPython.display import display
 
 #pytroch lighnting
 import pytorch_lightning as ptl
@@ -28,19 +32,23 @@ from hotam.utils import ensure_numpy
 
 class PreProcessedDataset(ptl.LightningDataModule):
 
-    def __init__(self, h5py_file_path:str,  splits:dict):
-        self._fp = h5py_file_path
+    def __init__(self, dir_path:str):
+        self._fp = os.path.join(dir_path, "data.hdf5")
         self.data = h5py.File(self._fp, "r")
-        self.splits = splits
         self._size = self.data["ids"].shape[0]
         self.prediction_level = "token"
+
+        with open(os.path.join(dir_path, "stats.json"), "r") as f:
+            self._stats = json.load(f)
+
+        with open(os.path.join(dir_path, "splits.pkl"), "rb") as f:
+            self._splits = pickle.load(f)
 
 
     def __getitem__(self, key:Union[np.ndarray, list]) -> ModelInput:
         Input = ModelInput()
 
         sorted_key = np.sort(key)
-        print(sorted_key)
         lengths = self.data[self.prediction_level]["lengths"][sorted_key]
         max_len = max(lengths)
         lengths_decending = np.argsort(lengths)[::-1]
@@ -97,8 +105,10 @@ class PreProcessedDataset(ptl.LightningDataModule):
 
 
     def stats(self):
-        pass
+        return pd.DataFrame(self._stats)
 
+    def splits(self):
+        return self._splits
 
     def train_dataloader(self):
         sampler = BatchSampler(self.splits[self.split_id]["train"], batch_size=self.batch_size, drop_last=False)
@@ -180,7 +190,79 @@ class DataPreprocessor:
 
 
     def load_preprocessed_dataset(self, file_path):
+
         return PreProcessedDataset(h5py_file_path)
+
+    def __set_splits(self, dump_dir:str, dataset:DataSet):
+
+        splits = dataset.splits
+
+        if self.sample_level != dataset.level:
+            splits = create_new_splits()
+
+        file_path = os.path.join(dump_dir, "splits.pkl")
+        with open(file_path, "wb") as f:
+            pickle.dump(splits, f)
+
+        return splits
+
+    def __calc_stats(self, dump_dir:str, splits:dict):
+        
+        collected_counts = {split_id:{split:{t:[] for t in self.all_tasks} for split in ["train", "val", "test"]} for split_id in splits.keys()}
+        
+        lengths = self.h5py_f[self.prediction_level]["lengths"][:]
+        span_lengths = self.h5py_f["span"]["lengths_tok"][:]
+        lengths_span = self.h5py_f["span"]["lengths"][:]
+        non_spans = self.h5py_f["span"]["non_spans"][:]
+
+        ids  = self.h5py_f["ids"]
+        for task in self.all_tasks:
+            encoded_labels = self.h5py_f[self.prediction_level][task][:]
+
+            sample_iter = enumerate(zip(ids, lengths, encoded_labels))
+            for i, (ID, length, labels) in sample_iter:
+
+                if task == "link":
+                    stl = span_lengths[i][:lengths_span[i]]
+                    ns = non_spans[i][:lengths_span[i]]
+                    decoded_labels = self.decode_token_links(labels[:length].tolist(), stlm, ns)
+                else:
+                    decoded_labels = self.decode_list(labels[:length].tolist(), task)
+
+                labe_counts = dict(Counter(decoded_labels))
+
+                for split_id, splits_dict in splits.items():
+                    counts = labe_counts.copy()
+         
+                    for split, split_ids in splits_dict.items():
+                        if ID in split_ids:
+                            collected_counts[split_id][split][task].append(counts)
+
+
+        split_id_dfs = []
+        for split_id, sub_dict in collected_counts.items():
+            
+            split_dfs = []
+            for split, task_counts in sub_dict.items():
+                
+                task_dfs = [] 
+                for task, counts in task_counts.items():
+                    task_dfs.append(pd.DataFrame(counts).sum().T)
+
+                split_dfs.append(pd.concat(task_dfs, keys=self.all_tasks))
+            
+            split_id_dfs.append(pd.concat(split_dfs, keys=["train", "val", "test"]))
+        
+        df = pd.concat(split_id_dfs, keys=list(splits.keys()))
+
+        pd.set_option('display.max_rows', None)
+        print(df)
+        print(lol)
+
+        file_path = os.path.join(dump_dir, "stats.json")
+        with open(file_path,"w") as f:
+            json.dump(collected_counts, f, indent=4)
+
 
 
     def process_dataset(self, dataset:DataSet, chunks:int = 50, dump_dir:str = None) -> PreProcessedDataset:
@@ -202,16 +284,18 @@ class DataPreprocessor:
                 self.__append_store(Input)
 
             progress_bar.update(chunks)
+            break
 
         progress_bar.close()
 
+        splits = self.__set_splits(dump_dir, dataset=dataset)
+        self.__calc_stats(dump_dir, splits)
+
         self.h5py_f.close()
 
-        splits = dataset.splits
-        if self.sample_level != dataset.level:
-            splits = create_new_splits()
 
-        return PreProcessedDataset(file_path, splits=splits)
+
+        return PreProcessedDataset(dump_dir)
 
 
         # if self._data_is_stored:

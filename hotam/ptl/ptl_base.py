@@ -30,43 +30,25 @@ logger = get_logger("PTLBase (ptl.LightningModule)")
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 
-# def my_mean(scores):
 
-#     scores = ensure_numpy(scores)
-    
-#     if scores.shape[0] == 0:
-#         return scores[0]
-
-#     if torch.is_tensor(scores):
-#         return torch.mean(scores)
-    
-#     if len(scores.shape) > 1:
-#         return np.mean(scores, axis=0)
-#     else:
-#         return np.mean(scores)
-    
-class MetricContainer(dict):
+class MetricContainer:
 
     def __init__(self):
+        self._data = []
         for k in ["train", "val"]:
-            self[k] = {"metrics":None, "keys":None}
-
-        self._nr_adds = 0
+            self._data[k] = []
 
 
-    def add(self, keys:list, values:np.ndarray, split:str):
+    def add(self, metrics:dict, split:str):
+        """
+        metrics = {"metic1": 0.3, "metric2": 0.5, ...., "metricn": 0.9 }
+        """
+        self._data[split].append(metrics)
 
-        if self[split]["metrics"] is None:
-            self[split]["keys"] = keys
-            self[split]["metrics"]  = values
-        else:
-            self[split]["metrics"] += values
         
-        self._nr_adds += 1
-        
-    
-    def get_mean(self, split:str):
-        return dict(zip(self[split]["keys"], self[split]["metrics"] / self._nr_adds))
+    def get_epoch_score(self, split:str):
+        epoch_metrics = pd.DataFrame(self.data[split]).mean()
+        return epoch_metrics.to_dict()
 
 
 
@@ -96,7 +78,7 @@ class PTLBase(ptl.LightningModule):
                             feature_dims=feature_dims,
                             )
         
-        self._metrics = MetricContainer()
+        self.metrics = MetricContainer()
                     
 
     def forward(self) -> dict:
@@ -118,12 +100,10 @@ class PTLBase(ptl.LightningModule):
                                             all_tasks=self.all_tasks,
                                             prediction_level=self.prediction_level,
                                             calc_metrics=True, 
-
                                             )
                                     )
 
-        metric_keys, metric_values = output.metrics
-        self._metrics.add(metric_keys, metric_values, split)
+        self.metrics.add(output.metrics, split)
         
         return  output.loss["total"]
     
@@ -155,7 +135,7 @@ class PTLBase(ptl.LightningModule):
     def _end_of_epoch(self, split):
         
         if self.logger is not None:
-            epoch_metrics = self._metrics.get_mean(split)
+            epoch_metrics = self.metrics.get_epoch_score(split)
             self.logger.log_metrics(
                                     metrics=epoch_metrics,
                                     epoch=self.current_epoch,

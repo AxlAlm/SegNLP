@@ -87,7 +87,7 @@ class LocalDB:
             score_files = glob(self.experiment_dir +f"/{exp_id}*/scores**.json")
             scores.extend(read_json(fp) for fp in score_files)
 
-        return pd.DataFrame(scores)
+        return scores
     
 
     def get_outputs(self, experiment_ids):

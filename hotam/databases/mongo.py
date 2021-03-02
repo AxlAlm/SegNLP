@@ -40,11 +40,11 @@ class MongoDB:
             return -1
 
 
-    def get_scores(self, filter_by):
-        if "experiment_id" not in filter_by:
-            return pd.DataFrame([])
+    def get_scores(self, experiment_ids):
 
-        return pd.DataFrame(list(self.scores.find(filter_by)))
+        f = {"experiment_id":{"$in": experiment_ids}}
+        filter_by["epoch"] =  { "$lte": last_epoch}
+        #return list(self.scores.find())
     
 
     def get_outputs(self,filter_by):

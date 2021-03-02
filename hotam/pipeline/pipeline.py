@@ -25,6 +25,7 @@ from hotam.ptl.ptl_trainer_setup import default_trainer_args
 from hotam import get_logger
 from hotam.utils import set_random_seed
 from hotam.evaluation_methods import get_evaluation_method
+from hotam.loggers import LocalLogger
 
 logger = get_logger("PIPELINE")
 
@@ -110,36 +111,6 @@ class Pipeline:
         if model_load_path:
             raise NotImplementedError
 
-        # if hyperparamaters:
-            # assert model, "No model have been added"
-
-
-            # self._many_models = False
-            # self._nr_models = len(self._set_hyperparamaters)
-            # if self._nr_models > 1:
-            #     self._many_models = True
-
-
-            # self._model_loaded = False
-            # if model_load_path:
-            #     self._model_loaded = True
-            #     assert not self._many_models, "If loading a model you can continue training it but you are not allowed to trainer other models with other hyperparamaters. Make sure you hyperparamaters do not have multiple values."
-
-                # self._trained_model = PTLBase(   
-                #                                 model=model, 
-                #                                 hyperparamaters=hyperparamaters,
-                #                                 all_tasks=self.preprocessor.all_tasks,
-                #                                 label_encoders=self.preprocessor.encoders,
-                #                                 prediction_level=prediction_level,
-                #                                 task_dims=task_dims,
-                #                                 feature_dims=feature_dims,
-                #                                 )
-                # self._trained_model.load_from_checkpoint(model_load_path)
-
-
-            # self._trained_model = None
-            # if self._many_models:
-            #     self._trained_model = []
 
 
     def __dump_pipe_config(self, config:dict, pipeline_folder_path:str):
@@ -223,37 +194,12 @@ class Pipeline:
         return set_hyperparamaters
 
 
-    # def __get_test_model_choice(self, trainer_args:dict):
-    #     """we need to know, when testing, if we are selecting the last model or teh best model
-    #     when testing. This simply return "last" or "best" so we know whick model the testing was done with.
-
-    #     Parameters
-    #     ----------
-    #     exp_config : dict
-    #         experiment configuration
-    #     """
-
-    #     test_model_choice = "last"
-    #     save_top_k = trainer_args.get("save_top_k", 0)
-    #     #using_callback = True if exp_config["trainer_args"]["checkpoint_callback"] else False
-    #     #test_model = "best"
-
-    #     #if save_top_k == 0:
-    #         #is_saving = False
-
-    #     if save_top_k != 0 and save_top_k:
-    #         test_model_choice = "best"
-        
-    #     return test_model_choice
-
-
     def fit(    self,   
                 model:torch.nn.Module,
                 hyperparamaters:dict,
-                exp_logger:LightningLoggerBase = None,  
+                exp_logger:LightningLoggerBase = LocalLogger(),  
                 ptl_trn_args:dict=default_trainer_args, 
-                mode:str = "all", 
-                save:str = None, 
+                save:str = "last", 
                 evaluation_method:str = "default", 
                 model_dump_path:str = "/tmp/hotam_models/",
                 run_test:bool = True, 
@@ -261,11 +207,6 @@ class Pipeline:
         
 
         set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
-
-        print(set_hyperparamaters)
-
-        # if save is None:
-        #     save  = self.__get_test_model_choice(ptl_trn_args)
 
 
         for hyperparamater in set_hyperparamaters:
@@ -313,6 +254,8 @@ class Pipeline:
                 exp_logger.log_experiment(exp_config)
 
             try:
+
+                print("Experiment is Running. Go the the dashboard to view experiment progress .. ")
                 get_evaluation_method(evaluation_method)(
                                                         trainer = trainer, 
                                                         ptl_model = ptl_model,

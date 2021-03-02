@@ -103,14 +103,14 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
         Input = ModelInput()
         
-        for i, doc in enumerate(docs):
-
+        for ii, doc in enumerate(docs):
+                        
             if isinstance(doc,dict):
                 span_labels = doc.get("span_labels", None)
                 token_labels = doc.get("token_labels", None)
                 doc = doc["text"]
 
-            doc_df = self._process_doc(doc, text_id=i)
+            doc_df = self._process_doc(doc, text_id=ii)
 
             #everything within this block should be speed up
             if self.__labeling:
@@ -137,17 +137,18 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             if self.input_level != self.sample_level:
                 samples = doc_df.groupby(f"{self.sample_level}_id")
             else:
-                samples = [(i,doc_df)]
+                samples = [(ii,doc_df)]
 
             for i, sample in samples:
 
                 Input.add("id",i, None)
                 Input.add("lengths", sample.shape[0], "token")
 
-                if self.prediction_level == "span":
-                    spans_grouped = sample.groupby("span_id")
-                    Input.add("lengths", len(spans_grouped), "span")
-                    Input.add("lengths_tok", [len(g) for i, g in spans_grouped], "span")
+                #if self.prediction_level == "span":
+                spans_grouped = sample.groupby("span_id")
+                Input.add("lengths", len(spans_grouped), "span")
+                Input.add("lengths_tok", np.array([g.shape[0] for i, g in spans_grouped]), "span")
+                Input.add("non_spans", np.array([0 if "None" in i else 1 for i,g in spans_grouped]), "span")
 
                 # if hasattr(self, "max_sent"):
                 #     sent_grouped = sample.groupby("sentence_id")
@@ -197,7 +198,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             span_i = 0
             spans = sample.groupby(f"span_id")
             span_task_matrix = np.zeros(len(spans))
-            for _, span in spans:
+            for span_id, span in spans:
                 span_task_matrix[span_i] = np.nanmax(span[task].to_numpy())
                 span_i += 1
 

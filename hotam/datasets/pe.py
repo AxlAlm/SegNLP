@@ -115,8 +115,10 @@ class PE(DataSet):
         self.url = "https://www.informatik.tu-darmstadt.de/ukp/research_6/data/argumentation_mining_1/argument_annotated_essays_version_2/index.en.jsp"
         self.data = self.__process_data()
 
+
     def __len__(self):
         return self._size
+
 
     def __download_data(self, force=False) -> str:
         """downloads the data from sourse website
@@ -438,6 +440,7 @@ class PE(DataSet):
                 }
        	return splits
 
+
     def __process_data(self):
         """loads the Pursuasive Essay data and parse it into a DataSet. Also dumps the dataset 
         locally so that one does not need to parse it again, only load the parsed data.
@@ -449,12 +452,9 @@ class PE(DataSet):
         DataSet
             
         """
-        
         #dump_path = "/tmp/pe_dataset.pkl"
         #dataset = DataSet("pe", data_path=dump_path)
         #dataset.add_splits(self.splits)
-
-
         #if not hasattr(dataset, "data"):
             
         ann_files = sorted(glob(self._dataset_path+"/*.ann"))
@@ -467,7 +467,7 @@ class PE(DataSet):
         for ann_file,txt_file in tqdm(grouped_files, desc="reading and formating PE files"):
 
             # -1 one as we want index 0 to be sample 1
-            file_id = int(re.sub(r'[^0-9]', "", ann_file.rsplit("/",1)[-1])) #-1
+            file_id = int(re.sub(r'[^0-9]', "", ann_file.rsplit("/",1)[-1])) -1
 
             text = self.__read_file(txt_file)
             ann = self.__read_file(ann_file)
@@ -489,5 +489,5 @@ class PE(DataSet):
         self._task_labels = self.__task_labels
 
         del self.__task_labels
-        return np.array(data)
+        return pd.DataFrame(data)
         

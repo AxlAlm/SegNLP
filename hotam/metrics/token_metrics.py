@@ -41,9 +41,6 @@ def token_metrics(targets:np.ndarray, preds:np.ndarray, mask:np.ndarray, task:st
     label_counts = Counter({l:0 for l in labels})
     label_counts += Counter(preds.tolist()+targets.tolist())
 
-    if task != "link":
-        conf_m = confusion_matrix(targets, preds, labels=labels)
-
     rs = recall_score(targets, preds, labels=labels, average=None)
     ps = precision_score(targets, preds, labels=labels, average=None)
     
@@ -67,15 +64,29 @@ def token_metrics(targets:np.ndarray, preds:np.ndarray, mask:np.ndarray, task:st
 
 
     df = pd.DataFrame(label_metrics)
+    task_pr = int(df[df["metric"]=="precision"].mean())
+    task_re = int(df[df["metric"]=="recall"].mean())
+    task_f1 = int(df[df["metric"]=="f1"].mean())
     task_metrics = [
-                        {"name":f"{task}-precision", "metric": "precision", "value": int(df[df["metric"]=="precision"].mean())},
-                        {"name":f"{task}-recall", "metric": "recall", "value": int(df[df["metric"]=="recall"].mean())},
-                        {"name":f"{task}-f1", "metric": "f1", "value": int(df[df["metric"]=="f1"].mean())},
+                        {"name":f"{task}-precision", "metric": "precision", "value": task_pr},
+                        {"name":f"{task}-recall", "metric": "recall", "value": task_re},
+                        {"name":f"{task}-f1", "metric": "f1", "value": task_f1},
                     ]
 
-    df = pd.DataFrame(label_metrics + task_metrics) #.loc[:, ["name", "value"]].to_dict("record")
+    if task != "link":
+        task_metrics.append({"name":f"{task}-confusion_matrix", "metric": "confusion_matrix", "value": confusion_matrix(targets, preds, labels=labels)})
+
+
+    #this is added so that the task is taken into account when calculating the mean accross all tasks
+    mean_metrics = [
+                        {"name":f"precision", "metric": "precision", "value": task_pr},
+                        {"name":f"recall", "metric": "recall", "value": task_re},
+                        {"name":f"f1", "metric": "f1", "value": task_f1},
+                    ]
+
+    df = pd.DataFrame(label_metrics + task_metrics + mean_metrics) #.loc[:, ["name", "value"]].to_dict("record")
     
-    return df["name"].to_numpy().tolist(), df["value"].to_numpy().tolist()
+    return dict(zip(df["name"].to_numpy().tolist(), df["value"].to_numpy().tolist()))
     
 
 

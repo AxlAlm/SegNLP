@@ -38,8 +38,7 @@ class ModelOutput:
         self._total_loss_added = False
 
         self.loss = {}
-        self.metrics_keys = []
-        self.metric_values = []
+        self.metrics = []
         self.outputs = []
         
         # self.dataset.get_subtask_position(task, subtask) 
@@ -110,12 +109,21 @@ class ModelOutput:
 
     def __decode_labels(self, preds:list, lengths:list, task:str):
 
-        dtype = "<U30" if task != "link" else np.int16
         size = preds.shape[0]
-        decoded_preds = np.zeros((size, max(lengths)), dtype=dtype)
+        decoded_preds = np.zeros((size, max(lengths)), dtype="<U30" )
         for i in range(size):
             decoded_preds[i][:lengths[i]] = self.label_encoders[task].decode_list(preds[i][:lengths[i]])
-            #decoded_preds[i][:lengths[i]] = self.dataset.decode_list(preds[i][:lengths[i]], task)
+        
+        return decoded_preds
+
+
+    def __decode_token_link_labels(self, preds:list, lengths:list, span_lengths:list):
+        
+        size = preds.shape[0]
+        decoded_preds = np.zeros((size, max(lengths)), dtype=np.int16)
+        for i in range(size):
+            decoded = self.label_encoders["link"].decode_token_links(preds[i][:lengths[i]], span_lengths[i])
+            decoded_preds[i][:lengths[i]] = decoded
         
         return decoded_preds
 
@@ -256,21 +264,28 @@ class ModelOutput:
         # print("TARGETS", self.batch[f"token_{task}"])
         if self.calc_metrics:
             #self.batch[f"token_{task}"]
-            decoded_targets = self.__decode_labels(
-                                                preds=self.batch["token"][task], 
-                                                lengths=self.batch["token"]["lengths"],
-                                                task=task
-                                                )
 
-            keys, values = token_metrics(
-                                                targets=decoded_targets,
-                                                preds=decoded_preds,
-                                                mask=self.batch["token"]["mask"],
-                                                task=task,
-                                                labels=self.label_encoders[task].labels,
-                                                )
-            self.metrics_keys.extend(keys)
-            self.metric_values.extend(values)
+            if task == "link" and level == "token":
+                self.__decode_token_link_labels(
+                                                    preds=self.batch["token"][task], 
+                                                    lengths=self.batch["token"]["lengths"],
+                                                    span_lengths="?????"
+                                                    )
+            else:
+                decoded_targets = self.__decode_labels(
+                                                    preds=self.batch["token"][task], 
+                                                    lengths=self.batch["token"]["lengths"],
+                                                    task=task
+                                                    )
+
+            self.metrics.append(token_metrics(
+                                            targets=decoded_targets,
+                                            preds=decoded_preds,
+                                            mask=self.batch["token"]["mask"],
+                                            task=task,
+                                            labels=self.label_encoders[task].labels,
+                                            )
+                                )
 
    
                             

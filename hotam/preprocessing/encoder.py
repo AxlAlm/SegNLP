@@ -187,6 +187,10 @@ class Encoder:
         return self.encoders[name].encode_list(item)
 
 
+    def decode_token_links(self, item:List[str], lengths:List[int]) -> List[int]:
+        return self.encoders["link"].decode_token_links(item, lengths)
+
+
 
     # def __encode_bytepairs(self, enc):
 

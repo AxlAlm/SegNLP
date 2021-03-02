@@ -1,11 +1,14 @@
 
 
+import pandas as pd
+from collections import Counter
+from pprint import pprint
 
 class DataSet:
 
-    def __getitem__(self,key):
-        return self.data[key]
 
+    def __getitem__(self,key):
+        return self.data.loc[key].to_dict("record")
 
     def __len__(self):
         return self._size
@@ -15,7 +18,7 @@ class DataSet:
         return self._name
 
     @property
-    def task(self):
+    def tasks(self):
         return self._tasks 
     
     @property
@@ -25,9 +28,6 @@ class DataSet:
     @property
     def splits(self):
         return self._splits
-
-    def stats(self):
-        raise NotImplementedError
 
 
     @classmethod
@@ -39,16 +39,22 @@ class DataSet:
     def load_DAT(self):
         raise NotImplementedError
 
-
     def stats(self):
-        rows.append({
-                        "type":self.sample_level,
-                        "task":"",
-                        "split":split_type,
-                        "split_id":split_id,
-                        "value": len(ids)
 
-                    })
+        collected_counts = {task:Counter() for task in self.tasks}
+
+        if "span_labels" in self.data.columns:
+            for i, row in self.data.iterrows():
+                span_labels = row["span_labels"]
+                sdf = pd.DataFrame(list(span_labels.values()))
+                sdf = sdf[~sdf["span_id"].str.contains("None")]
+
+                for task in self.tasks:
+                    counts = sdf[task].value_counts().to_dict()
+                    collected_counts[task] += counts
+        
+        pprint({t:dict(c) for t,c in collected_counts.items()})
+
 
     def info(self):
         doc = f"""

@@ -248,7 +248,7 @@ class Dashboard:
                                                                         options=[
                                                                                     {"label": "hyperparamaters", "value":"hyperparamaters"},
                                                                                     {"label": "exp_config", "value":"exp_config"},
-                                                                                    {"label": "dataset_config", "value":"dataset_config"},
+                                                                                    #{"label": "dataset_config", "value":"dataset_config"},
                                                                                     {"label": "trainer_args", "value":"trainer_args"}
                                                                                 ],
                                                                         value="hyperparamaters",
@@ -668,7 +668,7 @@ class Dashboard:
         # live_exps = set(self.db.get_live_exps_ids())
         # done_exps = set(self.db.get_done_exps_ids())
 
-        exps = self.db.get_done_exps_ids()
+        exps = self.db.get_exp_ids()
 
         #exps = sorted(live_exps | done_exps)
         options = [{"label":e, "value":e} for e  in exps]
@@ -756,7 +756,7 @@ class Dashboard:
         if config_value == "exp_config":
             exp_config.pop("trainer_args")
             exp_config.pop("hyperparamaters")
-            exp_config.pop("dataset_config")
+            #exp_config.pop("dataset_config")
             #exp_config.pop("_id")
             return json.dumps(exp_config, indent=4)
         else:
@@ -909,7 +909,8 @@ class Dashboard:
 
 
     def update_highlight_text(self, sample_id, data_cache):
-        
+        return "", {'display': 'none'}
+
         if not data_cache or sample_id is None:
             return "", {'display': 'none'}
 
@@ -1186,7 +1187,7 @@ class Dashboard:
         experiments = pd.DataFrame(self.db.get_exp_configs(filter_by))
         experiment_ids = list(experiments["experiment_id"].to_numpy())
 
-        data = self.db.get_scores({"experiment_id":{"$in": experiment_ids}})
+        data = self.db.get_scores(experiment_ids=experiment_ids)
 
 
         experiment2config = {}
@@ -1196,7 +1197,6 @@ class Dashboard:
             config.pop("_id")
             experiment2config[exp_id] = config
         
-        #print(list(experiment2config.items())[-1][1])
         #NOTE! we are assuming that all experiments are done with the same metrics
         # and we are displaying only
         display_splits = ["val", "test"] 
@@ -1268,20 +1268,16 @@ class Dashboard:
 
     def get_exp_data(self, experiment_id:str, last_epoch:int):
 
-        filter_by = {"experiment_id":experiment_id}
     
-        exp_config = self.db.get_exp_config(filter_by)
+        exp_config = self.db.get_exp_config(experiment_id=experiment_id)
 
         if exp_config is None:
             return {}, {"display":"none"}
 
-
-        filter_by["epoch"] =  { "$lte": last_epoch}
-        scores = self.db.get_scores(filter_by)
+        scores = pd.DataFrame(self.db.get_scores(experiment_id=experiment_id, epoch=last_epoch))
         scores = scores.to_dict()
 
-        filter_by["epoch"] = last_epoch
-        outputs = self.db.get_outputs(filter_by).get("data", {})
+        outputs = self.db.get_outputs(experiment_id=experiment_id, epoch=last_epoch).get("data", {})
         
         if "_id" in exp_config:
             exp_config.pop("_id")
@@ -1323,7 +1319,6 @@ class Dashboard:
         if last_epoch == prev_epoch:
             return dash.no_update
 
-        print("WE ARE UPDATING")
         data_cache, style  = self.get_exp_data(experiment_id, last_epoch)
         return data_cache, style
 
