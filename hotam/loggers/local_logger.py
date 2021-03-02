@@ -48,12 +48,14 @@ class LocalLogger(LightningLoggerBase):
 
     """
 
-    def __init__(self, root_dir="~/.hotam/"):
+    def __init__(self, root_dir=os.path.join(Path.home(),".hotam/")):
         super().__init__()
         self.root_dir = root_dir
         self.experiment_dir = os.path.join(self.root_dir, "experiments")
         os.makedirs(self.root_dir, exist_ok=True)
         os.makedirs(self.experiment_dir, exist_ok=True)
+        logger.info(f"Database created/docked at {root_dir}")
+
 
     def __repr__(self):
         return self.name()
@@ -75,12 +77,12 @@ class LocalLogger(LightningLoggerBase):
                                 experiment_config["start_time"]
                                 ])
 
-        self.exp_folder = os.path.join(self.experiment_dir, folder_name, exist_ok=True)
-        self.score_folder  = os.path.join(self.exp_folder, "scores", exist_ok=True)
-        self.output_folder  = os.path.join(self.exp_folder, "outputs", exist_ok=True)
+        self.exp_folder = os.path.join(self.experiment_dir, folder_name)
+        self.score_folder  = os.path.join(self.exp_folder, "scores")
+        self.output_folder  = os.path.join(self.exp_folder, "outputs")
 
-        self.val_scores  = os.path.join(self.score_folder, "val", exist_ok=True)
-        self.train_scores  = os.path.join(self.score_folder, "train", exist_ok=True)
+        self.val_scores  = os.path.join(self.score_folder, "val")
+        self.train_scores  = os.path.join(self.score_folder, "train")
 
         os.makedirs(self.exp_folder, exist_ok=True)
        # os.makedirs(self.score_folder, exist_ok=True)

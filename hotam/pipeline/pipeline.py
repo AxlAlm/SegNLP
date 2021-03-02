@@ -288,13 +288,13 @@ class Pipeline:
             
             set_random_seed(hyperparamater["random_seed"])
 
-            # exp_config = self.__config(
-            #                             experiment_id = experiment_id,
-            #                             hyperparamaters = hyperparamater,
-            #                             evaluation_method = evaluation_method, 
-            #                             save_choice = save,
-            #                             model_name=model.name()
-            #                             )
+            exp_config = self.__config(
+                                        experiment_id = experiment_id,
+                                        hyperparamaters = hyperparamater,
+                                        evaluation_method = evaluation_method, 
+                                        save_choice = save,
+                                        model_name=model.name()
+                                        )
 
             ptl_model = PTLBase(   
                                 model=model, 

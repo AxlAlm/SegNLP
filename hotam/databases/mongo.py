@@ -91,13 +91,16 @@ class MongoDB:
 
         return task_classes
 
-    def get_live_exps_ids(self):
-        exp_ids = [exp["experiment_id"] for exp in list(self.experiments.find({"status":"ongoing"}))]
-        return exp_ids
+    # def get_live_exps_ids(self):
+    #     exp_ids = [exp["experiment_id"] for exp in list(self.experiments.find({"status":"ongoing"}))]
+    #     return exp_ids
 
-    def get_done_exps_ids(self):
-        exp_ids = [exp["experiment_id"] for exp in list(self.experiments.find({"status":"done"}))]
-        return exp_ids
+    # def get_done_exps_ids(self):
+    #     exp_ids = [exp["experiment_id"] for exp in list(self.experiments.find({"status":"done"}))]
+    #     return exp_ids
+
+    def get_exp_ids(self):
+        pass
 
     def get_projects(self):
         projects = sorted(set([exp["project"] for exp in list(self.experiments.find({"status":"done"}))]))

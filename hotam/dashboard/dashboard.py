@@ -655,9 +655,9 @@ class Dashboard:
         return [{"label":p, "value":p} for p in projects]
 
 
-    def update_live_exp_dropdown(self, n):
-        exps = sorted(self.db.get_live_exps_ids())
-        return [{"label":e, "value":e} for e in exps]
+    # def update_live_exp_dropdown(self, n):
+    #     exps = sorted(self.db.get_live_exps_ids())
+    #     return [{"label":e, "value":e} for e in exps]
 
 
     def update_exp_dropdown(self, n, clickData, value):
@@ -665,10 +665,12 @@ class Dashboard:
         if clickData:
             value = dict(clickData)["points"][0]["customdata"]
 
-        live_exps = set(self.db.get_live_exps_ids())
-        done_exps = set(self.db.get_done_exps_ids())
+        # live_exps = set(self.db.get_live_exps_ids())
+        # done_exps = set(self.db.get_done_exps_ids())
 
-        exps = sorted(live_exps | done_exps)
+        exps = self.db.get_done_exps_ids()
+
+        #exps = sorted(live_exps | done_exps)
         options = [{"label":e, "value":e} for e  in exps]
 
         return options, value
