@@ -30,8 +30,8 @@ class Encoder:
         for task in self.all_tasks:
             
             if task == "link":
-                relations = self.task2labels[task]
-                max_spans = max(abs(min(relations)),abs(max(relations))) * 2
+                links = self.task2labels[task]
+                max_spans = max(abs(min(links)),abs(max(links))) * 2
                 self.encoders[task] = LinkEncoder(name=task,  max_spans=max_spans)
             else:
                 self.encoders[task] = LabelEncoder(name=task, labels=self.task2labels[task])
@@ -45,15 +45,13 @@ class Encoder:
             if task == "link":
                 
                 df["_link"] = df["link"].to_numpy()
-                #samples = df.groupby(self.sample_level+"_id")
                 
-                #for s_id, df in tqdm(samples, desc="encoding relations"):
-                spans = df.groupby("span_id")
-                relations = [span_df["link"].unique()[0] for span_id, span_df in spans]
-                enc_relations = self.encode_list(relations, task)
-  
-                for i, (span_id, span_df) in enumerate(spans):
-                    df.loc[span_df.index,"_link"] = enc_relations[i]
+                units = df.groupby("unit_id")
+                links = [unit_df["link"].unique()[0] for unit_id, unit_df in units]
+                enc_links = self.encode_list(links, task)
+                
+                for i, (unit_id, unit_df) in enumerate(units):
+                    df.loc[unit_df.index,"_link"] = enc_links[i]
 
                 df["link"] = df.pop("_link")
 

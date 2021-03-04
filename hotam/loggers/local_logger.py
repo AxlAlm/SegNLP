@@ -69,12 +69,21 @@ class LocalLogger(LightningLoggerBase):
     
 
     def log_experiment( self, experiment_config:dict):
+
+
+        print([
+                                experiment_config["experiment_id"],
+                                experiment_config["project"],
+                                experiment_config["dataset"],
+                                experiment_config["model"],
+                                str(experiment_config["start_timestamp"])
+                                ])
         folder_name = "_".join([
                                 experiment_config["experiment_id"],
                                 experiment_config["project"],
                                 experiment_config["dataset"],
                                 experiment_config["model"],
-                                experiment_config["start_time"]
+                                str(experiment_config["start_timestamp"])
                                 ])
 
         self.exp_folder = os.path.join(self.experiment_dir, folder_name)
@@ -93,7 +102,7 @@ class LocalLogger(LightningLoggerBase):
 
         config_file_path = os.path.join(self.exp_folder, "config.json")
         with open(config_file_path, "w") as f:
-            json.dump(experiment_config, f, indent=4)
+            json.dump(copy_and_vet_dict(experiment_config), f, indent=4)
 
 
     @rank_zero_only

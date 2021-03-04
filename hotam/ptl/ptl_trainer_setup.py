@@ -9,7 +9,7 @@ from typing import Tuple, List, Dict
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from pytorch_lightning import Trainer 
 
-default_trainer_args = dict(
+default_ptl_trn_args = dict(
                             logger=None, 
                             checkpoint_callback=None, 
                             callbacks=None, 
@@ -68,15 +68,15 @@ default_trainer_args = dict(
 def get_ptl_trainer(
                     experiment_id:str, 
                     save_choice:str,
-                    trainer_args:dict, 
+                    ptl_trn_args:dict, 
                     hyperparamaters:dict, 
                     model_dump_path:str=None, 
                     ):
 
     #save="last", early_stop,
 
-    if save_choice and "callbacks" not in trainer_args:
-        trainer_args["callbacks"] = []
+    if save_choice and "callbacks" not in ptl_trn_args:
+        ptl_trn_args["callbacks"] = []
 
         save_top_k = 0
         if save_choice == "best":
@@ -87,7 +87,7 @@ def get_ptl_trainer(
 
         monitor_metric = hyperparamaters["monitor_metric"]
 
-        trainer_args["callbacks"].append(ModelCheckpoint(
+        ptl_trn_args["callbacks"].append(ModelCheckpoint(
                                                         dirpath=model_dump_path,
                                                         save_last=True if save_choice == "last" else False,
                                                         save_top_k= save_top_k,
@@ -111,15 +111,15 @@ def get_ptl_trainer(
 
 
     #overwrite the Pytroch Lightning Training arguments that are writen in Hyperparamaters 
-    if "max_epochs" in trainer_args or "max_epochs" in hyperparamaters:
-        trainer_args["max_epochs"] = hyperparamaters["max_epochs"]
+    if "max_epochs" in ptl_trn_args or "max_epochs" in hyperparamaters:
+        ptl_trn_args["max_epochs"] = hyperparamaters["max_epochs"]
     
-    if ("gradient_clip_val" in trainer_args and  "gradient_clip_val" == None) or  "gradient_clip_val" in hyperparamaters:
-        trainer_args["gradient_clip_val"] = hyperparamaters["gradient_clip_val"]
+    if ("gradient_clip_val" in ptl_trn_args and  "gradient_clip_val" == None) or  "gradient_clip_val" in hyperparamaters:
+        ptl_trn_args["gradient_clip_val"] = hyperparamaters["gradient_clip_val"]
                     
 
-    trainer_args["default_root_dir"] = model_dump_path
-    trainer = Trainer(**trainer_args)
+    ptl_trn_args["default_root_dir"] = model_dump_path
+    trainer = Trainer(**ptl_trn_args)
     return trainer
 
 

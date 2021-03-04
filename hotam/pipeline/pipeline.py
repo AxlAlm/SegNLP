@@ -21,9 +21,9 @@ from hotam.datasets import DataSet
 from hotam.preprocessing import Preprocessor
 from hotam.preprocessing.dataset_preprocessor import PreProcessedDataset
 from hotam.ptl import get_ptl_trainer, PTLBase
-from hotam.ptl.ptl_trainer_setup import default_trainer_args
+from hotam.ptl.ptl_trainer_setup import default_ptl_trn_args
 from hotam import get_logger
-from hotam.utils import set_random_seed
+from hotam.utils import set_random_seed, get_timestamp
 from hotam.evaluation_methods import get_evaluation_method
 from hotam.loggers import LocalLogger
 
@@ -44,7 +44,6 @@ class Pipeline:
                 encodings:list =[],
                 model_load_path:str = None,
                 tokens_per_sample:bool=False,
-                dataset:Union[DataSet, PreProcessedDataset] = None,
                 root_dir:str = "/tmp/hotam/pipelines"       
                 ):
         
@@ -64,7 +63,7 @@ class Pipeline:
                                 config = dict(
                                             prediction_level=prediction_level, 
                                             sample_level=sample_level, 
-                                            dataset_name=dataset.name, 
+                                            #dataset_name=dataset.name, 
                                             tasks=tasks, 
                                             features=[f.name for f in features], 
                                             encodings=encodings
@@ -81,35 +80,38 @@ class Pipeline:
                                         tokens_per_sample=tokens_per_sample,
                                         )
 
-        if dataset:
+    if model_load_path:
+        raise NotImplementedError
 
-            self.preprocessor.expect_labels(
-                                            tasks=tasks, 
-                                            task_labels=dataset.task_labels
-                                            )
 
-            if isinstance(dataset, PreProcessedDataset):
-                self.dataset = dataset
+    def process_dataset(self, dataset:Union[DataSet, PreProcessedDataset]):
+
+        self.preprocessor.expect_labels(
+                                        tasks=tasks, 
+                                        task_labels=dataset.task_labels
+                                        )
+
+        if isinstance(dataset, PreProcessedDataset):
+            return dataset
+        else:
+
+            if self.__check_for_preprocessed_data(pipeline_folder_path, dataset.name):
+                logger.info(f"Loading preprocessed data from {pipeline_folder_path}")
+                dataset = PreProcessedDataset(
+                                                    name=dataset.name,
+                                                    dir_path=pipeline_folder_path, 
+                                                    )
             else:
+                try:
 
-                if self.__check_for_preprocessed_data(pipeline_folder_path):
-                    logger.info(f"Loading preprocessed data from {pipeline_folder_path}")
-                    self.dataset = PreProcessedDataset(
-                                                        dir_path=pipeline_folder_path, 
-                                                        )
-                else:
-                    try:
-
-                        self.dataset = self.preprocessor.process_dataset(dataset, dump_dir=pipeline_folder_path, chunks=5)
-                    except BaseException as e:
-                        shutil.rmtree(pipeline_folder_path)
-                        raise e
+                    dataset = self.preprocessor.process_dataset(dataset, dump_dir=pipeline_folder_path, chunks=5)
+                except BaseException as e:
+                    shutil.rmtree(pipeline_folder_path)
+                    raise e
+                
+            return dataset
 
             
-        if model_load_path:
-            raise NotImplementedError
-
-
 
     def __dump_pipe_config(self, config:dict, pipeline_folder_path:str):
         fp = os.path.join(pipeline_folder_path, "config.json")
@@ -125,8 +127,8 @@ class Pipeline:
                 json.dump(config, f)
 
 
-    def __check_for_preprocessed_data(self, pipeline_folder_path:str):
-        fp = os.path.join(pipeline_folder_path, "data.hdf5")
+    def __check_for_preprocessed_data(self, pipeline_folder_path:str, dataset_name:str):
+        fp = os.path.join(pipeline_folder_path, f"{dataset_name}_data.hdf5")
         return os.path.exists(fp)
      
 
@@ -142,26 +144,26 @@ class Pipeline:
         return pipeline_folder_path
 
 
-    def __config(self, experiment_id:str, hyperparamaters:dict, evaluation_method:str, save_choice:str, model_name:str):
+    def __config(self, experiment_id:str, ptl_trn_args:dict, hyperparamaters:dict, evaluation_method:str, save_choice:str, model_name:str):
 
-        exp_config = {}
+        config = {}
 
         #same for whole pipeline
-        exp_config["experiment_id"] = experiment_id
-        exp_config["project"] = self.project
-        exp_config["dataset"] = self.dataset.name
-        exp_config["model"] = model_name
-        exp_config["dataset_stats"] = self.dataset.stats().to_dict()
-        exp_config["start_timestamp"] = get_timestamp()
-        exp_config["trainer_args"] = trainer_args
-        exp_config["status"] = "ongoing"
+        config["experiment_id"] = experiment_id
+        config["project"] = self.project
+        config["dataset"] = self.dataset.name
+        config["model"] = model_name
+        config["dataset_stats"] = self.dataset.stats.to_dict()
+        config["start_timestamp"] = get_timestamp()
+        config["ptl_trn_args"] = ptl_trn_args
+        config["status"] = "ongoing"
 
         #for each exp / model
-        exp_config["hyperparamaters"] = hyperparamaters
-        exp_config["evaluation_method"] = evaluation_method
-        exp_config["model_selection"] = save_choice
+        config["hyperparamaters"] = hyperparamaters
+        config["evaluation_method"] = evaluation_method
+        config["model_selection"] = save_choice
 
-        exp_config.update(self.preprocessor.config)
+        config.update(self.preprocessor.config)
 
         return config
 
@@ -189,17 +191,20 @@ class Pipeline:
         return set_hyperparamaters
 
 
-    def fit(    self,   
+    def fit(    self,
                 model:torch.nn.Module,
                 hyperparamaters:dict,
+                dataset:Union[DataSet, PreProcessedDataset],
                 exp_logger:LightningLoggerBase = LocalLogger(),  
-                ptl_trn_args:dict=default_trainer_args, 
+                ptl_trn_args:dict=default_ptl_trn_args, 
                 save:str = "last", 
                 evaluation_method:str = "default", 
                 model_dump_path:str = "/tmp/hotam_models/",
                 run_test:bool = True, 
                 ):
         
+
+        dataset = self.process_dataset(dataset)
 
         set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
 
@@ -213,7 +218,7 @@ class Pipeline:
 
             trainer = get_ptl_trainer( 
                                         experiment_id=experiment_id, 
-                                        trainer_args=ptl_trn_args, 
+                                        ptl_trn_args=ptl_trn_args, 
                                         hyperparamaters=hyperparamater, 
                                         model_dump_path=model_dump_path,
                                         save_choice=save, 
@@ -226,6 +231,7 @@ class Pipeline:
 
             exp_config = self.__config(
                                         experiment_id = experiment_id,
+                                        ptl_trn_args=ptl_trn_args,
                                         hyperparamaters = hyperparamater,
                                         evaluation_method = evaluation_method, 
                                         save_choice = save,
@@ -243,7 +249,7 @@ class Pipeline:
                                 feature_dims=self.preprocessor.feature2dim,
                                 )
 
-            self.dataset.batch_size = hyperparamaters["batch_size"]
+            dataset.batch_size = hyperparamaters["batch_size"]
 
             if exp_logger:
                 exp_logger.log_experiment(exp_config)
@@ -254,7 +260,7 @@ class Pipeline:
                 get_evaluation_method(evaluation_method)(
                                                         trainer = trainer, 
                                                         ptl_model = ptl_model,
-                                                        dataset=self.dataset,
+                                                        dataset=dataset,
                                                         save_choice = save,
                                                         )
 

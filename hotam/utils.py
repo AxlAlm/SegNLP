@@ -163,7 +163,7 @@ def one_tqdm(desc:str):
 def get_timestamp():
     sweden = pytz.timezone('Europe/Stockholm')
     timestamp = datetime.now().astimezone(sweden).timestamp()
-    return timestamp
+    return int(timestamp)
 
 
 def copy_and_vet_dict(input_dict:dict, filter_key:str=None):

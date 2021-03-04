@@ -249,7 +249,7 @@ class Dashboard:
                                                                                     {"label": "hyperparamaters", "value":"hyperparamaters"},
                                                                                     {"label": "exp_config", "value":"exp_config"},
                                                                                     #{"label": "dataset_config", "value":"dataset_config"},
-                                                                                    {"label": "trainer_args", "value":"trainer_args"}
+                                                                                    {"label": "ptl_trn_args", "value":"ptl_trn_args"}
                                                                                 ],
                                                                         value="hyperparamaters",
                                                                         className="dcc_control",

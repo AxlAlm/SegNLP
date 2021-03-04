@@ -32,18 +32,19 @@ from hotam.utils import ensure_numpy
 
 class PreProcessedDataset(ptl.LightningDataModule):
 
-    def __init__(self, dir_path:str):
+    def __init__(self, name:str ,dir_path:str):
+        self._name = name
         self._fp = os.path.join(dir_path, "data.hdf5")
         self.data = h5py.File(self._fp, "r")
         self._size = self.data["ids"].shape[0]
         self.prediction_level = "token"
 
-        with open(os.path.join(dir_path, "stats.json"), "r") as f:
-            self._stats = json.load(f)
+        self._stats = pd.read_csv(os.path.join(dir_path, "stats.csv"))
+        self._stats.columns = ["split_id", "split", "task", "label", "count"]
 
         with open(os.path.join(dir_path, "splits.pkl"), "rb") as f:
             self._splits = pickle.load(f)
-
+        
 
     def __getitem__(self, key:Union[np.ndarray, list]) -> ModelInput:
         Input = ModelInput()
@@ -77,7 +78,11 @@ class PreProcessedDataset(ptl.LightningDataModule):
     def __len__(self):
         return self._size
 
+    @property
+    def name(self):
+        return self._name
 
+    @property
     def info(self):
         
         structure = { }
@@ -103,26 +108,28 @@ class PreProcessedDataset(ptl.LightningDataModule):
             """
         print(s)
 
-
+    @property
     def stats(self):
-        return pd.DataFrame(self._stats)
+        return self._stats
 
+    @property
     def splits(self):
         return self._splits
 
+
     def train_dataloader(self):
         sampler = BatchSampler(self.splits[self.split_id]["train"], batch_size=self.batch_size, drop_last=False)
-        return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0])
+        return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=8)
 
 
     def val_dataloader(self):
         sampler = BatchSampler(self.splits[self.split_id]["val"], batch_size=self.batch_size, drop_last=False)
-        return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0]) #, shuffle=True)
+        return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=8) #, shuffle=True)
 
 
     def test_dataloader(self):
         sampler = BatchSampler(self.splits[self.split_id]["test"], batch_size=self.batch_size, drop_last=False)
-        return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0])
+        return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=8)
 
 
 
@@ -192,48 +199,48 @@ class DataPreprocessor:
     def load_preprocessed_dataset(self, dir_path):
         return PreProcessedDataset(dir_path)
 
+
     def __set_splits(self, dump_dir:str, dataset:DataSet):
 
         splits = dataset.splits
 
-        if self.sample_level != dataset.level:
-            splits = create_new_splits()
+        # if self.sample_level != dataset.level:
+        #     splits = create_new_splits()
 
-        file_path = os.path.join(dump_dir, "splits.pkl")
+        file_path = os.path.join(dump_dir, f"{dataset.name}_splits.pkl")
         with open(file_path, "wb") as f:
             pickle.dump(splits, f)
 
         return splits
 
-    def __calc_stats(self, dump_dir:str, splits:dict):
+
+    def __calc_stats(self, dump_dir:str, splits:dict, dataset_name:str):
         
         collected_counts = {split_id:{split:{t:[] for t in self.all_tasks} for split in ["train", "val", "test"]} for split_id in splits.keys()}
         
         lengths = self.h5py_f[self.prediction_level]["lengths"][:]
         span_lengths = self.h5py_f["span"]["lengths_tok"][:]
         lengths_span = self.h5py_f["span"]["lengths"][:]
-        non_spans_mask = self.h5py_f["span"]["mask"][:]
+        non_spans_mask = self.h5py_f["span"]["none_span_mask"][:]
 
         ids  = self.h5py_f["ids"]
+
         for task in self.all_tasks:
             encoded_labels = self.h5py_f[self.prediction_level][task][:]
 
             sample_iter = enumerate(zip(ids, lengths, encoded_labels))
             for i, (ID, length, labels) in sample_iter:
-
+                
                 if task == "link" and self.prediction_level == "token":
 
                     #we have the span labels so just use them and expand them?
                     stl = span_lengths[i][:lengths_span[i]]
                     ns = non_spans_mask[i][:lengths_span[i]]
-                    print("BEFORE", labels[:length].tolist())
                     decoded_labels = self.decode_token_links(
                                                             labels[:length].tolist(), 
                                                             span_token_lengths = stl, 
                                                             none_spans = ns
                                                             )
-                    print("AFTER", decoded_labels)
-                    print(lol)
                 else:
                     decoded_labels = self.decode_list(labels[:length].tolist(), task)
 
@@ -262,28 +269,26 @@ class DataPreprocessor:
             split_id_dfs.append(pd.concat(split_dfs, keys=["train", "val", "test"]))
         
         df = pd.concat(split_id_dfs, keys=list(splits.keys()))
-
-        pd.set_option('display.max_rows', None)
-        print(df)
-        print(lol)
-
-        file_path = os.path.join(dump_dir, "stats.json")
-        with open(file_path,"w") as f:
-            json.dump(collected_counts, f, indent=4)
-
+        #stats = df.to_dict()
+   
+        file_path = os.path.join(dump_dir, f"{dataset_name}_stats.csv")
+        df.to_csv(file_path)
+        # with open(file_path,"wb") as f:
+        #     pickle.dump(stats, f)
 
 
     def process_dataset(self, dataset:DataSet, chunks:int = 50, dump_dir:str = None) -> PreProcessedDataset:
         
-        file_path = os.path.join(dump_dir,"data.hdf5")
+        file_path = os.path.join(dump_dir, f"{dataset.name}_data.hdf5")
         self.__setup_h5py(file_path=file_path) 
+
 
         progress_bar = tqdm(total=len(dataset), desc="Processing and Storing Dataset")
         last_id = 0
         for i in range(0, len(dataset), chunks):
             Input = self(dataset[i:i+chunks])
 
-            Input._ids = Input._ids + (last_id + 1)
+            Input._ids = Input._ids + (last_id + (1 if last_id else 0))
             last_id = Input.ids[-1]
 
             if not self.__init_storage_done:
@@ -292,18 +297,16 @@ class DataPreprocessor:
                 self.__append_store(Input)
 
             progress_bar.update(chunks)
-            break
 
         progress_bar.close()
 
         splits = self.__set_splits(dump_dir, dataset=dataset)
-        self.__calc_stats(dump_dir, splits)
+        self.__calc_stats(dump_dir, splits, dataset.name)
 
         self.h5py_f.close()
 
+        return PreProcessedDataset(name=dataset.name, dir_path=dump_dir)
 
-
-        return PreProcessedDataset(dump_dir)
 
 
         # if self._data_is_stored:
@@ -315,14 +318,3 @@ class DataPreprocessor:
         #     out = self.data[key]
 
         # return out
-    # def add_processor(self, processor):
-    #     self.__processor = processor
-    
-
-    # def __get_stored_data(self, key):
-
-    #     Input = Input()
-    #     for dset in h5py_datasets:
-    #         Input.add(k, dset[key])
-
-    #     return Input

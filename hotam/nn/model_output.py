@@ -9,6 +9,7 @@ import numpy as np
 from hotam.metrics import token_metrics
 from hotam.nn import ModelInput
 from hotam.utils import ensure_numpy
+from hotam.nn.bio_decoder import BIO_Decoder
 
 #pytorch
 import torch
@@ -40,31 +41,16 @@ class ModelOutput:
         self.loss = {}
         self.metrics = []
         self.outputs = []
+        self.pred_spans = {}
         
-        # self.dataset.get_subtask_position(task, subtask) 
-        # #self.dataset.decode_list(preds[i][:lenghts[i]], task)
-        # self.dataset.prediction_level
-        # self.dataset.all_tasks
-        # self.dataset = dataset
-        #self._need_seg_lens = if self.dataset.prediction_level == "token"
-        #self._seg_lens_added = False
-
-        # if "seg" in self.dataset.subtasks:
-        #     seg_task = [t for t in self.dataset.tasks if "seg" in task][0]
-        #     Bs = [i for l,i in self.dataset.encoders[seg_task].label2id.items() if l.lower().startswith("b")]
-        #     Is = [i for l,i in self.dataset.encoders[seg_task].label2id.items() if l.lower().startswith("i")]
-        #     Os = [i for l,i in self.dataset.encoders[seg_task].label2id.items() if l.lower().startswith("o")]
-        #     self.bio = BIO_Decoder(
-        #                             Bs=Bs,
-        #                             Is=Is,
-        #                             Os=Os,
-        #                             )
+        self.bio = BIO_Decoder(
+                                B=[2],
+                                I=[1],
+                                O=[0],
+                                apply_correction=True,
+                                )
         
 
-        #self.seg = {}  
-    @property
-    def metrics(self):
-        return self.metrics_keys, np.array(self.metric_values)
 
 
     def __add_subtask_preds(self, decoded_labels:np.ndarray, lengths:np.ndarray, level:str,  task:str):
@@ -107,7 +93,7 @@ class ModelOutput:
                             )
     
 
-    def __decode_labels(self, preds:list, lengths:list, task:str):
+    def __decode_labels(self, preds:np.ndarray, lengths:np.ndarray, task:str):
 
         size = preds.shape[0]
         decoded_preds = np.zeros((size, max(lengths)), dtype="<U30" )
@@ -117,18 +103,22 @@ class ModelOutput:
         return decoded_preds
 
 
-    def __decode_token_link_labels(self, preds:list, lengths:list, span_lengths:list):
+    def __decode_token_link_labels(self, preds:np.ndarray, lengths:np.ndarray, span_lengths:np.ndarray, none_spans:np.ndarray):
         
         size = preds.shape[0]
         decoded_preds = np.zeros((size, max(lengths)), dtype=np.int16)
         for i in range(size):
-            decoded = self.label_encoders["link"].decode_token_links(preds[i][:lengths[i]], span_lengths[i])
+            decoded = self.label_encoders["link"].decode_token_links(
+                                                                    preds[i][:lengths[i]], 
+                                                                    span_token_lengths=span_lengths[i],
+                                                                    none_spans=none_spans[i]
+                                                                    )
             decoded_preds[i][:lengths[i]] = decoded
         
         return decoded_preds
 
 
-    def __handle_complex_tasks(self, data:torch.tensor, level:str, lengths:list, task:str):
+    def __handle_complex_tasks(self, data:torch.tensor, level:str, lengths:np.ndarray, task:str):
 
         # if task is a complex task we get the predictions for each of the subtasks embedded in the 
         # complex task. We will only use these to evaluate
@@ -163,13 +153,37 @@ class ModelOutput:
                 tok_labels[i][start:end] = span_labels[i][j]
         return tok_labels
         
-
-    def __correct_segmentation(self, data):
-        pass
-
     
-    def __correct_relations(self, data):
-        pass
+    def __correct_links(self, links:np.ndarray, lengths_units:np.ndarray, span_lengths:np.ndarray, none_spans:np.ndarray, decoded:bool):
+        """
+        Any link that is outside of the actuall text, e.g. when predicted link > max_idx, is set to predicted_link== max_idx
+        https://arxiv.org/pdf/1704.06104.pdf
+
+        """
+        new_links = []
+        for i in range(links.shape[0]):
+            last_unit_idx = lengths_units[i]-1
+            sample_links = links[i]
+            print(sample_links)
+            if decoded:
+                sample_links = self.label_encoders["link"].encode_token_links(
+                                                                                sample_links
+                                                                                span_token_lengths=span_lengths[i],
+                                                                                none_spans=none_spans[i]
+                                                                                )
+
+            links_above_allowed = sample_links > last_unit_idx[i]
+            sample_links[links_above_allowed] = last_unit_idx
+
+            sample_links = self.label_encoders["link"].decode_token_links(
+                                                                        sample_links
+                                                                        span_token_lengths=span_lengths[i],
+                                                                        none_spans=none_spans[i]
+                                                                        )
+            print(sample_links)
+            new_links.append(sample_links)
+        
+        return np.array(new_links)
 
 
     def add_loss(self, task:str, data=torch.tensor):
@@ -189,14 +203,13 @@ class ModelOutput:
                 else:
                     self.loss["total"] += data
     
-        self.metrics_keys.append(f"{task}-loss")
-        self.metric_values.append(int(data))
+        self.metrics.append({f"{task}-loss":int(data)})
 
 
     def add_preds(self, task:str, level:str, data:torch.tensor, decoded:bool=False, sample_ids="same"):
 
         #assert task in set(self.tasks), f"{task} is not a supported task. Supported tasks are: {self.tasks}"
-        assert level in set(["token", "unit"]), f"{level} is not a supported level. Only 'token' or 'span' are supported levels"
+        assert level in set(["token", "unit"]), f"{level} is not a supported level. Only 'token' or 'unit' are supported levels"
         assert torch.is_tensor(data) or isinstance(data, np.ndarray), f"{task} preds need to be a tensor or numpy.ndarray"
         assert len(data.shape) == 2, f"{task} preds need to be a 2D tensor"
 
@@ -204,27 +217,26 @@ class ModelOutput:
         # If we are prediction on ACs and input is on AC level we can use the information of how many ACs a sample has directly from out input.
         # Same applies if prediction level is token; we get this information explicitly from our preprocessing
         # and same applies if input level i token and prediction level is AC
-        #
         # However, if the prediction level is token and the input level is AC, we need to use the prediction lengths derived from our segmentation predictions
-        if level == "unit" and self.prediction_level == "unit":
-            lengths = self.batch["unit"]["lengths"]
+        # if level == "unit" and self.prediction_level == "unit":
+        #     lengths = self.batch["unit"]["lengths"]
 
-        elif level == "token" and self.prediction_level == "token":
-            lengths = self.batch["token"]["lengths"]
+        # elif level == "token" and self.prediction_level == "token":
+        #     lengths = self.batch["token"]["lengths"]
 
-        elif level == "token" and self.prediction_level == "unit":
-            lengths = self.batch["token"]["lengths"]
+        # elif level == "token" and self.prediction_level == "unit":
+        #     lengths = self.batch["token"]["lengths"]
 
-        elif level == "unit" and self.prediction_level == "token":
-            #lengths = self.seg["lenghts_seq"]
-            raise NotImplementedError()
-
+        # elif level == "unit" and self.prediction_level == "token":
+        #     #lengths = self.seg["lenghts_seq"]
+        #     raise NotImplementedError()
+            
 
         if "+" in task:
             self.__handle_complex_tasks(
                                         data=data,
                                         level=level,
-                                        lengths=lengths,
+                                        lengths=self.batch[level]["lengths"],
                                         task=task
                                         )
             return
@@ -242,42 +254,66 @@ class ModelOutput:
                                             span_indexes=span_indexes,
                                             max_nr_token=max(self.batch["token"]["lengths"]),
                                             )
+            level = "token"
+
+
+        
+        if task == "link":
+            data = self.__correct_links(
+                                        data,
+                                        lengths_units=self.pred_spans["lengths_units"],
+                                        span_token_lengths=self.pred_spans["lengths_tok"],
+                                        none_spans=self.pred_spans["none_span_mask"]
+                                        )
+
 
         if not decoded:
-            decoded_preds = self.__decode_labels(
-                                                preds=data, 
-                                                lengths=self.batch["token"]["lengths"],
-                                                task=task
-                                                )
-        else:
-            decoded_preds = data
-
-
-        # if task == "seg":
-        #     decoded_labels = self.__correct_segmentation(decoded_labels)
-
-        # if task == "link":
-        #     decoded_labels = self.__correct_relations(decoded_labels)
-
-        # print(task)
-        # print("DECODED PREDS", decoded_labels)
-        # print("TARGETS", self.batch[f"token_{task}"])
-        if self.calc_metrics:
-            #self.batch[f"token_{task}"]
 
             if task == "link" and level == "token":
+                decoded_preds = self.__decode_token_link_labels(  
+                                                                    preds=data, 
+                                                                    lengths=self.batch[level]["lengths"],
+                                                                    span_lengths=self.pred_spans["lengths_tok"],
+                                                                    none_spans=self.pred_spans["none_span_mask"]
+                                                                    )
                 decoded_targets = self.__decode_token_link_labels(
-                                                    preds=self.batch["token"][task], 
-                                                    lengths=self.batch["token"]["lengths"],
-                                                    span_lengths=self.batch["span"]["lengths_tok"]
-                                                    )
+                                                                    preds=self.batch[level][task], 
+                                                                    lengths=self.batch[level]["lengths"],
+                                                                    span_lengths=self.batch["span"]["lengths_tok"],
+                                                                    none_spans=self.batch["span"]["none_span_mask"]
+                                                                    )
+
             else:
+                decoded_preds = self.__decode_labels(
+                                                    preds=data, 
+                                                    lengths=self.batch[level]["lengths"],
+                                                    task=task
+                                                    )
                 decoded_targets = self.__decode_labels(
-                                                    preds=self.batch["token"][task], 
-                                                    lengths=self.batch["token"]["lengths"],
+                                                        preds=self.batch[level][task], 
+                                                        lengths=self.batch[level]["lengths"],
+                                                        task=task
+                                                        )
+        else:
+            decoded_preds = data
+            decoded_targets = self.__decode_labels(
+                                                    preds=self.batch[level][task], 
+                                                    lengths=self.batch[level]["lengths"],
                                                     task=task
                                                     )
 
+
+        if task == "seg":
+            lengths_tok, none_span_mask , lengths = self.bio.decode(
+                                                                    batch_encoded_bios=decoded_preds,
+                                                                    lengths=self.batch[level]["lengths"]
+                                                                    )
+            self.pred_spans["lengths_tok"] = lengths_tok
+            self.pred_spans["none_span_mask"] = none_span_mask
+            self.pred_spans["lengths_units"]  = lengths
+
+
+        if self.calc_metrics:
             self.metrics.append(token_metrics(
                                             targets=decoded_targets,
                                             preds=decoded_preds,
