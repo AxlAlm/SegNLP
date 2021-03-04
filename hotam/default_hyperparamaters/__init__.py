@@ -58,14 +58,12 @@ lstm_er = {
     "dep_embedding_size": 50,  # Embed dimension for depedency label
     "seq_lstm_h_size": 128,  # Sequential LSTM hidden size
     "tree_lstm_h_size": 128,  # Tree LSTM hidden size
-    "ner_hidden_size": 45,  # Entity recognition layer hidden size
-    "ner_output_size": 30,  # Entity recognition layer output size
-    "re_hidden_size": 30,  # Relation extraction layer hidden size
-    "re_output_size": 30,  # Relation extraction layer output size
+    "ac_seg_hidden_size": 45,  # Entity recognition layer hidden size
+    "re_hidden_size": 128,  # Relation extraction layer hidden size
     "seq_lstm_num_layers": 1,  # Sequential LSTM number of layer
     "lstm_bidirectional": True,  # Sequential LSTM bidirection
     "tree_bidirectional": True,  # Tree LSTM bidirection
-    "k": 10,  # hyperparameter for scheduled sampling
+    "k": 20,  # hyperparameter for scheduled sampling
     "graph_buid_type": 0,
     "sub_graph_type": 0,
     "dropout": 0.5,
