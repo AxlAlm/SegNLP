@@ -25,8 +25,8 @@ M.run(
     project="test_project",
     dataset=pe,
     model=LSTM_RE,
-    monitor_metric="val-seg_ac-f1",
-    progress_bar_metrics=["val-seg_ac-f1"],
+    monitor_metric="val-seg_ac_relation_stance-f1",
+    progress_bar_metrics=["val-seg_ac_relation_stance-f1"],
     debug_mode=False,
 )
 

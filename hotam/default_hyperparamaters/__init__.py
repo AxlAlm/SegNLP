@@ -55,7 +55,6 @@ lstm_dist_hps = {
 }
 
 lstm_er = {
-    "dep_embedding_size": 50,  # Embed dimension for depedency label
     "seq_lstm_h_size": 128,  # Sequential LSTM hidden size
     "tree_lstm_h_size": 128,  # Tree LSTM hidden size
     "ac_seg_hidden_size": 45,  # Entity recognition layer hidden size
@@ -63,13 +62,13 @@ lstm_er = {
     "seq_lstm_num_layers": 1,  # Sequential LSTM number of layer
     "lstm_bidirectional": True,  # Sequential LSTM bidirection
     "tree_bidirectional": True,  # Tree LSTM bidirection
-    "k": 20,  # hyperparameter for scheduled sampling
+    "k": 25,  # hyperparameter for scheduled sampling
     "graph_buid_type": 0,
     "sub_graph_type": 0,
     "dropout": 0.5,
     "optimizer": "adam",
     "lr": 0.0001,
-    "max_epochs": 10,
+    "max_epochs": 300,
     "batch_size": 10,
 }
 

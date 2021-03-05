@@ -205,7 +205,8 @@ def get_all_pairs(predictions, token_mask, pattern_r, lengthes):
     # Select predictions for non pad tokens
     # Convert the selected prediction into string, then use regex to select the
     # argument components ande get their start and end charachters
-    predictions_str = "".join(map(str, predictions[token_mask].tolist()))
+    predictions_str = "".join(
+        map(str, predictions[token_mask].type(torch.int).tolist()))
     match = re.finditer(pattern_r, predictions_str)
     span = list(map(lambda x: (x.start(), x.end()), list(match)))
     ac_start_id, ac_end_id = list(zip(*span))

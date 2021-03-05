@@ -1,12 +1,12 @@
 # from collections import defaultdict
 # from typing import List, Dict, Tuple
 
-from math import exp
+from math import exp, floor
 from random import random
 
 import pandas as pd
 import torch as th
-# from torch import Tensor
+from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -279,7 +279,10 @@ class LSTM_RE(nn.Module):
         lengths_sent_tok = batch["lengths_sent_tok"]  # type: list[list]
         lengths_per_sample = batch["lengths_tok"]  # type: list
 
-        # NOTE sents_root dim1 is not correct, have to fixe it here
+        # NOTE sometimes I recieved lengthes in tensor!
+        if type(lengths_sent_tok) == Tensor:
+            lengths_sent_tok = lengths_sent_tok.tolist()
+
         sents_root = batch["sent2root"]  # Tensor[B, SENT_NUM]
         if (sents_root.size(1) >= token_head.size(1)):
             _SENT_NUM_ = token_head.size(1)
@@ -304,7 +307,7 @@ class LSTM_RE(nn.Module):
         schdule_sampling = self.k / (self.k +
                                      exp(batch.current_epoch / self.k))
         # schdule sampling
-        coin_flip = random()
+        coin_flip = floor(random() * 10) / 10
         if schdule_sampling > coin_flip:
             # use golden standard
             seg_ac_used = batch['seg_ac']
