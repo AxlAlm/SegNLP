@@ -25,6 +25,10 @@ class LSTM_DIST(nn.Module):
     paper:
     https://www.aclweb.org/anthology/P19-1464/
 
+    Original code:
+    https://github.com/kuribayashi4/span_based_argumentation_parser/tree/614343b18e7d98293a2b020f9ab05b86355e18df
+    
+
     More on LSTM-Minus
     https://www.aclweb.org/anthology/P16-1218/
 
@@ -104,7 +108,13 @@ class LSTM_DIST(nn.Module):
         
         #self.max_rel = len(task2labels["relation"])
         #self.relation_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), MAX_NR_AC)
+
+
+        self.type_rep_size*3 + self.relative_position_info_size
         self.relation_clf = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), 1)
+
+
+
         self.stance_clf = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), task_dims["stance"])
         self.ac_clf = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), task_dims["ac"])
     
@@ -238,13 +248,30 @@ class LSTM_DIST(nn.Module):
         contex_emb = torch.cat((am_lstm_out, ac_lstm_out, W), dim=-1)
 
         # 5
-        final_out, _ = self.adu_lstm(contex_emb, lengths_seq)
+        #final_out, _ = self.adu_lstm(contex_emb, lengths_seq)
 
         # 6
         # Classification of AC and Stance is pretty straight forward
-        stance_out = self.stance_clf(final_out)
-        ac_out = self.ac_cl(final_out)
+        stance_out = self.stance_clf(contex_emb)
+        ac_out = self.ac_clf(contex_emb)
 
+
+
+        # input = (batch_size, max_units, max_units, contex_emb.shape[-1]*3 + max_units)
+        #
+        # linkCLF(input)
+        # output = (batch_size, max_units, max_units)
+        # max_spanning_tree(output)
+
+
+
+ 
+        #
+        # 1) create this matrix = Hj ; Hi ; Hj * Hi ; pos_encs
+        # (batch_size, max_units, emb_size)
+        #
+        # 2) pass to softmax ->
+        # 
 
         # Classification of Links between ACs is done by concatenate a one-hot vector representing positions
         # with the span representations from final_out.

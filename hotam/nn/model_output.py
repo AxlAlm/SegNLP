@@ -154,7 +154,11 @@ class ModelOutput:
         return tok_labels
         
     
-    def __correct_links(self, links:np.ndarray, lengths_units:np.ndarray, span_lengths:np.ndarray, none_spans:np.ndarray, decoded:bool):
+    def __correct_links(self,   links:np.ndarray, 
+                                lengths_units:np.ndarray,
+                                span_token_lengths:np.ndarray, 
+                                none_spans:np.ndarray, 
+                                decoded:bool):
         """
         Any link that is outside of the actuall text, e.g. when predicted link > max_idx, is set to predicted_link== max_idx
         https://arxiv.org/pdf/1704.06104.pdf
@@ -164,23 +168,26 @@ class ModelOutput:
         for i in range(links.shape[0]):
             last_unit_idx = lengths_units[i]-1
             sample_links = links[i]
+
             print(sample_links)
             if decoded:
                 sample_links = self.label_encoders["link"].encode_token_links(
-                                                                                sample_links
-                                                                                span_token_lengths=span_lengths[i],
+                                                                                sample_links,
+                                                                                span_token_lengths=span_token_lengths[i],
                                                                                 none_spans=none_spans[i]
                                                                                 )
 
+            print(sample_links, last_unit_idx[i])
             links_above_allowed = sample_links > last_unit_idx[i]
             sample_links[links_above_allowed] = last_unit_idx
 
             sample_links = self.label_encoders["link"].decode_token_links(
-                                                                        sample_links
-                                                                        span_token_lengths=span_lengths[i],
+                                                                        sample_links,
+                                                                        span_token_lengths=span_token_lengths[i],
                                                                         none_spans=none_spans[i]
                                                                         )
             print(sample_links)
+
             new_links.append(sample_links)
         
         return np.array(new_links)
@@ -263,7 +270,8 @@ class ModelOutput:
                                         data,
                                         lengths_units=self.pred_spans["lengths_units"],
                                         span_token_lengths=self.pred_spans["lengths_tok"],
-                                        none_spans=self.pred_spans["none_span_mask"]
+                                        none_spans=self.pred_spans["none_span_mask"],
+                                        decoded=decoded
                                         )
 
 

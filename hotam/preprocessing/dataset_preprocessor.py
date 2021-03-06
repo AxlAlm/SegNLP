@@ -34,15 +34,15 @@ class PreProcessedDataset(ptl.LightningDataModule):
 
     def __init__(self, name:str ,dir_path:str):
         self._name = name
-        self._fp = os.path.join(dir_path, "data.hdf5")
+        self._fp = os.path.join(dir_path, f"{name}_data.hdf5")
         self.data = h5py.File(self._fp, "r")
         self._size = self.data["ids"].shape[0]
         self.prediction_level = "token"
 
-        self._stats = pd.read_csv(os.path.join(dir_path, "stats.csv"))
+        self._stats = pd.read_csv(os.path.join(dir_path, f"{name}_stats.csv"))
         self._stats.columns = ["split_id", "split", "task", "label", "count"]
 
-        with open(os.path.join(dir_path, "splits.pkl"), "rb") as f:
+        with open(os.path.join(dir_path, f"{name}_splits.pkl"), "rb") as f:
             self._splits = pickle.load(f)
         
 

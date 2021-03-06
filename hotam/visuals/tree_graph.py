@@ -50,6 +50,84 @@ import matplotlib.cm as cm
 import matplotlib.colors as colors
 import matplotlib as mpl
 
+
+
+
+
+class TextNode:
+
+    def __init__(self, ID, text=None, label=None, link=None, link_label=None):
+        self.id = ID
+        self.label = label
+        self.link = link
+        self.link_label = link_label
+        self.text = text
+        self.children = []
+
+        # from x and y and text size, create a box
+        #self.x0, self.y0, self.x1, self.y1  = self.__calc_box(x, y, text)
+
+    def depth(self, start=0):
+        for child in self.children:
+            depth = child.depth(start=start+1)
+        return depth
+
+
+    def width(self):
+        width = len(self.children)
+        for child in self.children:
+            child_width = child.width()
+            if width > child_width:
+                width = child_width
+            
+        return width
+
+    
+    def __calc_box(self, x, y, text):
+        pass
+    
+
+    def shape_dict(self):
+        return dict(
+                #type="rect",
+                x0=self.x0, 
+                y0=self.y0, 
+                x1=self.x1, 
+                y1=self.y1,
+                line=dict(color=self.color),
+                fillcolor=self.color,
+                opacity=1
+                )
+
+
+    def anno_dict(self):
+        pass
+        # fig.add_annotation(
+        #                 showarrow=False,
+        #                 text="this is a claim slslslslfsf",
+        #                 x = 2,
+        #                 y = 1.5,
+            
+        #             )
+
+
+
+def create_tree(tree:TextNode, nodes:list):
+    for i, node in enumerate(nodes):
+        if node.link == tree.id:
+            filtered = nodes.copy()
+            filtered.pop(i)
+            tree.children.append(create_tree( 
+                                            tree=node, 
+                                            nodes=filtered
+                                            ))
+    return tree
+
+
+
+
+
+
 def get_color_hex(cmap_name:str, value=1.0):
     norm = mpl.colors.Normalize(vmin=0.0,vmax=2)
     cmap = cm.get_cmap(cmap_name)

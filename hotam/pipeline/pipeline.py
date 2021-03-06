@@ -47,28 +47,27 @@ class Pipeline:
                 root_dir:str = "/tmp/hotam/pipelines"       
                 ):
         
+        self.tasks = tasks
         self.project = project
         self.name = name
 
         pipe_hash = self.__pipeline_hash(
                                             prediction_level, 
                                             sample_level, 
-                                            dataset.name, 
                                             tasks, 
                                             [f.name for f in features], 
                                             encodings
                                             )                         
-        pipeline_folder_path = self.__create_pipe_folder(root_dir=root_dir, pipe_hash=pipe_hash)
+        self._pipeline_folder_path = self.__create_pipe_folder(root_dir=root_dir, pipe_hash=pipe_hash)
         self.__dump_pipe_config(
                                 config = dict(
                                             prediction_level=prediction_level, 
                                             sample_level=sample_level, 
-                                            #dataset_name=dataset.name, 
                                             tasks=tasks, 
                                             features=[f.name for f in features], 
                                             encodings=encodings
                                             ),
-                                pipeline_folder_path=pipeline_folder_path
+                                pipeline_folder_path=self._pipeline_folder_path
                                 )       
         
         self.preprocessor = Preprocessor(                
@@ -80,14 +79,14 @@ class Pipeline:
                                         tokens_per_sample=tokens_per_sample,
                                         )
 
-    if model_load_path:
-        raise NotImplementedError
+        if model_load_path:
+            raise NotImplementedError
 
 
     def process_dataset(self, dataset:Union[DataSet, PreProcessedDataset]):
 
         self.preprocessor.expect_labels(
-                                        tasks=tasks, 
+                                        tasks=self.tasks, 
                                         task_labels=dataset.task_labels
                                         )
 
@@ -95,29 +94,21 @@ class Pipeline:
             return dataset
         else:
 
-            if self.__check_for_preprocessed_data(pipeline_folder_path, dataset.name):
-                logger.info(f"Loading preprocessed data from {pipeline_folder_path}")
+            if self.__check_for_preprocessed_data(self._pipeline_folder_path, dataset.name):
+                logger.info(f"Loading preprocessed data from {self._pipeline_folder_path}")
                 dataset = PreProcessedDataset(
                                                     name=dataset.name,
-                                                    dir_path=pipeline_folder_path, 
+                                                    dir_path=self._pipeline_folder_path, 
                                                     )
             else:
                 try:
 
-                    dataset = self.preprocessor.process_dataset(dataset, dump_dir=pipeline_folder_path, chunks=5)
+                    dataset = self.preprocessor.process_dataset(dataset, dump_dir=self._pipeline_folder_path, chunks=5)
                 except BaseException as e:
-                    shutil.rmtree(pipeline_folder_path)
+                    shutil.rmtree(self._pipeline_folder_path)
                     raise e
                 
             return dataset
-
-            
-
-    def __dump_pipe_config(self, config:dict, pipeline_folder_path:str):
-        fp = os.path.join(pipeline_folder_path, "config.json")
-        if not os.path.exists(fp):
-            with open(fp, "w") as f:
-                json.dump(config, f)
 
 
     def __dump_pipe_config(self, config:dict, pipeline_folder_path:str):
@@ -132,8 +123,8 @@ class Pipeline:
         return os.path.exists(fp)
      
 
-    def __pipeline_hash(self, prediction_level, sample_level, dataset_name, tasks, features, encodings):
-        big_string = "%".join([prediction_level, sample_level, dataset_name] + tasks + features + encodings)
+    def __pipeline_hash(self, prediction_level, sample_level, tasks, features, encodings):
+        big_string = "%".join([prediction_level, sample_level] + tasks + features + encodings)
         hash_encoding = hashlib.sha224(big_string.encode()).hexdigest()
         return hash_encoding
 
@@ -204,7 +195,7 @@ class Pipeline:
                 ):
         
 
-        dataset = self.process_dataset(dataset)
+        self.dataset = self.process_dataset(dataset)
 
         set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
 
@@ -249,7 +240,7 @@ class Pipeline:
                                 feature_dims=self.preprocessor.feature2dim,
                                 )
 
-            dataset.batch_size = hyperparamaters["batch_size"]
+            self.dataset.batch_size = hyperparamaters["batch_size"]
 
             if exp_logger:
                 exp_logger.log_experiment(exp_config)
@@ -260,7 +251,7 @@ class Pipeline:
                 get_evaluation_method(evaluation_method)(
                                                         trainer = trainer, 
                                                         ptl_model = ptl_model,
-                                                        dataset=dataset,
+                                                        dataset=self.dataset,
                                                         save_choice = save,
                                                         )
 

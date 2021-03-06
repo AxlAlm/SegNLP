@@ -44,15 +44,15 @@ class LinkEncoder(Encoder):
 
 
     def encode_list(self, item_list:np.ndarray) -> np.ndarray:
-        a = ensure_numpy(item)
-        idx = np.arange(items.shape[0])
+        a = ensure_numpy(item_list)
+        idx = np.arange(a.shape[0])
         return idx + a
         #return np.array([i + int(item) for i,item in enumerate(item_list)])
         
 
     def decode_list(self, item_list:np.ndarray, pad=False) -> np.ndarray:
         a = ensure_numpy(item_list)
-        idx = np.arange(items.shape[0])
+        idx = np.arange(a.shape[0])
         return a - idx
         #return np.array([str(int(item)-i) for i,item in enumerate(item_list)])
 
@@ -93,28 +93,31 @@ class LinkEncoder(Encoder):
 
     #     return decoded
 
-    def __create_token_idx_map(self, span_token_lengths, none_spans):
+    def __create_token_idx_map(self, x, span_token_lengths, none_spans):
         """
         As decoding and encoding links are done by subtracting or ... the index of units with the link labels
         we need to create a index over units that stretch over a array of tokens. E.g. if tokens between i;j are of unit idx x
         we need to create a array with shape equal to the token array where i:j = x.
         """
-
-        token_unit_idx = np.zeros(item.shape)
+        x = ensure_numpy(x)
+        span_token_lengths = ensure_numpy(span_token_lengths)
+        none_spans = ensure_numpy(none_spans)
+        token_unit_idx = np.zeros(x.shape)
         start = 0
         nr_units = 0
         for i in range(span_token_lengths.shape[0]):
             if span_token_lengths[i]:
                 token_unit_idx[start:start+span_token_lengths[i]] = nr_units
-        
+
+        return token_unit_idx
 
     def encode_token_links(self, x:np.ndarray, span_token_lengths:np.ndarray, none_spans:np.ndarray) -> List[int]:
-        idx = self.__create_token_idx_map(span_token_lengths, none_spans)
+        idx = self.__create_token_idx_map(x, span_token_lengths, none_spans)
         return idx + x
 
 
     def decode_token_links(self, x:np.ndarray, span_token_lengths:np.ndarray, none_spans:np.ndarray) -> List[int]:
-        idx = self.__create_token_idx_map(span_token_lengths, none_spans)
+        idx = self.__create_token_idx_map(x, span_token_lengths, none_spans)
         return x - idx
 
 
