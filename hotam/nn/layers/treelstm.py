@@ -321,11 +321,13 @@ class TreeLSTM(nn.Module):
         g.ndata["c"] = c0
 
         # get ids of roots and token in relation
-        root_mark = g.ndata["root_mark"]
-        last_token_mark = g.ndata["last_token_mark"]
+        root_mark = g.ndata["root"]
+        start_mark = g.ndata["start"]
+        end_mark = g.ndata["end"]
+
         roots_id = root_mark == 1
-        token_ac1_id = last_token_mark == 1
-        token_ac2_id = last_token_mark == 2
+        token_ac1_id = start_mark == 1
+        token_ac2_id = end_mark == 1
 
         # copy graph
         if self.bidirectional:

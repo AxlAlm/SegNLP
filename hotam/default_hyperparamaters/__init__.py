@@ -55,10 +55,10 @@ lstm_dist_hps = {
 }
 
 lstm_er = {
-    "seq_lstm_h_size": 128,  # Sequential LSTM hidden size
-    "tree_lstm_h_size": 128,  # Tree LSTM hidden size
-    "ac_seg_hidden_size": 45,  # Entity recognition layer hidden size
-    "re_hidden_size": 128,  # Relation extraction layer hidden size
+    "seq_lstm_h_size": 100,  # Sequential LSTM hidden size
+    "tree_lstm_h_size": 100,  # Tree LSTM hidden size
+    "ac_seg_hidden_size": 100,  # Entity recognition layer hidden size
+    "re_hidden_size": 100,  # Relation extraction layer hidden size
     "seq_lstm_num_layers": 1,  # Sequential LSTM number of layer
     "lstm_bidirectional": True,  # Sequential LSTM bidirection
     "tree_bidirectional": True,  # Tree LSTM bidirection
@@ -67,9 +67,10 @@ lstm_er = {
     "sub_graph_type": 0,
     "dropout": 0.5,
     "optimizer": "adam",
-    "lr": 0.0001,
+    "lr": 0.001,
     "max_epochs": 300,
-    "batch_size": 10,
+    "batch_size": 32,
+    "gpus": 1
 }
 
 dummy_hps = {

@@ -128,8 +128,7 @@ class AC_Seg_Module(nn.Module):
             # construct input, get logits for word_i, softmax, entity prediction
             ner_input = th.cat(
                 (lstm_out[:, i, :].view(batch_size, -1), v_t_old), dim=1)
-            # QSTN is this order is correct? Is the dim is correct? what is
-            # dim=-1?
+
             logits_i = self.ner_decoder(ner_input)  # (B, NE-OUT)
             prob_dist = F.softmax(logits_i, dim=1)  # (B, NE-OUT)
             prediction_id = th.max(prob_dist, dim=1)[1]
@@ -279,7 +278,7 @@ class LSTM_RE(nn.Module):
         lengths_sent_tok = batch["lengths_sent_tok"]  # type: list[list]
         lengths_per_sample = batch["lengths_tok"]  # type: list
 
-        # NOTE sometimes I recieved lengthes in tensor!
+        # REVIEW sometimes I recieved lengthes in tensor!
         if type(lengths_sent_tok) == Tensor:
             lengths_sent_tok = lengths_sent_tok.tolist()
 
@@ -293,7 +292,7 @@ class LSTM_RE(nn.Module):
         # ======================================================================
         # AC Segmentation Module:
         # -----------------------
-        # NOTE Is it important to initialize h, c?
+        # REVIEW Is it important to initialize h, c?
         input_ac_seg = th.cat((token_embs, pos_embs), dim=2)
         ac_seg_pred = self.module_ac_seg(input_ac_seg, lengths_per_sample,
                                          pad_mask)
@@ -335,8 +334,7 @@ class LSTM_RE(nn.Module):
 
         # Get all possible pairs between the last token of the used argument
         # segments (detected or ground truth)
-        relations_data = get_all_pairs(seg_ac_used, pad_mask, self.p_regex,
-                                       lengths_per_sample)
+        relations_data = get_all_pairs(seg_ac_used, pad_mask, self.p_regex)
         # NOTE loop is needed because the sentence lengthes differ across
         rel_graphs = []
         h_ac_dash = []
@@ -365,19 +363,20 @@ class LSTM_RE(nn.Module):
             # Our relation candidates = all possible combinations of the
             # segmented components
             # The relations canidiates pairs are in following forms:
-            #   - last token pairs:     last token_i , last token_j (r1, r2)
-            #   - AC id pairs:          AC_id_i , AC_id_j (ac1_id, ac2_id)
+            #   - last token pairs:     (r1, r2)
+            #   - AC id pairs:          (ac1_id, ac2_id)
             #   - AC's tokens id span:  (ac1_span, ac2_span)
             #   Combine relation candidate pairs to account for the two
             #   directions. They are calculated by combinations which account
             #   for one direction only; combination without repeatetion.
             # the second element in the pair: AC2 ids
-            ac2_2d_temp = [0] * len(ac1_id) * 2
-            ac2_2d_temp[slice(0, len(ac1_id) * 2 + 1, 2)] = ac2_id
-            ac2_2d_temp[slice(1, len(ac1_id) * 2 + 1, 2)] = ac1_id
             ac1_2d_temp = [0] * len(ac1_id) * 2
             ac1_2d_temp[slice(0, len(ac1_id) * 2 + 1, 2)] = ac1_id
             ac1_2d_temp[slice(1, len(ac1_id) * 2 + 1, 2)] = ac2_id
+
+            ac2_2d_temp = [0] * len(ac1_id) * 2
+            ac2_2d_temp[slice(0, len(ac1_id) * 2 + 1, 2)] = ac2_id
+            ac2_2d_temp[slice(1, len(ac1_id) * 2 + 1, 2)] = ac1_id
 
             # same for r1, last token for AC1
             r1_2d = [0] * len(ac1_id) * 2
@@ -387,6 +386,7 @@ class LSTM_RE(nn.Module):
             ac1_span_2d_temp = [0] * len(ac1_id) * 2
             ac1_span_2d_temp[slice(0, len(ac1_id) * 2 + 1, 2)] = ac1_span
             ac1_span_2d_temp[slice(1, len(ac1_id) * 2 + 1, 2)] = ac2_span
+
             ac2_span_2d = [0] * len(ac1_id) * 2
             ac2_span_2d[slice(0, len(ac1_id) * 2 + 1, 2)] = ac2_span
             ac2_span_2d[slice(1, len(ac1_id) * 2 + 1, 2)] = ac1_span
@@ -396,9 +396,10 @@ class LSTM_RE(nn.Module):
             # Using end_token_i (first candidate) ==get==> the ground truth of
             # AC_id_gth
             # Compare extracted AC_id_gth with the AC_id_j (second candidate)
-            ac2_id_ground_truth = batch['relation'][sample_id][r1_2d]
-            rel_truth = ac2_id_ground_truth == th.tensor(ac2_2d_temp)
-            rel_ground_truth.extend(rel_truth)
+            rel_ground_truth = batch['relation'][sample_id][r1_2d]
+            # only pairs that have relations
+            rel_truth_bool = rel_ground_truth == th.tensor(ac2_2d_temp)
+            rel_ground_truth.extend(rel_truth_bool)
 
             # check that the number of extracted rel_ground_truth is equal to
             # the number of argument components we have.
@@ -406,12 +407,11 @@ class LSTM_RE(nn.Module):
             for last_token_id, ac_id in ac_map_dict.items():
                 if ac_id == batch['relation'][sample_id][last_token_id]:
                     rel_root_num += 1
-            assert rel_truth.sum() == ac_num - rel_root_num
+            assert rel_truth_bool.sum() == ac_num - rel_root_num
 
             # get AC segmentation ground truth and predection using AC1 range
             ac_seg_truth = batch["seg_ac"][sample_id]  # AC segmentation truth
-            ac_seg_predict = seg_ac_used[
-                sample_id]  # AC segmentation predicted
+            ac_seg_predict = seg_ac_used[sample_id]  # AC segs prediction
             ac1_neg_status = th.stack([
                 ~th.all(ac_seg_truth[i] == ac_seg_predict[i])
                 for i in ac1_span_2d_temp
@@ -425,7 +425,8 @@ class LSTM_RE(nn.Module):
 
             # get stance ground truth
             stance_truth = batch['stance'][sample_id][r1_2d]
-            stance_truth[~rel_truth] = 0
+            # set stance of pairs that have no relation to be 0
+            stance_truth[~rel_truth_bool] = 0
             stance_ground_truth.extend(stance_truth)
 
             # get some data to be used to construct the predictions
@@ -458,9 +459,9 @@ class LSTM_RE(nn.Module):
         c0 = th.zeros_like(h0)
 
         tree_rep = self.tree_lstm(rel_graphs, h0, c0, h_ac_dash)
-        rel_logits = self.rel_decoder(tree_rep)
+        stance_logits = self.rel_decoder(tree_rep)
 
-        stance_prob_dist = F.softmax(rel_logits, dim=1)
+        stance_prob_dist = F.softmax(stance_logits, dim=1)
         stance_prob, stance_predict = th.max(stance_prob_dist, dim=1)
 
         # Negative relations:
@@ -468,9 +469,8 @@ class LSTM_RE(nn.Module):
         rel_ground_truth = th.stack(rel_ground_truth)
         # if stance > 0, then rel is predicted
         rel_predict_bool = stance_predict > 0
-
         rel_neg = (rel_predict_bool != rel_ground_truth)
-        neg_id = th.bitwise_or(rel_neg, th.stack(ac_seg_neg)).type(th.int)
+        neg_id = th.bitwise_or(rel_neg, th.stack(ac_seg_neg)).type(th.int) * -1
 
         rel_predict = th.tensor(ac2_2d) * rel_predict_bool * neg_id
         # ======================================================================
@@ -479,7 +479,7 @@ class LSTM_RE(nn.Module):
         data = {
             "batch_id": batch_id,
             "ac_id": ac1_2d,
-            "rel": rel_predict.tolist(),
+            "rel_p": rel_predict.tolist(),
             "stance_p": stance_predict.tolist(),
             "stance_pb": stance_prob.tolist(),
             "ac_span": ac1_span_2d
@@ -487,16 +487,32 @@ class LSTM_RE(nn.Module):
         rel_stance_df = pd.DataFrame(data)
         rel_stance_df.index.name = "serial"
         # get max stance prob. for each ac_id for each batch
+        # we have all possible pairs relations:
+        # For batch x
+        #   ac_id   , rel_p , stance_p , stance_pb |    Pair
+        # -----------------------------------------|  ========
+        #     1     ,   0   ,    0     ,    0.2    |  AC1, AC2
+        #     2     ,   1   ,    4     ,    0.5    |  AC2, AC1
+        #     1     ,   0   ,    0     ,    0.3    |  AC1, AC3 **
+        #     3     ,   2   ,    5     ,    0.4    |  AC3, AC1
+        #     2     ,   0   ,    0     ,    0.4    |  AC2, AC3
+        #     3     ,   1   ,    4     ,    0.3    |  AC3, AC2
+        #
+        # so for AC_1 we choose pair (AC1, AC3) as they have the highest prob
+        # max(0.3, 0.2). We do this for each AC in each batch.
+
+        # get the heighest prob for each AC in each batch
         rel_stance_df = rel_stance_df.sort_values('stance_pb').drop_duplicates(
             ['batch_id', 'ac_id'], keep='last')
-        rel_stance_df.sort_index(inplace=True)
 
+        rel_stance_df.sort_index(inplace=True)  # get the order of pairs back
         pred_rel = th.zeros_like(pred_seg)
         pred_stance = th.zeros_like(pred_seg)
 
-        df = rel_stance_df.explode('ac_span')
+        df = rel_stance_df.explode('ac_span')  # expand AC indices to rows
+        # fill relation and stance predictions tensors using indices from df
         pred_rel[df.batch_id.to_list(),
-                 df.ac_span.to_list()] = th.tensor(df.rel.to_list(),
+                 df.ac_span.to_list()] = th.tensor(df.rel_p.to_list(),
                                                    dtype=th.float)
         pred_stance[df.batch_id.to_list(),
                     df.ac_span.to_list()] = th.tensor(df.stance_p.to_list(),
@@ -511,9 +527,10 @@ class LSTM_RE(nn.Module):
         ac_seg_ground_truth = batch["seg_ac"].view(-1)
         loss_seg = self.loss(logitss_seg, ac_seg_ground_truth)
 
-        # Relation extraction
+        # Relation extraction:
+        # --------------------
         stance_ground_truth = th.stack(stance_ground_truth)
-        loss_stance = self.loss(rel_logits, stance_ground_truth)
+        loss_stance = self.loss(stance_logits, stance_ground_truth)
 
         loss_total = loss_seg + loss_stance
         return {

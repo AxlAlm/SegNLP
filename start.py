@@ -1,5 +1,5 @@
 from hotam.datasets import PE
-from hotam.features import DummyFeature, OneHots
+from hotam.features import OneHots, Embeddings
 from hotam import ExperimentManager
 from hotam.nn.models.lstm_er import LSTM_RE
 
@@ -14,7 +14,7 @@ pe.setup(
     sample_level="document",
     prediction_level="token",
     encodings=["pos", "deprel", "dephead"],
-    features=[DummyFeature(),
+    features=[Embeddings("glove"),
               OneHots("pos"),
               OneHots("deprel")],
 )

@@ -115,20 +115,23 @@ class Graph():
             sub_g.ndata["type_n"] = torch.zeros(sub_g.number_of_nodes(),
                                                 device=self.device,
                                                 dtype=torch.long)
-            last_token_mark = torch.zeros(sub_g.number_of_nodes(),
-                                          device=self.device)
-            root_mark = torch.zeros_like(last_token_mark)
+            str_mark = torch.zeros(sub_g.number_of_nodes(), device=self.device)
+            end_mark = torch.zeros_like(str_mark)
+            root_mark = torch.zeros_like(str_mark)
 
             root_mark[root] = 1
-            sub_g.ndata["root_mark"] = root_mark
+            sub_g.ndata["root"] = root_mark
 
-            last_token_mark[0] = 1
-            last_token_mark[-1] = 2
-            sub_g.ndata["last_token_mark"] = last_token_mark
+            str_mark[0] = 1
+            end_mark[-1] = 1
+            sub_g.ndata["start"] = str_mark
+            sub_g.ndata["end"] = end_mark
 
             # check ...
             assert sub_g.ndata["_ID"][0] == start_n
             assert sub_g.ndata["_ID"][-1] == end_n
+            assert str_mark.sum() == end_mark.sum()
+            assert str_mark.sum() == root_mark.sum()
 
         elif sub_graph_type == 1:
             # get subtree
@@ -199,63 +202,48 @@ def pattern2regex(labels):
     return pattern_regx
 
 
-def get_all_pairs(predictions, token_mask, pattern_r, lengthes):
+def get_all_pairs(predictions, token_mask, pattern_r):
     """
     """
-    # Select predictions for non pad tokens
-    # Convert the selected prediction into string, then use regex to select the
-    # argument components ande get their start and end charachters
-    predictions_str = "".join(
-        map(str, predictions[token_mask].type(torch.int).tolist()))
-    match = re.finditer(pattern_r, predictions_str)
-    span = list(map(lambda x: (x.start(), x.end()), list(match)))
-    ac_start_id, ac_end_id = list(zip(*span))
-    # TODO check, recontruct tensor using ac_start_id, ac_end_id then compare
-    # it with predictions[token_mask]
 
-    # split indices into batches based to samples lengthes
-    ac_end_id = np.array(ac_end_id)
-    lengthes_cum = np.cumsum(lengthes.tolist())
-    delta = ac_end_id[:, None] - lengthes_cum
-    delta[delta > 0] = -(lengthes_cum[-1] + 1)
-    idx = delta.argmax(axis=0) + 1  # ids at which we will split
-    # check
-    assert idx[-1] == ac_end_id.shape[-1]
-    # return original
-    delta_cum = np.insert(lengthes_cum[:-1], 0, 0)
-
-    # split at batches
-    ac_end_id = np.split(ac_end_id, indices_or_sections=idx[:-1])
-    ac_start_id = np.split(np.array(ac_start_id), indices_or_sections=idx[:-1])
-    # creat a AC id in dict key=AC end id, value=AC id
-    ac_end_token2id = [{e: i
-                        for i, e in enumerate(ac_end - 1 - delta_cum[b])}
-                       for b, ac_end in enumerate(ac_end_id)]
-
+    device = torch.device('cpu')
+    batch_num = predictions.size(0)
     # get all possible pairs of the last token ids
-    for i in range(len(ac_end_id)):
-        end_id = ac_end_id[i] - delta_cum[i]
-        start_id = ac_start_id[i] - delta_cum[i]
+    for i in range(batch_num):
+        prdkxn = predictions[i]
+        mask = token_mask[i]
+        # Select predictions for non pad tokens
+        # Convert the selected prediction into string, then use regex to select
+        # the argument components ande get their start and end charachters and
+        # len
+        prdkxn_str = "".join(map(str, prdkxn[mask].type(torch.int).tolist()))
+        match = re.finditer(pattern_r, prdkxn_str)
+        span = list(
+            map(lambda x: (x.start(), x.end(), x.end() - x.start()),
+                list(match)))
+        ac_start_id, ac_end_id, ac_len = list(zip(*span))
+        # map AC last token id to ac_id
+        ac_end_token2id = dict(zip(ac_end_id, range(len(ac_end_id))))
 
-        end_r = list(map(list, zip(*it.combinations(end_id.tolist(), 2))))
-        end_r1 = torch.tensor(end_r[0], device=torch.device('cpu'))
-        end_r2 = torch.tensor(end_r[1], device=torch.device('cpu'))
+        # get all possible pair combinations of the AC last token
+        end_r = list(map(list, zip(*it.combinations(ac_end_id, 2))))
+        end_r1 = torch.tensor(end_r[0], device=device)  # 1st item in the pair
+        end_r2 = torch.tensor(end_r[1], device=device)  # 2nd item in the pair
 
-        # get AC id corresponding to the last token in the pair
-        ac1_id = [ac_end_token2id[i][r1.item() - 1] for r1 in end_r1]
-        ac2_id = [ac_end_token2id[i][r2.item() - 1] for r2 in end_r2]
+        #  pair in term of: AC id
+        ac1_id = [ac_end_token2id[r1.item() - 1] for r1 in end_r1]
+        ac2_id = [ac_end_token2id[r2.item() - 1] for r2 in end_r2]
 
-        # AC range start:end
-        str_r = list(map(list, zip(*it.combinations(start_id.tolist(), 2))))
-        str_r1 = torch.tensor(str_r[0], device=torch.device('cpu'))
-        str_r2 = torch.tensor(str_r[1], device=torch.device('cpu'))
-
-        ac1_r_idx = list(map(torch.arange, str_r1, end_r1))
-        ac2_r_idx = list(map(torch.arange, str_r2, end_r2))
+        # pair in term of: range(AC_start : AC_end)
+        strt_r = list(map(list, zip(*it.combinations(ac_start_id, 2))))
+        strt_r1 = torch.tensor(strt_r[0], device=torch.device('cpu'))
+        strt_r2 = torch.tensor(strt_r[1], device=torch.device('cpu'))
+        ac1_r_idx = list(map(torch.arange, strt_r1, end_r1))
+        ac2_r_idx = list(map(torch.arange, strt_r2, end_r2))
 
         yield i, (ac1_id, ac2_id), (ac1_r_idx,
                                     ac2_r_idx), (end_r1,
-                                                 end_r2), ac_end_token2id[i]
+                                                 end_r2), ac_end_token2id
 
 
 def masked_mean(m, mask):
