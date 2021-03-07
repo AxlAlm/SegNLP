@@ -106,8 +106,12 @@ class LinkEncoder(Encoder):
         start = 0
         nr_units = 0
         for i in range(span_token_lengths.shape[0]):
-            if span_token_lengths[i]:
+
+            if none_spans[i]:
                 token_unit_idx[start:start+span_token_lengths[i]] = nr_units
+                nr_units += 1
+
+            start += span_token_lengths[i]
 
         return token_unit_idx
 

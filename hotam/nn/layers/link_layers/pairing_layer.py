@@ -97,16 +97,15 @@ class PairingLayer(torch.nn.Module):
 
     """
 
-    def __init__(self, feature_dim, ):
-        
-        one_hot_dim = 0
+    def __init__(self, feature_dim, max_units):
+        self.max_units = max_units
+        self.one_hot_dim = (max_units*2)-1
         input_dim = feature_dim + one_hot_dim
         self.link_clf = torch.nn.Linear(input_dim, 1)
 
 
     def forward(self, x):
         max_units = x.shape[1]
-        one_hot_dim = (max_units*2)-1
         batch_size = x.shape[0]
         shape = (batch_size,max_units,max_units,x.shape[-1])
         
@@ -117,7 +116,7 @@ class PairingLayer(torch.nn.Module):
         
         # step 4
         one_hots = torch.LongTensor([
-                                    np.diag(np.ones(one_hot_dim),i)[:max_units,:one_hot_dim] 
+                                    np.diag(np.ones(self.one_hot_dim),i)[:max_units,:self.one_hot_dim] 
                                     for i in range(max_units-1, -1, -1)
                                     ])
         one_hots = one_hots.repeat_interleave(batch_size,dim=0)
@@ -127,16 +126,15 @@ class PairingLayer(torch.nn.Module):
         pair_matrix = torch.cat([a_m, a_m_t, a_m*a_m_t, one_hots], axis=-1)
         
         #step 6
+        pair_scores = self.link_clf(pair_matrix)
+
         #pair_matrix = pair_matrix.view((batch_size, max_units*max_units, pair_matrix.shape[-1]))
         
-        
         # step 7
-        
-        
+        #MASk ?!?!?
+        pair_probs = F.softmax(pair_scores)
+
         # step 8
-        
-        # step 9
-        
-        
-        
-        return pair_matrix
+        pair_preds = torch.argmax(pair_probs)
+    
+        return pair_preds

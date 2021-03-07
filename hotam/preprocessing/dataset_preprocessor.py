@@ -30,6 +30,9 @@ from hotam.nn.model_input import ModelInput
 from hotam.utils import ensure_numpy
 
 
+#sklearn
+from sklearn.model_selection import train_test_split
+
 class PreProcessedDataset(ptl.LightningDataModule):
 
     def __init__(self, name:str ,dir_path:str):
@@ -202,10 +205,22 @@ class DataPreprocessor:
 
     def __set_splits(self, dump_dir:str, dataset:DataSet):
 
+
+        def create_new_splits(ids):
+            train, test  = train_test_split(ids,test_size=0.3)
+            train, val  = train_test_split(train,test_size=0.1)
+            return {0:{
+                        "train": train,
+                        "val": val,
+                        "test":test
+                        }
+                    }
+
         splits = dataset.splits
 
-        # if self.sample_level != dataset.level:
-        #     splits = create_new_splits()
+        print(self.h5py_f["ids"][:])
+        if self.sample_level != dataset.level:
+            splits = create_new_splits(self.h5py_f["ids"][:])
 
         file_path = os.path.join(dump_dir, f"{dataset.name}_splits.pkl")
         with open(file_path, "wb") as f:
@@ -284,12 +299,12 @@ class DataPreprocessor:
 
 
         progress_bar = tqdm(total=len(dataset), desc="Processing and Storing Dataset")
-        last_id = 0
+        #last_id = 0
         for i in range(0, len(dataset), chunks):
             Input = self(dataset[i:i+chunks])
 
-            Input._ids = Input._ids + (last_id + (1 if last_id else 0))
-            last_id = Input.ids[-1]
+            # Input._ids = Input._ids + (last_id + (1 if last_id else 0))
+            # last_id = Input.ids[-1]
 
             if not self.__init_storage_done:
                 self.__init_store(Input)

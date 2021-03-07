@@ -1,14 +1,12 @@
 
 
-
-
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
 
 
-class CONTENT_BASED_ATTENTION(nn.Module):
+class AttentionLayer(nn.Module):
 
     """
     based on:
@@ -56,8 +54,7 @@ class CONTENT_BASED_ATTENTION(nn.Module):
 
 
 
-
-class Decoder(nn.Module):
+class Pointer(nn.Module):
 
 
     def __init__(self, input_size:int, hidden_size:int, dropout=None):
@@ -65,10 +62,9 @@ class Decoder(nn.Module):
 
         self.input_layer = nn.Linear(input_size, hidden_size)
         self.lstm_cell =  nn.LSTMCell(input_size, hidden_size)
-
-        self.attention = CONTENT_BASED_ATTENTION(
-                                                    input_dim=hidden_size,
-                                                    )
+        self.attention = AttentionLayer(
+                                        input_dim=hidden_size,
+                                        )
         
         self.use_dropout = False
         if dropout:

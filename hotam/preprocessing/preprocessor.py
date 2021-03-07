@@ -103,14 +103,15 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
         Input = ModelInput()
         
-        for ii, doc in enumerate(docs):
+        for doc in docs:
                         
             if isinstance(doc,dict):
                 span_labels = doc.get("span_labels", None)
                 token_labels = doc.get("token_labels", None)
                 doc = doc["text"]
 
-            doc_df = self._process_doc(doc, text_id=ii)
+            doc_df = self._process_doc(doc)
+            doc_id = int(doc_df["id"].to_numpy()[0])
 
             #everything within this block should be speed up
             if self.__labeling:
@@ -137,10 +138,9 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             if self.input_level != self.sample_level:
                 samples = doc_df.groupby(f"{self.sample_level}_id")
             else:
-                samples = [(ii,doc_df)]
+                samples = [(doc_id,doc_df)]
 
             for i, sample in samples:
-
                 Input.add("id", i, None)
                 Input.add("lengths", sample.shape[0], "token")
                 

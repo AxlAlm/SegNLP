@@ -34,7 +34,6 @@ logger = get_logger("PIPELINE")
 class Pipeline:
     
     def __init__(self,
-                name:str,
                 project:str,
                 tasks:List[str],
                 prediction_level:str,
@@ -49,7 +48,6 @@ class Pipeline:
         
         self.tasks = tasks
         self.project = project
-        self.name = name
 
         pipe_hash = self.__pipeline_hash(
                                             prediction_level, 
@@ -186,19 +184,22 @@ class Pipeline:
                 model:torch.nn.Module,
                 hyperparamaters:dict,
                 dataset:Union[DataSet, PreProcessedDataset],
-                exp_logger:LightningLoggerBase = LocalLogger(),  
-                ptl_trn_args:dict=default_ptl_trn_args, 
+                exp_logger:LightningLoggerBase=None,  
+                ptl_trn_args:dict=None, 
                 save:str = "last", 
                 evaluation_method:str = "default", 
                 model_dump_path:str = "/tmp/hotam_models/",
                 run_test:bool = True, 
                 ):
-        
+
+        if ptl_trn_args is None:
+            ptl_trn_args = default_ptl_trn_args
+
+        if exp_logger is None:
+            exp_logger = LocalLogger()
 
         self.dataset = self.process_dataset(dataset)
-
         set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
-
 
         for hyperparamater in set_hyperparamaters:
 

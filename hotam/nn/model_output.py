@@ -9,7 +9,7 @@ import numpy as np
 from hotam.metrics import token_metrics
 from hotam.nn import ModelInput
 from hotam.utils import ensure_numpy
-from hotam.nn.bio_decoder import BIO_Decoder
+from hotam.nn.bio_decoder import bio_decode
 
 #pytorch
 import torch
@@ -43,15 +43,6 @@ class ModelOutput:
         self.outputs = []
         self.pred_spans = {}
         
-        self.bio = BIO_Decoder(
-                                B=[2],
-                                I=[1],
-                                O=[0],
-                                apply_correction=True,
-                                )
-        
-
-
 
     def __add_subtask_preds(self, decoded_labels:np.ndarray, lengths:np.ndarray, level:str,  task:str):
         """
@@ -96,7 +87,7 @@ class ModelOutput:
     def __decode_labels(self, preds:np.ndarray, lengths:np.ndarray, task:str):
 
         size = preds.shape[0]
-        decoded_preds = np.zeros((size, max(lengths)), dtype="<U30" )
+        decoded_preds = np.zeros((size, max(lengths)), dtype="<U30")
         for i in range(size):
             decoded_preds[i][:lengths[i]] = self.label_encoders[task].decode_list(preds[i][:lengths[i]])
         
@@ -166,10 +157,9 @@ class ModelOutput:
         """
         new_links = []
         for i in range(links.shape[0]):
-            last_unit_idx = lengths_units[i]-1
+            last_unit_idx = max(0, lengths_units[i]-1)
             sample_links = links[i]
 
-            print(sample_links)
             if decoded:
                 sample_links = self.label_encoders["link"].encode_token_links(
                                                                                 sample_links,
@@ -177,8 +167,11 @@ class ModelOutput:
                                                                                 none_spans=none_spans[i]
                                                                                 )
 
-            print(sample_links, last_unit_idx[i])
-            links_above_allowed = sample_links > last_unit_idx[i]
+            
+            links_above_allowed = sample_links > last_unit_idx
+            sample_links[links_above_allowed] = last_unit_idx
+
+            links_above_allowed = sample_links < 0
             sample_links[links_above_allowed] = last_unit_idx
 
             sample_links = self.label_encoders["link"].decode_token_links(
@@ -186,8 +179,6 @@ class ModelOutput:
                                                                         span_token_lengths=span_token_lengths[i],
                                                                         none_spans=none_spans[i]
                                                                         )
-            print(sample_links)
-
             new_links.append(sample_links)
         
         return np.array(new_links)
@@ -304,24 +295,34 @@ class ModelOutput:
                                                         )
         else:
             decoded_preds = data
-            decoded_targets = self.__decode_labels(
-                                                    preds=self.batch[level][task], 
-                                                    lengths=self.batch[level]["lengths"],
-                                                    task=task
-                                                    )
+
+            if task == "link" and level == "token":
+                decoded_targets = self.__decode_token_link_labels(
+                                                        preds=self.batch[level][task], 
+                                                        lengths=self.batch[level]["lengths"],
+                                                        span_lengths=self.batch["span"]["lengths_tok"],
+                                                        none_spans=self.batch["span"]["none_span_mask"]
+                                                        )
+            else:
+                decoded_targets = self.__decode_labels(
+                                                        preds=self.batch[level][task], 
+                                                        lengths=self.batch[level]["lengths"],
+                                                        task=task
+                                                        )
 
 
         if task == "seg":
-            lengths_tok, none_span_mask , lengths = self.bio.decode(
-                                                                    batch_encoded_bios=decoded_preds,
-                                                                    lengths=self.batch[level]["lengths"]
-                                                                    )
+            lengths_tok, none_span_mask, lengths = bio_decode(
+                                                                batch_encoded_bios=decoded_preds,
+                                                                lengths=self.batch[level]["lengths"],
+                                                            )
             self.pred_spans["lengths_tok"] = lengths_tok
             self.pred_spans["none_span_mask"] = none_span_mask
             self.pred_spans["lengths_units"]  = lengths
 
 
         if self.calc_metrics:
+            print(decoded_targets, decoded_preds)
             self.metrics.append(token_metrics(
                                             targets=decoded_targets,
                                             preds=decoded_preds,

@@ -552,7 +552,7 @@ class TextProcesser:
         self.level2parents = new_level2parents
 
 
-    def _process_doc(self, doc:str, text_id:int, label:str=None):
+    def _process_doc(self, doc:str, label:str=None):
         """given a text string processes it appropriately. Meaning, if the string is a document
         we will process the document into document, paragraphs, documents and tokens. Creating 
         dataframes for each of the levels. 
@@ -574,11 +574,16 @@ class TextProcesser:
             if a text type that is not of the valid ones an error will be thrown. Text type 
             has to be either document, paragraph or sentence.
         """
+
+        if self.input_level in self._level_row_cache:
+            text_id = self._level_row_cache[self.input_level]["id"] + 1
+        else:
+            text_id = 0
+
         self._level_row_cache[self.input_level] = {
                                                     "id":text_id,
                                                     "text":doc
                                                     }
-        
         self.__data_stack = []
         if self.input_level == "document":
             self.__build_paragraphs()
