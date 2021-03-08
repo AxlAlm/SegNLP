@@ -42,6 +42,7 @@ class ModelInput(dict):
             for k,v in self[level].items():
                 if torch.is_tensor(v):
                     self[level][k] = v.to(self.device)
+                    
         return self
     
 
@@ -52,6 +53,7 @@ class ModelInput(dict):
 
                 if k == "text":
                     continue
+
                 self[level][k] = torch.tensor(v, dtype=tensor_dtype(v.dtype))
         return self
 

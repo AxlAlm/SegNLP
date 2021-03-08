@@ -166,7 +166,7 @@ def get_timestamp():
     return int(timestamp)
 
 
-def copy_and_vet_dict(input_dict:dict, filter_key:str=None):
+def copy_and_vet_dict(input_dict:dict):
 
     output_dict = {}
     for k,v in input_dict.items():
@@ -195,9 +195,6 @@ def copy_and_vet_dict(input_dict:dict, filter_key:str=None):
                 v = v.name
         else:
             raise ValueError(f'"{v}" of type {type(v)} is not a valid type')
-        
-        if filter_key:
-            k = k.replace(filter_key,"")
 
         output_dict[k] = v
     

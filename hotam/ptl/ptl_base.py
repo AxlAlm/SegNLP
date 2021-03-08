@@ -34,9 +34,7 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 class MetricContainer:
 
     def __init__(self):
-        self._data = {}
-        for k in ["train", "val"]:
-            self._data[k] = []
+        self._data =  {k:[] for k in ["train", "val"]}
 
 
     def add(self, metrics:dict, split:str):
@@ -47,7 +45,7 @@ class MetricContainer:
 
         
     def get_epoch_score(self, split:str):
-        epoch_metrics = pd.DataFrame(self.data[split]).mean()
+        epoch_metrics = pd.DataFrame(self._data[split]).mean()
         return epoch_metrics.to_dict()
 
 
@@ -77,18 +75,16 @@ class PTLBase(ptl.LightningModule):
                             task_dims=task_dims,
                             feature_dims=feature_dims,
                             )
-        
         self.metrics = MetricContainer()
-                    
 
     def forward(self) -> dict:
         raise NotImplementedError()
 
 
     def _step(self, batch:ModelInput, split):
-
         # fetches the device so we can place tensors on the correct memmory
-        device = f"cuda:{next(self.parameters()).get_device()}" if self.on_gpu else "cpu"
+        #device = f"cuda:{next(self.parameters()).get_device()}" if self.on_gpu else "cpu"
+
         batch.current_epoch = self.current_epoch
         output = self.model.forward(
                                     batch, 
@@ -104,7 +100,6 @@ class PTLBase(ptl.LightningModule):
                                     )
 
         self.metrics.add(output.metrics, split)
-        
         return  output.loss["total"]
     
 
@@ -112,7 +107,7 @@ class PTLBase(ptl.LightningModule):
         return self._step(batch_ids, "train")
 
 
-    def validation_step(self, batch_ids, batch_idx):
+    def validation_step(self, batch_ids, batch_idx): 
         return self._step(batch_ids, "val")
 
 
@@ -139,22 +134,24 @@ class PTLBase(ptl.LightningModule):
             self.logger.log_metrics(
                                     metrics=epoch_metrics,
                                     epoch=self.current_epoch,
-                                    split=split,
+                                    split=split
                                     )
 
             if split != "train":
                 outputs = ""
                 self.logger.log_outputs(outputs)
-            
-        self._metrics = MetricContainer()
+        
         self._epoch_outputs = None
 
 
-    def on_train_epoch_end(self):
+    def on_train_epoch_end(self, *args, **kwargs):
         self._end_of_epoch("train")
+
 
     def on_validation_epoch_end(self):
         self._end_of_epoch("val")
+        self.metrics = MetricContainer()
+
 
     def on_test_epoch_end(self):
         self._end_of_epoch("test")

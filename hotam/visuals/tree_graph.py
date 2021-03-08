@@ -55,56 +55,146 @@ class TextNode:
         self.link_label = link_label
         self.text = text
         self.children = []
+        self.__width_done = False
+        self.__depth_done = False
+        self._fig = None
 
-        # from x and y and text size, create a box
-        #self.x0, self.y0, self.x1, self.y1  = self.__calc_box(x, y, text)
+    @property
+    def max_width(self):
+        if self.__width_done:
+            return self._max_width
+        else:
+            return self.__max_width()
 
 
-    def depth(self, start=0):
-        depth = start
+    @property
+    def max_depth(self):
+        if self.__depth_done:
+            return self._max_depth
+        else:
+            return self.__max_depth()
+
+
+    def __max_depth(self, start=0):
+        self.depth = start
+        max_depth = start
+
         for child in self.children:
-            child_depth = child.depth(start=start+1)
-            if child_depth > depth:
-                depth = child_depth
-        return depth
+            child_depth = child.__max_depth(start=start+1)
+            if child_depth > max_depth:
+                max_depth = child_depth
+
+        self.__depth_done = True
+        self._max_depth = max_depth
+        return max_depth
 
 
-    def width(self):
+    def __max_width(self):
         width = len(self.children)
+        childrens_width = 0
+        
         for child in self.children:
-            child_width = child.width()
-            if child_width > width:
-                width = child_width
-            
+            child_w = child.__max_width()
+            child.span = (childrens_width, child_w)
+            childrens_width += child_w
+        
+        self.level_width =  childrens_width
+        if childrens_width > width:
+            width = childrens_width
+        
+        self.__width_done = True
+        self._max_width = width
         return width
 
-    
-    def __calc_box(self, x, y, text):
-        pass
-    
 
-    def shape_dict(self):
+    # def get_xy(self, nr_children, depth):
+    #     num = 3 if nr_children == 0 else (nr_children*2) +1
+    #     space = [(v, depth) for i,v in enumerate(np.linspace(0, 100, num=num)[1:-1:], num) if i == 0 or i % 2 != 0]
+    #     return space
+
+    
+    def show(self):
+        if self._fig is not None:
+            self._fig.show()
+        else:
+            self._fig = self.__make_fig(self)
+            self._fig.show()
+
+
+    def grid(self):
+        num = 3 if self.max_width == 0 else (self.max_width*2) +1
+        grid = np.array([np.linspace(0, 100, num=num) for i in range(self.max_depth)])
+        return grid
+
+
+
+    def __make_fig(self, fig=None, grid=None, p_xy=None):
+
+        if  self.id == "ROOT":
+            fig = go.Figure()
+            grid = self.grid()
+            start = 0
+        else:
+            start, _ = self.span
+
+        y = self.depth
+        print(self.id, y, start)
+        for i, child in enumerate(self.children, start=start):
+            print(child.id, i)
+            x = grid[y][i]
+            
+            if child.link != "ROOT":
+                fig.add_trace(child.line(
+                                                x=[p_xy[0], x],
+                                                y=[p_xy[1], y]
+                                                )
+                                )
+
+            fig.add_shape(child.box(
+                                    x0=x, 
+                                    y0=y, 
+                                    x1=x, 
+                                    y1=y,
+                                    ))
+            fig.add_annotation(child.annotation(
+                                                x=x,
+                                                y=y
+                                                ))
+
+            child.__make_fig(fig=fig, grid=grid, p_xy=(x,y))
+
+        return fig
+
+
+
+    def line(self, x:list, y:list):
+        return dict(
+                    x=x,
+                    y=y,
+                    mode="lines",
+                    line=go.scatter.Line(color="gray"),
+                    )
+            
+    def box(self, x0:float, y0:float, x1:float, y1:float):
         return dict(
                     #type="rect",
-                    x0=self.x0, 
-                    y0=self.y0, 
-                    x1=self.x1, 
-                    y1=self.y1,
-                    line=dict(color=self.color),
-                    fillcolor=self.color,
-                    opacity=1
+                    x0=x0, 
+                    y0=y0, 
+                    x1=x1, 
+                    y1=y1,
+                    line=dict(color="blue"),
+                    fillcolor="blue",
+                    opacity=0.8
                     )
 
 
-    def anno_dict(self):
-        pass
-        # fig.add_annotation(
-        #                 showarrow=False,
-        #                 text="this is a claim slslslslfsf",
-        #                 x = 2,
-        #                 y = 1.5,
-            
-        #             )
+    def annotation(self, x:float, y:float):
+        return dict(
+                        showarrow=False,
+                        text=self.text,
+                        x = x,
+                        y = y,
+                    )
 
 
 def create_tree(tree:TextNode, nodes:list):

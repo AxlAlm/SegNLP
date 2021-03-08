@@ -39,7 +39,7 @@ class ModelOutput:
         self._total_loss_added = False
 
         self.loss = {}
-        self.metrics = []
+        self.metrics = {}
         self.outputs = []
         self.pred_spans = {}
         
@@ -89,6 +89,15 @@ class ModelOutput:
         size = preds.shape[0]
         decoded_preds = np.zeros((size, max(lengths)), dtype="<U30")
         for i in range(size):
+            print(  
+                    preds[i].shape,
+                    lengths[i],
+                    preds[i][:lengths[i]].shape,
+                    lengths[i],
+                    len(self.label_encoders[task].decode_list(preds[i][:lengths[i]])), 
+                    lengths[i],
+                    decoded_preds[i][:lengths[i]].shape
+                )
             decoded_preds[i][:lengths[i]] = self.label_encoders[task].decode_list(preds[i][:lengths[i]])
         
         return decoded_preds
@@ -201,7 +210,7 @@ class ModelOutput:
                 else:
                     self.loss["total"] += data
     
-        self.metrics.append({f"{task}-loss":int(data)})
+        self.metrics.update({f"{task}-loss":int(data)})
 
 
     def add_preds(self, task:str, level:str, data:torch.tensor, decoded:bool=False, sample_ids="same"):
@@ -322,8 +331,7 @@ class ModelOutput:
 
 
         if self.calc_metrics:
-            print(decoded_targets, decoded_preds)
-            self.metrics.append(token_metrics(
+            self.metrics.update(token_metrics(
                                             targets=decoded_targets,
                                             preds=decoded_preds,
                                             mask=self.batch["token"]["mask"],

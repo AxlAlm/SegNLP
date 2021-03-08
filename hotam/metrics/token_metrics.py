@@ -44,6 +44,7 @@ def token_metrics(targets:np.ndarray, preds:np.ndarray, mask:np.ndarray, task:st
     rs = recall_score(targets, preds, labels=labels, average=None)
     ps = precision_score(targets, preds, labels=labels, average=None)
     
+
     label_metrics = []
     for i,label in enumerate(labels):
 
@@ -64,9 +65,10 @@ def token_metrics(targets:np.ndarray, preds:np.ndarray, mask:np.ndarray, task:st
 
 
     df = pd.DataFrame(label_metrics)
-    task_pr = int(df[df["metric"]=="precision"].mean())
-    task_re = int(df[df["metric"]=="recall"].mean())
-    task_f1 = int(df[df["metric"]=="f1"].mean())
+    task_pr = float(df[df["metric"]=="precision"].mean())
+    task_re = float(df[df["metric"]=="recall"].mean())
+    task_f1 = float(df[df["metric"]=="f1"].mean())
+
     task_metrics = [
                         {"name":f"{task}-precision", "metric": "precision", "value": task_pr},
                         {"name":f"{task}-recall", "metric": "recall", "value": task_re},

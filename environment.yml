@@ -10,7 +10,7 @@ dependencies:
     - gensim==3.8.1
     - regex==2020.1.8 
     - nltk==3.4.5
-    - torch==1.7.1
+    - torch==1.6.0
     - pytorch-crf==0.7.2
     - flair==0.7.0
     - scikit-learn==0.22.1

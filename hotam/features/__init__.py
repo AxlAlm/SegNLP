@@ -14,7 +14,7 @@ def get_feature(feature_name):
 
 
 from .bow import BOW
-from .embeddings import GloveEmbeddings, FlairEmbeddings
+from .embeddings import GloveEmbeddings, FlairEmbeddings, BertEmbeddings
 from .document_positions import DocPos
 from .dummy import DummyFeature
 from .one_hot import OneHots
@@ -22,6 +22,7 @@ from .one_hot import OneHots
 __all__ = [
             "GloveEmbeddings",
             "FlairEmbeddings",
+            "BertEmbeddings",
             "DocPos",
             "BOW",
             "DummyFeature",

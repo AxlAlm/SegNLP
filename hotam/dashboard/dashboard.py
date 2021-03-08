@@ -673,12 +673,14 @@ class Dashboard:
         #exps = sorted(live_exps | done_exps)
         options = [{"label":e, "value":e} for e  in exps]
 
+        print(options)
         return options, value
 
     
     def update_task_dropdown(self, project):
-        tasks = sorted(self.db.get_project_tasks(project))
-        return [{"label":t, "value":t} for t in tasks]
+
+        #tasks = sorted(self.db.get_project_tasks(project))
+        return [{"label":t, "value":t} for t in ["mean"]]
 
 
     def get_all_tasks(self, data_cache, value):
@@ -686,11 +688,12 @@ class Dashboard:
         if not data_cache:
             return [], None
 
-        all_tasks = sorted(set(data_cache["exp_config"]["tasks"] + data_cache["exp_config"]["subtasks"]))
+        #all_tasks = sorted(set(data_cache["exp_config"]["tasks"] + data_cache["exp_config"]["subtasks"]))
+        all_tasks = data_cache["exp_config"]["subtasks"] + ["mean"]
         options = [{"label":t, "value":t} for t in all_tasks]
 
         if value is None:
-            value = data_cache["exp_config"]["tasks"]
+            value = ["mean"]
 
         return options, value
 
@@ -703,7 +706,8 @@ class Dashboard:
         if not data_cache:
             return [], None
 
-        all_tasks = sorted(set(data_cache["exp_config"]["tasks"] + data_cache["exp_config"]["subtasks"]))
+        #all_tasks = sorted(set(data_cache["exp_config"]["tasks"] + data_cache["exp_config"]["subtasks"]))
+        all_tasks = data_cache["exp_config"]["subtasks"]
         options = [{"label":t, "value":t} for t in all_tasks if ("relation" not in t or t == "relation")]
 
         if value is None:
@@ -744,7 +748,8 @@ class Dashboard:
 
         df = df[df["task"] == value]
 
-        if value == "relation":
+
+        if value == "link":
             return make_relation_dist_plot(df)
         else:
             return label_dist_plot(df)
@@ -754,7 +759,7 @@ class Dashboard:
         exp_config = data_cache.get("exp_config", {})
 
         if config_value == "exp_config":
-            exp_config.pop("trainer_args")
+            exp_config.pop("ptl_trn_args")
             exp_config.pop("hyperparamaters")
             #exp_config.pop("dataset_config")
             #exp_config.pop("_id")
@@ -775,6 +780,7 @@ class Dashboard:
 
 
         data = pd.DataFrame(data_cache["scores"])
+
         experiment_id = data_cache["experiment_id"]
         tasks = data_cache["exp_config"]["tasks"]
         
@@ -782,9 +788,11 @@ class Dashboard:
 
         
         filtered_data = data.loc[:, task_loss+ ["split", "epoch"]]
-        
+
         max_loss = data.loc[:, task_loss].max().max()
         max_loss = max_loss + (max_loss*0.2)
+        
+        #print(filtered_data)
         figure = make_lineplot(filtered_data, "Loss", max_y=max_loss)
 
         #figure = make_lineplot(data, task_loss, "Loss")
@@ -817,12 +825,18 @@ class Dashboard:
         #tasks = data_cache["exp_config"]["tasks"] + data_cache["exp_config"]["subtasks"]
         #metrics = data_cache["exp_config"]["metrics"].copy()
         #metrics.remove("confusion_matrix")       
+        data = data.fillna(0)
+        #df.replace(np.nan,0)
+        #print(data)
 
         task_metrics = []
         for task in tasks:
             for metric in metrics:
-                task_metrics.append("-".join([task,metric]))
-    
+                if task == "mean":                    
+                    task_metrics.append(metric)
+                else:
+                    task_metrics.append("-".join([task,metric]))
+
         cond = data["split"].isin(splits) 
         filtered_data = data.loc[cond].loc[:, task_metrics+ ["split", "epoch"]]
 
@@ -849,11 +863,10 @@ class Dashboard:
         if not data_cache["scores"]:
             return fig_state, {"display":"none"}
 
-
         data = pd.DataFrame(data_cache["scores"])
-        task2labels = data_cache["exp_config"]["dataset_config"]["task_labels"]
-        #experiment_id = data_cache["experiment_id"]
+        task2labels = data_cache["exp_config"]["task2labels"]
 
+        #experiment_id = data_cache["experiment_id"]
         #tasks = data_cache["exp_config"]["tasks"]
         # if len(tasks) == 1 and tasks[0] == "relation":
         #     return fig_state, {"display":"none"}
@@ -864,7 +877,7 @@ class Dashboard:
 
             filter_columns = []
             for c in task2labels[task]:
-                filter_columns.append("-".join([task, str(c), "f1"]).lower())
+                filter_columns.append("-".join([task, str(c), "f1"]))
 
             data_stats = data_cache["exp_config"]["dataset_stats"]
             figure = make_rel_error_dist_plot(data, data_stats, splits, filter_columns)
@@ -874,8 +887,7 @@ class Dashboard:
             filter_columns = []
             for c in task2labels[task]:
                 for metric in metrics:
-                    filter_columns.append("-".join([task, str(c), metric]).lower())
-
+                    filter_columns.append("-".join([task, str(c), metric]))
 
             cond = data["split"].isin(splits) 
             filtered_data = data.loc[cond].loc[:, filter_columns+ ["split", "epoch"]]
@@ -895,10 +907,11 @@ class Dashboard:
 
 
     def update_sample_id_dropdown(self, experiment_id):
-        exp_config = self.db.get_exp_config({"experiment_id":experiment_id})
+        exp_config = self.db.get_exp_config(experiment_id=experiment_id)
 
-        if exp_config is None:
-            return [], None
+
+        #if exp_config is None:
+        return [], None
 
         ids = exp_config["dataset_config"]["tracked_sample_ids"]["0"]
 
@@ -1131,12 +1144,12 @@ class Dashboard:
 
 
     def update_conf_dropdown(self, experiment_id):
-        exp_config = self.db.get_exp_config({"experiment_id":experiment_id})
+        exp_config = self.db.get_exp_config(experiment_id=experiment_id)
 
         if exp_config is None:
             return [], None
 
-        options = [{"label":t, "value":t} for t in exp_config["tasks"] if "relation" not in t]
+        options = [{"label":t, "value":t} for t in exp_config["tasks"] if "link" not in t]
 
         if not options:
             value = None
@@ -1183,25 +1196,28 @@ class Dashboard:
         top_n = 10
         #dataset_name, project, rank_task, rank_metric, rank_split, top_n = rank_values
 
-        filter_by = get_filter(project=project)
-        experiments = pd.DataFrame(self.db.get_exp_configs(filter_by))
+        experiments = pd.DataFrame(self.db.get_exp_configs(project=project))
         experiment_ids = list(experiments["experiment_id"].to_numpy())
 
-        data = self.db.get_scores(experiment_ids=experiment_ids)
+        data = pd.DataFrame(self.db.get_scores(experiment_ids=experiment_ids))
 
 
         experiment2config = {}
         for i, exp_row in experiments.iterrows():
             exp_id = exp_row["experiment_id"]
             config = exp_row.to_dict()
-            config.pop("_id")
+
+            if "_id" in config:
+                config.pop("_id")
+
             experiment2config[exp_id] = config
         
         #NOTE! we are assuming that all experiments are done with the same metrics
         # and we are displaying only
         display_splits = ["val", "test"] 
-        display_metrics = [m for m in list(experiment2config.items())[-1][1]["metrics"] if "confusion" not in m]
-        
+        #display_metrics = [m for m in list(experiment2config.items())[-1][1]["metrics"] if "confusion" not in m]
+        display_metrics = ["f1", "precision", "recall"]
+
         score_data = []
         exp_groups = data.groupby("experiment_id")
         for exp_id in exp_groups.groups.keys():
@@ -1223,6 +1239,7 @@ class Dashboard:
 
             exp_score = {"experiment_id":exp_id}
             for metric in display_metrics:
+
                 task_metric = f"{task}{metric}"
 
                 exp_score[f"val-{task_metric}"] = val_row[task_metric].to_numpy()[0]
@@ -1274,10 +1291,11 @@ class Dashboard:
         if exp_config is None:
             return {}, {"display":"none"}
 
-        scores = pd.DataFrame(self.db.get_scores(experiment_id=experiment_id, epoch=last_epoch))
+        scores = pd.DataFrame(self.db.get_scores(experiment_ids=[experiment_id], epoch=last_epoch))
         scores = scores.to_dict()
 
-        outputs = self.db.get_outputs(experiment_id=experiment_id, epoch=last_epoch).get("data", {})
+
+        outputs = self.db.get_outputs(experiment_ids=[experiment_id], epoch=last_epoch)
         
         if "_id" in exp_config:
             exp_config.pop("_id")
@@ -1301,7 +1319,7 @@ class Dashboard:
 
 
     def update_data_cache(self, n, experiment_id,  cache_state):
-
+        
         if experiment_id is None:
             return dash.no_update
 
@@ -1313,9 +1331,12 @@ class Dashboard:
         if current_exp == experiment_id and status == "done":
             return dash.no_update
 
+
         last_epoch = self.db.get_last_epoch(experiment_id=experiment_id)
 
         # if there is now new epoch to update for
+        print(last_epoch, prev_epoch, last_epoch == prev_epoch, "OH SHIIIT")
+
         if last_epoch == prev_epoch:
             return dash.no_update
 

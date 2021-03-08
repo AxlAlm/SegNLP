@@ -68,14 +68,27 @@ class LocalDB:
 
             train_scores  = os.path.join(exp_folder, "scores", "train")
             val_scores  = os.path.join(exp_folder, "scores", "val")
-            get_epoch = lambda x:int(re.sub(r"[^\d+]", x, ""))
-            last_epoch = max(
-                                sorted([get_epoch(x) for x in train_scores])[-1],
-                                sorted([get_epoch(x) for x in train_scores])[-1]
-                                )
+
+            train_epoch_files = glob(train_scores+"/*")
+            val_epoch_files = glob(val_scores+"/*")
+            get_epoch = lambda x:int( re.findall('[0-9]+', x.split("epoch=",1)[1] )[0])
+            
+            train_epochs = sorted([get_epoch(x) for x in train_epoch_files])
+            print("train epochs", train_epochs)
+            max_train_epoch = -1
+            if len(train_epochs):
+                max_train_epoch = train_epochs[-1]
+
+            val_epochs = sorted([get_epoch(x) for x in val_epoch_files])
+            print("val epochs", val_epochs)
+            max_val_epoch = -1
+            if len(val_epochs):
+                max_val_epoch = val_epochs[-1]
+
+            last_epoch = max(max_val_epoch, max_train_epoch)
 
             return last_epoch
-        except IndexError:
+        except IndexError as e:
             return -1
 
 
@@ -84,52 +97,63 @@ class LocalDB:
         scores = []
         #make this into a regex search instead?
         for exp_id in experiment_ids:
-            score_files = glob(self.experiment_dir +f"/{exp_id}*/scores**.json")
+            score_files = glob(self.experiment_dir +f"/{exp_id}*/scores/*/*.json")
             scores.extend(read_json(fp) for fp in score_files)
 
         return scores
     
 
-    def get_outputs(self, experiment_ids):
+    def get_outputs(self, experiment_ids, epoch):
 
         outputs = []
         #make this into a regex search instead?
         for exp_id in experiment_ids:
-            output_files = glob(self.experiment_dir+f"/{exp_id}*/outputs**.json")
+            output_files = glob(self.experiment_dir+f"/{exp_id}*/outputs**epoch={epoch}.json")
             outputs.extend(read_json(fp) for fp in output_files)
 
-        return {} if output is None else output
+        return outputs
     
 
     def get_exp_config(self, experiment_id):
-        config_file = glob(self.experiment_dir + f"/{experiment_id}*/config.json")[0]
-        config = read_json(config_file)
-        return config
+        try: 
+            config_file = glob(self.experiment_dir + f"/{experiment_id}*/config.json")[0]
+            config = read_json(config_file)
+            return config
+        except IndexError as e:
+            return None
 
 
     def get_exp_configs(self, dataset="*", project="*", model="*"):
-        configs = [read_json(fp)  for fp in glob(self.experiment_dir + f"/*_{project}_{dataset}_{model}*/config.json")]
+        configs = [read_json(fp)  for fp in glob(self.experiment_dir + f"/*;{project};{dataset};{model}*/config.json")]
         return configs
 
 
     def get_exp_ids(self):
         #print(self.experiment_dir)
         #s = os.path.join(self.experiment_dir, "*"))
-        exp_ids = [f.rsplit("/",1)[-1].split("_")[0]  for f  in glob(self.experiment_dir+"/*")]
+        exp_ids = [f.rsplit("/",1)[-1].split(";")[0]  for f  in glob(self.experiment_dir+"/*")]
         return exp_ids
     
 
     def get_projects(self):
-        projects = [f.rsplit("/",1)[-1].split("_")[1]  for f  in glob(self.experiment_dir+"/*")]
+        projects = [f.rsplit("/",1)[-1].split(";")[1]  for f  in glob(self.experiment_dir+"/*")]
         return projects
 
     
     def get_project_tasks(self, project):
         exp_configs = self.get_exp_configs(project=project)
+
+        if exp_configs is None:
+            return []
+
         tasks = sorted(set([t for exp in exp_configs for t in exp["tasks"]]))
         return tasks
     
     def get_project_subtasks(self, project):
         exp_configs = self.get_exp_configs(project=project)
+
+        if exp_configs is None:
+            return []
+
         subtasks = sorted(set([t for exp in exp_configs for t in exp["subtasks"]]))
         return subtasks

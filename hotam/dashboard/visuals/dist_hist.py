@@ -4,19 +4,22 @@ import plotly.graph_objects as go
 
 
 def label_dist_plot(df):
-    types = df.groupby("type")
+    label_counts = df.groupby("label")
     
     bars = []
-    for t, tdf in types:
-        x = tdf["split"].to_numpy()
-        y = tdf["value"].to_numpy()
-        bars.append(go.Bar(
-                            name=t,
-                            x=x, 
-                            y=y,
-                            #text=[t,t,t],
-                            #textposition='inside',
-                            ))
+    for l, ldf in label_counts:
+        splits = ldf.groupby("label")
+        for s, sdf in splits:
+            x = sdf["split"].to_numpy()
+            y = sdf["count"].to_numpy()
+            bars.append(go.Bar(
+                                name=l,
+                                x=x, 
+                                y=y,
+                                legendgroup=s,
+                                #text=[t,t,t],
+                                #textposition='inside',
+                                ))
 
     fig = go.Figure(data=bars)
     fig.update_layout(barmode='group')

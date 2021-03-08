@@ -69,16 +69,7 @@ class LocalLogger(LightningLoggerBase):
     
 
     def log_experiment( self, experiment_config:dict):
-
-
-        print([
-                                experiment_config["experiment_id"],
-                                experiment_config["project"],
-                                experiment_config["dataset"],
-                                experiment_config["model"],
-                                str(experiment_config["start_timestamp"])
-                                ])
-        folder_name = "_".join([
+        folder_name = ";".join([
                                 experiment_config["experiment_id"],
                                 experiment_config["project"],
                                 experiment_config["dataset"],
@@ -107,11 +98,14 @@ class LocalLogger(LightningLoggerBase):
 
     @rank_zero_only
     def log_metrics(self, metrics:dict, epoch:int, split:str):
+
         metrics["experiment_id"] = self.experiment_id
-        metrics["split"] = split,
+        metrics["split"] = split
         metrics["epoch"] = epoch
 
-        score_file = os.path.join(self.val_scores, f"epoch={epoch}.json")
+        metrics = copy_and_vet_dict(metrics)
+
+        score_file = os.path.join(self.val_scores if split == "val" else self.train_scores, f"epoch={epoch}.json")
         with open(score_file, "w") as f:
             json.dump(metrics, f, indent=4)
 
@@ -121,7 +115,7 @@ class LocalLogger(LightningLoggerBase):
     
 
     def log_outputs(self, outputs):
-        self.output_stack.update(outputs)
+        pass
 
     
     def update_config(self, experiment_id, key, value):

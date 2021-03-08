@@ -88,11 +88,11 @@ class LSTM_CRF(nn.Module):
         return "LSTM_CRF"
 
 
-    def forward(self, batch):
+    def forward(self, batch, output):
 
-        lengths = batch["lengths_tok"]
-        mask = batch["token_mask"]
-        word_embs = batch["word_embs"]
+        lengths = batch["token"]["lengths"]
+        mask = batch["token"]["mask"]
+        word_embs = batch["token"]["word_embs"]
 
         if self.use_dropout:
             word_embs = self.dropout(word_embs)
@@ -101,17 +101,18 @@ class LSTM_CRF(nn.Module):
             word_embs = self.emb2emb(word_embs)
         
         lstm_out, _ = self.lstm(word_embs, lengths)
- 
-        tasks_preds = {}
-        tasks_loss = {}
-        tasks_probs = {}
+
+        print("LSTM", lstm_out.shape)
+        print(lengths)
+        print("HELLO", torch.sum(mask, dim=1))
+
         for task, output_layer in self.output_layers.items():
 
             dense_out = output_layer(lstm_out)
 
             crf = self.crf_layers[task]
 
-            target_tags = batch[task]
+            target_tags = batch["token"][task]
     
             loss = -crf(    
                             emissions=dense_out, #score for each tag, (batch_size, seq_length, num_tags) as we have batch first
@@ -126,19 +127,9 @@ class LSTM_CRF(nn.Module):
                                 mask=mask
                                 )
 
-            tasks_preds[task] = torch.tensor(zero_pad(preds), dtype=torch.long)
-            tasks_loss[task] = loss
-
-
-        output.add_loss(task="total",    data=total_loss)
-        output.add_loss(task="relation", data=relation_loss)
-        output.add_loss(task="ac",       data=ac_loss)
-        output.add_loss(task="stance",   data=stance_loss)
-
-        output.add_preds(task="relation", level="ac", data=relations_preds)
-        output.add_preds(task="ac",       level="ac", data=ac_preds)
-        output.add_preds(task="stance",   level="ac", data=stance_preds)
-
-        output.add_probs(task="relation", level="ac", data=relation_probs)
-        output.add_probs(task="ac",       level="ac", data=ac_probs)
-        output.add_probs(task="stance",   level="ac", data=stance_probs)
+            print(torch.sum(mask, dim=1))
+            print(torch.tensor(zero_pad(preds), dtype=torch.long).shape, lengths)
+            output.add_loss(task=task,   data=loss)
+            output.add_preds(task=task, level="token", data=torch.tensor(zero_pad(preds), dtype=torch.long))
+        
+        return output

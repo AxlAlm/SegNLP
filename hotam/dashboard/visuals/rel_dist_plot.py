@@ -10,9 +10,9 @@ def make_relation_dist_plot(df):
     fig = go.Figure()
     total_string = ""
     for s, sdf in splits:
-        relations = sdf["type"].to_numpy()
+        relations = sdf["label"].to_numpy().astype(float)
 
-        counts = sdf["value"].to_numpy()
+        counts = sdf["count"].to_numpy()
         _sum = np.sum(counts)
         dist = [c/_sum for c in counts]
 

@@ -142,17 +142,18 @@ class Pipeline:
         config["project"] = self.project
         config["dataset"] = self.dataset.name
         config["model"] = model_name
-        config["dataset_stats"] = self.dataset.stats.to_dict()
+        config.update(self.preprocessor.config)
+
         config["start_timestamp"] = get_timestamp()
         config["ptl_trn_args"] = ptl_trn_args
         config["status"] = "ongoing"
 
         #for each exp / model
-        config["hyperparamaters"] = hyperparamaters
         config["evaluation_method"] = evaluation_method
         config["model_selection"] = save_choice
+        config["hyperparamaters"] = hyperparamaters
 
-        config.update(self.preprocessor.config)
+        config["dataset_stats"] = self.dataset.stats.to_dict()
 
         return config
 
@@ -190,6 +191,7 @@ class Pipeline:
                 evaluation_method:str = "default", 
                 model_dump_path:str = "/tmp/hotam_models/",
                 run_test:bool = True, 
+                gpus:list=None
                 ):
 
         if ptl_trn_args is None:
@@ -197,6 +199,9 @@ class Pipeline:
 
         if exp_logger is None:
             exp_logger = LocalLogger()
+
+        if gpus:
+            ptl_trn_args["gpus"] = gpus
 
         self.dataset = self.process_dataset(dataset)
         set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
@@ -206,6 +211,7 @@ class Pipeline:
             experiment_id = "_".join([model.name(), str(uuid.uuid4())[:8]])
 
             if exp_logger:
+                exp_logger.set_exp_id(experiment_id)
                 ptl_trn_args["logger"] = exp_logger
 
             trainer = get_ptl_trainer( 

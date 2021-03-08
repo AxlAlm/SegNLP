@@ -21,7 +21,8 @@ def make_lineplot(data, title, max_y:int):
     max_x = data['epoch'].max()+1
 
     fig = go.Figure()
-
+    
+    data = data.sort_values("epoch")
     columns = [c for c in data.columns if c not in ["split", "epoch"]]
     for c in columns:
         

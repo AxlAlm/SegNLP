@@ -342,6 +342,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 if fm.level == "word" and not unit_mask_token_added:
                     Input.add("token_mask", am_mask.astype(np.uint8), "am")
                     Input.add("token_mask", unit_mask.astype(np.uint8), "unit")
+                    unit_mask_token_added = True
                 
                 if not unit_mask_token_added:
                     
@@ -349,6 +350,8 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                         Input.add("mask", np.max(unit_mask, axis=-1).astype(np.uint8), "unit")
                     else:
                         Input.add("mask",  unit_mask.astype(np.uint8), "unit")
+                    
+                    unit_mask_token_added = True
            
             else:
                 
@@ -383,6 +386,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                     if not token_mask_added:
                         #mask_dict["token_mask"][:sample_length] = np.ones(sample_length)
                         Input.add("mask", np.ones(sample_length, dtype=np.uint8), "token")
+                        token_mask_added = True
 
                 else:
                     feature_matrix = fm.extract(sample)[:sample_length]
