@@ -55,62 +55,77 @@ class TextNode:
         self.link_label = link_label
         self.text = text
         self.children = []
-        self.__width_done = False
-        self.__depth_done = False
+        self.__measured = False
+        self.level_width = 0
         self._fig = None
 
     @property
     def max_width(self):
-        if self.__width_done:
+        if self.__measured:
             return self._max_width
         else:
-            return self.__max_width()
+            self.__measure()
+            return self._max_width
 
 
     @property
     def max_depth(self):
-        if self.__depth_done:
+        if self.__measured:
             return self._max_depth
         else:
-            return self.__max_depth()
+            self.__measure()
+            return self._max_depth
 
 
-    def __max_depth(self, start=0):
+    def __measure(self, start=0, widths={}):
         self.depth = start
+        self.widths = widths
         max_depth = start
+    
+        if start not in self.widths:
+            self.widths[self.depth] = 0
+        
+        self.level_pos = self.widths[self.depth]
+        self.widths[self.depth] += 1
 
-        for child in self.children:
-            child_depth = child.__max_depth(start=start+1)
+        level_width = len(self.children)
+        for i,child in enumerate(self.children):
+
+            child_depth = child.__measure(start=start+1, widths=self.widths)
+
             if child_depth > max_depth:
                 max_depth = child_depth
 
-        self.__depth_done = True
+        self.__measured = True
         self._max_depth = max_depth
+        self._max_width = max(list(self.widths.values()))
         return max_depth
 
 
-    def __max_width(self):
-        width = len(self.children)
-        childrens_width = 0
+    # def __max_width(self):
+    #     width = len(self.children)
+    #     childrens_width = 0
         
-        for child in self.children:
-            child_w = child.__max_width()
-            child.span = (childrens_width, child_w)
-            childrens_width += child_w
+    #     level_width = len(self.children)
+    #     for child in self.children:
+    #         child_w = child.__max_width()
+    #         child.level_width = level_width
+    #         child.span = (childrens_width, child_w)
+    #         childrens_width += child_w
         
-        self.level_width =  childrens_width
-        if childrens_width > width:
-            width = childrens_width
+    #     #self.level_width =  childrens_width
+    #     if childrens_width > width:
+    #         width = childrens_width
         
-        self.__width_done = True
-        self._max_width = width
-        return width
+    #     self.__width_done = True
+    #     self._max_width = width
+    #     return width
 
 
-    # def get_xy(self, nr_children, depth):
-    #     num = 3 if nr_children == 0 else (nr_children*2) +1
-    #     space = [(v, depth) for i,v in enumerate(np.linspace(0, 100, num=num)[1:-1:], num) if i == 0 or i % 2 != 0]
-    #     return space
+    def get_xs(self, width):
+        num = 3 if width == 0 else (width*2) +1
+        xs = [v for i,v in enumerate(np.linspace(0, 100, num=num)[1:-1:], num) if i == 0 or i % 2 != 0]
+        return xs
 
     
     def show(self):
@@ -121,10 +136,10 @@ class TextNode:
             self._fig.show()
 
 
-    def grid(self):
-        num = 3 if self.max_width == 0 else (self.max_width*2) +1
-        grid = np.array([np.linspace(0, 100, num=num) for i in range(self.max_depth)])
-        return grid
+    # def xgrid(self, width):
+    #     num = 3 if width == 0 else (width*2) +1
+    #     #grid = np.array([np.linspace(0, 100, num=num) for i in range(self.max_depth)])
+    #     return np.linspace(0, 100, num=num)
 
 
 
@@ -132,35 +147,33 @@ class TextNode:
 
         if  self.id == "ROOT":
             fig = go.Figure()
-            grid = self.grid()
-            start = 0
-        else:
-            start, _ = self.span
+    
+        xs = self.get_xs(self.widths[self.depth])
+        x = xs[self.level_pos]
+        y = self.depth - 1 
 
-        y = self.depth
-        print(self.id, y, start)
-        for i, child in enumerate(self.children, start=start):
-            print(child.id, i)
-            x = grid[y][i]
-            
-            if child.link != "ROOT":
-                fig.add_trace(child.line(
-                                                x=[p_xy[0], x],
-                                                y=[p_xy[1], y]
-                                                )
-                                )
 
-            fig.add_shape(child.box(
-                                    x0=x, 
-                                    y0=y, 
-                                    x1=x, 
-                                    y1=y,
-                                    ))
-            fig.add_annotation(child.annotation(
-                                                x=x,
-                                                y=y
-                                                ))
+        print(self.id, x, y)
 
+        if self.id != "ROOT" and self.link != "ROOT":
+            fig.add_trace(self.line(
+                                    x=[p_xy[0], x],
+                                    y=[p_xy[1], y]
+                                    )
+                            )
+
+        fig.add_shape(self.box(
+                                x0=x, 
+                                y0=y, 
+                                x1=x, 
+                                y1=y,
+                                ))
+        fig.add_annotation(self.annotation(
+                                            x=x,
+                                            y=y
+                                            ))
+
+        for child in self.children:
             child.__make_fig(fig=fig, grid=grid, p_xy=(x,y))
 
         return fig

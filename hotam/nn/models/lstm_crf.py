@@ -102,10 +102,6 @@ class LSTM_CRF(nn.Module):
         
         lstm_out, _ = self.lstm(word_embs, lengths)
 
-        print("LSTM", lstm_out.shape)
-        print(lengths)
-        print("HELLO", torch.sum(mask, dim=1))
-
         for task, output_layer in self.output_layers.items():
 
             dense_out = output_layer(lstm_out)
@@ -126,9 +122,7 @@ class LSTM_CRF(nn.Module):
                                 emissions=dense_out, 
                                 mask=mask
                                 )
-
-            print(torch.sum(mask, dim=1))
-            print(torch.tensor(zero_pad(preds), dtype=torch.long).shape, lengths)
+            
             output.add_loss(task=task,   data=loss)
             output.add_preds(task=task, level="token", data=torch.tensor(zero_pad(preds), dtype=torch.long))
         

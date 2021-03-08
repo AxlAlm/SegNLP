@@ -208,7 +208,9 @@ class Pipeline:
 
         for hyperparamater in set_hyperparamaters:
 
+
             experiment_id = "_".join([model.name(), str(uuid.uuid4())[:8]])
+
 
             if exp_logger:
                 exp_logger.set_exp_id(experiment_id)
@@ -254,7 +256,7 @@ class Pipeline:
 
             try:
 
-                print("Experiment is Running. Go the the dashboard to view experiment progress .. ")
+                logger.info(f"Experiment {experiment_id} is Running. Go the the dashboard to view experiment progress .. ")
                 get_evaluation_method(evaluation_method)(
                                                         trainer = trainer, 
                                                         ptl_model = ptl_model,

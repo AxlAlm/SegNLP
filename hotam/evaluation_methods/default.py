@@ -21,19 +21,19 @@ def default(
                         val_dataloaders=dataset.val_dataloader()
                         )
 
-        if test_set is not None:
+        #if test_set is not None:
             
-            if save_choice == "last":
-                trainer.test(
-                            model=ptl_model, 
-                            test_dataloaders=self.dataset.test_dataloader()
-                            )
-            elif save_choice == "best":
-                trainer.test(
-                            model="best",
-                            test_dataloaders=self.dataset.test_dataloader()
-                            )
-            else:
-                raise RuntimeError(f"'{save_choice}' is not an approptiate choice when testing models")
-        
+        if save_choice == "last":
+            trainer.test(
+                        model=ptl_model, 
+                        test_dataloaders=self.dataset.test_dataloader()
+                        )
+        elif save_choice == "best":
+            trainer.test(
+                        model="best",
+                        test_dataloaders=self.dataset.test_dataloader()
+                        )
+        else:
+            raise RuntimeError(f"'{save_choice}' is not an approptiate choice when testing models")
+    
 

@@ -27,7 +27,7 @@ class LSTM_DIST(nn.Module):
 
     Original code:
     https://github.com/kuribayashi4/span_based_argumentation_parser/tree/614343b18e7d98293a2b020f9ab05b86355e18df
-    
+
 
     More on LSTM-Minus
     https://www.aclweb.org/anthology/P16-1218/
@@ -44,15 +44,13 @@ class LSTM_DIST(nn.Module):
 
     4) Concatenate AM and AC output from 3) with document embeddings (BOW and document positions)
 
-    5) pass the concatenation from 4 to a final BiLSTM
-
-    6) Classification 
+    5) Classification 
             
-            get Argument Component Types by:
+            AC types: output of 4 to a linear layer
 
-            get Stance by:
+            Stance/link Type: output of 4 to a linear layer
 
-            Get relation by:
+            Link/relation: 
 
     """
 
@@ -324,13 +322,19 @@ class LSTM_DIST(nn.Module):
         output.add_loss(task="ac",       data=ac_loss)
         output.add_loss(task="stance",   data=stance_loss)
 
-        output.add_preds(task="relation", level="ac", data=relations_preds)
-        output.add_preds(task="ac",       level="ac", data=ac_preds)
-        output.add_preds(task="stance",   level="ac", data=stance_preds)
+        output.add_preds(task="relation", level="unit", data=relations_preds)
+        output.add_preds(task="ac",       level="unit", data=ac_preds)
+        output.add_preds(task="stance",   level="unit", data=stance_preds)
 
-        output.add_probs(task="relation", level="ac", data=relation_probs)
-        output.add_probs(task="ac",       level="ac", data=ac_probs)
-        output.add_probs(task="stance",   level="ac", data=stance_probs)
+        output.add_probs(task="relation", level="unit", data=relation_probs)
+        output.add_probs(task="ac",       level="unit", data=ac_probs)
+
+
+
+        prediction_levels = ["token", "unit", "span"]
+
+        output.add_prebs(task="link_label",   level="unit", data=link_label_pred)
+        output.add_prebs(task="link",  level="unit", data=link_pred)
         return output
 
        

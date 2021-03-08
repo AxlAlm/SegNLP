@@ -77,6 +77,10 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                                 })
         #self.__word_features = [fm.name for fm in self.feature2model.values() if fm.level == "word"]
 
+        self._need_deps = False
+        if "deprel" in encodings:
+            self._need_deps = True
+
 
         self._init_preprocessor()
         self._init_encoder()
@@ -155,12 +159,13 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                     units = sample.groupby("unit_id")
                     Input.add("lengths", len(units), "unit")
                     Input.add("lengths_tok", np.array([g.shape[0] for i, g in units]), "unit")
+                
+                if self._need_deps:
+                    sent_grouped = sample.groupby("sentence_id")
+                    Input.add("lengths", len(sent_grouped), "sentence")
+                    Input.add("lengths_tok", [len(g) for i, g in sent_grouped], "sentence")
 
-                # # if hasattr(self, "max_sent"):
-                # #     sent_grouped = sample.groupby("sentence_id")
-                # #     Input.add("lengths", len(sent_grouped), "sentence")
-                # #     Input.add("lengths_tok", [len(g) for i, g in sent_grouped], "sentence")
- 
+
                 self.__get_text(Input, sample)
                 self.__get_encs(Input, sample)
                 self.__get_feature_data(Input, sample)
@@ -539,6 +544,10 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         for task in task:
 
             subtasks = task.split("+")
+
+            if len(subtasks) < 2:
+                task2labels[task] = task_labels[task]
+                continue
 
             label_groups = []
             has_seg = False

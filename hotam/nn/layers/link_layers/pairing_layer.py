@@ -26,7 +26,7 @@ class PairingLayer(torch.nn.Module):
     s = [
                 [
                 [h0, h0, h0*h0, 0, 0, 1, 0, 0],
-                [h0, h1, h0*h1, 0, 0, 0, 1, 0],
+                [h0, h1, h0*h1, 0, 0, 0, 1, 0], 
                 [h0, h2, h0*h2, 0, 0, 0, 0, 1],
                 ],
                 [
