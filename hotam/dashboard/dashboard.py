@@ -651,7 +651,7 @@ class Dashboard:
 
 
     def update_project_dropdown(self, n):
-        projects = self.db.get_projects()
+        projects = set(self.db.get_projects())
         return [{"label":p, "value":p} for p in projects]
 
 
@@ -673,7 +673,6 @@ class Dashboard:
         #exps = sorted(live_exps | done_exps)
         options = [{"label":e, "value":e} for e  in exps]
 
-        print(options)
         return options, value
 
     
@@ -829,6 +828,7 @@ class Dashboard:
         #df.replace(np.nan,0)
         #print(data)
 
+        print(data)
         task_metrics = []
         for task in tasks:
             for metric in metrics:
@@ -1123,7 +1123,6 @@ class Dashboard:
         #pprint(pred_data)
         # pprint(gold_data)
 
-        print("WTFF IS HAPPING")
         #try:
         fig = hotviz.hot_tree(pred_data, gold_data=gold_data) # link_label2color={"For":"#28cb44", "supports":"#28cb44","Against":"#f21535", "attacks":"#f21535", "Paraphrase":"#f58a00"})
         #print(fig)
@@ -1285,7 +1284,6 @@ class Dashboard:
 
     def get_exp_data(self, experiment_id:str, last_epoch:int):
 
-    
         exp_config = self.db.get_exp_config(experiment_id=experiment_id)
 
         if exp_config is None:
@@ -1293,7 +1291,6 @@ class Dashboard:
 
         scores = pd.DataFrame(self.db.get_scores(experiment_ids=[experiment_id], epoch=last_epoch))
         scores = scores.to_dict()
-
 
         outputs = self.db.get_outputs(experiment_ids=[experiment_id], epoch=last_epoch)
         
@@ -1335,12 +1332,12 @@ class Dashboard:
         last_epoch = self.db.get_last_epoch(experiment_id=experiment_id)
 
         # if there is now new epoch to update for
-        print(last_epoch, prev_epoch, last_epoch == prev_epoch, "OH SHIIIT")
-
         if last_epoch == prev_epoch:
             return dash.no_update
 
         data_cache, style  = self.get_exp_data(experiment_id, last_epoch)
+
+        print(len(data_cache["scores"]["seg-O-recall"]))
         return data_cache, style
 
 

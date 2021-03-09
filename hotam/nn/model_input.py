@@ -9,16 +9,19 @@ import torch
 
 #hotam 
 from hotam.utils import dynamic_update, tensor_dtype
-
+from hotam.visuals.tree_graph import TextNode, create_tree
+from hotam.utils import ensure_numpy
 
 class ModelInput(dict):
 
 
     def __init__(self, 
-                #all_tasks:list
+                label_encoders=None,
+                label_colors=None,
                 ):
         super().__init__()
-        #self.all_tasks = all_tasks
+        self.label_encoders = label_encoders
+        self.label_colors = label_colors
         self.current_epoch = None
         self.pad_value = 0
         self._size = 0
@@ -35,6 +38,7 @@ class ModelInput(dict):
     @property
     def levels(self):
         return list(self.keys())
+
 
     def to(self, device):
         self.device = device
@@ -113,3 +117,84 @@ class ModelInput(dict):
                 self[level][k].append(v)
             else:
                 self[level][k] = dynamic_update(self[level][k], v)
+
+
+    def show_sample(self, sample_id=None):
+
+        if sample_id is None:
+            sample_id = self.ids[0]
+
+        self.prediction_level = "token"
+        
+        tree_graph = True
+        link_label_exist = True
+
+        if "link" not in self[self.prediction_level]:
+            tree_graph = False
+    
+        if "link_label" not in self[self.prediction_level]:
+            link_label_exist = False
+
+
+        idx = int(np.where(self.ids == sample_id)[0])
+
+        if tree_graph:
+            
+            nodes = []
+            start = 0
+            j = 0
+            for i in range(self["span"]["lengths"][idx]):
+                
+                length = unit_length = self["span"]["lengths_tok"][idx][i]
+
+                if self["span"]["none_span_mask"][idx][i]:
+
+                    link = int(self[self.prediction_level]["link"][idx][start:start+length][0])
+                    label = int(self[self.prediction_level]["label"][idx][start:start+length][0])
+                    label = self.label_encoders["label"].decode(label)
+
+                    tokens = [t.decode("utf-8") for t  in self[self.prediction_level]["text"][idx][start:start+length]]
+                    text  = " ".join(tokens)
+
+                    link_label = None
+                    if link_label_exist:
+                        link_label = self[self.prediction_level]["link_label"][idx][start:start+length][0]
+                        link_label = self.label_encoders["link_label"].decode(link_label)
+
+                    if j == link:
+                        link = "ROOT"
+                    
+                    nodes.append(TextNode(
+                                            ID=j,
+                                            link=link, 
+                                            label=label,
+                                            label_color=self.label_colors[label],
+                                            link_label=link_label,
+                                            link_label_color=self.label_colors.get(link_label, "grey"),
+                                            text=text,
+                                            )
+                                )
+                    j += 1
+
+                start += length
+            
+            tree = create_tree(tree=TextNode(), nodes=nodes)
+            tree.show()
+                        
+
+
+
+        # if "mask" in self["token"]:
+        #     print("LINK", self["token"]["mask"][idx])
+
+        # if "link" in self["token"]:
+        #     print("LINK", self["token"]["link"][idx])
+
+        # if "label" in self["token"]:
+        #     print("LABELs", self["token"]["label"][idx])
+
+        # if "link_label" in self["token"]:
+        #     print("LINK_LABEL", self["token"]["link_label"][idx])
+
+        # print(self["span"]["none_span_mask"][idx])
+        # print(self["span"]["lengths_tok"][idx])

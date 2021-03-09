@@ -75,29 +75,33 @@ def get_ptl_trainer(
 
     #save="last", early_stop,
 
-    if save_choice and "callbacks" not in ptl_trn_args:
+    if save_choice:
+
         ptl_trn_args["callbacks"] = []
 
-        save_top_k = 0
-        if save_choice == "best":
-            save_top_k = 1
+        save_top_k = 1
+        # if save_choice == "best":
+        #     save_top_k = 1
 
         if save_choice == "all":
             save_top_k = -1
 
         monitor_metric = hyperparamaters["monitor_metric"]
 
-        ptl_trn_args["callbacks"].append(ModelCheckpoint(
-                                                        dirpath=model_dump_path,
-                                                        save_last=True if save_choice == "last" else False,
-                                                        save_top_k= save_top_k,
-                                                        monitor=monitor_metric,
-                                                        mode='min' if "loss" in monitor_metric else "max",
-                                                        prefix=experiment_id,
-                                                        verbose=0,
+        os.makedirs(model_dump_path, exist_ok=True)
+        mc  = ModelCheckpoint(
+                                dirpath=model_dump_path,
+                                save_last=True if save_choice == "last" else False,
+                                save_top_k=save_top_k,
+                                monitor=monitor_metric,
+                                mode='min' if "loss" in monitor_metric else "max",
+                                prefix=experiment_id,
+                                verbose=0,
 
-                                                        ))
-    
+                                )
+
+        ptl_trn_args["callbacks"].append(mc)
+
     # if "early_stop":
     #     if trainer_args["callbacks"] == None:
     #         trainer_args["callbacks"] = []
@@ -118,8 +122,13 @@ def get_ptl_trainer(
         ptl_trn_args["gradient_clip_val"] = hyperparamaters["gradient_clip_val"]
                     
 
+
     ptl_trn_args["default_root_dir"] = model_dump_path
     trainer = Trainer(**ptl_trn_args)
+
+    if ptl_trn_args["callbacks"]:
+        ptl_trn_args["callbacks"] = [str(c) for c in ptl_trn_args["callbacks"]]
+
     return trainer
 
 

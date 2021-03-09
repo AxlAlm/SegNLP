@@ -34,7 +34,7 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 class MetricContainer:
 
     def __init__(self):
-        self._data =  {k:[] for k in ["train", "val"]}
+        self._data =  {k:[] for k in ["train", "val", "test"]}
 
 
     def add(self, metrics:dict, split:str):

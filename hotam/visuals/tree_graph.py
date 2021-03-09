@@ -37,6 +37,7 @@
 from copy import deepcopy
 import numpy as np
 import random
+import math
 
 #plotly
 import plotly.express as px
@@ -48,11 +49,20 @@ import matplotlib as mpl
 
 class TextNode:
 
-    def __init__(self, ID="ROOT", text=None, label=None, link=None, link_label=None):
+    def __init__(self,  ID="ROOT", 
+                        text="", 
+                        label=None,
+                        label_color="grey",
+                        link=None, 
+                        link_label=None,
+                        link_label_color="grey",
+                        ):
         self.id = ID
         self.label = label
         self.link = link
         self.link_label = link_label
+        self.label_color = label_color
+        self.link_label_color = link_label_color
         self.text = text
         self.children = []
         self.__measured = False
@@ -77,7 +87,7 @@ class TextNode:
             return self._max_depth
 
 
-    def __measure(self, start=0, widths={}):
+    def __measure(self, start=0, widths={}, linklabelcolors:set=set(), labelcolors:set=set()):
         self.depth = start
         self.widths = widths
         max_depth = start
@@ -88,10 +98,13 @@ class TextNode:
         self.level_pos = self.widths[self.depth]
         self.widths[self.depth] += 1
 
+        linklabelcolors.add((self.link_label, self.link_label_color))
+        labelcolors.add((self.label, self.label_color))
+
         level_width = len(self.children)
         for i,child in enumerate(self.children):
 
-            child_depth = child.__measure(start=start+1, widths=self.widths)
+            child_depth = child.__measure(start=start+1, widths=self.widths, linklabelcolors=linklabelcolors, labelcolors=labelcolors)
 
             if child_depth > max_depth:
                 max_depth = child_depth
@@ -99,8 +112,239 @@ class TextNode:
         self.__measured = True
         self._max_depth = max_depth
         self._max_width = max(list(self.widths.values()))
+        self.linklabelcolors = linklabelcolors
+        self.labelcolors = labelcolors
         return max_depth
 
+
+    def get_xs(self, width):
+        num = 3 if width == 0 else (width*2) +1
+        xs = [v for i,v in enumerate(np.linspace(0, 100, num=num)[1:-1:], num) if i == 0 or i % 2 != 0]
+        return xs
+
+    
+    def show(self):
+
+        if not self.__measured:
+            self.__measure()
+
+        if self._fig is not None:
+            self._fig.show()
+        else:
+            self._fig = self.__make_fig(self)
+            self._fig.update_layout(
+                                    autosize=False,
+                                    width=3000,
+                                    height=800,
+                                    margin=dict(
+                                        # l=50,
+                                        # r=50,
+                                        # b=50,
+                                        # t=50,
+                                        pad=4
+                                        ),
+                                    paper_bgcolor="white",
+                                    plot_bgcolor="white",
+                                    showlegend=False,
+                                    )
+            self._fig.update_xaxes(showgrid=False, showticklabels=False)
+            self._fig.update_yaxes(showgrid=False, showticklabels=False)
+            self.__add_costum_legend(self._fig)
+            self._fig.show()
+
+
+    def __add_costum_legend(self, fig):
+        
+        i = 0 
+        for l, c in self.linklabelcolors:
+
+            if l is None or l == "None":
+                continue
+
+            fig.add_trace(dict(
+                                x=[i],
+                                y=[-1],
+                                mode="markers",
+                                marker=dict(
+                                            color=c,
+                                            size=20,
+                                            symbol='square',
+                                                )
+                                    )
+                            )     
+            i += 1
+    
+        for l, c in self.labelcolors:
+
+            if l is None or l == "None":
+                continue
+    
+            fig.add_trace(dict(
+                                x=[i],
+                                y=[-1],
+                                mode="markers",
+                                marker=dict(
+                                            color=c,
+                                            size=20,
+                                            symbol='square',
+                                                )
+                                    )
+                            )     
+            i += 1
+
+
+    def __get_text_box(self,):
+
+        text_size = len(self.text)
+
+        line_length = 60
+        line_hight = 0.1
+
+        nr_lines = math.ceil(text_size / line_length)
+        height = line_hight*nr_lines  
+        line_height = height/2
+        current_line_pos = line_height
+        start = 0
+        line_pos = []
+
+        for i  in range(0, nr_lines+1):
+            line = self.text[start:start+line_length]
+
+            line_pos.append((line, current_line_pos))
+            start += line_length
+            current_line_pos -= line_height
+
+        
+        return line_pos, height*2, (line_length/3) -8
+
+
+    def __make_fig(self, fig=None, grid=None, p_xy=None):
+
+
+        xs = self.get_xs(self.widths[self.depth])
+        x = xs[self.level_pos]
+        y = (self.depth - 1 ) * 2
+
+        if  self.id == "ROOT":
+            fig = go.Figure()
+        else:
+     
+            line_pos, box_hight, box_length = self.__get_text_box()
+
+            if self.id != "ROOT" and self.link != "ROOT":
+                fig.add_trace(self.line(
+                                        x=[p_xy[0], x],
+                                        y=[p_xy[1], y]
+                                        )
+                                )
+
+
+            x0 = x - (box_length /2)
+            y0 = y - (box_hight/2)
+            x1 = x + (box_length /2)
+            y1 = y + (box_hight/2)
+            fig.add_shape(self.box(
+                                    x0=x0, 
+                                    y0=y0, 
+                                    x1=x1,
+                                    y1=y1, 
+                                    ))
+
+            for line, pos in line_pos:
+                fig.add_annotation(self.annotation(
+                                                    x=x,
+                                                    y=y+pos,
+                                                    text=line
+                                                    ))
+
+
+        for child in self.children:
+            child.__make_fig(fig=fig, grid=grid, p_xy=(x,y))
+
+        return fig
+
+
+    def line(self, x:list, y:list):
+        return dict(
+                    x=x,
+                    y=y,
+                    mode="lines",
+                    line=dict( #go.scatter.Line(
+                                color=self.link_label_color,
+                                ),
+                    name=self.link_label,
+                    legendgroup=self.link_label,  # this can be any string, not just "group"
+                    )
+            
+
+    def box(self, x0:float, y0:float, x1:float, y1:float):
+        return dict(
+                    #type="rect",
+                    x0=x0, 
+                    y0=y0, 
+                    x1=x1, 
+                    y1=y1,
+                    line=dict(
+                                color=self.label_color,
+                                ),
+                    fillcolor=self.label_color,
+                    opacity=1,
+                    name=self.label
+                    )
+
+
+    def annotation(self, x:float, y:float, text:str):
+        return dict(
+                        showarrow=False,
+                        text=text,
+                        x = x,
+                        y = y,
+                        font=dict(
+                                    #family="Courier New, monospace",
+                                    size=10,
+                                    ),
+                    )
+
+
+
+
+def create_tree(tree:TextNode, nodes:list):
+    for i, node in enumerate(nodes):
+        if node.link == tree.id:
+            filtered = nodes.copy()
+            filtered.pop(i)
+            tree.children.append(create_tree( 
+                                            tree=node, 
+                                            nodes=filtered
+                                            ))
+    return tree
+
+
+
+
+
+
+
+
+#    def annotation2(self, line_pos, x, y):
+#         X = [x] * len(line_pos)
+#         Y = [y+pos+0.1 for _, pos in  line_pos]
+#         text = [t for t,_ in line_pos]
+#         return dict(
+#                         x = X,
+#                         y = Y,
+#                         mode = "text",
+#                         text = text,
+#                         #texttemplate = "%{text}<br>(%{a:.2f}, %{b:.2f}, %{c:.2f})",
+#                         #textposition = "center",
+#                         textfont = {'family': "Times", 'size': 10, 'color': "DarkOrange"}
+#                     )
+
+
+    # def xgrid(self, width):
+    #     num = 3 if width == 0 else (width*2) +1
+    #     #grid = np.array([np.linspace(0, 100, num=num) for i in range(self.max_depth)])
+    #     return np.linspace(0, 100, num=num)
 
     # def __max_width(self):
     #     width = len(self.children)
@@ -120,110 +364,6 @@ class TextNode:
     #     self.__width_done = True
     #     self._max_width = width
     #     return width
-
-
-    def get_xs(self, width):
-        num = 3 if width == 0 else (width*2) +1
-        xs = [v for i,v in enumerate(np.linspace(0, 100, num=num)[1:-1:], num) if i == 0 or i % 2 != 0]
-        return xs
-
-    
-    def show(self):
-        if self._fig is not None:
-            self._fig.show()
-        else:
-            self._fig = self.__make_fig(self)
-            self._fig.show()
-
-
-    # def xgrid(self, width):
-    #     num = 3 if width == 0 else (width*2) +1
-    #     #grid = np.array([np.linspace(0, 100, num=num) for i in range(self.max_depth)])
-    #     return np.linspace(0, 100, num=num)
-
-
-
-    def __make_fig(self, fig=None, grid=None, p_xy=None):
-
-        if  self.id == "ROOT":
-            fig = go.Figure()
-    
-        xs = self.get_xs(self.widths[self.depth])
-        x = xs[self.level_pos]
-        y = self.depth - 1 
-
-
-        print(self.id, x, y)
-
-        if self.id != "ROOT" and self.link != "ROOT":
-            fig.add_trace(self.line(
-                                    x=[p_xy[0], x],
-                                    y=[p_xy[1], y]
-                                    )
-                            )
-
-        fig.add_shape(self.box(
-                                x0=x, 
-                                y0=y, 
-                                x1=x, 
-                                y1=y,
-                                ))
-        fig.add_annotation(self.annotation(
-                                            x=x,
-                                            y=y
-                                            ))
-
-        for child in self.children:
-            child.__make_fig(fig=fig, grid=grid, p_xy=(x,y))
-
-        return fig
-
-
-
-    def line(self, x:list, y:list):
-        return dict(
-                    x=x,
-                    y=y,
-                    mode="lines",
-                    line=go.scatter.Line(color="gray"),
-                    )
-            
-    def box(self, x0:float, y0:float, x1:float, y1:float):
-        return dict(
-                    #type="rect",
-                    x0=x0, 
-                    y0=y0, 
-                    x1=x1, 
-                    y1=y1,
-                    line=dict(color="blue"),
-                    fillcolor="blue",
-                    opacity=0.8
-                    )
-
-
-    def annotation(self, x:float, y:float):
-        return dict(
-                        showarrow=False,
-                        text=self.text,
-                        x = x,
-                        y = y,
-                    )
-
-
-def create_tree(tree:TextNode, nodes:list):
-    for i, node in enumerate(nodes):
-        if node.link == tree.id:
-            filtered = nodes.copy()
-            filtered.pop(i)
-            tree.children.append(create_tree( 
-                                            tree=node, 
-                                            nodes=filtered
-                                            ))
-    return tree
-
-
-
-
 
 
 # def get_color_hex(cmap_name:str, value=1.0):

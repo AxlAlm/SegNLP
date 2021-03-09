@@ -575,7 +575,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
     def expect_labels(self, tasks:list, task_labels:dict):
         self.__need_bio = False
-        self.__labeling = True
+        self.activate_labeling()
         self.tasks = tasks
         self.subtasks = self.__get_subtasks(tasks)
         self.all_tasks = sorted(set(tasks + self.subtasks))
@@ -586,5 +586,13 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         
         self.task2labels = self.__get_task_labels(tasks, task_labels)
         self._create_label_encoders()
+    
+
+    def deactivate_labeling(self):
+        self.__labeling = False
+
+
+    def activate_labeling(self):
+        self.__labeling = True
 
 

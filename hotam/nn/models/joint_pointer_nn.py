@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 #hotam
 from hotam.nn.layers.lstm import LSTM_LAYER
-from hotam.nn.layers.attention import CONTENT_BASED_ATTENTION
+#from hotam.nn.layers.attention import CONTENT_BASED_ATTENTION
 from hotam.nn.utils import masked_mean, multiply_mask_matrix
 
 

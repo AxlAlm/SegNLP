@@ -109,6 +109,7 @@ class PE(DataSet):
                             "link_label": ["PRO", "CON", "None"],
                             "link": set()
                             }
+
         self.level = "document"
         self.about = """The corpus consists of argument annotated persuasive essays including annotations of argument components and argumentative relations.
                         """
@@ -493,3 +494,13 @@ class PE(DataSet):
         del self.__task_labels
         return pd.DataFrame(data)
         
+    
+    @classmethod
+    def label_colors(self):
+        return {
+                "PRO":"#14ac1f",
+                "CON":"#ff0000",
+                "MajorClaim": "#83bde4",
+                "Claim": "#94edaf",
+                "Premise": "#f1a8ee",
+                }

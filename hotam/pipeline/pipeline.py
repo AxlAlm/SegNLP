@@ -9,6 +9,9 @@ import numpy as np
 import hashlib
 import os
 import shutil
+import pwd
+from copy import deepcopy
+
 
 #pytorch Lightning
 from pytorch_lightning.loggers import LightningLoggerBase
@@ -26,9 +29,12 @@ from hotam import get_logger
 from hotam.utils import set_random_seed, get_timestamp
 from hotam.evaluation_methods import get_evaluation_method
 from hotam.loggers import LocalLogger
+from hotam.nn.models import get_model
 
 logger = get_logger("PIPELINE")
 
+
+user_dir = pwd.getpwuid(os.getuid()).pw_dir
 
 
 class Pipeline:
@@ -41,24 +47,24 @@ class Pipeline:
                 input_level:str,
                 features:list =[],
                 encodings:list =[],
-                model_load_path:str = None,
+                model_dir:str = None,
                 tokens_per_sample:bool=False,
-                root_dir:str = "/tmp/hotam/pipelines"       
+                root_dir:str =f"{user_dir}/.hotam/pipelines" #".hotam/pipelines"       
                 ):
         
         self.tasks = tasks
         self.project = project
-
-        pipe_hash = self.__pipeline_hash(
+        self.pipeline_id = self.__pipeline_hash(
                                             prediction_level, 
                                             sample_level, 
                                             tasks, 
                                             [f.name for f in features], 
                                             encodings
                                             )                         
-        self._pipeline_folder_path = self.__create_pipe_folder(root_dir=root_dir, pipe_hash=pipe_hash)
+        self._pipeline_folder_path = self.__create_pipe_folder(root_dir=root_dir, pipe_hash=self.pipeline_id)
         self.__dump_pipe_config(
                                 config = dict(
+                                            project=project,
                                             prediction_level=prediction_level, 
                                             sample_level=sample_level, 
                                             tasks=tasks, 
@@ -77,8 +83,22 @@ class Pipeline:
                                         tokens_per_sample=tokens_per_sample,
                                         )
 
-        if model_load_path:
-            raise NotImplementedError
+        self.__eval_set = False
+        if model_dir:
+            ckpt_fp = glob(model_dir + "/*.ckpt")[0]
+            args_fp = os.path.join(model_dir, "args.json")
+
+            with open(args_fp, "r") as f:
+                model_args = json.load(args_fp)
+
+            # with open(model_name_fp, "r") as f:
+            #     model_name = f.readlines()[0]
+
+            model_args["model"] = get_model(model_args["model"])
+            model_args["label_encoders"] = self.preprocessor.encoders
+            self._model = PTLBase(**model_args)
+            self._model = self._model.load_from_checkpoint(ckpt_fp)
+
 
 
     def process_dataset(self, dataset:Union[DataSet, PreProcessedDataset]):
@@ -89,14 +109,15 @@ class Pipeline:
                                         )
 
         if isinstance(dataset, PreProcessedDataset):
-            return dataset
+            pass
         else:
 
             if self.__check_for_preprocessed_data(self._pipeline_folder_path, dataset.name):
                 logger.info(f"Loading preprocessed data from {self._pipeline_folder_path}")
                 dataset = PreProcessedDataset(
                                                     name=dataset.name,
-                                                    dir_path=self._pipeline_folder_path, 
+                                                    dir_path=self._pipeline_folder_path,
+                                                    label_encoders=self.preprocessor.encoders
                                                     )
             else:
                 try:
@@ -106,7 +127,8 @@ class Pipeline:
                     shutil.rmtree(self._pipeline_folder_path)
                     raise e
                 
-            return dataset
+        self.dataset = dataset
+        return self.dataset
 
 
     def __dump_pipe_config(self, config:dict, pipeline_folder_path:str):
@@ -123,7 +145,8 @@ class Pipeline:
 
     def __pipeline_hash(self, prediction_level, sample_level, tasks, features, encodings):
         big_string = "%".join([prediction_level, sample_level] + tasks + features + encodings)
-        hash_encoding = hashlib.sha224(big_string.encode()).hexdigest()
+        #hash_encoding = str(hashlib.sha224(big_string.encode()).hexdigest())[:10]
+        hash_encoding = str(int(hashlib.sha256(big_string.encode('utf-8')).hexdigest(), 16) % 10**8)
         return hash_encoding
 
 
@@ -189,7 +212,8 @@ class Pipeline:
                 ptl_trn_args:dict=None, 
                 save:str = "last", 
                 evaluation_method:str = "default", 
-                model_dump_path:str = "/tmp/hotam_models/",
+                model_dump_path:str = f"{user_dir}/.hotam/models",
+                monitor_metric:str = "loss",
                 run_test:bool = True, 
                 gpus:list=None
                 ):
@@ -203,14 +227,23 @@ class Pipeline:
         if gpus:
             ptl_trn_args["gpus"] = gpus
 
-        self.dataset = self.process_dataset(dataset)
+        self.process_dataset(dataset)
         set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
 
         for hyperparamater in set_hyperparamaters:
 
 
+            hyperparamater["monitor_metric"] = monitor_metric
+
+            if "random_seed" not in hyperparamater:
+                hyperparamater["random_seed"] = 42
+
+            set_random_seed(hyperparamater["random_seed"])
+
             experiment_id = "_".join([model.name(), str(uuid.uuid4())[:8]])
 
+            model_dump_path = os.path.join(model_dump_path, experiment_id)
+            os.makedirs(model_dump_path, exist_ok=True)
 
             if exp_logger:
                 exp_logger.set_exp_id(experiment_id)
@@ -224,10 +257,8 @@ class Pipeline:
                                         save_choice=save, 
                                         )
 
-            if "random_seed" not in hyperparamater:
-                hyperparamater["random_seed"] = 42
+
             
-            set_random_seed(hyperparamater["random_seed"])
 
             exp_config = self.__config(
                                         experiment_id = experiment_id,
@@ -238,7 +269,7 @@ class Pipeline:
                                         model_name=model.name()
                                         )
 
-            ptl_model = PTLBase(   
+            model_params = dict(
                                 model=model, 
                                 hyperparamaters=hyperparamater,
                                 tasks=self.preprocessor.tasks,
@@ -248,6 +279,23 @@ class Pipeline:
                                 task_dims={t:len(l) for t,l in self.preprocessor.task2labels.items() if t in self.preprocessor.tasks},
                                 feature_dims=self.preprocessor.feature2dim,
                                 )
+            ptl_model = PTLBase(**model_params)
+
+            #dumping the arguments
+            model_params_c = deepcopy(model_params)
+            model_params_c.pop("label_encoders")
+            model_params_c["model"] = model_params_c["model"].name()
+            with open(os.path.join(model_dump_path, "args.json"), "w") as f:
+                json.dump(model_params_c, f, indent=4)
+
+            with open(os.path.join(model_dump_path, "pipeline_id.txt"), "w") as f:
+                f.write(self.pipeline_id)
+
+            # with open(os.path.join(model_dump_path, "model_name.txt"), "w") as f:
+            #     f.write(model.name())
+
+            with open(os.path.join(model_dump_path, "pipeline_id.txt"), "w") as f:
+                f.write(self.pipeline_id)
 
             self.dataset.batch_size = hyperparamaters["batch_size"]
 
@@ -275,14 +323,20 @@ class Pipeline:
 
     def eval(self):
 
-        if self._many_models:
-            for model in self._trained_model:
-                model.eval()
-        else:
-            self._trained_model.eval()
+        # if self._many_models:
+        #     for model in self._trained_model:
+        #         model.eval()
+        # else:
+        self._model.eval()
+        self.preprocessor.deactivate_labeling()
+        self.__eval_set = True
 
 
     def predict(self, doc:Union[str,List[str]]):
+
+        if not self.__eval_set:
+            raise RuntimeError("Need to set pipeline to evaluation mode by using .eval() command")
+
         model_input = self.preprocessor(doc)
-        return self._trained_model(model_input)
+        return self._model(model_input)
         

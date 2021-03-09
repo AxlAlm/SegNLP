@@ -28,6 +28,7 @@ from hotam.datasets.base import DataSet
 from hotam.nn import ModelInput
 from hotam.nn.model_input import ModelInput
 from hotam.utils import ensure_numpy
+from hotam.datasets import get_dataset
 
 
 #sklearn
@@ -35,8 +36,11 @@ from sklearn.model_selection import train_test_split
 
 class PreProcessedDataset(ptl.LightningDataModule):
 
-    def __init__(self, name:str ,dir_path:str):
+    def __init__(self, name:str, dir_path:str, label_encoders:dict):
         self._name = name
+        print(name)
+        self.label_colors = get_dataset(name).label_colors()
+        self.label_encoders = label_encoders
         self._fp = os.path.join(dir_path, f"{name}_data.hdf5")
         self.data = h5py.File(self._fp, "r")
         self._size = self.data["ids"].shape[0]
@@ -50,7 +54,10 @@ class PreProcessedDataset(ptl.LightningDataModule):
         
 
     def __getitem__(self, key:Union[np.ndarray, list]) -> ModelInput:
-        Input = ModelInput()
+        Input = ModelInput(
+                            label_encoders=self.label_encoders, 
+                            label_colors=self.label_colors
+                            )
 
         sorted_key = np.sort(key)
         lengths = self.data[self.prediction_level]["lengths"][sorted_key]
@@ -80,6 +87,7 @@ class PreProcessedDataset(ptl.LightningDataModule):
 
     def __len__(self):
         return self._size
+
 
     @property
     def name(self):
@@ -199,10 +207,6 @@ class DataPreprocessor:
                     self.h5py_f[k][last_sample_i:] = v
 
 
-    def load_preprocessed_dataset(self, dir_path):
-        return PreProcessedDataset(dir_path)
-
-
     def __set_splits(self, dump_dir:str, dataset:DataSet):
 
 
@@ -218,7 +222,6 @@ class DataPreprocessor:
 
         splits = dataset.splits
 
-        print(self.h5py_f["ids"][:])
         if self.sample_level != dataset.level:
             splits = create_new_splits(self.h5py_f["ids"][:])
 
@@ -320,7 +323,7 @@ class DataPreprocessor:
 
         self.h5py_f.close()
 
-        return PreProcessedDataset(name=dataset.name, dir_path=dump_dir)
+        return PreProcessedDataset(name=dataset.name, dir_path=dump_dir, label_encoders=self.encoders)
 
 
 

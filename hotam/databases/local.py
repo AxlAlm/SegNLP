@@ -74,13 +74,11 @@ class LocalDB:
             get_epoch = lambda x:int( re.findall('[0-9]+', x.split("epoch=",1)[1] )[0])
             
             train_epochs = sorted([get_epoch(x) for x in train_epoch_files])
-            print("train epochs", train_epochs)
             max_train_epoch = -1
             if len(train_epochs):
                 max_train_epoch = train_epochs[-1]
 
             val_epochs = sorted([get_epoch(x) for x in val_epoch_files])
-            print("val epochs", val_epochs)
             max_val_epoch = -1
             if len(val_epochs):
                 max_val_epoch = val_epochs[-1]
@@ -148,6 +146,7 @@ class LocalDB:
 
         tasks = sorted(set([t for exp in exp_configs for t in exp["tasks"]]))
         return tasks
+    
     
     def get_project_subtasks(self, project):
         exp_configs = self.get_exp_configs(project=project)
