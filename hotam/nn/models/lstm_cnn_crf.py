@@ -70,8 +70,10 @@ class LSTM_CNN_CRF(nn.Module):
 
     """ 
 
-    def __init__(self, hyperparamaters:dict, task_dims:dict, feature_dims:dict):
+    def __init__(self, hyperparamaters:dict, task_dims:dict, feature_dims:dict, training:bool=True):
         super().__init__()
+        self.training = training
+        
         self.OPT = hyperparamaters["optimizer"]
         self.LR = hyperparamaters["lr"]
         #self.DROPOUT = hyperparamaters["dropout"]
@@ -134,20 +136,21 @@ class LSTM_CNN_CRF(nn.Module):
 
         for task, output_layer in self.output_layers.items():
 
-            target_tags = batch["token"][task]
-
             #5
             dense_out = output_layer(lstm_out)
             
             #6
             crf = self.crf_layers[task]
 
-            loss = -crf( 
-                        emissions=dense_out,
-                        tags=target_tags,
-                        mask=mask,
-                        reduction='mean'
-                        )
+            if self.training:
+                target_tags = batch["token"][task]
+                loss = -crf( 
+                            emissions=dense_out,
+                            tags=target_tags,
+                            mask=mask,
+                            reduction='mean'
+                            )
+                output.add_loss(task=task,   data=loss)
 
             #7
             preds = crf.decode( 
@@ -155,7 +158,6 @@ class LSTM_CNN_CRF(nn.Module):
                                 mask=mask
                                 )
 
-            output.add_loss(task=task,   data=loss)
             output.add_preds(task=task, level="token", data=torch.tensor(zero_pad(preds), dtype=torch.long))
             
         return output

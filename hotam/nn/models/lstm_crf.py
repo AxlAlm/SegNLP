@@ -31,8 +31,9 @@ class LSTM_CRF(nn.Module):
 
     """
 
-    def __init__(self, hyperparamaters:dict, task_dims:dict, feature_dims:dict):
+    def __init__(self, hyperparamaters:dict, task_dims:dict, feature_dims:dict, train_mode:bool):
         super().__init__()
+        self.train_mode = train_mode
         self.OPT = hyperparamaters["optimizer"]
         self.LR = hyperparamaters["lr"]
         self.HIDDEN_DIM = hyperparamaters["hidden_dim"]
@@ -107,15 +108,17 @@ class LSTM_CRF(nn.Module):
             dense_out = output_layer(lstm_out)
 
             crf = self.crf_layers[task]
+            
+            if self.train_mode:
+                target_tags = batch["token"][task]
+                loss = -crf(    
+                                emissions=dense_out, #score for each tag, (batch_size, seq_length, num_tags) as we have batch first
+                                tags=target_tags,
+                                mask=mask,
+                                reduction='mean'
+                                )
+                output.add_loss(task=task,   data=loss)
 
-            target_tags = batch["token"][task]
-    
-            loss = -crf(    
-                            emissions=dense_out, #score for each tag, (batch_size, seq_length, num_tags) as we have batch first
-                            tags=target_tags,
-                            mask=mask,
-                            reduction='mean'
-                            )
 
             #returns preds with no padding (padding values removed)
             preds = crf.decode( 
@@ -123,7 +126,6 @@ class LSTM_CRF(nn.Module):
                                 mask=mask
                                 )
             
-            output.add_loss(task=task,   data=loss)
             output.add_preds(task=task, level="token", data=torch.tensor(zero_pad(preds), dtype=torch.long))
         
         return output

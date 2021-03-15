@@ -31,22 +31,30 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 
 
-class MetricContainer:
+class MetricContainer(dict):
 
     def __init__(self):
-        self._data =  {k:[] for k in ["train", "val", "test"]}
+       
+        for k in ["train", "val", "test"]:
+            self[k] = []
 
 
     def add(self, metrics:dict, split:str):
         """
         metrics = {"metic1": 0.3, "metric2": 0.5, ...., "metricn": 0.9 }
         """
-        self._data[split].append(metrics)
+        self[split].append(metrics)
 
         
     def get_epoch_score(self, split:str):
-        epoch_metrics = pd.DataFrame(self._data[split]).mean()
+        epoch_metrics = pd.DataFrame(self[split]).mean()
+        
+        if epoch_metrics.shape[0] == 0:
+            return {}
+
+        epoch_metrics.index = split + "_" + epoch_metrics.index
         return epoch_metrics.to_dict()
+   
 
 
 
@@ -62,6 +70,7 @@ class PTLBase(ptl.LightningModule):
                     prediction_level:str,
                     task_dims:dict,
                     feature_dims:dict,
+                    train_mode:bool=True
                     ):
         super().__init__()
         self.hyperparamaters = hyperparamaters
@@ -70,15 +79,17 @@ class PTLBase(ptl.LightningModule):
         self.tasks = tasks
         self.all_tasks = all_tasks
         self.label_encoders = label_encoders
+        self.train_mode = train_mode
         self.model = model(
                             hyperparamaters=hyperparamaters,
                             task_dims=task_dims,
                             feature_dims=feature_dims,
+                            train_mode=train_mode
                             )
         self.metrics = MetricContainer()
 
-    def forward(self) -> dict:
-        raise NotImplementedError()
+    def forward(self, batch:ModelInput):
+        return self._step(batch, split="test")
 
 
     def _step(self, batch:ModelInput, split):
@@ -86,6 +97,7 @@ class PTLBase(ptl.LightningModule):
         #device = f"cuda:{next(self.parameters()).get_device()}" if self.on_gpu else "cpu"
 
         batch.current_epoch = self.current_epoch
+
         output = self.model.forward(
                                     batch, 
                                     ModelOutput(
@@ -95,24 +107,44 @@ class PTLBase(ptl.LightningModule):
                                             tasks=self.tasks,
                                             all_tasks=self.all_tasks,
                                             prediction_level=self.prediction_level,
-                                            calc_metrics=True, 
+                                            calc_metrics=True if self.train_mode else False, 
                                             )
                                     )
+        # metrics = {f"{split}_"+k:v for k,v in output.metrics.items()}
+        # metrics["epoch"] = self.current_epoch
+        #print(metrics)
+        # self.logger.experiment.log_metric(f"{split}_f1", metrics.get(f"{split}_f1",0))
+        # self.logger.log_metrics(metrics)
 
         self.metrics.add(output.metrics, split)
-        return  output.loss["total"]
+        return output.loss.get("total", 0), output
+      
     
 
-    def training_step(self, batch_ids, batch_idx):
-        return self._step(batch_ids, "train")
+    def training_step(self, batch, batch_idx):
+        loss, output = self._step(batch, "train")
+        self.log('train_loss', loss, prog_bar=True)
+
+        # if self.monitor_metric != "loss":
+        #     self.log(f'train_{self.monitor_metric}', self.metrics["train"][self.monitor_metric], prog_bar=True)
+
+        return loss
 
 
-    def validation_step(self, batch_ids, batch_idx): 
-        return self._step(batch_ids, "val")
+    def validation_step(self, batch, batch_idx): 
+        loss, output = self._step(batch, "val")
+        self.log('val_loss', loss, prog_bar=True)
+
+        if self.monitor_metric != "val_loss":
+            self.log(f'val_{self.monitor_metric}', self.metrics["val"][-1][self.monitor_metric.replace("val","")], prog_bar=True)
+
+        return {"val_loss": loss}
 
 
-    def test_step(self, batch_ids, batch_idx):
-        return self._step(batch_ids, "test")
+    def test_step(self, batch, batch_idx):
+        _, output = self._step(batch, "test")
+        return output
+
 
 
     # def training_step_end(self, outs):
@@ -128,21 +160,24 @@ class PTLBase(ptl.LightningModule):
      
 
     def _end_of_epoch(self, split):
-        
-        if self.logger is not None:
-            epoch_metrics = self.metrics.get_epoch_score(split)
-            self.logger.log_metrics(
-                                    metrics=epoch_metrics,
-                                    epoch=self.current_epoch,
-                                    split=split
-                                    )
+        #if self.logger is not None:
+        epoch_metrics = self.metrics.get_epoch_score(split)
 
-            if split != "train":
-                outputs = ""
-                self.logger.log_outputs(outputs)
-        
-        self._epoch_outputs = None
+        # if isinstance(self.logger, CometLogger):
+        #     for m in epoch_metrics:
+        #         if "confusion_matrix" in m:
+        #             self.logger.experiment.log_confusion_matrix(labels=["one", "two", "three"],
+        #                                                         matrix=[[10, 0, 0],
+        #                                                                 [ 0, 9, 1],
+        #                                                                 [ 1, 1, 8]])
 
+        print("LOGGIN DICT", split, epoch_metrics)
+        self.log_dict(
+                        epoch_metrics,
+                        on_step=False,
+                        on_epoch=True,
+                        )
+        
 
     def on_train_epoch_end(self, *args, **kwargs):
         self._end_of_epoch("train")

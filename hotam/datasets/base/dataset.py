@@ -14,13 +14,9 @@ class DataSet:
         return self._size
     
     @property
-    def name(self):
-        return self._name
-
-    @property
     def tasks(self):
         return self._tasks 
-    
+
     @property
     def task_labels(self):
         return self._task_labels
@@ -38,6 +34,7 @@ class DataSet:
     @classmethod
     def load_DAT(self):
         raise NotImplementedError
+
 
     def stats(self):
 

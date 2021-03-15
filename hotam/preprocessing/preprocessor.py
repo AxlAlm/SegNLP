@@ -148,18 +148,21 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 Input.add("id", i, None)
                 Input.add("lengths", sample.shape[0], "token")
                 
-                spans_grouped = sample.groupby("span_id")
-                Input.add("lengths", len(spans_grouped), "span")
-                Input.add("lengths_tok", np.array([g.shape[0] for i, g in spans_grouped]), "span")
+                if self.__labeling:
+                    spans_grouped = sample.groupby("span_id")
+                    Input.add("lengths", len(spans_grouped), "span")
+                    Input.add("lengths_tok", np.array([g.shape[0] for i, g in spans_grouped]), "span")
 
-                non_span_mask = (~np.isnan(sample.groupby("span_id").first()["unit_id"].to_numpy())).astype(np.uint8)
-                Input.add("none_span_mask", non_span_mask, "span")
+                    non_span_mask = (~np.isnan(sample.groupby("span_id").first()["unit_id"].to_numpy())).astype(np.uint8)
+                    Input.add("none_span_mask", non_span_mask, "span")
+
 
                 if self.prediction_level == "unit":
                     units = sample.groupby("unit_id")
                     Input.add("lengths", len(units), "unit")
                     Input.add("lengths_tok", np.array([g.shape[0] for i, g in units]), "unit")
                 
+
                 if self._need_deps:
                     sent_grouped = sample.groupby("sentence_id")
                     Input.add("lengths", len(sent_grouped), "sentence")

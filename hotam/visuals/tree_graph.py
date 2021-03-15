@@ -47,6 +47,7 @@ import matplotlib.cm as cm
 import matplotlib.colors as colors
 import matplotlib as mpl
 
+
 class TextNode:
 
     def __init__(self,  ID="ROOT", 
@@ -156,6 +157,7 @@ class TextNode:
     def __add_costum_legend(self, fig):
         
         i = 0 
+        nr_link_lables = 0
         for l, c in self.linklabelcolors:
 
             if l is None or l == "None":
@@ -164,58 +166,113 @@ class TextNode:
             fig.add_trace(dict(
                                 x=[i],
                                 y=[-1],
-                                mode="markers",
+                                mode="markers+text",
                                 marker=dict(
                                             color=c,
                                             size=20,
                                             symbol='square',
-                                                )
+                                                ),
+                                text=[l],
+                                textposition="top center",
                                     )
-                            )     
-            i += 1
-    
+                            )   
+            nr_link_lables += 1
+            i += 3
+
+
+        fig.add_trace(dict(
+                            x=[(i-3)/nr_link_lables],
+                            y=[-0.5],
+                            mode="text",
+                            text=["Link Labels"],
+                            textposition="bottom center",
+                                )
+                        )   
+        
+        fig.add_trace(dict(
+                            x=[i-1.5]*2,
+                            y=[-0.4, -1.2],
+                            mode="lines",
+                            line=dict(color="black")
+                            )
+                        )   
+
+        j = i
+        nr_lables = 0
         for l, c in self.labelcolors:
 
             if l is None or l == "None":
                 continue
     
             fig.add_trace(dict(
-                                x=[i],
+                                x=[j],
                                 y=[-1],
-                                mode="markers",
+                                mode="markers+text",
                                 marker=dict(
                                             color=c,
                                             size=20,
                                             symbol='square',
-                                                )
+                                                ),
+                                text=[l],
+                                textposition="top center",
                                     )
-                            )     
-            i += 1
+                            )  
+            nr_lables += 1   
+            j += 3
 
 
-    def __get_text_box(self,):
+        fig.add_trace(dict(
+                            x=[(j-3) - nr_lables],
+                            y=[-0.5],
+                            mode="text",
+                            text=["Labels"],
+                            textposition="bottom center",
+                                )
+                        )   
+
+
+        fig.add_trace(dict(
+                    x=[-1, j-1,  j-1,  j-1, j-1, -1, -1, -1],
+                    y=[-0.4, -0.4, -0.4, -1.2, -1.2, -1.2, -1.2, -0.4],
+                    mode="lines",
+                    line=dict(color="black")
+                )
+                )   
+
+
+    def __get_text_box(self):
 
         text_size = len(self.text)
 
         line_length = 60
-        line_hight = 0.1
+        line_height = 0.2
 
         nr_lines = math.ceil(text_size / line_length)
-        height = line_hight*nr_lines  
-        line_height = height/2
-        current_line_pos = line_height
+        height = line_height*nr_lines  
+        max_height = height/2
+        current_line_pos = max_height
         start = 0
         line_pos = []
 
+        self.text += " "
+        start = 0
         for i  in range(0, nr_lines+1):
-            line = self.text[start:start+line_length]
 
-            line_pos.append((line, current_line_pos))
-            start += line_length
+            if start+line_length > text_size:
+                line = self.text[start:]
+                line_pos.append((line, current_line_pos))
+                break
+            else:
+                look_from = start+line_length-5
+                closes_space = self.text.find(" ", look_from)
+                line = self.text[start:closes_space+1]
+                start = closes_space
+
+                line_pos.append((line, current_line_pos))
             current_line_pos -= line_height
 
         
-        return line_pos, height*2, (line_length/3) -8
+        return line_pos, height+(line_height*2), (line_length/3) -8, line_height
 
 
     def __make_fig(self, fig=None, grid=None, p_xy=None):
@@ -229,7 +286,7 @@ class TextNode:
             fig = go.Figure()
         else:
      
-            line_pos, box_hight, box_length = self.__get_text_box()
+            line_pos, box_hight, box_length, line_height = self.__get_text_box()
 
             if self.id != "ROOT" and self.link != "ROOT":
                 fig.add_trace(self.line(
@@ -240,7 +297,7 @@ class TextNode:
 
 
             x0 = x - (box_length /2)
-            y0 = y - (box_hight/2)
+            y0 = y - (box_hight/2) + line_height
             x1 = x + (box_length /2)
             y1 = y + (box_hight/2)
             fig.add_shape(self.box(
@@ -307,7 +364,6 @@ class TextNode:
 
 
 
-
 def create_tree(tree:TextNode, nodes:list):
     for i, node in enumerate(nodes):
         if node.link == tree.id:
@@ -321,9 +377,55 @@ def create_tree(tree:TextNode, nodes:list):
 
 
 
+def arrays_to_tree(
+                    span_lengths:list, 
+                    span_token_lengths:list,
+                    none_span_mask:list,
+                    links:list,
+                    labels:list,
+                    tokens:list,
+                    label_colors:dict,
+                    link_labels=None,
+                    ):
+    nodes = []
+    start = 0
+    j = 0
 
+    for i in range(span_lengths):
+        
+        length = span_token_lengths[i]
 
+        print(none_span_mask[i])
+        if none_span_mask[i]:
 
+            link = links[start:start+length][0]
+            label = labels[start:start+length][0]
+
+            text  = " ".join(tokens[start:start+length])
+
+            if link_labels is not None:
+                link_label= link_labels[start:start+length][0]
+
+            if j == link:
+                link = "ROOT"
+            
+            nodes.append(TextNode(
+                                    ID=j,
+                                    link=link, 
+                                    label=label,
+                                    label_color=label_colors[label],
+                                    link_label=link_label,
+                                    link_label_color=label_colors.get(link_label, "grey"),
+                                    text=text,
+                                    )
+                        )
+            j += 1
+
+        start += length
+    
+    tree = create_tree(tree=TextNode(), nodes=nodes)
+    tree.show()
+                
 
 
 #    def annotation2(self, line_pos, x, y):

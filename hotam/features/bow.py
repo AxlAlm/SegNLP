@@ -42,7 +42,6 @@ class BOW(FeatureModel):
         self._feature_dim = dim
         self._dtype = np.float32
         self._group = self._name if group is None else group
-
         self.__init_model(corpus)
 
 

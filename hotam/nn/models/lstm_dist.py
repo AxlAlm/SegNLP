@@ -12,6 +12,7 @@ import torch.optim as optim
 
 #hotam
 from hotam.nn.layers.lstm import LSTM_LAYER
+from hotam.nn.layers.link_layers import PairingLayer
 import hotam.utils as u
 
 
@@ -97,25 +98,18 @@ class LSTM_DIST(nn.Module):
         # input to adu_lstm is the am + ac + doc features 
         adu_shape = ((self.HIDDEN_DIM*(2 if self.BI_DIR else 1)) * 2 ) + self.DOC_FEATURE_DIM
 
-        self.adu_lstm = LSTM_LAYER(  
-                                    input_size = adu_shape,
-                                    hidden_size=self.HIDDEN_DIM,
-                                    num_layers= self.NUM_LAYERS,
-                                    bidirectional=self.BI_DIR,
-                                    )
-        
-        #self.max_rel = len(task2labels["relation"])
-        #self.relation_layer = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), MAX_NR_AC)
-
-
-        self.type_rep_size*3 + self.relative_position_info_size
-        self.relation_clf = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), 1)
-
+        # self.adu_lstm = LSTM_LAYER(  
+        #                             input_size = adu_shape,
+        #                             hidden_size=self.HIDDEN_DIM,
+        #                             num_layers= self.NUM_LAYERS,
+        #                             bidirectional=self.BI_DIR,
+        #                             )
 
 
         self.stance_clf = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), task_dims["stance"])
         self.ac_clf = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), task_dims["ac"])
-    
+        self.link_clf = PairingLayer(feature_dim=(self.HIDDEN_DIM*2) + feature_dims["doc_embs"], max_units=task_dims["link"])
+
         self.loss = nn.CrossEntropyLoss(reduction="sum", ignore_index=-1)
 
 
@@ -249,92 +243,41 @@ class LSTM_DIST(nn.Module):
         #final_out, _ = self.adu_lstm(contex_emb, lengths_seq)
 
         # 6
-        # Classification of AC and Stance is pretty straight forward
-        stance_out = self.stance_clf(contex_emb)
-        ac_out = self.ac_clf(contex_emb)
+        # Classification of AC and link labels is pretty straight forward
+        link_label_out = self.link_label_clf(contex_emb)
+        label_out = self.unit_clf(contex_emb)
 
+        link_probs, link_preds = self.link_clf(contex_emb, unit_mask=batch["unit"]["mask"])
 
+        link_label_probs = F.softmax(link_label_out, dim=-1)
+        label_probs = F.softmax(label_out, dim=-1)
 
-        # input = (batch_size, max_units, max_units, contex_emb.shape[-1]*3 + max_units)
-        #
-        # linkCLF(input)
-        # output = (batch_size, max_units, max_units)
-        # max_spanning_tree(output)
-
-
-
- 
-        #
-        # 1) create this matrix = Hj ; Hi ; Hj * Hi ; pos_encs
-        # (batch_size, max_units, emb_size)
-        #
-        # 2) pass to softmax ->
-        # 
-
-        # Classification of Links between ACs is done by concatenate a one-hot vector representing positions
-        # with the span representations from final_out.
-        # 
-        # maximum spanning tree algorithm
-        # relation_out_new = torch.zeros((*ac_mask.shape, ac_mask.shape[-1]))
-        # relation_probs = torch.zeros((*ac_mask.shape, ac_mask.shape[-1]))
-        # print("BATCH SIZE", batch_size)
-        # for i in range(batch_size):
-        #     # print(i)
-        #     sample_mask = ac_mask[i]
-        #     sample_m_mask = sample_mask.repeat(max_nr_acs,1)
-        #     # print(ac_mask[i])
-        #     # print(sample_m_mask)
-        #     # print(relation_out[i,:, :6].shape, ac_mask.shape)
-        #     out = relation_out[i,:, :max_nr_acs] * sample_m_mask
-            
-        #     out_copy = out.detach().clone()
-        #     sample_m_mask = sample_m_mask.type(torch.bool)
-        #     out_copy[~sample_m_mask] = float('-inf')
-        #     # print("INF OUT", out_copy)
-        #     out_softmax = F.softmax(out_copy, dim=-1)
-
-        #     # print("SOFTMAX", out_softmax)
-        #     # print("OUT", out)
-        #     relation_probs[i] = out_softmax
-        #     relation_out_new[i] = out
-        #relation_out = relation_out_new
-
-
-        stance_probs = F.softmax(stance_out, dim=-1)
-        ac_probs = F.softmax(ac_out, dim=-1)
-
-        relations_preds = torch.argmax(relation_out, dim=-1)
-        stance_preds = torch.argmax(stance_out, dim=-1)
-        ac_preds = torch.argmax(ac_out, dim=-1)
+        link_preds = torch.argmax(relation_out, dim=-1)
+        link_label_preds = torch.argmax(stance_out, dim=-1)
+        label_preds = torch.argmax(ac_out, dim=-1)
 
 
         # we want to ignore -1  in the loss function so we set pad_values to -1, default is 0
         batch.change_pad_value(-1)
         
-        relation_loss = self.loss(torch.flatten(relation_out, end_dim=-2), batch["relation"].view(-1))
-        stance_loss = self.loss(torch.flatten(stance_out, end_dim=-2), batch["stance"].view(-1))
-        ac_loss = self.loss(torch.flatten(ac_out, end_dim=-2), batch["ac"].view(-1))
-        total_loss = (self.ALPHA * relation_loss) + (self.BETA * stance_loss) + ( (1 - (self.ALPHA-self.BETA)) * ac_loss) 
+        link_loss = self.loss(torch.flatten(link_out, end_dim=-2), batch["unit"]["link"].view(-1))
+        link_label_loss = self.loss(torch.flatten(link_label_out, end_dim=-2), batch["unit"]["link_label"].view(-1))
+        label_loss = self.loss(torch.flatten(label_out, end_dim=-2), batch["unit"]["label"].view(-1))
+        total_loss = (self.ALPHA * link_loss) + (self.BETA * link_label_loss) + ( (1 - (self.ALPHA-self.BETA)) * label_loss) 
 
 
-        output.add_loss(task="total",    data=total_loss)
-        output.add_loss(task="relation", data=relation_loss)
-        output.add_loss(task="ac",       data=ac_loss)
-        output.add_loss(task="stance",   data=stance_loss)
+        output.add_loss(task="total",       data=total_loss)
+        output.add_loss(task="link",        data=link_loss)
+        output.add_loss(task="link_label",  data=link_label_loss)
+        output.add_loss(task="label",       data=label_loss)
 
-        output.add_preds(task="relation", level="unit", data=relations_preds)
-        output.add_preds(task="ac",       level="unit", data=ac_preds)
-        output.add_preds(task="stance",   level="unit", data=stance_preds)
+        output.add_preds(task="label",          level="unit", data=label_preds)
+        output.add_preds(task="link",           level="unit", data=link_preds)
+        output.add_preds(task="link_label",     level="unit", data=link_label_preds)
 
-        output.add_probs(task="relation", level="unit", data=relation_probs)
-        output.add_probs(task="ac",       level="unit", data=ac_probs)
-
-
-
-        prediction_levels = ["token", "unit", "span"]
-
-        output.add_prebs(task="link_label",   level="unit", data=link_label_pred)
-        output.add_prebs(task="link",  level="unit", data=link_pred)
+        # output.add_probs(task="relation", level="unit", data=relation_probs)
+        # output.add_probs(task="ac",       level="unit", data=ac_probs)
+        # output.add_probs(task="s",       level="unit", data=stance_probs)
         return output
 
        

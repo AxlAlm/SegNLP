@@ -36,14 +36,16 @@ def bio_decode(
     def _bio_decode_sample(pattern, encoded_bios):
 
         encoded_bios = ensure_numpy(encoded_bios)
-        encoded_bios_str = "-".join(encoded_bios.astype(str)) + "-"
+        encoded_bios_str = "<START>-" + "-".join(encoded_bios.astype(str)) + "-"
         all_matches = re.finditer(pattern, encoded_bios_str)
 
         span_types = []
         span_lengths = []
         nr_units = 0
         for m in all_matches:
-            length = len(m.group(0).split("-")[:-1])
+
+            match_string = m.group(0).replace("<START>-", "")
+            length = len(match_string.split("-")[:-1])
 
             span_type = 0 if m.groupdict()["UNIT"] is None else 1
 
@@ -64,7 +66,7 @@ def bio_decode(
     #  https://arxiv.org/pdf/1704.06104.pdf, appendix
     # 1) I follows 0 -> allow OI to be interpreted as a B
     if apply_correction:
-        Bs += f"|(?<=({Os}))({Is})"
+        Bs += f"|(?<=({Os}))({Is})|<START>-"
 
     #self.pattern = re.compile(f"({Bs})({Is})*|({Os})+")
     pattern = re.compile(f"(?P<UNIT>({Bs})({Is})*)|(?P<NONE>({Os})+)")

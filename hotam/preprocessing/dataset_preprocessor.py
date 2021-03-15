@@ -89,7 +89,6 @@ class PreProcessedDataset(ptl.LightningDataModule):
         return self._size
 
 
-    @property
     def name(self):
         return self._name
 
@@ -225,7 +224,7 @@ class DataPreprocessor:
         if self.sample_level != dataset.level:
             splits = create_new_splits(self.h5py_f["ids"][:])
 
-        file_path = os.path.join(dump_dir, f"{dataset.name}_splits.pkl")
+        file_path = os.path.join(dump_dir, f"{dataset.name()}_splits.pkl")
         with open(file_path, "wb") as f:
             pickle.dump(splits, f)
 
@@ -297,7 +296,8 @@ class DataPreprocessor:
 
     def process_dataset(self, dataset:DataSet, chunks:int = 50, dump_dir:str = None) -> PreProcessedDataset:
         
-        file_path = os.path.join(dump_dir, f"{dataset.name}_data.hdf5")
+        file_path = os.path.join(dump_dir, f"{dataset.name()}_data.hdf5")
+        print(file_path)
         self.__setup_h5py(file_path=file_path) 
 
 
@@ -319,11 +319,11 @@ class DataPreprocessor:
         progress_bar.close()
 
         splits = self.__set_splits(dump_dir, dataset=dataset)
-        self.__calc_stats(dump_dir, splits, dataset.name)
+        self.__calc_stats(dump_dir, splits, dataset.name())
 
         self.h5py_f.close()
 
-        return PreProcessedDataset(name=dataset.name, dir_path=dump_dir, label_encoders=self.encoders)
+        return PreProcessedDataset(name=dataset.name(), dir_path=dump_dir, label_encoders=self.encoders)
 
 
 

@@ -17,8 +17,18 @@ __all__ = [
 
 
 def get_model(model_name):
-    for model in __all__:
-        if model.name() == model_name:
-            return model
 
-    raise KeyError(f"No model named {model_name}")
+    if model_name.upper() == "LSTM_DIST":
+        return LSTM_DIST
+
+    elif model_name.upper() == "LSTM_CRF":
+        return LSTM_CRF
+
+    elif model_name.upper() == "LSTM_CNN_CRF":
+        return LSTM_CNN_CRF
+
+    elif model_name.upper() == "JointPN":
+        return JointPN
+    
+    else:
+        raise KeyError(f"No model named {model_name}")

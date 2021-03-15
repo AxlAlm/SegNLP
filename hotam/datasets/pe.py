@@ -120,6 +120,9 @@ class PE(DataSet):
     def __len__(self):
         return self._size
 
+    @classmethod
+    def name(self):
+        return "PE"
 
     def __download_data(self, force=False) -> str:
         """downloads the data from sourse website

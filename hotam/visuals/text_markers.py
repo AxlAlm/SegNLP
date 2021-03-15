@@ -8,7 +8,7 @@ import base64
 from lxml import etree, html
 from IPython.display import Image
 import imgkit
-
+from hotam.utils import RangeDict
 
 strange_characters = {
                         '``':'"',
@@ -39,32 +39,32 @@ def underline(hex_code, token):
     return f'<span style="border-bottom: 4px solid {hex_code}; padding-bottom: 1px;">{token}</span>'
 
 
-def get_span2cmap(span_colors:list, spans:list, span2label:dict):
+# def get_span2cmap(span_colors:list, spans:list, span2label:dict):
 
-    nr_color_ranges = len(span_colors)-1
-    nr_spans = len(spans)-1
+#     nr_color_ranges = len(span_colors)-1
+#     nr_spans = len(spans)-1
 
-    span2cmap = {}
-    cmap2span = {}
+#     span2cmap = {}
+#     cmap2span = {}
 
-    ci = 0
-    i = 0
-    duplicate_colors = False
-    while i <= nr_spans:
+#     ci = 0
+#     i = 0
+#     duplicate_colors = False
+#     while i <= nr_spans:
 
-        if ci > nr_color_ranges:
-            duplicate_colors = True
-            ci = 0
+#         if ci > nr_color_ranges:
+#             duplicate_colors = True
+#             ci = 0
         
-        span_id = spans[i]
-        color = span_colors[ci]
-        span2cmap[span_id] = color
-        cmap2span[color] = span_id
+#         span_id = spans[i]
+#         color = span_colors[ci]
+#         span2cmap[span_id] = color
+#         cmap2span[color] = span_id
 
-        i += 1
-        ci += 1
+#         i += 1
+#         ci += 1
 
-    return span2cmap
+#     return span2cmap
 
 
 def get_legend(label2cmap, show_spans:bool, show_scores:bool):
@@ -86,65 +86,94 @@ def get_legend(label2cmap, show_spans:bool, show_scores:bool):
     return legend
 
 
-def get_mappings(data:list, key:str):
+# def get_mappings(data:list, key:str):
 
-    spans = set()
-    label2span = {}
-    span2label = {}
+#     spans = set()
+#     label2span = {}
+#     span2label = {}
 
-    for d in data:
-        span_id = d.get(key,{}).get("span_id", None) 
-        label = d.get(key,{}).get("label", None)
+#     for d in data:
+#         span_id = d.get(key,{}).get("span_id", None) 
+#         label = d.get(key,{}).get("label", None)
 
-        if span_id is not None:
-            spans.add(span_id)
+#         if span_id is not None:
+#             spans.add(span_id)
 
-        if label is not None and span_id is not None:
+#         if label is not None and span_id is not None:
 
-            if label not in label2span and label:
-                label2span[label] = set()
+#             if label not in label2span and label:
+#                 label2span[label] = set()
 
-            if span_id not in span2label:
-                span2label[span_id] = label
+#             if span_id not in span2label:
+#                 span2label[span_id] = label
 
-            label2span[label].add(span_id)
+#             label2span[label].add(span_id)
             
-    spans = sorted(spans)
-    return spans, label2span, span2label
-    
+#     spans = sorted(spans)
+#     return spans, label2span, span2label
 
-def hot_text(data, 
-            labels:list, 
-            save_path:str="/tmp/hot_text.png", 
-            print_html:bool=False, 
-            show_spans:bool=True, 
-            show_scores:bool=True, 
-            show_pred:bool=True, 
-            show_gold:bool=True, 
-            show_legend:bool=True,
-            font:str="Verdana", 
-            width:int=1000, 
-            height:int=800):
+
+def create_token_idx2span_info(span_lengths, pred_none_spans):
+
+    span_colors = [
+                        "#cdad00", "#6eb8c1", "#ff6600", "#2f495e", "#16c2f3", "#c5678c","#ff0000",
+                        "#5ac18e", "#420420", "#ffa500", "#0000ff", "#800080", "#f6546a","#daf8e3", "#008000", 
+                        "#6897bb", "#ea1853", "#fb2e01", "#696969",  "#b2a6e0", "#877a2b", "#059071", "#170a21", 
+                        "#b48961", "#f68683", "#69837c", "#8cd2ff", "#afd78f", "#e28a3b", "#497bca",
+                        "#ff4d4d", "#005582","#ffc300","#004444","#cd8500", "#23272a", "#99aab5",
+                        "#008744",
+                        #"#97ebdb", "#00ff00",
+                        #"#ffb6c1", ""#62f184"," "#7fed98", 
+        
+                        ]
+
+    tokenidx2span_info = RangeDict()
+    start = 0
+    span_id = 0
+    ci = 0
+    for i,span_length in enumerate(span_lengths):
+        span = (start, start+span_length)
+
+        if pred_none_spans[i]:
+
+            if ci > len(span_colors)-1:
+                ci = 0
+
+            tokenidx2span_info[span] = {"id":span_id, "hexcode":span_colors[ci]}
+            ci += 1
+
+        else:
+            tokenidx2span_info[span] = {"id":None, "hexcode":None}
+
+        span_id += 1
+        start += span_length
+
+    return tokenidx2span_info
+
+
+def highlight_text(
+                    tokens,
+                    labels,
+                    pred_labels,
+                    pred_span_lengths,
+                    pred_none_spans,
+                    gold_labels=None,
+                    gold_span_lengths=None,
+                    gold_none_spans=None,
+                    save_path:str="/tmp/highlight_text.png", 
+                    return_html:bool=False, 
+                    show_spans:bool=True, 
+                    show_scores:bool=True, 
+                    show_legend:bool=True,
+                    font:str="Verdana", 
+                    width:int=1000, 
+                    height:int=800,
+                    prefix=""
+                    ):
 
     assert len(labels) < 8, "Currently only supporting 8 labels"
-    label_colors =  [
-                     'Purples', 'Blues', 'Greens', 'Oranges', 'Reds','Greys','YlOrBr', 'RdPu',
-                    #  'YlOrBr', 'YlOrRd', 'OrRd', 'PuRd', 'RdPu', 'BuPu',
-                    #  'GnBu', 'PuBu', 'YlGnBu', 'PuBuGn', 'BuGn', 'YlGn'
-                     ]
-    span_colors = [
-                    "#cdad00", "#6eb8c1", "#ff6600", "#2f495e", "#16c2f3", "#c5678c","#ff0000",
-                    "#5ac18e", "#420420", "#ffa500", "#0000ff", "#800080", "#f6546a","#daf8e3", "#008000", 
-                    "#6897bb", "#ea1853", "#fb2e01", "#696969",  "#b2a6e0", "#877a2b", "#059071", "#170a21", 
-                    "#b48961", "#f68683", "#69837c", "#8cd2ff", "#afd78f", "#e28a3b", "#497bca",
-                    "#ff4d4d", "#005582","#ffc300","#004444","#cd8500", "#23272a", "#99aab5",
-                    "#008744",
-
-                    #"#97ebdb", "#00ff00",
-                    #"#ffb6c1", ""#62f184"," "#7fed98", 
-    
-                    ]
-
+    show_pred = True
+    show_gold = False
     style_elems = [ 
                     "span { line-height: 30px; font-size:small;}",
                    ]
@@ -152,12 +181,19 @@ def hot_text(data,
     puncts = set([".", "?", "!"])
     puncts_plus = set([","]) | puncts
 
+    label_colors =  [
+                     'Purples', 'Blues', 'Greens', 'Oranges', 'Reds','Greys','YlOrBr', 'RdPu',
+                    #  'YlOrBr', 'YlOrRd', 'OrRd', 'PuRd', 'RdPu', 'BuPu',
+                    #  'GnBu', 'PuBu', 'YlGnBu', 'PuBuGn', 'BuGn', 'YlGn'
+                     ]
     label2cmap = {l:label_colors[i] for i,l in enumerate(labels)}
-    gold_spans, gold_label2span, gold_span2label = get_mappings(data, key="gold")
-    pred_spans, pred_label2span, pred_span2label = get_mappings(data, key="pred")
+    
+    
+    pred_token_idx2span_info = create_token_idx2span_info(pred_span_lengths, pred_none_spans)
 
-    gold_span2color = get_span2cmap(span_colors, gold_spans, gold_span2label)
-    pred_span2color = get_span2cmap(span_colors, pred_spans, pred_span2label)
+    if gold_span_lengths is not None:
+        gold_token_idx2span_info = create_token_idx2span_info(gold_span_lengths, gold_none_spans)
+
 
     if show_legend:
         legend = "<hr>" + get_legend(
@@ -172,24 +208,27 @@ def hot_text(data,
     pred_spans = []
     token_stack = []
 
-    last_pred_span = ""
-    last_gold_span = ""
     make_upper = True
-    for i,td in enumerate(data):
+    for i,token in enumerate(tokens):
 
-        pred = td["pred"]
-        score = pred.get("score", 1.0)
-        pred_label = pred.get("label", None)
-        pred_span_id = pred.get("span_id")
+        pred_span_id = pred_token_idx2span_info[i]["id"]
+        pred_span_hexcode = pred_token_idx2span_info[i]["hexcode"]
+
+        pred_label = None
+        if show_scores:
+            pred_label = None if pred_labels[i] == "None" else pred_labels[i]
+
+        score = 1.0
+
+        gold_span_id = None
+        if show_gold:
+            gold_span_id = gold_token_idx2span_info[i]["id"]
+            gold_span_hexcode = gold_token_idx2span_info[i]["hexcode"]
+            gold_label = None if gold_labels[i] == "None" else gold_labels[i]
 
         if pred_label not in labels:
             pred_label = None
 
-        gold = td.get("gold", {"label":None, "span_id":None})
-        gold_label = gold.get("label", None)
-        gold_span_id = gold.get("span_id")
-
-        token = td["token"]
         token = strange_characters.get(token,token)
         
         ## Fixing Capitalization
@@ -201,7 +240,7 @@ def hot_text(data,
             make_upper = True
         
         try:
-            next_token = data[i+1]["token"]
+            next_token = tokens[i+1]
         except IndexError as e:
             next_token = " "
 
@@ -210,30 +249,23 @@ def hot_text(data,
             token = f"{token} "
 
         if show_scores and show_pred:
+
             if pred_label is not None:
                 color_hex = get_color_hex(label2cmap[pred_label], score)
                 token =  f'<span style="background-color:{color_hex};">{token}</span>'
-                # style_elems.append(f'.c{i} {{ background-color: {color_hex}; }}')
-                # token = f'<span class="c{i}">{token}</span>'
 
         if show_spans:
-            pred_span = pred["span_id"]
-            gold_span = gold["span_id"]
+  
+            if pred_span_id is not None and gold_span_id is not None and show_pred and show_gold:
+                token = under_overline(pred_span_hexcode, gold_span_hexcode, token)
 
-            if pred_span is not None and gold_span is not None and show_pred and show_gold:
-                hex_code_pred = pred_span2color[pred_span_id] #get_color_hex(pred_span2cmap[pred_span_id], 1.0)
-                hex_code_gold = gold_span2color[gold_span_id] #get_color_hex(gold_span2cmap[gold_span_id], 1.0)
-                token = under_overline(hex_code_pred, hex_code_gold, token)
-            elif pred_span is not None and show_pred:
-                hex_code = pred_span2color[pred_span_id]  # get_color_hex(pred_span2cmap[pred_span_id], 1.0)
-                token = underline(hex_code, token)
-            elif gold_span is not None and show_gold:
-                hex_code = gold_span2color[gold_span_id]  # get_color_hex(gold_span2cmap[gold_span_id], 1.0)
-                token = overline(hex_code, token)
+            elif pred_span_id is not None and show_pred:
+                token = underline(pred_span_hexcode, token)
 
-            last_pred_span = pred["span_id"]    
-            last_gold_span = gold["span_id"]
-        
+            elif gold_span_id is not None and show_gold:
+                token = overline(gold_span_hexcode, token)
+
+
         if ">" not in token:
             token = f'<span>{token}</span>'
 
@@ -248,6 +280,10 @@ def hot_text(data,
                                 </style>
                             </head>
                             <body style="font-family:{font}; font-size:20px;">
+                            <br>
+                            {prefix}
+                            <br>
+                            <br>
                             {''.join(token_stack)}
                             <br>
                             {legend}
@@ -255,9 +291,10 @@ def hot_text(data,
                             </html>
                     """
 
-    imgkit.from_string(html_string, save_path, options={'quiet':'', "width": width, "height":height})
+    if save_path:
+        imgkit.from_string(html_string, save_path, options={'quiet':'', "width": width, "height":height})
+    #Image(save_path)
 
-
-    if print_html:
+    if return_html:
         document_root = html.fromstring(html_string)
-        print(etree.tostring(document_root, encoding='unicode', pretty_print=True))
+        return etree.tostring(document_root, encoding='unicode', pretty_print=True)

@@ -12,13 +12,11 @@ from pathlib import Path
 # axl nlp
 import hotam
 import hotam.utils as u
-from hotam.features import get_feature
 from hotam import get_logger
 
 
 
 logger = get_logger("FEATURES")
-
 
 
 class FeatureModel(ABC):
@@ -60,3 +58,6 @@ class FeatureModel(ABC):
     def extract(self):
         pass
 
+    @property
+    def params(self):
+        return {}

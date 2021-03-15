@@ -104,7 +104,7 @@ class PairingLayer(torch.nn.Module):
         self.link_clf = torch.nn.Linear(input_dim, 1)
 
 
-    def forward(self, x):
+    def forward(self, x, unit_mask):
         max_units = x.shape[1]
         batch_size = x.shape[0]
         shape = (batch_size,max_units,max_units,x.shape[-1])
@@ -128,13 +128,11 @@ class PairingLayer(torch.nn.Module):
         #step 6
         pair_scores = self.link_clf(pair_matrix)
 
-        #pair_matrix = pair_matrix.view((batch_size, max_units*max_units, pair_matrix.shape[-1]))
-        
         # step 7
-        #MASk ?!?!?
+        pair_scores[~unit_mask]  = float("inf")
         pair_probs = F.softmax(pair_scores)
 
         # step 8
         pair_preds = torch.argmax(pair_probs)
     
-        return pair_preds
+        return pair_probs, pair_preds
