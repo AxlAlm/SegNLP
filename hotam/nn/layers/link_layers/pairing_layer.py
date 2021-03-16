@@ -77,27 +77,10 @@ class PairingLayer(torch.nn.Module):
 
     8) Lastly, we get the predictions by argmaxing.
 
-    
-        
-        
-        after step 6 we get:
-           [
-                [h0, h0, h0*h0, 0, 0, 1, 0, 0],
-                [h0, h1, h0*h1, 0, 0, 0, 1, 0],
-                [h0, h2, h0*h2, 0, 0, 0, 0, 1],
-                [h1, h0, h1*h0, 0, 1, 0, 0, 0],
-                [h1, h1, h1*h1, 0, 0, 1, 0, 0],
-                [h1, h2, h1*h2, 0, 0, 0, 1, 0],
-                [h2, h0, h2*h0, 1, 0, 0, 0, 0],
-                [h2, h1, h2*h1, 0, 1, 0, 0, 0],
-                [h2, h2, h2*h2, 0, 0, 1, 0, 0],
-            ]
-            
-            
-
     """
 
-    def __init__(self, feature_dim, max_units):
+    def __init__(self, feature_dim:int, max_units:int):
+
         self.max_units = max_units
         self.one_hot_dim = (max_units*2)-1
         input_dim = feature_dim + one_hot_dim
@@ -105,6 +88,7 @@ class PairingLayer(torch.nn.Module):
 
 
     def forward(self, x, unit_mask):
+
         max_units = x.shape[1]
         batch_size = x.shape[0]
         shape = (batch_size,max_units,max_units,x.shape[-1])
@@ -130,7 +114,10 @@ class PairingLayer(torch.nn.Module):
 
         # step 7
         pair_scores[~unit_mask]  = float("inf")
+        print(pair_scores)
+
         pair_probs = F.softmax(pair_scores)
+        print(pair_probs)
 
         # step 8
         pair_preds = torch.argmax(pair_probs)

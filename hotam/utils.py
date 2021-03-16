@@ -49,6 +49,13 @@ def zero_pad(a):
         b[i][0:len(j)] = j
     return b
 
+def string_pad(a, dtype="<U30"):
+    b = np.zeros([len(a),len(max(a,key = lambda x: len(x)))]).astype(dtype)
+    b[:] = ""
+    for i,j in enumerate(a):
+        b[i][0:len(j)] = j
+    return b
+
 
 def ensure_numpy(item):
 

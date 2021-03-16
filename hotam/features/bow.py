@@ -84,6 +84,7 @@ class BOW(FeatureModel):
             
 
         if train_tfidf or train_svd:
+            logger.info("Will download data and train BOW-tfidf model ... ")
             corpus_data = self.__get_corpus_data(corpus)
 
             if train_tfidf:

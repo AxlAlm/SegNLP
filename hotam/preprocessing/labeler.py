@@ -62,7 +62,7 @@ class Labeler:
                 cond2 = sent_df["char_start"] < ac_start
                 idxs = sent_df[cond1 & cond2].index
                 # self.level_dfs["token"]["am_id"].iloc[idxs] = ac_id
-                sample["am_id"].iloc[idxs] = ac_id
+                df.loc[idxs,"am_id"] = ac_id
                 prev_ac_end = ac_end
 
         return df

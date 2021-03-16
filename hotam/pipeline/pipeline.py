@@ -53,6 +53,8 @@ class Pipeline:
                 encodings:list =[],
                 model_dir:str = None,
                 tokens_per_sample:bool=False,
+                other_levels:list=[],
+                argumentative_markers:bool=False,
                 root_dir:str =f"{user_dir}/.hotam/pipelines" #".hotam/pipelines"       
                 ):
         
@@ -68,7 +70,6 @@ class Pipeline:
                                                 +encodings
                                                 +[f.name for f in features]
                                                 )        
-        print(self.pipeline_id)
         self._pipeline_folder_path = self.__create_pipe_folder(root_dir=root_dir, pipe_hash=self.pipeline_id)
         self.config = dict(
                             project=project,
@@ -78,7 +79,10 @@ class Pipeline:
                             sample_level=sample_level, 
                             tasks=tasks, 
                             features={f.name:f.params for f in features}, 
-                            encodings=encodings
+                            encodings=encodings,
+                            tokens_per_sample=tokens_per_sample,
+                            argumentative_markers=argumentative_markers,
+                            root_dir=root_dir
                             )
         self.__dump_config()
     
@@ -89,6 +93,7 @@ class Pipeline:
                                         features=features,
                                         encodings=encodings,
                                         tokens_per_sample=tokens_per_sample,
+                                        argumentative_markers=argumentative_markers
                                         )
 
 

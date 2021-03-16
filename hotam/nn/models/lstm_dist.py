@@ -51,13 +51,13 @@ class LSTM_DIST(nn.Module):
 
             Stance/link Type: output of 4 to a linear layer
 
-            Link/relation: 
+            Link/relation:  see layers/PairingLayer
 
     """
 
-    def __init__(self,  hyperparamaters:dict, task_dims:dict, feature_dims:dict):
+    def __init__(self,  hyperparamaters:dict, task_dims:dict, feature_dims:dict, train_mode:bool):
         super().__init__()
-
+        self.train_mode = train_mode
         self.BATCH_SIZE = hyperparamaters["batch_size"]
         self.OPT = hyperparamaters["optimizer"]
         self.LR = hyperparamaters["lr"]
@@ -203,26 +203,21 @@ class LSTM_DIST(nn.Module):
 
     def forward(self, Input, Output):
 
-        word_embs = batch["word_embs"] 
-        lengths_tok  = batch["lengths_tok"]
-        lengths_seq = batch["lengths_seq"]
-        ac_mask = batch["ac_mask"]
-        batch_size = ac_mask.shape[0]
-        max_nr_acs = ac_mask.shape[1]
+        word_embs = batch["token"]["word_embs"] 
 
         # Wi:j 
-        W = batch["doc_embs"]
+        W = batch["unit"]["doc_embs"]
 
         # batch is sorted by length of prediction level which is Argument Components
         # so we need to sort the word embeddings for the sample, pass to lstm then return to 
         # original order
-        sorted_lengths_tok, sorted_indices = torch.sort(lengths_tok, descending=True)
+        sorted_lengths_tok, sorted_indices = torch.sort(batch["token"]["lengths_tok"], descending=True)
         _ , original_indices = torch.sort(sorted_indices, descending=False)
 
         # 1
         # input (Batch_dize, nr_tokens, word_emb_dim)
         # output (Batch_dize, nr_tokens, word_emb_dim)
-        lstm_out, _ = self.word_lstm(word_embs[sorted_indices], sorted_lengths_tok)
+        lstm_out, _ = self.word_lstm(batch["token"]["word_embs"][sorted_indices], sorted_lengths_tok)
         lstm_out = lstm_out[original_indices]
 
         # 2
@@ -232,17 +227,15 @@ class LSTM_DIST(nn.Module):
 
         # 3
         # pass each of the spans to a seperate BiLSTM. 
-        am_lstm_out, _ = self.am_lstm(am_minus_embs, lengths_seq)
-        ac_lstm_out, _ = self.ac_lstm(ac_minus_embs, lengths_seq)
+        am_lstm_out, _ = self.am_lstm(am_minus_embs, batch["unit"]["lengths"])
+        ac_lstm_out, _ = self.ac_lstm(ac_minus_embs, batch["unit"]["lengths"])
 
         # 4
         # concatenate the output from Argument Component BiLSTM and Argument Marker BiLSTM with BOW embeddigns W
         contex_emb = torch.cat((am_lstm_out, ac_lstm_out, W), dim=-1)
 
-        # 5
-        #final_out, _ = self.adu_lstm(contex_emb, lengths_seq)
 
-        # 6
+        # 5
         # Classification of AC and link labels is pretty straight forward
         link_label_out = self.link_label_clf(contex_emb)
         label_out = self.unit_clf(contex_emb)
@@ -257,19 +250,22 @@ class LSTM_DIST(nn.Module):
         label_preds = torch.argmax(ac_out, dim=-1)
 
 
-        # we want to ignore -1  in the loss function so we set pad_values to -1, default is 0
-        batch.change_pad_value(-1)
-        
-        link_loss = self.loss(torch.flatten(link_out, end_dim=-2), batch["unit"]["link"].view(-1))
-        link_label_loss = self.loss(torch.flatten(link_label_out, end_dim=-2), batch["unit"]["link_label"].view(-1))
-        label_loss = self.loss(torch.flatten(label_out, end_dim=-2), batch["unit"]["label"].view(-1))
-        total_loss = (self.ALPHA * link_loss) + (self.BETA * link_label_loss) + ( (1 - (self.ALPHA-self.BETA)) * label_loss) 
+        if self.train_mode:
+            # we want to ignore -1  in the loss function so we set pad_values to -1, default is 0
+            batch.change_pad_value(level="unit", task="link", new_value=-1)
+            batch.change_pad_value(level="unit", task="label", new_value=-1)
+            batch.change_pad_value(level="unit", task="link_label", new_value=-1)
+            
+            link_loss = self.loss(torch.flatten(link_out, end_dim=-2), batch["unit"]["link"].view(-1))
+            link_label_loss = self.loss(torch.flatten(link_label_out, end_dim=-2), batch["unit"]["link_label"].view(-1))
+            label_loss = self.loss(torch.flatten(label_out, end_dim=-2), batch["unit"]["label"].view(-1))
+            total_loss = (self.ALPHA * link_loss) + (self.BETA * link_label_loss) + ( (1 - (self.ALPHA-self.BETA)) * label_loss) 
 
+            output.add_loss(task="total",       data=total_loss)
+            output.add_loss(task="link",        data=link_loss)
+            output.add_loss(task="link_label",  data=link_label_loss)
+            output.add_loss(task="label",       data=label_loss)
 
-        output.add_loss(task="total",       data=total_loss)
-        output.add_loss(task="link",        data=link_loss)
-        output.add_loss(task="link_label",  data=link_label_loss)
-        output.add_loss(task="label",       data=label_loss)
 
         output.add_preds(task="label",          level="unit", data=label_preds)
         output.add_preds(task="link",           level="unit", data=link_preds)

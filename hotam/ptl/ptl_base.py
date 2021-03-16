@@ -110,11 +110,6 @@ class PTLBase(ptl.LightningModule):
                                             calc_metrics=True if self.train_mode else False, 
                                             )
                                     )
-        # metrics = {f"{split}_"+k:v for k,v in output.metrics.items()}
-        # metrics["epoch"] = self.current_epoch
-        #print(metrics)
-        # self.logger.experiment.log_metric(f"{split}_f1", metrics.get(f"{split}_f1",0))
-        # self.logger.log_metrics(metrics)
 
         self.metrics.add(output.metrics, split)
         return output.loss.get("total", 0), output
@@ -170,8 +165,6 @@ class PTLBase(ptl.LightningModule):
         #                                                         matrix=[[10, 0, 0],
         #                                                                 [ 0, 9, 1],
         #                                                                 [ 1, 1, 8]])
-
-        print("LOGGIN DICT", split, epoch_metrics)
         self.log_dict(
                         epoch_metrics,
                         on_step=False,

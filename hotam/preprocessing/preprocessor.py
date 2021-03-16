@@ -24,7 +24,7 @@ import itertools
 
 #hotam
 import hotam
-from hotam.utils import ensure_numpy, load_pickle_data, pickle_data, to_tensor, one_tqdm, timer, dynamic_update
+from hotam.utils import ensure_numpy, load_pickle_data, pickle_data, to_tensor, one_tqdm, timer, dynamic_update, string_pad
 from hotam import get_logger
 
 from .encoder import Encoder
@@ -54,6 +54,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 features:list = [],
                 encodings:list = [],
                 tokens_per_sample:bool=False,
+                argumentative_markers:bool=False
                 ):
         super().__init__()
 
@@ -63,7 +64,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         self.tokens_per_sample = tokens_per_sample
 
         self.__labeling = False
-        self.argumentative_markers = False
+        self.argumentative_markers = argumentative_markers
 
         self.encodings = encodings
 
@@ -184,17 +185,21 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
     def __get_text(self, Input:ModelInput, sample:pd.DataFrame):
 
-        if self.prediction_level == "unit":
-            units = sample.groupby(f"unit_id")
-            text = []
-            for _, unit in units:
-                text.append(unit["text"].to_numpy().tolist())
+        # if self.prediction_level == "unit":
+        #     units = sample.groupby(f"unit_id")
 
-            Input.add("text", np.array(text, dtype="U30"), "unit")
-            #sample_text["text"] = np.array(text)
-        else:
+        #     text = []
+        #     for _, unit in units:
+        #         text.append(unit["text"].to_numpy().tolist())
+            
+        #     print(text)
+        #     text = string_pad(text, dtype="U30")
+        #     print(text.shape)
+        #     Input.add("text", text, "unit")
+        #     #sample_text["text"] = np.array(text)
+        # else:
             #Input.add("text", sample["text"].to_numpy().astype("S"))
-            Input.add("text", sample["text"].to_numpy().astype("U30"), "token")
+        Input.add("text", sample["text"].to_numpy().astype("U30"), "token")
             #sample_text["text"] = sample["text"].to_numpy()
         
         #return sample_text
@@ -335,14 +340,14 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
             if alt1:
             #if self.prediction_level == "unit" and not self.tokens_per_sample:
-                
-                nr_units = len(sample.groupby("unit_id"))
+                units = sample.groupby("unit_id")
+                nr_units = len(units)
 
                 if fm.level == "word":
                     nr_tok_units = max([len(unit) for unit in units])
-                    feature_matrix = np.zeros(nr_units, nr_tok_units, fm.feature_dim)
+                    feature_matrix = np.zeros((nr_units, nr_tok_units, fm.feature_dim))
                 else: 
-                    fm.feature_dim = np.zeros(nr_units, fm.feature_dim)
+                    fm.feature_dim = np.zeros((nr_units, fm.feature_dim))
 
 
                 feature_matrix, am_mask, unit_mask = self.__extract_ADU_features(fm, sample, sample_shape=feature_matrix.shape)
@@ -481,13 +486,13 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
         """
         
-        am_units = []
-        unit_units = []
-        adu_units = []
+        am_spans = []
+        unit_spans = []
+        adu_spans = []
 
-        unit_goups = sample.groupby("unit_id")
+        units = sample.groupby("unit_id")
 
-        for unit_id, gdf in unit_goups:
+        for unit_id, gdf in units:
             
             am = sample[sample["am_id"]==unit_id]
             
@@ -511,13 +516,22 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             else:
                 adu_span = (unit_start, unit_end)
 
-            am_units.append(am_span)
-            unit_units.append(unit_span)
+            am_spans.append(am_span)
+            unit_spans.append(unit_span)
             adu_spans.append(adu_span)
+        
+        if not am_spans:
+            am_spans = [(0,0)]
 
-        Input.add("unit_idx", np.array(am_spans), "am")
-        Input.add("unit_idx", np.array(unit_span), "span")
-        Input.add("unit_idx", np.array(adu_spans), "adu")
+        if not unit_spans:
+            unit_spans = [(0,0)]
+
+        if not adu_spans:
+            adu_spans = [(0,0)]
+
+        Input.add("span_idxs", np.array(am_spans), "am")
+        Input.add("span_idxs", np.array(unit_spans), "span")
+        Input.add("span_idxs", np.array(adu_spans), "adu")
 
         #return {"am_spans":am_spans, "span_spans":span_spans, "adu_spans":adu_spans}
 
