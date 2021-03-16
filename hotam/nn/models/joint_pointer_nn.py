@@ -6,63 +6,11 @@ import torch.nn.functional as F
 
 #hotam
 from hotam.nn.layers.lstm import LSTM_LAYER
-#from hotam.nn.layers.attention import CONTENT_BASED_ATTENTION
-from hotam.nn.utils import masked_mean, multiply_mask_matrix
+from hotam.nn.layers.link_layers import Pointer
+
+from hotam.nn.utils import agg_emb
 
 
-
-class Decoder(nn.Module):
-
-
-    def __init__(self, input_size:int, hidden_size:int, dropout=None):
-        super().__init__()
-
-        self.input_layer = nn.Linear(input_size, hidden_size)
-        self.lstm_cell =  nn.LSTMCell(input_size, hidden_size)
-
-        self.attention = CONTENT_BASED_ATTENTION(
-                                                    input_dim=hidden_size,
-                                                    )
-        
-        self.use_dropout = False
-        if dropout:
-            self.dropout = nn.Dropout(dropout)
-            self.use_dropout = True
-
-
-    def forward(self, encoder_outputs, encoder_h_s, encoder_c_s, mask):
-
-        seq_len = encoder_outputs.shape[1]
-        batch_size = encoder_outputs.shape[0]
-
-        #we concatenate the forward direction lstm states
-        # from (NUM_LAYER*DIRECTIONS, BATCH_SIZE, HIDDEN_SIZE) ->
-        # (BATCH_SIZE, HIDDEN_SIZE*NUM_LAYER)
-        layer_dir_idx = list(range(0,encoder_h_s.shape[0],2))
-        encoder_h_s = torch.cat([*encoder_h_s[layer_dir_idx]],dim=1)
-        encoder_c_s = torch.cat([*encoder_c_s[layer_dir_idx]],dim=1)
-
-        decoder_input = torch.zeros(encoder_h_s.shape)
-        prev_h_s = encoder_h_s
-        prev_c_s = encoder_c_s
-
-        #(BATCH_SIZE, SEQ_LEN)
-        pointer_probs = torch.zeros(batch_size, seq_len, seq_len)
-        for i in range(seq_len):
-            
-            prev_h_s, prev_c_s = self.lstm_cell(decoder_input, (prev_h_s, prev_c_s))
-
-            if self.use_dropout:
-                prev_h_s = self.dropout(prev_h_s)
-
-            decoder_input = self.input_layer(decoder_input)
-            decoder_input = F.sigmoid(decoder_input)
-
-            pointer_softmax = self.attention(prev_h_s, encoder_outputs, mask)
-        
-            pointer_probs[:, i] = pointer_softmax
-            
-        return pointer_probs
 
 
 class Encoder(nn.Module):
@@ -190,8 +138,9 @@ class JointPN(nn.Module):
 
     """
     
-    def __init__(self, hyperparamaters:dict, task_dims:dict, feature_dims:dict):
+    def __init__(self, hyperparamaters:dict, task_dims:dict, feature_dims:dict, train_mode:bool):
         super().__init__()
+        self.train_mode = train_mode
         self.OPT = hyperparamaters["optimizer"]
         self.LR = hyperparamaters["lr"]
         self.ENCODER_INPUT_DIM = hyperparamaters["encoder_input_dim"]
@@ -227,7 +176,7 @@ class JointPN(nn.Module):
                                 dropout = self.ENC_DROPOUT
                                 )
 
-        self.decoder = Decoder(
+        self.decoder = Pointer(
                                 input_size=self.DECODER_HIDDEN_DIM,
                                 hidden_size=self.DECODER_HIDDEN_DIM,
                                 dropout = self.DEC_DROPOUT
@@ -244,69 +193,52 @@ class JointPN(nn.Module):
 
 
     def forward(self, batch):
-        
-        adu_embs = batch["word_embs"]
-                
-        #4D mask, mask over the words in each ac in each input
-        ac_token_mask = batch["ac_token_mask"]
-        
-        #3D mask, mask over acs in each input
-        ac_mask = batch["ac_mask"]
-
-        lengths = batch["lengths_seq"]
-
-        # turn all work embeddigns that are not ACs to 0s (e.g. all words beloning to Argument Markers are turn to 0)
-        masked_ac_word_embs =  multiply_mask_matrix(adu_embs, ac_token_mask)
-
-        # aggregating word embeddings while taking masked values into account
-        agg_ac_embs = masked_mean(masked_ac_word_embs, ac_token_mask)
+                        
+        unit_embs = agg_emb(batch["token"]["word_embs"], 
+                            lengths = batch["unit"]["lengths"],
+                            span_indexes = batch["unit"]["span_idxs"], 
+                            mode = "average"
+                            )
         
         #combining features
-        X = torch.cat((agg_ac_embs, batch["doc_embs"]), dim=-1)
+        X = torch.cat((unit_embs, batch["unit"]["doc_embs"]), dim=-1)
         
         if self.use_feature_dropout:
             X = self.feature_dropout(X)
 
         # 1-2 | Encoder
         # encoder_output = (BATCH_SIZE, SEQ_LEN, HIDDEN_DIM*LAYER*DIRECTION)
-        encoder_out, (encoder_h_s, encoder_c_s) = self.encoder(X, lengths)
+        encoder_out, (encoder_h_s, encoder_c_s) = self.encoder(X, batch["unit"]["lengths"])
 
         # 3-7 | Decoder
         # (BATCH_SIZE, SEQ_LEN, SEQ_LEN)
         # prob distributions (softmax)
-        pointer_probs = self.decoder(encoder_out, encoder_h_s, encoder_c_s, ac_mask)
+        pointer_probs = self.decoder(encoder_out, encoder_h_s, encoder_c_s, batch["unit"]["mask"])
 
-        # we want to ignore -1  in the loss function so we set pad_values to -1, default is 0
-        batch.change_pad_value(-1)
+        label_probs =  F.softmax(self.ac_clf_layer(encoder_out),dim=-1)
 
-        #8
-        #(BATCH_SIZE * SEQ_LEN, NUM_LABELS)   
-        pointer_probs_2d = torch.flatten(pointer_probs, end_dim=-2)
+        if self.train_mode:
+            # we want to ignore -1  in the loss function so we set pad_values to -1, default is 0
+            batch.change_pad_value(-1)
 
-        relation_loss = self.TASK_WEIGHT * self.loss(torch.log(pointer_probs_2d), batch["relation"].view(-1))
-        relation_preds = torch.argmax(pointer_probs,dim=-1)
+            pointer_probs_2d = torch.flatten(pointer_probs, end_dim=-2)
+            link_loss = self.loss(torch.log(pointer_probs_2d), batch["relation"].view(-1))
 
-        #9
-        #(BATCH_SIZE, SEQ_LEN, NUM_LABELS)
-        ac_probs =  F.softmax(self.ac_clf_layer(encoder_out),dim=-1)
+            label_probs_2d = torch.flatten(ac_probs, end_dim=-2)
+            label_loss = self.loss(torch.log(ac_probs_2d), batch["ac"].view(-1))
 
-        #(BATCH_SIZE * SEQ_LEN, NUM_LABELS)    
-        ac_probs_2d = torch.flatten(ac_probs, end_dim=-2)
-        ac_loss = (1-self.TASK_WEIGHT) * self.loss(torch.log(ac_probs_2d), batch["ac"].view(-1))
-        ac_preds = torch.argmax(ac_probs, dim=-1)
+            
+            total_loss = ((1-self.TASK_WEIGHT) * link_loss) + ((1-self.TASK_WEIGHT) * label_loss)
 
-        #10
-        total_loss = relation_loss + ac_loss
+            output.add_loss(task="total",       data=total_loss)
+            output.add_loss(task="link",        data=link_loss)
+            output.add_loss(task="label",       data=label_loss)
 
-        return {    
-                    "loss": {   
-                                "total": total_loss,
-                                "ac": ac_loss, 
-                                "relation": relation_loss,
-                                }, 
-                    "preds": {
-                                "ac": ac_preds, 
-                                "relation": relation_preds,
-                            },
-                    "probs": {}
-                }
+
+        label_preds = torch.argmax(label_probs,  dim=-1)
+        link_preds = torch.argmax(pointer_probs, dim=-1)
+
+        output.add_preds(task="label",          level="unit", data=label_preds)
+        output.add_preds(task="link",           level="unit", data=link_preds)
+
+
