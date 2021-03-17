@@ -1,7 +1,10 @@
 
 
-import torch
+
 import numpy as np
+
+import torch
+import torch.nn.functional as F
 
 
 class PairingLayer(torch.nn.Module):
@@ -71,19 +74,17 @@ class PairingLayer(torch.nn.Module):
 
     6)  at this step we have S and can pass it to our linear layer
 
-    7) before we apply softamx we will mask out the pairs that are not possible, e.g. pairs that stand for links
-       that span accross the actuall text. Softmax will ignore any -inf value, hence we will change the values for 
-       all pairs that are "illegal" to -inf. Then apply softmax
-
-    8) Lastly, we get the predictions by argmaxing.
+    7) lastly, we set the values for all pairs which are not possible and which we dont want to be counter for in our
+        loss function (or any softmax, or other activation function) to -inf
+    
 
     """
 
-    def __init__(self, feature_dim:int, max_units:int):
-
+    def __init__(self, input_dim:int, max_units:int):
+        super().__init__()
         self.max_units = max_units
         self.one_hot_dim = (max_units*2)-1
-        input_dim = feature_dim + one_hot_dim
+        input_dim = (input_dim * 3) + self.one_hot_dim
         self.link_clf = torch.nn.Linear(input_dim, 1)
 
 
@@ -92,6 +93,7 @@ class PairingLayer(torch.nn.Module):
         max_units = x.shape[1]
         batch_size = x.shape[0]
         shape = (batch_size,max_units,max_units,x.shape[-1])
+        device = x.device
         
         # step 1 -3
         x = torch.repeat_interleave(x, max_units, dim=1)
@@ -99,12 +101,16 @@ class PairingLayer(torch.nn.Module):
         a_m_t = a_m.transpose(2, 1)
         
         # step 4
-        one_hots = torch.LongTensor([
+        one_hots = torch.tensor(
+                                    [
                                     np.diag(np.ones(self.one_hot_dim),i)[:max_units,:self.one_hot_dim] 
                                     for i in range(max_units-1, -1, -1)
-                                    ])
-        one_hots = one_hots.repeat_interleave(batch_size,dim=0)
-        one_hots = one_hots.view((batch_size,max_units,max_units,one_hot_dim))
+                                    ], 
+                                    dtype=torch.uint8,
+                                    device=device
+                                    )
+        one_hots = one_hots.repeat_interleave(batch_size, dim=0)
+        one_hots = one_hots.view((batch_size,max_units,max_units, self.one_hot_dim))
         
         # step 5
         pair_matrix = torch.cat([a_m, a_m_t, a_m*a_m_t, one_hots], axis=-1)
@@ -113,13 +119,13 @@ class PairingLayer(torch.nn.Module):
         pair_scores = self.link_clf(pair_matrix)
 
         # step 7
+        unit_mask = unit_mask.type(torch.bool)
+
         pair_scores[~unit_mask]  = float("inf")
-        print(pair_scores)
 
-        pair_probs = F.softmax(pair_scores)
-        print(pair_probs)
+        # pair_probs = F.softmax(pair_scores)
 
-        # step 8
-        pair_preds = torch.argmax(pair_probs)
+        # # step 8
+        # pair_preds = torch.argmax(pair_probs)
     
-        return pair_probs, pair_preds
+        return pair_scores

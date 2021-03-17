@@ -105,10 +105,10 @@ class LSTM_DIST(nn.Module):
         #                             bidirectional=self.BI_DIR,
         #                             )
 
-
-        self.stance_clf = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), task_dims["stance"])
-        self.ac_clf = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), task_dims["ac"])
-        self.link_clf = PairingLayer(feature_dim=(self.HIDDEN_DIM*2) + feature_dims["doc_embs"], max_units=task_dims["link"])
+        input_size = (self.HIDDEN_DIM*(2 if self.BI_DIR else 1) * 2) + self.DOC_FEATURE_DIM
+        self.link_label_clf = nn.Linear(input_size, task_dims["link_label"])
+        self.label_clf = nn.Linear(input_size, task_dims["label"])
+        self.link_clf = PairingLayer(input_dim=input_size, max_units=task_dims["link"])
 
         self.loss = nn.CrossEntropyLoss(reduction="sum", ignore_index=-1)
 
@@ -169,7 +169,7 @@ class LSTM_DIST(nn.Module):
         forward = bidir_lstm_output[:,:,:hidden_dim]
         backward = bidir_lstm_output[:,:,hidden_dim:]
 
-        minus_reps = torch.zeros((batch_size, nr_seq, feature_dim))
+        minus_reps = torch.zeros((batch_size, nr_seq, feature_dim), device=self.device)
         
         for idx in range(batch_size):
             for sidx,(i,j) in enumerate(spans[idx]):
@@ -179,13 +179,13 @@ class LSTM_DIST(nn.Module):
                     continue
 
                 if i-1 == -1:
-                    f_pre = torch.zeros(hidden_dim)
+                    f_pre = torch.zeros(hidden_dim, device=self.device)
                 else:
                     f_pre = forward[idx][i-1]
 
 
                 if j+1 > backward.shape[1]:
-                    b_post = torch.zeros(hidden_dim)
+                    b_post = torch.zeros(hidden_dim,  device=self.device)
                 else:
                     b_post = backward[idx][j+1]
 
@@ -201,8 +201,9 @@ class LSTM_DIST(nn.Module):
         return minus_reps
 
 
-    def forward(self, Input, Output):
-
+    def forward(self, batch, output):
+        
+        self.device = batch.device
         word_embs = batch["token"]["word_embs"] 
 
         # Wi:j 
@@ -211,7 +212,7 @@ class LSTM_DIST(nn.Module):
         # batch is sorted by length of prediction level which is Argument Components
         # so we need to sort the word embeddings for the sample, pass to lstm then return to 
         # original order
-        sorted_lengths_tok, sorted_indices = torch.sort(batch["token"]["lengths_tok"], descending=True)
+        sorted_lengths_tok, sorted_indices = torch.sort(batch["token"]["lengths"], descending=True)
         _ , original_indices = torch.sort(sorted_indices, descending=False)
 
         # 1
@@ -222,13 +223,25 @@ class LSTM_DIST(nn.Module):
 
         # 2
         # create span representation for Argument Components and Argumentative Markers
-        am_minus_embs = self.__minus_span(lstm_out, batch["am_spans"])
-        ac_minus_embs = self.__minus_span(lstm_out, batch["ac_spans"])
+        am_minus_embs = self.__minus_span(lstm_out, batch["am"]["span_idxs"])
+        ac_minus_embs = self.__minus_span(lstm_out, batch["unit"]["span_idxs"])
 
         # 3
         # pass each of the spans to a seperate BiLSTM. 
-        am_lstm_out, _ = self.am_lstm(am_minus_embs, batch["unit"]["lengths"])
+
+        # NOTE! as Argumentative Markers are not allways present the length will sometimes be 0, 
+        # which will cause an error when useing pack_padded_sequence etc.
+        # to fix this all AM's that are non existing are set to a defualt lenght of 1.
+        # this will not really matter as these representations will be 0s anyway.
+        #
+        # we also need to sort AMS so they can be passed to the lstm
+        sorted_am_lengths, sorted_am_indices = torch.sort(batch["am"]["lengths"], descending=True)
+        _ , original_am_indices = torch.sort(sorted_indices, descending=False)
+        am_lstm_out, _ = self.am_lstm(am_minus_embs[sorted_indices], sorted_am_lengths)
+        am_lstm_out = am_lstm_out[original_am_indices]
+
         ac_lstm_out, _ = self.ac_lstm(ac_minus_embs, batch["unit"]["lengths"])
+
 
         # 4
         # concatenate the output from Argument Component BiLSTM and Argument Marker BiLSTM with BOW embeddigns W
@@ -238,16 +251,15 @@ class LSTM_DIST(nn.Module):
         # 5
         # Classification of AC and link labels is pretty straight forward
         link_label_out = self.link_label_clf(contex_emb)
-        label_out = self.unit_clf(contex_emb)
+        label_out = self.label_clf(contex_emb)
+        link_out = self.link_clf(contex_emb, unit_mask=batch["unit"]["mask"])
 
-        link_probs, link_preds = self.link_clf(contex_emb, unit_mask=batch["unit"]["mask"])
+        #link_label_probs = F.softmax(link_label_out, dim=-1)
+        #label_probs = F.softmax(label_out, dim=-1)
 
-        link_label_probs = F.softmax(link_label_out, dim=-1)
-        label_probs = F.softmax(label_out, dim=-1)
-
-        link_preds = torch.argmax(relation_out, dim=-1)
-        link_label_preds = torch.argmax(stance_out, dim=-1)
-        label_preds = torch.argmax(ac_out, dim=-1)
+        link_preds = torch.argmax(link_out, dim=-1)
+        link_label_preds = torch.argmax(link_label_out, dim=-1)
+        label_preds = torch.argmax(label_out, dim=-1)
 
 
         if self.train_mode:

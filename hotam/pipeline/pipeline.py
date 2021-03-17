@@ -60,6 +60,7 @@ class Pipeline:
         
         self.tasks = tasks
         self.project = project
+        self.prediction_level = prediction_level
         self.pipeline_id = self.__pipeline_hash([
                                                 prediction_level,
                                                 dataset.name(),
@@ -150,7 +151,8 @@ class Pipeline:
                 dataset = PreProcessedDataset(
                                                     name=dataset.name(),
                                                     dir_path=self._pipeline_folder_path,
-                                                    label_encoders=self.preprocessor.encoders
+                                                    label_encoders=self.preprocessor.encoders,
+                                                    prediction_level=self.prediction_level
                                                     )
             else:
                 try:

@@ -25,15 +25,15 @@ class ModelInput(dict):
         self.current_epoch = None
         self.pad_value = 0
         self._size = 0
-        self._ids = []
+        self._idxs = []
         self.oo = []
 
     def __len__(self):
-        return len(self._ids)
+        return len(self._idxs)
 
     @property
-    def ids(self):
-        return self._ids
+    def idxs(self):
+        return self._idxs
 
     @property
     def levels(self):
@@ -64,7 +64,7 @@ class ModelInput(dict):
 
     def to_numpy(self):
 
-        self._ids = np.array(self._ids)
+        self._idxs = np.array(self._idxs)
         for level in self:
 
             for k,v in self[level].items():
@@ -100,8 +100,8 @@ class ModelInput(dict):
         #         self[k].append(v)
 
 
-        if k == "id":
-            self._ids.append(v)
+        if k == "idxs":
+            self._idxs.append(v)
             return
         
         if level not in self:
@@ -136,9 +136,9 @@ class ModelInput(dict):
     def show_sample(self, sample_id=None):
 
         if sample_id is None:
-            sample_id = self.ids[0]
+            sample_id = self.idxs[0]
 
-        idx = int(np.where(self.ids == sample_id)[0])
+        idx = int(np.where(self.idxs == sample_id)[0])
 
         self.prediction_level = "token"
         

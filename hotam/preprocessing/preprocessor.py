@@ -87,6 +87,8 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         self._init_encoder()
         self._init_DataPreprocessor()
         self._create_data_encoders()
+        
+        self._removed = 0
     
     @property
     def config(self):
@@ -146,9 +148,29 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 samples = [(doc_id,doc_df)]
 
             for i, sample in samples:
-                Input.add("id", i, None)
+                i -= self._removed
+
+                if self.prediction_level == "unit":
+                    units = sample.groupby("unit_id")
+
+                    #if we are prediction on Units but sample doesnt have any, we can skip it
+                    if not len(units):
+                        self._removed += 1
+                        continue
+
+                    units = sample.groupby("unit_id")
+                    unit_length = len(units)
+                    unit_token_lengths = np.array([g.shape[0] for i, g in units])
+
+                    Input.add("lengths", unit_length, "unit")
+                    Input.add("lengths_tok", unit_token_lengths, "unit")
+                    Input.add("mask", np.ones(unit_length, dtype=np.uint8), "unit")
+                
+
+
+                Input.add("idxs", i, None)
                 Input.add("lengths", sample.shape[0], "token")
-                Input.add("mask", np.ones(sample.shape[0]), "token")
+                Input.add("mask", np.ones(sample.shape[0], dtype=np.uint8), "token")
                 
                 if self.__labeling:
                     spans_grouped = sample.groupby("span_id")
@@ -162,14 +184,15 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                     Input.add("none_span_mask", non_span_mask, "span")
 
 
-                if self.prediction_level == "unit":
-                    units = sample.groupby("unit_id")
-                    length = len(units)
-                    token_lengths = np.array([g.shape[0] for i, g in units])
 
-                    Input.add("lengths", len(units), "unit")
-                    Input.add("lengths_tok", token_lengths, "unit")
-                    Input.add("mask", np.zeros(length), "unit")
+
+                if self.argumentative_markers:
+                    ams = sample.groupby("am_id")
+                    # as length of <= 1 is problematic later when working with NNs
+                    # we set lenght to 1 as default, this should not change anything as 
+                    # representations for such AMs will remain 0
+                    Input.add("lengths", unit_length, "am")
+                    Input.add("lengths", unit_length, "adu")
 
 
                 self.__get_text(Input, sample)
@@ -254,9 +277,9 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             deprels.extend(sent_deprels)
             depheads.extend(sent_depheads)
 
-        Input.add("root_idxs", root_id, self.sample_level)
-        Input.add("deprel", np.array(deprels, dtype=np.int), self.sample_level)
-        Input.add("dephead", np.array(depheads, dtype=np.int), self.sample_level)
+        Input.add("root_idxs", root_id, "token")
+        Input.add("deprel", np.array(deprels, dtype=np.int), "token")
+        Input.add("dephead", np.array(depheads, dtype=np.int), "token")
   
 
     def __get_encs(self, Input:ModelInput, sample:pd.DataFrame):
@@ -287,7 +310,6 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
   
     def __get_feature_data(self, Input:ModelInput, sample:pd.DataFrame):
         
-        mask_dict = {}
         feature_dict = {}
 
         for feature, fm in self.feature2model.items():
@@ -349,7 +371,6 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 Input.add(group_name, group_dict["data"][0], group_dict["level"])
 
 
-
     def __get_am_unit_idxs(self, Input:ModelInput, sample:pd.DataFrame):
         """
         for each sample we get the units of am, unit and the whole adu.
@@ -403,7 +424,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             adu_spans = [(0,0)]
 
         Input.add("span_idxs", np.array(am_spans), "am")
-        Input.add("span_idxs", np.array(unit_spans), "span")
+        Input.add("span_idxs", np.array(unit_spans), "unit")
         Input.add("span_idxs", np.array(adu_spans), "adu")
 
         #return {"am_spans":am_spans, "span_spans":span_spans, "adu_spans":adu_spans}

@@ -36,15 +36,14 @@ from sklearn.model_selection import train_test_split
 
 class PreProcessedDataset(ptl.LightningDataModule):
 
-    def __init__(self, name:str, dir_path:str, label_encoders:dict):
+    def __init__(self, name:str, dir_path:str, label_encoders:dict, prediction_level:str):
         self._name = name
-        print(name)
         self.label_colors = get_dataset(name).label_colors()
         self.label_encoders = label_encoders
         self._fp = os.path.join(dir_path, f"{name}_data.hdf5")
         self.data = h5py.File(self._fp, "r")
-        self._size = self.data["ids"].shape[0]
-        self.prediction_level = "token"
+        self._size = self.data["idxs"].shape[0]
+        self.prediction_level = prediction_level
 
         self._stats = pd.read_csv(os.path.join(dir_path, f"{name}_stats.csv"))
         self._stats.columns = ["split_id", "split", "task", "label", "count"]
@@ -61,16 +60,16 @@ class PreProcessedDataset(ptl.LightningDataModule):
 
         sorted_key = np.sort(key)
         lengths = self.data[self.prediction_level]["lengths"][sorted_key]
-        max_len = max(lengths)
         lengths_decending = np.argsort(lengths)[::-1]
-
-        Input._ids = self.data["ids"][sorted_key][lengths_decending]
+        Input._idxs = self.data["idxs"][sorted_key][lengths_decending]
         
         for group in self.data:
 
-            if group == "ids":
+            if group == "idxs":
                 continue
             
+            max_len = max(self.data[group]["lengths"][sorted_key])
+
             Input[group] = {}
             for k, v in self.data[group].items():
                 
@@ -98,8 +97,8 @@ class PreProcessedDataset(ptl.LightningDataModule):
         structure = { }
         for group in self.data.keys():
 
-            if group == "ids":
-                structure["ids"] = f'dtype={str(self.data["ids"].dtype)}, shape={self.data["ids"].shape}'
+            if group == "idxs":
+                structure["idxs"] = f'dtype={str(self.data["idxs"].dtype)}, shape={self.data["idxs"].shape}'
                 continue
 
             structure[group] = {}
@@ -155,7 +154,7 @@ class DataPreprocessor:
 
     def __init_store(self, Input:ModelInput):
         
-        self.h5py_f.create_dataset("ids", data=Input.ids, dtype=np.int16, chunks=True, maxshape=(None,))
+        self.h5py_f.create_dataset("idxs", data=Input.idxs, dtype=np.int16, chunks=True, maxshape=(None,))
 
         for level in Input.levels:
             
@@ -176,9 +175,9 @@ class DataPreprocessor:
 
     def __append_store(self, Input:ModelInput):
 
-        last_sample_i = self.h5py_f["ids"].shape[0]
-        self.h5py_f["ids"].resize((self.h5py_f["ids"].shape[0] + Input.ids.shape[0],))
-        self.h5py_f["ids"][last_sample_i:] = Input.ids
+        last_sample_i = self.h5py_f["idxs"].shape[0]
+        self.h5py_f["idxs"].resize((self.h5py_f["idxs"].shape[0] + Input.idxs.shape[0],))
+        self.h5py_f["idxs"][last_sample_i:] = Input.idxs
 
         for level in Input.levels:
             for k,v in Input[level].items():
@@ -209,8 +208,8 @@ class DataPreprocessor:
     def __set_splits(self, dump_dir:str, dataset:DataSet):
 
 
-        def create_new_splits(ids):
-            train, test  = train_test_split(ids,test_size=0.3)
+        def create_new_splits(idxs):
+            train, test  = train_test_split(idxs,test_size=0.3)
             train, val  = train_test_split(train,test_size=0.1)
             return {0:{
                         "train": train,
@@ -222,7 +221,7 @@ class DataPreprocessor:
         splits = dataset.splits
 
         if self.sample_level != dataset.level:
-            splits = create_new_splits(self.h5py_f["ids"][:])
+            splits = create_new_splits(self.h5py_f["idxs"][:])
 
         file_path = os.path.join(dump_dir, f"{dataset.name()}_splits.pkl")
         with open(file_path, "wb") as f:
@@ -240,12 +239,12 @@ class DataPreprocessor:
         lengths_span = self.h5py_f["span"]["lengths"][:]
         non_spans_mask = self.h5py_f["span"]["none_span_mask"][:]
 
-        ids  = self.h5py_f["ids"]
+        idxs  = self.h5py_f["idxs"]
 
         for task in self.all_tasks:
             encoded_labels = self.h5py_f[self.prediction_level][task][:]
 
-            sample_iter = enumerate(zip(ids, lengths, encoded_labels))
+            sample_iter = enumerate(zip(idxs, lengths, encoded_labels))
             for i, (ID, length, labels) in sample_iter:
                 
                 if task == "link" and self.prediction_level == "token":
@@ -266,8 +265,8 @@ class DataPreprocessor:
                 for split_id, splits_dict in splits.items():
                     counts = labe_counts.copy()
          
-                    for split, split_ids in splits_dict.items():
-                        if ID in split_ids:
+                    for split, split_idxs in splits_dict.items():
+                        if ID in split_idxs:
                             collected_counts[split_id][split][task].append(counts)
 
 
@@ -297,7 +296,6 @@ class DataPreprocessor:
     def process_dataset(self, dataset:DataSet, chunks:int = 50, dump_dir:str = None) -> PreProcessedDataset:
         
         file_path = os.path.join(dump_dir, f"{dataset.name()}_data.hdf5")
-        print(file_path)
         self.__setup_h5py(file_path=file_path) 
 
 
@@ -306,8 +304,8 @@ class DataPreprocessor:
         for i in range(0, len(dataset), chunks):
             Input = self(dataset[i:i+chunks])
 
-            # Input._ids = Input._ids + (last_id + (1 if last_id else 0))
-            # last_id = Input.ids[-1]
+            # Input._idxs = Input._idxs + (last_id + (1 if last_id else 0))
+            # last_id = Input.idxs[-1]
 
             if not self.__init_storage_done:
                 self.__init_store(Input)
@@ -323,7 +321,12 @@ class DataPreprocessor:
 
         self.h5py_f.close()
 
-        return PreProcessedDataset(name=dataset.name(), dir_path=dump_dir, label_encoders=self.encoders)
+        return PreProcessedDataset(
+                                    name=dataset.name(), 
+                                    dir_path=dump_dir, 
+                                    label_encoders=self.encoders,
+                                    prediction_level=self.prediction_level
+                                    )
 
 
 

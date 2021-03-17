@@ -59,7 +59,6 @@ class Pointer(nn.Module):
 
     def __init__(self, input_size:int, hidden_size:int, dropout=None):
         super().__init__()
-
         self.input_layer = nn.Linear(input_size, hidden_size)
         self.lstm_cell =  nn.LSTMCell(input_size, hidden_size)
         self.attention = AttentionLayer(

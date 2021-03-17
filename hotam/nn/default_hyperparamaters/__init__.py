@@ -53,7 +53,7 @@ lstm_dist_hps = {
                 "hidden_dim": 256,
                 "num_layers": 1,
                 "bidir": True,
-                "batch_size": 10,
+                "batch_size": 32,
                 "max_epochs":10,
                 "alpha": 0.5,
                 "beta": 0.5

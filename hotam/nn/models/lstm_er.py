@@ -39,77 +39,66 @@ from hotam.nn.utils import Graph, pattern2regex, get_all_pairs
 class SegLabeling(nn.Module):
     def __init__(
         self,
-        token_embedding_size,
-        label_embedding_size,
-        h_size,
-        ner_hidden_size,
-        ner_output_size,
+        word_emb_size,
+        hidden_size,
+        output_size,
         bidirectional=True,
         num_layers=1,
         dropout=0,
     ):
         super(AC_Seg_Module, self).__init__()
 
-        self.model_param = nn.Parameter(th.empty(0))
-        self.label_embedding_size = label_embedding_size
-
         # Entity label prediction according to arXiv:1601.00770v3, section 3.4
         # Sequential LSTM layer
         self.seqLSTM = LSTM_LAYER(
-            input_size=token_embedding_size,
-            hidden_size=h_size,
-            bidirectional=bidirectional,
-            num_layers=num_layers,
-        )
+                                    input_size=word_emb_size,
+                                    hidden_size=hidden_size,
+                                    bidirectional=bidirectional,
+                                    num_layers=num_layers,
+                                )
 
         self.dropout = nn.Dropout(dropout)
-
-        # Entity prediction layer: two layers feedforward network
-        # The input to this layer is the the predicted label of the previous
-        # word and the current hidden state.
+   
         num_dirs = 2 if bidirectional else 1
-        ner_input_size = label_embedding_size + (h_size * num_dirs)
+        input_size = output_size + (h_size * num_dirs)
         self.seq_clf = nn.Sequential(
-                                        nn.Linear(ner_input_size, ner_hidden_size),
+                                        nn.Linear(input_size, hidden_size),
                                         nn.Tanh(),
                                         self.dropout,
-                                        nn.Linear(ner_hidden_size, ner_output_size),
+                                        nn.Linear(hidden_size, output_size),
                                     )
 
-        # # self.label_embs_size = label_embedding_size
-        # self.entity_embedding = NELabelEmbedding(
-        #     encode_size=label_embedding_size)
+
 
     def forward(self,
-                word_embs,
+                X,
                 lengths,
                 ):
 
-        lstm_out, _ = self.seqLSTM(word_embs, lengths)
-
-        batch_size = lstm_out.size(0)
-        max_lenght = lstm_out.size(1)
-        hidden_size = lstm_out.size(-1)
+        batch_size = X.size(0)
+        max_lenght = X.size(1)
+        hidden_size = X.size(-1)
 
         logits = torch.zeros(batch_size, max_lenght, self.label_embedding_size)
         probs = torch.zeros(batch_size, max_lenght, self.label_embedding_size)
         preds = torch.zeros(batch_size, max_lenght)
+        one_hots = torch.zeros(batch_size, max_lenght, self.label_embedding_size)
 
-        word_label_embs =  torch.zeros(batch_size, max_lenght, hidden_size+self.label_embedding_size)
+        #word_label_embs =  torch.zeros(batch_size, max_lenght, hidden_size+self.label_embedding_size)
 
         for i in range(seq_length): 
             
-            one_hots = F.one_hot(preds[:,i-1], num_classes=self.label_embedding_size)
-            x = th.cat((lstm_out[:, i], one_hot), dim=-1)
+            one_hot = F.one_hot(preds[:,i-1], num_classes=self.label_embedding_size)
+            one_hots[:,i] = one_hot
+            x = th.cat((X[:, i], one_hot), dim=-1)
 
-            word_label_embs[:, i] = x
 
             logit = self.seq_clf(x)  # (B, NE-OUT)
-            logits[i: ] = logit    
-            probs[i: ] = F.softmax(logit, dim=1)  
-            preds[i: ] = F.argmax(probs[i: ], dim=1)  
+            logits[:,i ] = logit    
+            probs[:,i ] = F.softmax(logit, dim=1)  
+            preds[:,i ] = F.argmax(probs[i: ], dim=1)  
 
-        return logits, probs, preds, lstm_out
+        return logits, probs, preds, one_hots
 
 
 
@@ -171,14 +160,15 @@ class LSTM_ER(nn.Module):
         # Argument COmponents Segmentation module
         # ------------------------------------------
         self.module_ac_seg = AC_Seg_Module(
-            token_embedding_size=token_embs_size,
-            label_embedding_size=label_embs_size,
-            h_size=seq_lstm_h_size,
-            ner_hidden_size=ac_seg_hidden_size,
-            ner_output_size=ac_seg_output_size,
-            bidirectional=lstm_bidirectional,
-            num_layers=seq_lstm_num_layers,
-            dropout=dropout)
+                                            token_embedding_size=token_embs_size,
+                                            label_embedding_size=label_embs_size,
+                                            h_size=seq_lstm_h_size,
+                                            ner_hidden_size=ac_seg_hidden_size,
+                                            ner_output_size=ac_seg_output_size,
+                                            bidirectional=lstm_bidirectional,
+                                            num_layers=seq_lstm_num_layers,
+                                            dropout=dropout
+                                            )
 
         # Relation extraction module
         # -----------------------------
@@ -186,10 +176,12 @@ class LSTM_ER(nn.Module):
         ns = 2 if lstm_bidirectional else 1
         re_input_size = self.tree_lstm_h_size * nt + 2 * seq_lstm_h_size * ns
         tree_input_size = seq_lstm_h_size * ns + dep_embs_size + label_embs_size
-        self.tree_lstm = TreeLSTM(embedding_dim=tree_input_size,
-                                  h_size=self.tree_lstm_h_size,
-                                  dropout=dropout,
-                                  bidirectional=tree_bidirectional)
+        self.tree_lstm = TreeLSTM(
+                                    embedding_dim=tree_input_size,
+                                    h_size=self.tree_lstm_h_size,
+                                    dropout=dropout,
+                                    bidirectional=tree_bidirectional
+                                  )
         self.rel_decoder = nn.Sequential(
                                         nn.Linear(re_input_size, re_hidden_size), nn.Tanh(), self.dropout,
                                         nn.Linear(re_hidden_size, re_output_size))
@@ -199,18 +191,24 @@ class LSTM_ER(nn.Module):
         return "LSTM_ER"
 
 
-    def build_graphs(self):
+    def build_graphs(self, batch, embs):
 
         # Build a batch graph:
         # --------------------------
-        graphs = Graph(V=token_head,
-                       lengthes=lengths_sent_tok,
-                       pad_mask=pad_mask,
-                       roots_id=sents_root,
-                       graph_buid_type=self.graph_buid_type)
-        nodes_input = th.cat((h_seg, dep_embs, pred_embs_seg), dim=-1)
+        graphs = Graph(
+                        V=batch["tokens"]["dephead"],
+                        lengthes=batch["tokens"]["length"],
+                        pad_mask=batch["tokens"]["mask"],
+                        roots_id=batch["tokens"]["root_idxs"],
+                        graph_buid_type=self.graph_buid_type
+                       )
+
+        graphs.update_batch(ndata_dict={"emb": embs})
+        return graphs
+
+        #nodes_input = th.cat((h_seg, dep_embs, pred_embs_seg), dim=-1)
         # update graph data
-        graphs.update_batch(ndata_dict={"emb": nodes_input})
+        #graphs.update_batch(ndata_dict={"emb": nodes_input})
 
 
 
@@ -381,13 +379,27 @@ class LSTM_ER(nn.Module):
 
     
         input_ac_seg = th.cat((token_embs, pos_embs), dim=2)
-
         word_embs = self.dropout(word_embs)
 
-        logits, probs, preds, word_label_embs = self.module_ac_seg(word_embs, lengths_per_sample)
+        lstm_out, _ = self.LSTM(word_embs, lengths)
+
+        logits, probs, preds, label_one_hots = self.module_ac_seg(lstm_out, lengths_per_sample)
+
+        node_embs = th.cat((lstm_out, label_one_hots, dep_embs), dim=-1)
+
+        graphs = self.build_graphs(batch, node_embs)
 
 
-        nodes_input = th.cat((word_label_embs, dep_embs), dim=-1)
+        sample_span_lengths, none_span_mask, _ = bio_decode( B=[], I=[], O=[])
+        span_end_idxs = torch.cumsum(sample_span_lengths)[none_span_mask]
+
+
+        candidate_pairs = get_all_pairs(seg_ac_used, pad_mask, self.p_regex)
+
+
+        # 
+        #
+        #
 
 
         # Get relations
