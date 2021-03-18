@@ -247,6 +247,7 @@ class LSTM_DIST(nn.Module):
         # concatenate the output from Argument Component BiLSTM and Argument Marker BiLSTM with BOW embeddigns W
         contex_emb = torch.cat((am_lstm_out, ac_lstm_out, W), dim=-1)
 
+        print(contex_emb)
 
         # 5
         # Classification of AC and link labels is pretty straight forward
@@ -261,9 +262,7 @@ class LSTM_DIST(nn.Module):
         link_label_preds = torch.argmax(link_label_out, dim=-1)
         label_preds = torch.argmax(label_out, dim=-1)
 
-
-        print(torch.max(batch["unit"]["link"]))
-
+        
         if self.train_mode:
             # we want to ignore -1  in the loss function so we set pad_values to -1, default is 0
             batch.change_pad_value(level="unit", task="link", new_value=-1)
@@ -273,7 +272,7 @@ class LSTM_DIST(nn.Module):
             link_loss = self.loss(torch.flatten(link_out, end_dim=-2), batch["unit"]["link"].view(-1))
             link_label_loss = self.loss(torch.flatten(link_label_out, end_dim=-2), batch["unit"]["link_label"].view(-1))
             label_loss = self.loss(torch.flatten(label_out, end_dim=-2), batch["unit"]["label"].view(-1))
-            total_loss = (self.ALPHA * link_loss) + (self.BETA * link_label_loss) + ( (1 - (self.ALPHA-self.BETA)) * label_loss) 
+            total_loss = (self.ALPHA * link_loss) + (self.BETA * label_loss) + ( (1 - self.ALPHA- self.BETA) * link_label_loss) 
 
             output.add_loss(task="total",       data=total_loss)
             output.add_loss(task="link",        data=link_loss)
