@@ -78,11 +78,12 @@ class SegLabeling(nn.Module):
         batch_size = X.size(0)
         max_lenght = X.size(1)
         hidden_size = X.size(-1)
+        device = X.device
 
-        logits = torch.zeros(batch_size, max_lenght, self.label_embedding_size)
-        probs = torch.zeros(batch_size, max_lenght, self.label_embedding_size)
-        preds = torch.zeros(batch_size, max_lenght)
-        one_hots = torch.zeros(batch_size, max_lenght, self.label_embedding_size)
+        logits = torch.zeros(batch_size, max_lenght, self.label_embedding_size, device=device)
+        probs = torch.zeros(batch_size, max_lenght, self.label_embedding_size, device=device)
+        preds = torch.zeros(batch_size, max_lenght, device=device)
+        one_hots = torch.zeros(batch_size, max_lenght, self.label_embedding_size, device=device)
 
         #word_label_embs =  torch.zeros(batch_size, max_lenght, hidden_size+self.label_embedding_size)
 
@@ -206,25 +207,123 @@ class LSTM_ER(nn.Module):
         graphs.update_batch(ndata_dict={"emb": embs})
         return graphs
 
-        #nodes_input = th.cat((h_seg, dep_embs, pred_embs_seg), dim=-1)
-        # update graph data
-        #graphs.update_batch(ndata_dict={"emb": nodes_input})
 
+
+    def get_all_possible_pairs(unit_tok_lengths, none_unit_mask):
+        
+        batch_size = unit_tok_lengths.shape[0]
+        end_idxs = torch.cumsum(unit_tok_lengths, dim=-1)
+        
+        all_possible_pairs = []
+        for i in range(batch_size):
+            idxes = end_idxs[i][none_unit_mask[i]]
+            possible_pairs = list(itertools.product(idxes, repeat=2))
+            
+        return all_possible_pairs
+            
+
+    def forward(self, batch):
+        
+        # NOTE COMMENT AXEL
+        # So i have changes certain stuff and removed stuff im unsure why you need. Correct me if im wrong on this.
+        #
+
+        # if you want device take it from batch or from a tensor in the forward pass, im not 100% on this, but i think it might mess up things when doing multi-gpu
+        device = batch.device 
+
+        word_embs = batch["token"]["word_embs"]  
+        pos_embs = batch["token"]["pos_embs"]  
+        dep_embs = batch["token"]["deprel_embs"] 
+ 
+        
+        pos_word_embs = th.cat((token_embs, pos_embs), dim=2)
+        pos_word_embs = self.dropout(pos_word_embs)
+
+
+        # NOTE COMMENT AXEL : BELOW IS REMOVED 
+        # dont think we need this anymore. The dephead and depreal is now flattened for the sample level in preprocessing
+        # e.g. if sample level != sentence, i make the root the first root in the first sentence, then connect all other roots in all sentences
+        # to the last token in the previous sentence. I do not change the Deprel, but maybe we should change it to something else than "root".
+        # 
+        # REVIEW sometime_s I recieved lengthes in tensor!
+        # if type(lengths_sent_tok) == Tensor:
+        #     lengths_sent_tok = lengths_sent_tok.tolist()
+
+        # sents_root = batch["sent2root"]  # Tensor[B, SENT_NUM]
+        # if (sents_root.size(1) >= token_head.size(1)):
+        #     _SENT_NUM_ = token_head.size(1)
+        #     sents_root = sents_root[:, :_SENT_NUM_]
+
+        # batch_size = token_embs.size(0)
+
+
+        #we can do the LSTM outside the SegModule as we need these later right? Putting it hear makes it easier to follow.
+        lstm_out, _ = self.LSTM(pos_word_embs, lengths)
+
+        # SegModule does what it does, i have only changes a small amout of things
+        # we return the logit, probs, preds and onehots.
+        logits, probs, preds, label_one_hots = self.module_ac_seg(lstm_out, lengths_per_sample)
+
+
+        # we have a bio decode which we can use. which returns us a the length of each span
+        # then a maks which tells us which spans are actuall Units. 
+        span_lengths, none_span_mask, _ = bio_decode( B=[], I=[], O=[])
+
+        # given this info we can get the pairs by this function, its not done yet as its not clear yet to me if we need the 
+        # pairs in a matrix or its fine with a list.
+        candidate_pairs = get_all_possible_pairs(sample_span_lengths, none_unit_mask)
+
+        #candidate_pairs = get_all_pairs(seg_ac_used, pad_mask, self.p_regex)
+
+
+        # we concatenate all embs for the node embeddings
+        node_embs = th.cat((lstm_out, label_one_hots, dep_embs), dim=-1)
+
+        # then we build graph
+        graphs = self.build_graphs(batch, node_embs)
 
 
 
         # NOTE AXEL:
-        # 1 ) It seems like you go through a lot of trouble getting all pairs and then fitting them into a graph
-        #      
-        # 2 ) maybe move the graph constructing to the TreeLSTM? E.g. we only need one loop, it will be eaiser to see. We could even construct pass imput batch wise
-        # and allow the TreeLSTM to select the spans based on masks?
+        # It seems like you go through a lot of trouble getting all pairs and then fitting them into a graph
+        #  
+        # Also, regarding the multiple types of pairs, we dont need them either. If you want the average embeddigns for each
+        # of the Segments, we can get this with the function hotam.nn.utils.agg_embs(), We only need the indexes of the segments
+        # which ill either make sure we get from bio_decode, or we can make them from the span_lengths.
         #
-        # for example:
-        #       
-        #       for pair in pairs:
-        #           graph = create_graph(pairs)       
-        #           TreeLSTM(graph)
-        
+        #
+        # And more importantly why is it important to build graphs first then get subgraphs of them. Why can we create a graphs for the shortest paths?
+        # it seems like you are doing a lot of construction / formating which we might avoid if we do one of the below loops! Or am i completly off haha :)? 
+        # What do you think?
+
+        # # PS getting the word_embs, the avg_emb is very easy now as we can just index the first output of the lstm.
+        #
+        # alt1:
+        #   all_embs = zeros
+        #   for i,sample in batch.
+        #       for j,pair in sample:
+        #              
+        #          
+        #           graph = build_graph_from_pairs(pair)
+        #           common_ancestor_hidden = LSTMTree(graph)
+        #              
+        #           emb = cat(word_embs_start, word_emb_end, common_ancestor_hidden, pair_avg_emb)
+        #           all_embs[i][j] = emb
+        #
+
+
+        # alt2:
+        #   all_embs = zeros
+        #   for i,sample in batch.
+        #       graphs = build_graph_from_pairs(pairs)
+        #       common_ancestor_hiddens = LSTMTree(graphs)
+        #           
+        #       emb = cat(word_embs_starts, word_emb_ends ,common_ancestor_hiddens, pair_avg_embs)
+        #       all_embs[i] = embs
+        #
+
+
+
         # Get all possible pairs between the last token of the used argument
         # segments (detected or ground truth)
         relations_data = get_all_pairs(seg_ac_used, pad_mask, self.p_regex)
@@ -342,66 +441,16 @@ class LSTM_ER(nn.Module):
             h_ac_dash.append(h_dash)
 
 
-
-    def forward(self, batch):
-
-        device = self.model_param.device
-
-        # Batch data:
-        # ================
-        # Embeddings:
-        # ----------
-        token_embs = batch["word_embs"]  # Tensor["B", "SEQ", "E"]
-        pos_embs = batch["pos_embs"]  # Tensor["B", "SEQ", "E"]
-        dep_embs = batch["deprel_embs"]  # Tensor["B", "SEQ", "E"]
-
-        # Token data:
-        # ----------
-        token_head = batch["dephead"]  # Tensor["B", "SENT_NUM", "SEQ"]
-        pad_mask = batch["token_mask"]  # pad token mask. Tensor["B", "SEQ"]
-
-        # Sample information:
-        # -------------------
-        lengths_sent_tok = batch["lengths_sent_tok"]  # type: list[list]
-        lengths_per_sample = batch["lengths_tok"]  # type: list
-
-
-        # # REVIEW sometime_s I recieved lengthes in tensor!
-        # if type(lengths_sent_tok) == Tensor:
-        #     lengths_sent_tok = lengths_sent_tok.tolist()
-
-        # sents_root = batch["sent2root"]  # Tensor[B, SENT_NUM]
-        # if (sents_root.size(1) >= token_head.size(1)):
-        #     _SENT_NUM_ = token_head.size(1)
-        #     sents_root = sents_root[:, :_SENT_NUM_]
-
-        # batch_size = token_embs.size(0)
-
+     # token_head = batch["dephead"]  # Tensor["B", "SENT_NUM", "SEQ"]
+        # pad_mask = batch["token_mask"]  # pad token mask. Tensor["B", "SEQ"]
     
-        input_ac_seg = th.cat((token_embs, pos_embs), dim=2)
-        word_embs = self.dropout(word_embs)
-
-        lstm_out, _ = self.LSTM(word_embs, lengths)
-
-        logits, probs, preds, label_one_hots = self.module_ac_seg(lstm_out, lengths_per_sample)
-
-        node_embs = th.cat((lstm_out, label_one_hots, dep_embs), dim=-1)
-
-        graphs = self.build_graphs(batch, node_embs)
+        # lengths_sent_tok = batch["lengths_sent_tok"]  # type: list[list]
+        # lengths_per_sample = batch["lengths_tok"]  # type: list
 
 
-        sample_span_lengths, none_span_mask, _ = bio_decode( B=[], I=[], O=[])
-        span_end_idxs = torch.cumsum(sample_span_lengths)[none_span_mask]
-
-
-        candidate_pairs = get_all_pairs(seg_ac_used, pad_mask, self.p_regex)
-
-
+        # NOTE COMMENT AXEL
+        # What is happening here?
         # 
-        #
-        #
-
-
         # Get relations
         # --------------
         # all possible  relations in both directions between the last tokens

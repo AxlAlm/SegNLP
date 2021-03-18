@@ -120,27 +120,6 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             doc_df = self._process_doc(doc)
             doc_id = int(doc_df["id"].to_numpy()[0])
 
-            #everything within this block should be speed up
-            if self.__labeling:
-                if span_labels:
-                    doc_df = self._label_spans(doc_df, span_labels)
-
-                if token_labels:
-                    doc_df = self._label_tokens(doc_df, token_labels)
-                
-                if self.__need_bio:
-                    doc_df = self._label_bios(doc_df)
-                
-                self.__fuse_subtasks(doc_df)
-                self._encode_labels(doc_df)
-
-
-            if self.argumentative_markers:
-                doc_df = self._label_ams(doc_df)
-            
-            if self.encodings:
-                self._encode_data(doc_df)
-
 
             if self.input_level != self.sample_level:
                 samples = doc_df.groupby(f"{self.sample_level}_id")
@@ -150,6 +129,29 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             for i, sample in samples:
                 i -= self._removed
 
+                #everything within this block should be sped up
+                if self.__labeling:
+                    if span_labels:
+                        sample = self._label_spans(sample, span_labels)
+
+                    if token_labels:
+                        sample = self._label_tokens(sample, token_labels)
+                    
+                    if self.__need_bio:
+                        sample = self._label_bios(sample)
+                    
+                    self.__fuse_subtasks(sample)
+                    self._encode_labels(sample)
+
+
+                if self.argumentative_markers:
+                    sample = self._label_ams(sample)
+                
+                if self.encodings:
+                    self._encode_data(sample)
+                    
+
+                #units
                 if self.prediction_level == "unit":
                     units = sample.groupby("unit_id")
 
@@ -158,20 +160,21 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                         self._removed += 1
                         continue
 
-                    units = sample.groupby("unit_id")
                     unit_length = len(units)
                     unit_token_lengths = np.array([g.shape[0] for i, g in units])
 
                     Input.add("lengths", unit_length, "unit")
                     Input.add("lengths_tok", unit_token_lengths, "unit")
                     Input.add("mask", np.ones(unit_length, dtype=np.uint8), "unit")
-                
 
 
+                #tokens
                 Input.add("idxs", i, None)
                 Input.add("lengths", sample.shape[0], "token")
                 Input.add("mask", np.ones(sample.shape[0], dtype=np.uint8), "token")
                 
+
+                #spans
                 if self.__labeling:
                     spans_grouped = sample.groupby("span_id")
                     length = len(spans_grouped)
@@ -185,7 +188,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
 
 
-
+                #ams
                 if self.argumentative_markers:
                     ams = sample.groupby("am_id")
                     # as length of <= 1 is problematic later when working with NNs

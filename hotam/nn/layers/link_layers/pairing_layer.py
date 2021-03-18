@@ -121,11 +121,11 @@ class PairingLayer(torch.nn.Module):
         # step 7
         unit_mask = unit_mask.type(torch.bool)
 
-        pair_scores[~unit_mask]  = float("inf")
+        pair_scores[~unit_mask]  =  float("inf")
 
         # pair_probs = F.softmax(pair_scores)
 
         # # step 8
         # pair_preds = torch.argmax(pair_probs)
     
-        return pair_scores
+        return pair_scores.squeeze(-1)
