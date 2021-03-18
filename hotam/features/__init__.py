@@ -2,7 +2,7 @@
 
 from .bow import BOW
 from .embeddings import GloveEmbeddings, FlairEmbeddings, BertEmbeddings
-from .document_positions import DocPos
+from .unit_position import UnitPos
 from .dummy import DummyFeature
 from .one_hot import OneHots
 
@@ -21,6 +21,9 @@ def get_feature(feature_name):
     elif feature_name.lower() == "bow":
         return BOW
 
+    elif feature_name.lower() == "unitpos":
+        return UnitPos
+
     raise KeyError(f'"{feature_name}" is no a supported model"')
 
 
@@ -29,7 +32,7 @@ __all__ = [
             "GloveEmbeddings",
             "FlairEmbeddings",
             "BertEmbeddings",
-            "DocPos",
+            "UnitPos",
             "BOW",
             "DummyFeature",
             "OneHots"

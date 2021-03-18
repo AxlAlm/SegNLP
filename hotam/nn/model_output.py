@@ -215,7 +215,7 @@ class ModelOutput:
                 else:
                     self.loss["total"] += data
     
-        self.metrics.update({f"{task}-loss":int(data)})
+        self.metrics.update({f"{task}-loss":int(data) if not torch.isnan(data) else 0})
 
 
     def add_preds(self, task:str, level:str, data:torch.tensor, decoded:bool=False, sample_ids="same"):

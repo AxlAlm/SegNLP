@@ -343,7 +343,7 @@ class PE(DataSet):
         """
 
         span2label = RangeDict()
-        unit_id = 0
+        current_unit_id = 0
         for i, (ac_id, span) in enumerate(ac_id2span.items()):
 
             relation = ac_id2relation.get(ac_id, 0)
@@ -351,13 +351,18 @@ class PE(DataSet):
             ac = ac_id2ac.get(ac_id,"None")
             stance = self._stance2new_stance.get(ac_id2stance.get(ac_id,"None"), "None")
 
+            if "None" in ac_id:
+                unit_id = None 
+            else:
+                unit_id = current_unit_id
+                current_unit_id += 1
 
             label = {   
                         "label": ac_id2ac.get(ac_id,"None"), 
                         "link_label": self._stance2new_stance.get(ac_id2stance.get(ac_id,"None"), "None"), 
                         "link": relation,
                         "span_id": i,
-                        "unit_id": None if "None" in ac_id else i,
+                        "unit_id": unit_id,
                     }
             
 

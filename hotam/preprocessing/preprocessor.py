@@ -166,7 +166,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                     Input.add("lengths", unit_length, "unit")
                     Input.add("lengths_tok", unit_token_lengths, "unit")
                     Input.add("mask", np.ones(unit_length, dtype=np.uint8), "unit")
-
+                    self.__get_unit_idxs(Input, sample)
 
                 #tokens
                 Input.add("idxs", i, None)
@@ -196,7 +196,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                     # representations for such AMs will remain 0
                     Input.add("lengths", unit_length, "am")
                     Input.add("lengths", unit_length, "adu")
-
+                    self.__get_am_unit_idxs(Input, sample)
 
                 self.__get_text(Input, sample)
                 self.__get_encs(Input, sample)
@@ -205,8 +205,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 if self.__labeling:
                     self.__get_labels(Input, sample)
 
-                if self.prediction_level == "unit":
-                    self.__get_am_unit_idxs(Input, sample)
+
 
         return Input.to_numpy()
   
@@ -374,6 +373,28 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 Input.add(group_name, group_dict["data"][0], group_dict["level"])
 
 
+    def __get_unit_idxs(self, Input:ModelInput, sample:pd.DataFrame):
+
+        am_spans = []
+        unit_spans = []
+        adu_spans = []
+
+        units = sample.groupby("unit_id")
+
+        for unit_id, gdf in units:
+    
+            unit_start = min(gdf[f"{self.sample_level}_token_id"])
+            unit_end = max(gdf[f"{self.sample_level}_token_id"])
+            unit_span = (unit_start, unit_end)
+
+            unit_spans.append(unit_span)
+        
+        if not unit_spans:
+            unit_spans = [(0,0)]
+
+        Input.add("span_idxs", np.array(unit_spans), "unit")
+
+
     def __get_am_unit_idxs(self, Input:ModelInput, sample:pd.DataFrame):
         """
         for each sample we get the units of am, unit and the whole adu.
@@ -384,7 +405,6 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         """
         
         am_spans = []
-        unit_spans = []
         adu_spans = []
 
         units = sample.groupby("unit_id")
@@ -414,23 +434,17 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 adu_span = (unit_start, unit_end)
 
             am_spans.append(am_span)
-            unit_spans.append(unit_span)
             adu_spans.append(adu_span)
         
         if not am_spans:
             am_spans = [(0,0)]
 
-        if not unit_spans:
-            unit_spans = [(0,0)]
-
         if not adu_spans:
             adu_spans = [(0,0)]
 
         Input.add("span_idxs", np.array(am_spans), "am")
-        Input.add("span_idxs", np.array(unit_spans), "unit")
         Input.add("span_idxs", np.array(adu_spans), "adu")
 
-        #return {"am_spans":am_spans, "span_spans":span_spans, "adu_spans":adu_spans}
 
 
     def __fuse_subtasks(self, df):

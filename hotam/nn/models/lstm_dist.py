@@ -247,7 +247,6 @@ class LSTM_DIST(nn.Module):
         # concatenate the output from Argument Component BiLSTM and Argument Marker BiLSTM with BOW embeddigns W
         contex_emb = torch.cat((am_lstm_out, ac_lstm_out, W), dim=-1)
 
-        print(contex_emb)
 
         # 5
         # Classification of AC and link labels is pretty straight forward
@@ -261,6 +260,7 @@ class LSTM_DIST(nn.Module):
         link_preds = torch.argmax(link_out, dim=-1)
         link_label_preds = torch.argmax(link_label_out, dim=-1)
         label_preds = torch.argmax(label_out, dim=-1)
+
 
         
         if self.train_mode:

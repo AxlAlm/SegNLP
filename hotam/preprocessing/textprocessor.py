@@ -211,7 +211,7 @@ class TextProcesser:
         return current_idx
 
 
-    def __get_structure_ids(self, level:str) -> Dict[str,int]:
+    def __get_structure_info(self, level:str) -> Dict[str,int]:
         """Provides the ids for the parents for last unit on the given level. This is needed so we know which parent is a perent for 
         any given child and vice versa.
 
@@ -239,8 +239,8 @@ class TextProcesser:
         #last_parent_row = self.stack_level_data[first_parent][-1]
 
         #inherent all the ids of the closest parent
-        ids ={k:v for k,v in last_parent_row.items() if "id" in k}
-        ids[f"{first_parent}_id"] = ids.pop("id")
+        info = {k:v for k,v in last_parent_row.items() if "id" in k or "nr" in k}
+        info[f"{first_parent}_id"] = info.pop("id")
 
 
         # if there ARE previous units of the given level, e.g. the stack
@@ -263,15 +263,15 @@ class TextProcesser:
                 # if the last unit of the given unit has a different parent id,
                 # we know can set the current_id_in_parent to -1, as we know its the first 
                 # unit that will be in that parent unit. I.e. no unit on the same level have the same parent id.
-                if last_level_row[parent_id] != ids[parent_id]:
+                if last_level_row[parent_id] != info[parent_id]:
                     current_id_in_parent = -1 # <-- -1 because we are adding 1 later in the the __build_X functions.
                 else:
                     current_id_in_parent = last_level_row[parent_level_id]
             
-            ids[parent_level_id] = current_id_in_parent
+            info[parent_level_id] = current_id_in_parent
 
 
-        return ids
+        return info
 
 
     def __build_tokens(self, spacy_sentence):
@@ -308,7 +308,7 @@ class TextProcesser:
 
         """
 
-        parent_ids = self.__get_structure_ids("token")
+        parent_info = self.__get_structure_info("token")
         doc, sentence = self.__get_parent_text("token")
         current_token_idx = self.__get_char_idx("token")
 
@@ -354,9 +354,9 @@ class TextProcesser:
                     }
 
             for parent in self.level2parents["token"][1:]:
-                parent_ids[f"{parent}_token_id"] += 1
+                parent_info[f"{parent}_token_id"] += 1
 
-            row.update(parent_ids)
+            row.update(parent_info)
 
             self._level_row_cache["token"] = row
             self.__data_stack.append(row)
@@ -394,9 +394,9 @@ class TextProcesser:
         #             }
 
         #     for parent in self.level2parents["token"][1:]:
-        #         parent_ids[f"{parent}_token_id"] += 1
+        #         parent_info[f"{parent}_token_id"] += 1
 
-        #     row.update(parent_ids)
+        #     row.update(parent_info)
 
         #     self._level_row_cache["token"] = row
 
@@ -415,7 +415,7 @@ class TextProcesser:
         See __build_tokens() documentation for a more detailed example of format.
         """
 
-        parent_ids = self.__get_structure_ids("sentence")
+        parent_info = self.__get_structure_info("sentence")
         doc, paragraph = self.__get_parent_text("sentence")
         current_sent_idx = self.__get_char_idx("sentence")
         #paragraph, current_sent_id,  current_sent_idx = self.__get_text_id_idx("sentence")
@@ -439,9 +439,9 @@ class TextProcesser:
                     }
 
             for parent in self.level2parents["sentence"][1:]:
-                parent_ids[f"{parent}_sentence_id"] += 1
+                parent_info[f"{parent}_sentence_id"] += 1
 
-            row.update(parent_ids)
+            row.update(parent_info)
 
             self._level_row_cache["sentence"] = row
             current_sent_idx = end_idx
@@ -475,9 +475,9 @@ class TextProcesser:
         #             }
 
         #     for parent in self.level2parents["sentence"][1:]:
-        #         parent_ids[f"{parent}_sentence_id"] += 1
+        #         parent_info[f"{parent}_sentence_id"] += 1
 
-        #     row.update(parent_ids)
+        #     row.update(parent_info)
 
         #     self._level_row_cache["sentence"] = row
             
@@ -498,13 +498,14 @@ class TextProcesser:
         See __build_tokens() documentation for a more detailed example of format.
         """
 
-        parent_ids = self.__get_structure_ids("paragraph")
+        parent_info = self.__get_structure_info("paragraph")
         doc, _ = self.__get_parent_text("paragraph")
         current_para_idx = self.__get_char_idx("paragraph")
 
 
         paras = self.__paragraph_tokenize(doc)
 
+        nr_paras = len(paras)
         for i,para in enumerate(paras):
             para_len = len(para)
 
@@ -521,12 +522,13 @@ class TextProcesser:
                     "text": para,
                     "char_start": start,
                     "char_end": end,
+                    "nr_paragraphs_doc":nr_paras,
                     }
 
             for parent in self.level2parents["paragraph"][1:]:
-                parent_ids[f"{parent}_paragraph_id"] += 1
+                parent_info[f"{parent}_paragraph_id"] += 1
 
-            row.update(parent_ids)
+            row.update(parent_info)
 
             #self.stack_level_data["paragraph"].append(row)
             self._level_row_cache["paragraph"] = row

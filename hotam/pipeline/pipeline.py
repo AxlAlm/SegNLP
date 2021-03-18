@@ -248,11 +248,19 @@ class Pipeline:
                 model_dump_path:str = f"{user_dir}/.hotam/models",
                 monitor_metric:str = "val_loss",
                 run_test:bool = True, 
-                gpus:list=None
+                gpus:list=None,
+                overfit_batches:Union[int,float] = 0.0
                 ):
 
         if ptl_trn_args is None:
             ptl_trn_args = default_ptl_trn_args
+        else:
+            default_ptl_trn_args.update(ptl_trn_args)
+            ptl_trn_args = default_ptl_trn_args
+        
+        if overfit_batches:
+            ptl_trn_args["overfit_batches"] = overfit_batches
+    
 
         if exp_logger:
             ptl_trn_args["logger"] = exp_logger

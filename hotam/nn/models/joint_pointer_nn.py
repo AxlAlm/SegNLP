@@ -25,7 +25,6 @@ class Encoder(nn.Module):
                     dropout:float=None,
                     ):
         super().__init__()
-
         self.input_layer = nn.Linear(input_size, input_layer_dim)
 
         self.lstm =  LSTM_LAYER(  
@@ -43,9 +42,7 @@ class Encoder(nn.Module):
 
     def forward(self, X, lengths):
 
-        X = self.input_layer(X)
-        dense_out = F.sigmoid(X)
-
+        dense_out = torch.sigmoid(self.input_layer(X))
         out, hidden = self.lstm(dense_out, lengths)
 
         if self.use_dropout:
@@ -149,11 +146,11 @@ class JointPN(nn.Module):
         self.ENCODER_NUM_LAYERS = hyperparamaters["encoder_num_layers"]
         self.ENCODER_BIDIR = hyperparamaters["encoder_bidir"]
             
-        self.F_DROPOUT = hyperparamaters["feature_dropout"]
+        self.F_DROPOUT = hyperparamaters.get("feature_dropout", None)
         self.ENC_DROPOUT = hyperparamaters["encoder_dropout"]
         self.DEC_DROPOUT = hyperparamaters["decoder_dropout"]
 
-        self.FEATURE_DIM = feature_dims["doc_embs"]
+        self.FEATURE_DIM = feature_dims["doc_embs"] + feature_dims["word_embs"]
 
         # α∈[0,1], will specify how much to weight the two task in the loss function
         self.TASK_WEIGHT = hyperparamaters["task_weight"]
@@ -183,7 +180,7 @@ class JointPN(nn.Module):
                                 )
 
 
-        self.ac_clf_layer = nn.Linear(self.ENCODER_HIDDEN_DIM*(2 if self.ENCODER_BIDIR else 1), task_dims["ac"])
+        self.label_clf = nn.Linear(self.ENCODER_HIDDEN_DIM*(2 if self.ENCODER_BIDIR else 1), task_dims["label"])
         self.loss = nn.NLLLoss(reduction="sum", ignore_index=-1)
 
 
@@ -192,7 +189,7 @@ class JointPN(nn.Module):
         return "JointPN"
 
 
-    def forward(self, batch):
+    def forward(self, batch, output):
                         
         unit_embs = agg_emb(batch["token"]["word_embs"], 
                             lengths = batch["unit"]["lengths"],
@@ -200,7 +197,6 @@ class JointPN(nn.Module):
                             mode = "average"
                             )
         
-        #combining features
         X = torch.cat((unit_embs, batch["unit"]["doc_embs"]), dim=-1)
         
         if self.use_feature_dropout:
@@ -210,22 +206,24 @@ class JointPN(nn.Module):
         # encoder_output = (BATCH_SIZE, SEQ_LEN, HIDDEN_DIM*LAYER*DIRECTION)
         encoder_out, (encoder_h_s, encoder_c_s) = self.encoder(X, batch["unit"]["lengths"])
 
+        #print(encoder_out,  (encoder_h_s, encoder_c_s))
         # 3-7 | Decoder
         # (BATCH_SIZE, SEQ_LEN, SEQ_LEN)
-        # prob distributions (softmax)
         pointer_probs = self.decoder(encoder_out, encoder_h_s, encoder_c_s, batch["unit"]["mask"])
 
-        label_probs =  F.softmax(self.ac_clf_layer(encoder_out),dim=-1)
+        label_probs =  F.softmax(self.label_clf(encoder_out),dim=-1)
 
         if self.train_mode:
             # we want to ignore -1  in the loss function so we set pad_values to -1, default is 0
-            batch.change_pad_value(-1)
+            batch.change_pad_value(level="unit", task="link", new_value=-1)
+            batch.change_pad_value(level="unit", task="label", new_value=-1)
 
-            pointer_probs_2d = torch.flatten(pointer_probs, end_dim=-2)
-            link_loss = self.loss(torch.log(pointer_probs_2d), batch["relation"].view(-1))
 
-            label_probs_2d = torch.flatten(ac_probs, end_dim=-2)
-            label_loss = self.loss(torch.log(ac_probs_2d), batch["ac"].view(-1))
+            print(pointer_probs.shape)
+            #print(label_probs)
+            print("________________________")
+            link_loss = self.loss(torch.log(torch.flatten(pointer_probs, end_dim=-2)), batch["unit"]["link"].view(-1))
+            label_loss = self.loss(torch.log(torch.flatten(label_probs, end_dim=-2)), batch["unit"]["label"].view(-1))
 
             
             total_loss = ((1-self.TASK_WEIGHT) * link_loss) + ((1-self.TASK_WEIGHT) * label_loss)
@@ -241,4 +239,5 @@ class JointPN(nn.Module):
         output.add_preds(task="label",          level="unit", data=label_preds)
         output.add_preds(task="link",           level="unit", data=link_preds)
 
+        return output
 
