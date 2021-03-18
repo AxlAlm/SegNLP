@@ -1,17 +1,10 @@
 
-<p align="center">
-  <img src="https://github.com/AxlAlm/HotAM/blob/main/logo.png?raw=true" alt="logo" width="180" height="180"/>
-</p>
 
-## About
-
-HotAM is a Python Framework for Argument Mining.
 
 ## Setup and Installation
 
 - clone repo
 - install the packages in evironment.yml
-- install MongoDB (if you want to log to mongodb and used dashboard)
 
 ## Get Started
 
@@ -23,74 +16,44 @@ from hotam.datasets import PE
 pe = PE()
 ```
 
-##### Explore a bit
-
-```python
-
-pe.example()
-pe.stats()
-```
 
 ##### Prepare dataset for experiment
 
 ```python
-from hotam.features import Embeddings
+from hotam import Pipeline
+from hotam.features import GloveEmbeddings, BOW
 
-pe.setup(
-    tasks=["seg"],
-    sample_level="document",
-    prediction_level="token",	
-    encodings=["pos"],
-    features=[
-    		Embeddings("glove")
-    		],
-	)
+exp = Pipeline(
+                project="debugging",
+                tasks=["label", "link","link_label"],
+                dataset=PE(),
+                prediction_level="unit",
+                sample_level="paragraph",
+                input_level="document", # same as dataset level
+                features = [
+                            GloveEmbeddings(),
+                            BOW(),
+                            ],
+                argumentative_markers=True
+            )
 ```
 
 ##### pick a model
 
 ```python
-from hotam.nn.models import LSTM_CRF
-```
-
-##### setup logging 
-
-```python
-from hotam.database import MongoDB
-from hotam.loggers import MongoLogger
-
-db = MongoDB()
-exp_logger = MongoLogger(db=db)
+from hotam.nn.models import LSTM_DIST
 ```
 
 ##### Run an experiment
 
 ```python
-from hotam import ExperimentManager
-
-M = ExperimentManager()
-M.run( 
-    project="my_project",
-    dataset=pe,
-    model=LSTM_CRF,
-    monitor_metric="val-seg-f1",
-    progress_bar_metrics=["val-seg-f1"],
-    exp_logger=exp_logger
-    )
+exp1.fit(
+        model=LSTM_DIST,
+        hyperparamaters = get_default_hps(LSTM_DIST.name()),
+        exp_logger=exp_logger,
+        gpus=[1],
+        )
 ```
-
-##### Start Dashboard to view experiment live and view past experiments
-this can be done any time as it will be running in sync with ExperimentManager.run()
-
-```python
-from hotam.dashboard import Dashboard
-
-Dashboard(db=db).run_server(
-			    port=8050,
-			    )
-```
-
-![](https://github.com/AxlAlm/HotAM/blob/main/modules.png)
 
 
 ### Information
@@ -111,19 +74,12 @@ This framework is built upon the following python libs and HotAM would not be wh
 - Pytroch
 - Pytroch Lightning
 - FlairNLP
-- Dash
 
 
 The same goes for all the reserch in Argument Mining:
 
 TBA
 
-
 ### TODO
 
 - installing by Pip
-
-
-<hr>
-<img src="https://github.com/AxlAlm/HotAM/blob/main/my_jam.png?raw=true" alt="hot jam dam"/>
-
