@@ -134,12 +134,12 @@ class Pointer(nn.Module):
         pointer_probs = torch.zeros(batch_size, seq_len, seq_len, device=device)
         for i in range(seq_len):
             
-            prev_h_s, prev_c_s = self.lstm_cell(decoder_input, (prev_h_s, prev_c_s))
+            decoder_input = torch.sigmoid(self.input_layer(decoder_input))
 
             if self.use_dropout:
-                prev_h_s = self.dropout(prev_h_s)
+                decoder_input = self.dropout(decoder_input)
 
-            decoder_input = torch.sigmoid(self.input_layer(decoder_input))
+            prev_h_s, prev_c_s = self.lstm_cell(decoder_input, (prev_h_s, prev_c_s))
 
             pointer_softmax = self.attention(prev_h_s, encoder_outputs, mask)
         
