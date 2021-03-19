@@ -184,8 +184,11 @@ class LSTM_ER(nn.Module):
                                     bidirectional=tree_bidirectional
                                   )
         self.rel_decoder = nn.Sequential(
-                                        nn.Linear(re_input_size, re_hidden_size), nn.Tanh(), self.dropout,
-                                        nn.Linear(re_hidden_size, re_output_size))
+                                        nn.Linear(re_input_size, re_hidden_size), 
+                                        nn.Tanh(), 
+                                        self.dropout,
+                                        nn.Linear(re_hidden_size, re_output_size)
+                                        )
 
     @classmethod
     def name(self):
@@ -321,6 +324,11 @@ class LSTM_ER(nn.Module):
         #       emb = cat(word_embs_starts, word_emb_ends ,common_ancestor_hiddens, pair_avg_embs)
         #       all_embs[i] = embs
         #
+
+        span_lengths, none_span_mask, _ = bio_decode( B=[], I=[], O=[])
+
+
+
 
 
 
@@ -611,3 +619,46 @@ class LSTM_ER(nn.Module):
                 # "stance": stance_prob
             },
         }
+
+
+
+def what_about_this_loop():
+    
+    # assume that we have
+    # 1) span_lengths and a mask telling us which spans are units
+
+    for i in range(batch):
+        end_unit_idxs = torch.cumsum(span_lengths)[none_span_mask]
+        
+        # BUILD GRAPH FORA SAMPLE HERE
+        # OR GET THE GRAPH FROM ALREADY BUILD SAMPLES
+        sample_graph = 
+
+        # note if we dont need all pairs in all directions we can iterate over the 
+        # outout put of itertools.combinations(end_unit_idxs, r=2) instead
+        for end_idx in end_unit_idxs:
+            candidate_pairs = [(end_idx, idx) for idx  in end_unit_idxs]
+
+            # here we can chose to create M
+            # or we can accumulate the logits for each unit (end_idx) and get the predictions
+            # for each pair in in sample, before we make a larger matrix
+            for pair in candidate_pairs:
+                
+                # here we should
+                # 1 ) get the subgraph for a pair
+                # 2) parse the subgraph in the TreeLSTM
+                
+                # we get these embeddings
+                common_ancestor = 
+                start_tok_h = 
+                end_tok_h = 
+
+                avrg_first_unit = 
+                avrg_second_unit = 
+
+                # equation 5
+                emb = torch.cat((common_ancestor, start_tok_h, end_tok_h, avrg_first_unit, avrg_second_unit))
+                logts = self.rel_decoder(emb)
+                
+                #h_p = torch.tanh(LINEAR(emb))
+                #scores
