@@ -12,7 +12,6 @@ from hotam.nn.utils import agg_emb
 
 
 
-
 class Encoder(nn.Module):
 
     def __init__(   
@@ -76,11 +75,8 @@ class JointPN(nn.Module):
     ______
     1) pass input to a fully-connected layer with sigmoid activation
 
-    2)  pass output of 1) to a Bi-LSTM. We will use the encoder outputs as representations
-        for each argument component and the last states to pass to the decoder
-
-        (output are the concatenate hidden outputs for each timestep)
-
+    2)  pass output of 1) to a Bi-LSTM. 
+  
 
     Decoder:
     ______
@@ -90,9 +86,7 @@ class JointPN(nn.Module):
 
     For each timestep (max seq length):
 
-    4)  Decoder takes the last states from the encoder to init the decoder.
-        NOTE as the encoder is Bi-Directional we cannot just pass on the states
-        from the encoder to the decoder. What do we pass on?
+    4)  Decoder takes the last states (cell and timestep) from the encoder to init the decoder.
 
         foward and backwards concatenations of last layer in encoder lstm. 
 
@@ -150,14 +144,15 @@ class JointPN(nn.Module):
         self.ENC_DROPOUT = hyperparamaters["encoder_dropout"]
         self.DEC_DROPOUT = hyperparamaters["decoder_dropout"]
 
-        self.FEATURE_DIM = feature_dims["doc_embs"] + feature_dims["word_embs"]
+
+        # times 3 becasue we use the max+min+avrg embeddings
+        self.FEATURE_DIM = (feature_dims["doc_embs"] + feature_dims["word_embs"]) * 3
 
         # α∈[0,1], will specify how much to weight the two task in the loss function
         self.TASK_WEIGHT = hyperparamaters["task_weight"]
 
-
-        if self.DECODER_HIDDEN_DIM != self.ENCODER_HIDDEN_DIM*self.ENCODER_NUM_LAYERS:
-            raise RuntimeError("Encoder - Decoder dimension missmatch. As the decoder is initialized by the encoder states the decoder dimenstion has to be encoder_dim * num_encoder_layers")
+        if self.DECODER_HIDDEN_DIM != self.ENCODER_HIDDEN_DIM*(2 if self.ENCODER_BIDIR else 1):
+            raise RuntimeError("Encoder - Decoder dimension missmatch. As the decoder is initialized by the encoder states the decoder dimenstion has to be encoder_dim * nr_directions")
         
         self.use_feature_dropout = False
         if self.F_DROPOUT:
@@ -194,7 +189,7 @@ class JointPN(nn.Module):
         unit_embs = agg_emb(batch["token"]["word_embs"], 
                             lengths = batch["unit"]["lengths"],
                             span_indexes = batch["unit"]["span_idxs"], 
-                            mode = "average"
+                            mode = "mix"
                             )
         
         X = torch.cat((unit_embs, batch["unit"]["doc_embs"]), dim=-1)
@@ -206,9 +201,14 @@ class JointPN(nn.Module):
         # encoder_output = (BATCH_SIZE, SEQ_LEN, HIDDEN_DIM*LAYER*DIRECTION)
         encoder_out, (encoder_h_s, encoder_c_s) = self.encoder(X, batch["unit"]["lengths"])
 
-        #print(encoder_out,  (encoder_h_s, encoder_c_s))
         # 3-7 | Decoder
-        # (BATCH_SIZE, SEQ_LEN, SEQ_LEN)
+        # We get the last hidden cell states and timesteps and concatenate them for each directions
+        # from (NUM_LAYER*DIRECTIONS, BATCH_SIZE, HIDDEN_SIZE) -> (BATCH_SIZE, HIDDEN_SIZE*NR_DIRECTIONS)
+        layer_dir_idx = list(range(0,encoder_h_s.shape[0],2))
+        encoder_h_s = torch.cat([*encoder_h_s[layer_dir_idx]],dim=1)
+        encoder_c_s = torch.cat([*encoder_c_s[layer_dir_idx]],dim=1)
+
+        # OUTPUT: (BATCH_SIZE, SEQ_LEN, SEQ_LEN)
         pointer_probs = self.decoder(encoder_out, encoder_h_s, encoder_c_s, batch["unit"]["mask"])
 
         label_probs =  F.softmax(self.label_clf(encoder_out),dim=-1)
@@ -218,13 +218,8 @@ class JointPN(nn.Module):
             batch.change_pad_value(level="unit", task="link", new_value=-1)
             batch.change_pad_value(level="unit", task="label", new_value=-1)
 
-
-            print(pointer_probs.shape)
-            #print(label_probs)
-            print("________________________")
             link_loss = self.loss(torch.log(torch.flatten(pointer_probs, end_dim=-2)), batch["unit"]["link"].view(-1))
             label_loss = self.loss(torch.log(torch.flatten(label_probs, end_dim=-2)), batch["unit"]["label"].view(-1))
-
             
             total_loss = ((1-self.TASK_WEIGHT) * link_loss) + ((1-self.TASK_WEIGHT) * label_loss)
 
