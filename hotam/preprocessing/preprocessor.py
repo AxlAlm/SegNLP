@@ -262,20 +262,22 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         last_sent_end = None
         deprels = []
         depheads = []
-        root_id = []
+        root_idx = None
         for sent_id, sent_df in enumerate(sentences):
             
             sent_deprels = sent_df["deprel"].to_numpy()
             sent_depheads = sent_df["dephead"].to_numpy()
 
-            root_id = self.encode_list(["root"], "deprel")[0]
-            root_idx = int(np.where(sent_df["deprel"].to_numpy() == root_id)[0])
+            sent_root_id = self.encode_list(["root"], "deprel")[0]
+            sent_root_idx = int(np.where(sent_df["deprel"].to_numpy() == sent_root_id)[0])
             
 
             if last_sent_end is not None:
-                sent_depheads[root_idx] = last_sent_end
+                sent_depheads[sent_root_idx] = last_sent_end
+                last_sent_end = sent_df.shape[0]
             else:
-                last_sent_endc = sent_df.shape[0]
+                root_idx = sent_root_idx
+                last_sent_end = sent_root_idx
             
             deprels.extend(sent_deprels)
             depheads.extend(sent_depheads)
