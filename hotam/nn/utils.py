@@ -125,3 +125,18 @@ def agg_emb(m, lengths, span_indexes, mode="average"):
 #         start_idx += end_idx
 
 #     return new_tensor
+
+
+def index_4D(a:torch.tensor, index:torch.tensor):
+    """
+    a is 4D tensors
+    index is 3D tensor
+    
+    index will select values/vectors
+
+    """
+    b = torch.zeros((a.shape[0], a.shape[1], a.shape[-1]))
+    for i in range(index.shape[0]):
+        for j,k in enumerate(index[i]):
+            b[i][j] = a[i][j][k]
+    return b

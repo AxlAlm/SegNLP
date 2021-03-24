@@ -395,7 +395,7 @@ def arrays_to_tree(
         
         length = span_token_lengths[i]
 
-        print(none_span_mask[i])
+        #print(none_span_mask[i])
         if none_span_mask[i]:
 
             link = links[start:start+length][0]

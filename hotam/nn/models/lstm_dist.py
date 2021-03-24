@@ -262,8 +262,6 @@ class LSTM_DIST(nn.Module):
         label_preds = torch.argmax(label_out, dim=-1)
 
 
-        print(torch.max(batch["unit"]["link"]))
-
         if self.train_mode:
             # we want to ignore -1  in the loss function so we set pad_values to -1, default is 0
             batch.change_pad_value(level="unit", task="link", new_value=-1)
