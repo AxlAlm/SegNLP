@@ -41,12 +41,15 @@ class PreProcessedDataset(ptl.LightningDataModule):
         self.label_colors = get_dataset(name).label_colors()
         self.label_encoders = label_encoders
         self._fp = os.path.join(dir_path, f"{name}_data.hdf5")
-        self.data = h5py.File(self._fp, "r")
-        self._size = self.data["idxs"].shape[0]
+        #self.data = h5py.File(self._fp, "r")
+
+        with h5py.File(self._fp, "r") as f:
+            self._size = f["idxs"].shape[0]
+
         self.prediction_level = prediction_level
 
-        self._stats = pd.read_csv(os.path.join(dir_path, f"{name}_stats.csv"))
-        self._stats.columns = ["split_id", "split", "task", "label", "count"]
+        # self._stats = pd.read_csv(os.path.join(dir_path, f"{name}_stats.csv"))
+        # self._stats.columns = ["split_id", "split", "task", "label", "count"]
 
         with open(os.path.join(dir_path, f"{name}_splits.pkl"), "rb") as f:
             self._splits = pickle.load(f)
@@ -58,29 +61,31 @@ class PreProcessedDataset(ptl.LightningDataModule):
                             label_colors=self.label_colors
                             )
 
-        sorted_key = np.sort(key)
-        lengths = self.data[self.prediction_level]["lengths"][sorted_key]
-        lengths_decending = np.argsort(lengths)[::-1]
-        Input._idxs = self.data["idxs"][sorted_key][lengths_decending]
-        
-        for group in self.data:
-
-            if group == "idxs":
-                continue
+        with h5py.File(self._fp, "r") as data:
+            sorted_key = np.sort(key)
+            lengths = data[self.prediction_level]["lengths"][sorted_key]
+            lengths_decending = np.argsort(lengths)[::-1]
+            Input._idxs = data["idxs"][sorted_key][lengths_decending]
             
-            max_len = max(self.data[group]["lengths"][sorted_key])
+            for group in data:
 
-            Input[group] = {}
-            for k, v in self.data[group].items():
+                if group == "idxs":
+                    continue
                 
-                a = v[sorted_key]
-            
-                if len(a.shape) > 1:
-                    a = a[:, :max_len]
-            
-                Input[group][k] = a[lengths_decending]
-            
-        Input.to_tensor()
+                max_len = max(data[group]["lengths"][sorted_key])
+
+                Input[group] = {}
+                for k, v in data[group].items():
+                    
+                    a = v[sorted_key]
+                
+                    if len(a.shape) > 1:
+                        a = a[:, :max_len]
+                
+                    Input[group][k] = a[lengths_decending]
+                
+            Input.to_tensor()
+
         return Input
     
 
