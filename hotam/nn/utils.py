@@ -59,7 +59,6 @@ def multiply_mask_matrix(matrix, mask):
     
 
 
-
 def agg_emb(m, lengths, span_indexes, mode="average"):
 
 
@@ -140,3 +139,23 @@ def index_4D(a:torch.tensor, index:torch.tensor):
         for j,k in enumerate(index[i]):
             b[i][j] = a[i][j][k]
     return b
+
+
+def schedule_sampling(current_epoch, k):
+    schedule_sampling = k / (k + exp(current_epoch / k))
+    coin_flip = floor(random() * 10) / 10
+    return schdule_sampling > coin_flip:
+
+
+
+def get_all_possible_pairs(span_lengths, none_unit_mask):
+    
+    batch_size = span_lengths.shape[0]
+    end_idxs = torch.cumsum(span_lengths, dim=-1)
+    
+    all_possible_pairs = []
+    for i in range(batch_size):
+        idxes = end_idxs[i][none_unit_mask[i]]
+        possible_pairs = list(itertools.product(idxes, repeat=2))
+        
+    return all_possible_pairs
