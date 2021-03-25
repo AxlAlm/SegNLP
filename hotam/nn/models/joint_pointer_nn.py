@@ -17,17 +17,17 @@ class Encoder(nn.Module):
     def __init__(   
                     self,  
                     input_size:int, 
-                    input_layer_dim:int, 
                     hidden_size:int, 
                     num_layers:int, 
                     bidirectional:int,
                     dropout:float=None,
                     ):
         super().__init__()
-        self.input_layer = nn.Linear(input_size, input_layer_dim)
+        self.input_layer = nn.Linear(input_size, input_size)
+
 
         self.lstm =  LSTM_LAYER(  
-                                input_size=input_layer_dim,
+                                input_size=input_size,
                                 hidden_size=hidden_size,
                                 num_layers=num_layers,
                                 bidirectional=bidirectional,
@@ -144,9 +144,8 @@ class JointPN(nn.Module):
         self.ENC_DROPOUT = hyperparamaters["encoder_dropout"]
         self.DEC_DROPOUT = hyperparamaters["decoder_dropout"]
 
-
         # times 3 becasue we use the max+min+avrg embeddings
-        self.FEATURE_DIM = (feature_dims["doc_embs"] + feature_dims["word_embs"]) * 3
+        self.FEATURE_DIM =  feature_dims["doc_embs"] + (feature_dims["word_embs"] * 3)
 
         # α∈[0,1], will specify how much to weight the two task in the loss function
         self.TASK_WEIGHT = hyperparamaters["task_weight"]
@@ -161,7 +160,6 @@ class JointPN(nn.Module):
 
         self.encoder = Encoder(
                                 input_size=self.FEATURE_DIM,
-                                input_layer_dim=self.ENCODER_INPUT_DIM,
                                 hidden_size=self.ENCODER_HIDDEN_DIM,
                                 num_layers= self.ENCODER_NUM_LAYERS,
                                 bidirectional=self.ENCODER_BIDIR,
@@ -176,7 +174,7 @@ class JointPN(nn.Module):
 
 
         self.label_clf = nn.Linear(self.ENCODER_HIDDEN_DIM*(2 if self.ENCODER_BIDIR else 1), task_dims["label"])
-        self.loss = nn.NLLLoss(reduction="sum", ignore_index=-1)
+        self.loss = nn.CrossEntropyLoss(reduction="sum", ignore_index=-1)
 
 
     @classmethod
@@ -185,7 +183,7 @@ class JointPN(nn.Module):
 
 
     def forward(self, batch, output):
-                        
+        
         unit_embs = agg_emb(batch["token"]["word_embs"], 
                             lengths = batch["unit"]["lengths"],
                             span_indexes = batch["unit"]["span_idxs"], 
@@ -196,7 +194,7 @@ class JointPN(nn.Module):
         
         if self.use_feature_dropout:
             X = self.feature_dropout(X)
-
+    
         # 1-2 | Encoder
         # encoder_output = (BATCH_SIZE, SEQ_LEN, HIDDEN_DIM*LAYER*DIRECTION)
         encoder_out, (encoder_h_s, encoder_c_s) = self.encoder(X, batch["unit"]["lengths"])
@@ -209,17 +207,20 @@ class JointPN(nn.Module):
         encoder_c_s = torch.cat([*encoder_c_s[layer_dir_idx]],dim=1)
 
         # OUTPUT: (BATCH_SIZE, SEQ_LEN, SEQ_LEN)
-        pointer_probs = self.decoder(encoder_out, encoder_h_s, encoder_c_s, batch["unit"]["mask"])
+        link_logits = self.decoder(
+                                    encoder_out, 
+                                    encoder_h_s, 
+                                    encoder_c_s, 
+                                    batch["unit"]["mask"], 
+                                    return_softmax=False
+                                    )
 
-        label_probs =  F.softmax(self.label_clf(encoder_out),dim=-1)
+        # OUTPUT: (BATCH_SIZE, SEQ_LEN, nr_labels)
+        label_logits =  self.label_clf(encoder_out)
 
         if self.train_mode:
-            # we want to ignore -1  in the loss function so we set pad_values to -1, default is 0
-            batch.change_pad_value(level="unit", task="link", new_value=-1)
-            batch.change_pad_value(level="unit", task="label", new_value=-1)
-
-            link_loss = self.loss(torch.log(torch.flatten(pointer_probs, end_dim=-2)), batch["unit"]["link"].view(-1))
-            label_loss = self.loss(torch.log(torch.flatten(label_probs, end_dim=-2)), batch["unit"]["label"].view(-1))
+            link_loss = self.loss(torch.flatten(link_logits, end_dim=-2), batch["unit"]["link"].view(-1))
+            label_loss = self.loss(torch.flatten(label_logits, end_dim=-2), batch["unit"]["label"].view(-1))
             
             total_loss = ((1-self.TASK_WEIGHT) * link_loss) + ((1-self.TASK_WEIGHT) * label_loss)
 
@@ -228,8 +229,8 @@ class JointPN(nn.Module):
             output.add_loss(task="label",       data=label_loss)
 
 
-        label_preds = torch.argmax(label_probs,  dim=-1)
-        link_preds = torch.argmax(pointer_probs, dim=-1)
+        label_preds = torch.argmax(link_logits,  dim=-1)
+        link_preds = torch.argmax(label_logits, dim=-1)
 
         output.add_preds(task="label",          level="unit", data=label_preds)
         output.add_preds(task="link",           level="unit", data=link_preds)

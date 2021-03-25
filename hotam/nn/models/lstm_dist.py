@@ -242,7 +242,6 @@ class LSTM_DIST(nn.Module):
 
         ac_lstm_out, _ = self.ac_lstm(ac_minus_embs, batch["unit"]["lengths"])
 
-
         # 4
         # concatenate the output from Argument Component BiLSTM and Argument Marker BiLSTM with BOW embeddigns W
         contex_emb = torch.cat((am_lstm_out, ac_lstm_out, W), dim=-1)
@@ -263,12 +262,7 @@ class LSTM_DIST(nn.Module):
 
 
         
-        if self.train_mode:
-            # we want to ignore -1  in the loss function so we set pad_values to -1, default is 0
-            batch.change_pad_value(level="unit", task="link", new_value=-1)
-            batch.change_pad_value(level="unit", task="label", new_value=-1)
-            batch.change_pad_value(level="unit", task="link_label", new_value=-1)
-            
+        if self.train_mode:   
             link_loss = self.loss(torch.flatten(link_out, end_dim=-2), batch["unit"]["link"].view(-1))
             link_label_loss = self.loss(torch.flatten(link_label_out, end_dim=-2), batch["unit"]["link_label"].view(-1))
             label_loss = self.loss(torch.flatten(label_out, end_dim=-2), batch["unit"]["label"].view(-1))

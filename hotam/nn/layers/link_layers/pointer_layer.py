@@ -51,7 +51,7 @@ class Pointer(nn.Module):
             self.use_dropout = True
 
 
-    def forward(self, encoder_outputs, encoder_h_s, encoder_c_s, mask):
+    def forward(self, encoder_outputs, encoder_h_s, encoder_c_s, mask, return_softmax=False):
 
         seq_len = encoder_outputs.shape[1]
         batch_size = encoder_outputs.shape[0]
@@ -61,9 +61,7 @@ class Pointer(nn.Module):
         c_s = encoder_c_s
 
         decoder_input = torch.zeros(encoder_h_s.shape, device=device)
-
-        #(BATCH_SIZE, SEQ_LEN)
-        pointer_probs = torch.zeros(batch_size, seq_len, seq_len, device=device)
+        output = torch.zeros(batch_size, seq_len, seq_len, device=device)
         for i in range(seq_len):
             
             decoder_input = torch.sigmoid(self.input_layer(decoder_input))
@@ -73,8 +71,6 @@ class Pointer(nn.Module):
 
             h_s, c_s = self.lstm_cell(decoder_input, (h_s, c_s))
 
-            pointer_softmax = self.attention(h_s, encoder_outputs, mask)
-
-            pointer_probs[:, i] = pointer_softmax
+            output[:, i] = self.attention(h_s, encoder_outputs, mask, return_softmax=return_softmax)
         
-        return pointer_probs
+        return output

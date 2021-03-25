@@ -52,7 +52,7 @@ class CBAttentionLayer(nn.Module):
         self.v = nn.Linear(input_dim, 1)
         
 
-    def forward(self, query, key, mask=None):
+    def forward(self, query, key, mask=None, return_softmax=False):
 
         # contex_out = (BATCH_SIZE, SEQ_LEN, INPUT_DIM )
         key_out = self.W1(key)
@@ -74,7 +74,7 @@ class CBAttentionLayer(nn.Module):
         
         ui[~mask] = float('-inf')
     
-        # (BATCH_SIZE, SEQ_LEN)
-        attn_scores = F.softmax(ui, dim=-1)
-
-        return attn_scores
+        if return_softmax:
+            return  F.softmax(ui, dim=-1)
+        else:
+            return ui

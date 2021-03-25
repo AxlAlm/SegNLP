@@ -69,7 +69,7 @@ def agg_emb(m, lengths, span_indexes, mode="average"):
 
     batch_size = m.shape[0]
     device = m.device
-    agg_m = torch.zeros(batch_size, torch.max(lengths), m.shape[-1], device=device)
+    agg_m = torch.zeros(batch_size, torch.max(lengths), feature_dim, device=device)
 
     for i in range(batch_size):
         for j in range(lengths[i]):
@@ -87,10 +87,11 @@ def agg_emb(m, lengths, span_indexes, mode="average"):
                 agg_m[i][j] = v
 
             elif mode == "mix":
-                _min, _ = torch.min(m[i][ii:jj]) 
-                _max, _ = torch.max(m[i][ii:jj])  
-                _mean = torch.mean(m[i][ii:jj])     
-                agg_m[i][j] = torch.cat((_min, _max, _mean))
+                _min, _ = torch.min(m[i][ii:jj],dim=0) 
+                _max, _ = torch.max(m[i][ii:jj], dim=0)  
+                _mean = torch.mean(m[i][ii:jj], dim=0)     
+
+                agg_m[i][j] = torch.cat((_min, _max, _mean), dim=0)
 
             else:
                 raise RuntimeError(f"'{mode}' is not a supported mode, chose 'min', 'max','mean' or 'mix'")  

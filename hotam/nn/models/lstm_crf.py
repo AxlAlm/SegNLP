@@ -110,6 +110,10 @@ class LSTM_CRF(nn.Module):
             crf = self.crf_layers[task]
             
             if self.train_mode:
+                # crf doesnt work if padding is not a possible class, so we put padding as 0 which
+                # will be default to "O" in BIO or "None" (see label encoders)                
+                batch.change_pad_value(level=task, task="token", new_value=0)
+                
                 target_tags = batch["token"][task]
                 loss = -crf(    
                                 emissions=dense_out, #score for each tag, (batch_size, seq_length, num_tags) as we have batch first

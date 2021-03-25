@@ -168,7 +168,12 @@ class DataPreprocessor:
                 if "<U" in str(v.dtype):
                     self.h5py_f.create_dataset(name, data=v.tolist(), chunks=True, maxshape=max_shape)
                 else:
-                    self.h5py_f.create_dataset(name, data=v, dtype=v.dtype, chunks=True, maxshape=max_shape)
+
+                    fillvalue = 0
+                    if k in self.all_tasks:
+                        fillvalue = -1
+
+                    self.h5py_f.create_dataset(name, data=v, dtype=v.dtype, chunks=True, maxshape=max_shape, fillvalue=fillvalue)
 
         self.__init_storage_done = True
     

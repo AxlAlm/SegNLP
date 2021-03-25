@@ -139,7 +139,8 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                     
                     if self.__need_bio:
                         sample = self._label_bios(sample)
-                    
+
+
                     self.__fuse_subtasks(sample)
                     self._encode_labels(sample)
 
@@ -237,19 +238,17 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         sample_labels = {}
         for task in self.all_tasks:
 
-            unit_i = 0
             units = sample.groupby(f"unit_id")
             unit_task_matrix = np.zeros(len(units))
-            for unit_id, unit in units:
-                unit_task_matrix[unit_i] = np.nanmax(unit[task].to_numpy())
-                unit_i += 1
+            for i, (unit_id, unit) in enumerate(units):
+                unit_task_matrix[i] = np.nanmax(unit[task].to_numpy())
 
             #if self.prediction_level == "token":
             #task_matrix = np.zeros(len(sample.index))
             #task_matrix[:sample.shape[0]] = sample[task].to_numpy()
 
-            Input.add(task, sample[task].to_numpy().astype(np.int), "token")
-            Input.add(task, unit_task_matrix.astype(np.int), "unit")
+            Input.add(task, sample[task].to_numpy().astype(np.int), "token", pad_value=-1)
+            Input.add(task, unit_task_matrix.astype(np.int), "unit", pad_value=-1)
         
         return sample_labels
     
@@ -444,7 +443,6 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
         Input.add("span_idxs", np.array(am_spans), "am")
         Input.add("span_idxs", np.array(adu_spans), "adu")
-
 
 
     def __fuse_subtasks(self, df):

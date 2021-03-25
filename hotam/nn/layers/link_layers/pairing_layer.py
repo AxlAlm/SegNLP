@@ -122,7 +122,7 @@ class PairingLayer(torch.nn.Module):
         unit_mask = unit_mask.type(torch.bool)
 
         pair_scores[~unit_mask]  =  float("inf")
-
+            
         # pair_probs = F.softmax(pair_scores)
 
         # # step 8
