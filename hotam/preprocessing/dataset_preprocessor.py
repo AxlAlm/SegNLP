@@ -41,7 +41,6 @@ class PreProcessedDataset(ptl.LightningDataModule):
         self.label_colors = get_dataset(name).label_colors()
         self.label_encoders = label_encoders
         self._fp = os.path.join(dir_path, f"{name}_data.hdf5")
-        #self.data = h5py.File(self._fp, "r")
 
         with h5py.File(self._fp, "r") as f:
             self._size = f["idxs"].shape[0]
@@ -228,10 +227,11 @@ class DataPreprocessor:
                         }
                     }
 
+
         splits = dataset.splits
 
         if self.sample_level != dataset.level:
-            splits = create_new_splits(self.h5py_f["idxs"][:])
+            splits = create_new_splits(self.h5py_f["idxs"][:], self.evaluation_method)
 
         file_path = os.path.join(dump_dir, f"{dataset.name()}_splits.pkl")
         with open(file_path, "wb") as f:

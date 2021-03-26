@@ -65,15 +65,14 @@ default_ptl_trn_args = dict(
                             )
 
 
-def get_ptl_trainer(
-                    experiment_id:str, 
-                    save_choice:str,
-                    ptl_trn_args:dict, 
-                    hyperparamaters:dict, 
-                    model_dump_path:str=None, 
-                    ):
+def setup_trainer_args(
+                        experiment_id:str, 
+                        save_choice:str,
+                        ptl_trn_args:dict, 
+                        hyperparamaters:dict, 
+                        model_dump_path:str=None, 
+                        ):
 
-    #save="last", early_stop,
 
     if save_choice:
 
@@ -121,7 +120,6 @@ def get_ptl_trainer(
     if ("gradient_clip_val" in ptl_trn_args and  "gradient_clip_val" == None) or  "gradient_clip_val" in hyperparamaters:
         ptl_trn_args["gradient_clip_val"] = hyperparamaters["gradient_clip_val"]
                     
-
 
     ptl_trn_args["default_root_dir"] = model_dump_path
     trainer = Trainer(**ptl_trn_args)

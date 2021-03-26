@@ -1,5 +1,5 @@
 
-from hotam.datasets.pe import  PE
+from hotam.datasets.am.pe import  PE
 from hotam.datasets.base import DataSet
 
 def get_dataset(dataset_name):
@@ -11,5 +11,3 @@ __all__ = [
             "DataSet",
             "PE",
             ]
-
-

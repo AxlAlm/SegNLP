@@ -250,16 +250,15 @@ class Pipeline:
                 run_test:bool = True, 
                 ):
 
-
     
-        if ptl_trn_args is None:
-            ptl_trn_args = default_ptl_trn_args
-        else:
-            default_ptl_trn_args.update(ptl_trn_args)
-            ptl_trn_args = default_ptl_trn_args
+        #if ptl_trn_args is None:
+        #     ptl_trn_args = default_ptl_trn_args
+        # else:
+        #     default_ptl_trn_args.update(ptl_trn_args)
+        #     ptl_trn_args = default_ptl_trn_args
     
-        if exp_logger:
-            ptl_trn_args["logger"] = exp_logger
+        # if exp_logger:
+        #     ptl_trn_args["logger"] = exp_logger
 
         set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
 
@@ -290,15 +289,15 @@ class Pipeline:
             config.update(self.preprocessor.config)
 
 
-            trainer = get_ptl_trainer( 
-                                        experiment_id=experiment_id, 
-                                        ptl_trn_args=ptl_trn_args, 
-                                        hyperparamaters=hyperparamater, 
-                                        model_dump_path=exp_dump_path,
-                                        save_choice=save, 
-                                        )
-
-            model_params = dict(
+            ptl_trn_args = get_ptl_trn_args( 
+                                            ptl_trn_args=ptl_trn_args,
+                                            exp_logger = exp_logger,
+                                            experiment_id=experiment_id, 
+                                            hyperparamaters=hyperparamater, 
+                                            model_dump_path=exp_dump_path,
+                                            save_choice=save, 
+                                            )
+            model_args = dict(
                                 model=model, 
                                 hyperparamaters=hyperparamater,
                                 tasks=self.preprocessor.tasks,
@@ -308,14 +307,14 @@ class Pipeline:
                                 task_dims={t:len(l) for t,l in self.preprocessor.task2labels.items() if t in self.preprocessor.tasks},
                                 feature_dims=self.preprocessor.feature2dim,
                                 )
-            ptl_model = PTLBase(**model_params)
+            #ptl_model = PTLBase(**model_params)
 
             #dumping the arguments
-            model_params_c = deepcopy(model_params)
-            model_params_c.pop("label_encoders")
-            model_params_c["model"] = model_params_c["model"].name()
+            model_args_c = deepcopy(model_args)
+            model_args_c.pop("label_encoders")
+            model_args_c["model"] = model_args_c["model"].name()
             with open(os.path.join(exp_dump_path, "args.json"), "w") as f:
-                json.dump(model_params_c, f, indent=4)
+                json.dump(model_args_c, f, indent=4)
 
             with open(os.path.join(exp_dump_path, "pipeline_id.txt"), "w") as f:
                 f.write(self.pipeline_id)
@@ -325,7 +324,7 @@ class Pipeline:
 
             if exp_logger:
                 exp_logger.log_hyperparams(hyperparamater)
-                exp_logger.log_graph(ptl_model)
+                #exp_logger.log_graph(ptl_model)
 
                 if isinstance(exp_logger, CometLogger):
                     #print(config)
@@ -341,8 +340,8 @@ class Pipeline:
 
             #logger.info(f"Experiment {experiment_id}")
             get_evaluation_method(evaluation_method)(
-                                                    trainer = trainer, 
-                                                    ptl_model = ptl_model,
+                                                    ptl_trn_args = ptl_trn_args, 
+                                                    model_args = model_args,
                                                     dataset=self.dataset,
                                                     save_choice = save,
                                                     )

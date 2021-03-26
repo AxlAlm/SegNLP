@@ -50,7 +50,7 @@ class DataSet:
                     counts = sdf[task].value_counts().to_dict()
                     collected_counts[task] += counts
         
-        pprint({t:dict(c) for t,c in collected_counts.items()})
+        return {t:dict(c) for t,c in collected_counts.items()}
 
 
     def info(self):
