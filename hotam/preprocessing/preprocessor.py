@@ -261,7 +261,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         deprels = []
         depheads = []
         root_id = []
-        for sent_id, sent_df in enumerate(sentences):
+        for _, sent_df in sentences:
             
             sent_deprels = sent_df["deprel"].to_numpy()
             sent_depheads = sent_df["dephead"].to_numpy()

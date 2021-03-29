@@ -44,20 +44,43 @@ from git import Repo
 
 class MTC(DataSet):
 
-    def __init__(self, dump_path="/tmp/mtc"):
-        #super().__init__()
+    def __init__(self, 
+                tasks:list,
+                prediction_level:str="token", 
+                sample_level:str="paragraph", 
+                dump_path="/tmp/mtc"
+                ):
+
+
+        self.level = "paragraph"
+        self.prediction_level=prediction_level, 
+        self.sample_level=sample_level, 
+        self.input_level= self.level
         self.dump_path = dump_path
- 
-        self._tasks = ["label", "link", "link_label"]
+        self._tasks = ["seg", "label", "link", "link_label"]
         self._task_labels = {
                             "label": ["pro", "opp"],
                             "link_label": ["None", "sup", "exa", "add", "reb", "und"],
                             "link": set()
                             }
 
-        self.level = "document"
         self.about = """The arg-microtexts corpus features 112 short argumentative texts. All texts were originally written in German and have been professionally translated to English. """
         self.url = "https://github.com/peldszus/arg-microtexts"
+
+        assert prediction_level in ["token", "unit"]
+        assert sample_level in ["paragraph", "sentence"]
+        
+        unpacked_tasks = set()
+        for task in tasks:
+            for st in tasks.split("+"):
+                if st in unpacked_tasks:
+                    raise RuntimeError(f"{st} found in more than one task")
+                else:
+                    st.add(st)
+                    
+        assert set(subtasks).issubset(set([self._tasks]))
+
+
         self._download_path = self.__download_data()
         self.data = self.__process_data()
         self._splits = self.__splits()

@@ -82,14 +82,24 @@ class PE(DataSet):
 
     """
 
-    def __init__(self, dump_path:str="/tmp/"):
-        #super().__init__()
+    def __init__(self, 
+                prediction_level:str="token", 
+                sample_level:str="document", 
+                dump_path:str="/tmp/"
+                ):
+        assert prediction_level in ["token", "unit"]
+        assert sample_level in ["document", "paragraph", "sentence"]
+
+        self.level = "document"
+ 
+
+
+   
+
         self._name = "pe"
         self.dump_path = dump_path
         #self._dataset_path = "datasets/pe/data"
-        self._download_url = "https://www.informatik.tu-darmstadt.de/media/ukp/data/fileupload_2/argument_annotated_news_articles/ArgumentAnnotatedEssays-2.0.zip"
-        self._dataset_path = self.__download_data()
-        self._splits = self.__splits()
+    
         self._stance2new_stance = {
                                     "supports":"PRO", 
                                     "Against":"CON", 
@@ -110,10 +120,28 @@ class PE(DataSet):
                             "link": set()
                             }
 
-        self.level = "document"
         self.about = """The corpus consists of argument annotated persuasive essays including annotations of argument components and argumentative relations.
                         """
         self.url = "https://www.informatik.tu-darmstadt.de/ukp/research_6/data/argumentation_mining_1/argument_annotated_essays_version_2/index.en.jsp"
+        self._download_url = "https://www.informatik.tu-darmstadt.de/media/ukp/data/fileupload_2/argument_annotated_news_articles/ArgumentAnnotatedEssays-2.0.zip"
+        
+  
+        assert prediction_level in ["token", "unit"]
+        assert sample_level in ["paragraph", "sentence"]
+        
+        unpacked_tasks = set()
+        for task in tasks:
+            for st in tasks.split("+"):
+                if st in unpacked_tasks:
+                    raise RuntimeError(f"{st} found in more than one task")
+                else:
+                    st.add(st)
+                    
+        assert set(subtasks).issubset(set([self._tasks]))
+    
+        
+        self._dataset_path = self.__download_data()
+        self._splits = self.__splits()
         self.data = self.__process_data()
 
 
