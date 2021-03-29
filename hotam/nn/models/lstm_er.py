@@ -1,16 +1,20 @@
 from math import floor
 from random import random
 
+from collections import defaultdict
+
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
-from hotam.nn.layer.seg_layers import BigramSegLayer
-from hotam.nn.layers.link_label_layers import DepPairingLayer
+from hotam.nn.layers.seg_layers.bigram_seg import BigramSegLayer
+# from hotam.nn.layers.link_label_layers.dep_pairing_layer import
+# DepPairingLayer  # noqa: E501
 from hotam.nn.layers.lstm import LSTM_LAYER
 from hotam.nn.layers.type_treelstm import TypeTreeLSTM
 from hotam.nn.utils import index_4D, get_all_possible_pairs
 from hotam.nn.schedule_sample import ScheduleSampling
+from hotam.nn.bio_decoder import bio_decode
 
 
 class LSTM_ER(nn.Module):
@@ -22,6 +26,10 @@ class LSTM_ER(nn.Module):
         self.num_ac = len(task2dim["seg_ac"])
         self.num_relations = len(task2dim["stance"])  # number of relations
         self.no_stance = task2dim["stance"].index("None")
+
+        self.bio_dict = defaultdict(list)
+        for (i, label) in enumerate(task2dim["seg_ac"]):
+            self.bio_dict[label[0]].append(i)
 
         self.model_param = nn.Parameter(th.empty(0))
 
@@ -72,19 +80,23 @@ class LSTM_ER(nn.Module):
             dropout=dropout,
         )
 
-        self.link_label_clf = self.DepPairingLayer()
+        # self.link_label_clf = self.DepPairingLayer()
 
-        nt = 3 if tree_bidirectional else 1
-        ns = 2 if lstm_bidirectional else 1
-        re_input_size = self.tree_lstm_h_size * nt + 2 * seq_lstm_h_size * ns
-        tree_input_size = seq_lstm_h_size * ns + dep_embs_size + label_embs_size
-        self.tree_lstm = TypeTreeLSTM(embedding_dim=tree_input_size,
-                                      h_size=self.tree_lstm_h_size,
-                                      dropout=dropout,
-                                      bidirectional=tree_bidirectional)
-        self.rel_decoder = nn.Sequential(
-            nn.Linear(re_input_size, re_hidden_size), nn.Tanh(), self.dropout,
-            nn.Linear(re_hidden_size, re_output_size))
+        # nt = 3 if tree_bidirectional else 1
+        # ns = 2 if lstm_bidirectional else 1
+        # re_input_size = self.tree_lstm_h_size * nt + 2 * seq_lstm_h_size * ns
+        # tree_input_size = seq_lstm_h_size * ns + dep_embs_size + label_embs_size
+        # self.tree_lstm = TypeTreeLSTM(embedding_dim=tree_input_size,
+        #                               h_size=self.tree_lstm_h_size,
+        #                               dropout=dropout,
+        #                               bidirectional=tree_bidirectional)
+        # self.rel_decoder = nn.Sequential(
+        #     nn.Linear(re_input_size, re_hidden_size), nn.Tanh(), self.dropout,
+        #     nn.Linear(re_hidden_size, re_output_size))
+
+    @classmethod
+    def name(self):
+        return "LSTM_ER"
 
     def forward(self, batch, output):
 
@@ -113,46 +125,47 @@ class LSTM_ER(nn.Module):
             preds_used = batch["token"]["seg+label"]
             embs_used = F.one_hots(preds_used, num_classes=self.num_ac)
         else:
+            preds_used = seg_label_preds
             embs_used = seg_label_embs
 
         # 5)
-        span_lengths, none_span_mask, nr_units = bio_decode(
-            batch_encoded_bios=preds,
+        span_lengths, none_unit_mask, nr_units = bio_decode(
+            batch_encoded_bios=preds_used,
             lengths=batch["token"]["lengths"],
             apply_correction=True,
-            B=[],  #ids for labels counted as B
-            I=[],  #ids for labels counted as I
-            O=[],  #ids for labels counted as O
+            B=self.bio_dict["B"],  # ids for labels counted as B
+            I=self.bio_dict["I"],  # ids for labels counted as I
+            O=self.bio_dict["O"],  # ids for labels counted as O
         )
 
-        #6)
-        #NOTE! we can change this to output a tensor or array if its suits better.
+        # 6)
+        # NOTE! we can change this to output a tensor or array if its suits
+        # better.
         all_possible_pairs = get_all_possible_pairs(span_lengths,
                                                     none_unit_mask)
 
-        #7)
-        node_embs = th.cat((lstm_out, one_hots, batch["token"]["dep_embs"]),
+        # 7)
+        node_embs = th.cat((lstm_out, embs_used, batch["token"]["dep_embs"]),
                            dim=-1)
 
-        #8)
+        # 8)
         link_label_logits, link_preds = self.link_label_clf(
             input_embs=node_embs,
             dependecies=batch["token"]["dephead"],
             pairs=all_possible_pairs,
             mode="shortest_path")
 
-        if self.train_mode:
+        # if self.train_mode:
+        #     #CALCULATE LOSS HERE
 
-            #CALCULATE LOSS HERE
+        #     output.add_loss(task="total", data=total_loss)
+        #     output.add_loss(task="link_label", data=link_label_loss)
+        #     output.add_loss(task="label", data=label_loss)
 
-            output.add_loss(task="total", data=total_loss)
-            output.add_loss(task="link_label", data=link_label_loss)
-            output.add_loss(task="label", data=label_loss)
+        # output.add_preds(task="seg+label", level="token", data=label_preds)
+        # output.add_preds(task="link", level="unit", data=link_preds)
+        # output.add_preds(task="link_label",
+        #                  level="unit",
+        #                  data=link_label_preds)
 
-        output.add_preds(task="seg+label", level="token", data=label_preds)
-        output.add_preds(task="link", level="unit", data=link_preds)
-        output.add_preds(task="link_label",
-                         level="unit",
-                         data=link_label_preds)
-
-        return output
+        return 1

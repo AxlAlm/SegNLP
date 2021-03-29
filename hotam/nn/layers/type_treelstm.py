@@ -296,7 +296,7 @@ class TypeTreeLSTM(nn.Module):
         bidirectional=True,
     ):
 
-        super(TreeLSTM, self).__init__()
+        super(TypeTreeLSTM, self).__init__()
 
         self.bidirectional = bidirectional
         self.TeeLSTM_cell = TreeLSTMCell(embedding_dim, h_size)
@@ -354,7 +354,6 @@ class TypeTreeLSTM(nn.Module):
                 reverse=True,
             )
             logits_tb = g_copy.ndata.pop("h")
-
 
             logits_tb1 = logits_tb[token_ac1_id, :]
             logits_tb2 = logits_tb[token_ac2_id, :]

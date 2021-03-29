@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+from itertools import product
 
 def masked_mean(m, mask):
     """
@@ -19,7 +20,7 @@ def masked_mean(m, mask):
 
     Returns
     -------
-    
+
         [description]
     """
     m_sum = torch.sum(m, dim=2)
@@ -34,9 +35,9 @@ def multiply_mask_matrix(matrix, mask):
     """
         Tedious way of multiplying a 4D matrix with a 3D mask.
 
-        example when we need to do this is when we have a matrix of word embeddings 
-        for paragraphs  (batch_size, nr_paragraphs, nr_tok, word_emb) and we want 
-        to get spans of the paragraphs based on a mask. 
+        example when we need to do this is when we have a matrix of word embeddings
+        for paragraphs  (batch_size, nr_paragraphs, nr_tok, word_emb) and we want
+        to get spans of the paragraphs based on a mask.
 
         We can then use the mask which signify the spans to turn everything we dont
         want to zeros
@@ -45,7 +46,7 @@ def multiply_mask_matrix(matrix, mask):
 
     ## flatten to 2D
     matrix_f = torch.flatten(matrix, end_dim=-2)
-    
+
     ## 2 flatten mask to 2D, last value needs to be [0] or [1]
     mask_f = mask.view((np.prod([matrix.shape[:-1]]), 1))
 
@@ -56,7 +57,7 @@ def multiply_mask_matrix(matrix, mask):
     masked_matrix = matrix_f_masked.view(og_shape)
 
     return masked_matrix
-    
+
 
 
 def agg_emb(m, lengths, span_indexes, mode="average"):
@@ -85,13 +86,13 @@ def agg_emb(m, lengths, span_indexes, mode="average"):
                 agg_m[i][j] = v
 
             elif mode == "mix":
-                _min, _ = torch.min(m[i][ii:jj]) 
-                _max, _ = torch.max(m[i][ii:jj])  
-                _mean = torch.mean(m[i][ii:jj])     
+                _min, _ = torch.min(m[i][ii:jj])
+                _max, _ = torch.max(m[i][ii:jj])
+                _mean = torch.mean(m[i][ii:jj])
                 agg_m[i][j] = torch.cat((_min, _max, _mean))
 
             else:
-                raise RuntimeError(f"'{mode}' is not a supported mode, chose 'min', 'max','mean' or 'mix'")  
+                raise RuntimeError(f"'{mode}' is not a supported mode, chose 'min', 'max','mean' or 'mix'")
 
 
 
@@ -108,14 +109,14 @@ def agg_emb(m, lengths, span_indexes, mode="average"):
 #         if we want to get all words for all paragraphs we need to remove spans and remove padding tokens.
 #         we cannot remove all values == n as padding for nr words in paragraphs needs to exists.
 #         So, we need to find out max paragraph length, remove all zeros between that length and then after.
-        
-#         Given (batch_size, nr_paragraphs, nr_spans, nr_tokens) we get 
+
+#         Given (batch_size, nr_paragraphs, nr_spans, nr_tokens) we get
 #     """
 #     batch_size, _, _, feature_dim = matrix.shape
 
 #     matrix_f = matrix[mask]
 #     lengths = torch.sum(torch.sum(mask, dim=-1),dim=1)
-    
+
 #     new_tensor = torch.zeros((batch_size, max(lengths), feature_dim))
 
 #     start_idx = 0
@@ -130,7 +131,7 @@ def index_4D(a:torch.tensor, index:torch.tensor):
     """
     a is 4D tensors
     index is 3D tensor
-    
+
     index will select values/vectors
 
     """
@@ -141,21 +142,20 @@ def index_4D(a:torch.tensor, index:torch.tensor):
     return b
 
 
-def schedule_sampling(current_epoch, k):
-    schedule_sampling = k / (k + exp(current_epoch / k))
-    coin_flip = floor(random() * 10) / 10
-    return schdule_sampling > coin_flip:
-
+# def schedule_sampling(current_epoch, k):
+#     schedule_sampling = k / (k + exp(current_epoch / k))
+#     coin_flip = floor(random() * 10) / 10
+#     return schdule_sampling > coin_flip:
 
 
 def get_all_possible_pairs(span_lengths, none_unit_mask):
-    
+
     batch_size = span_lengths.shape[0]
     end_idxs = torch.cumsum(span_lengths, dim=-1)
-    
+
     all_possible_pairs = []
     for i in range(batch_size):
         idxes = end_idxs[i][none_unit_mask[i]]
-        possible_pairs = list(itertools.product(idxes, repeat=2))
-        
+        all_possible_pairs.append(list(product(idxes, repeat=2)))
+
     return all_possible_pairs

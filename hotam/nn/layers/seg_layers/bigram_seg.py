@@ -30,26 +30,19 @@ class BigramSegLayer(nn.Module):
         X,
         lengths,
     ):
-
+        # sizes
         batch_size = X.size(0)
         max_lenght = X.size(1)
-        # hidden_size = X.size(-1)
+        size = [batch_size, max_lenght, self.label_emb_dim]
         device = X.device
 
-        logits = th.zeros(batch_size,
-                          max_lenght,
-                          self.label_emb_dim,
-                          device=device)
-        probs = th.zeros(batch_size,
-                         max_lenght,
-                         self.label_emb_dim,
-                         device=device)
+        # construct tensors
+        logits = th.zeros(*size, device=device)
+        probs = th.zeros(*size, device=device)
+        one_hots = th.zeros(*size, device=device)
         preds = th.zeros(batch_size, max_lenght, device=device)
-        one_hots = th.zeros(batch_size,
-                            max_lenght,
-                            self.label_emb_dim,
-                            device=device)
 
+        # predict labels token by token
         for i in range(max_lenght):
             x = th.cat((X[:, i], one_hots[:, i - 1]), dim=-1)
             logit = self.clf(x)  # (B, NE-OUT)
