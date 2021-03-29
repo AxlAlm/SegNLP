@@ -38,16 +38,16 @@ logger = get_logger("PIPELINE")
 
 user_dir = pwd.getpwuid(os.getuid()).pw_dir
 
+# tasks:List[str],
+# prediction_level:str,
+# sample_level:str,
+# input_level:str,
 
 class Pipeline:
     
     def __init__(self,
                 project:str,
                 dataset:str,
-                tasks:List[str],
-                prediction_level:str,
-                sample_level:str,
-                input_level:str,
                 features:list =[],
                 encodings:list =[],
                 model_dir:str = None,
@@ -57,16 +57,14 @@ class Pipeline:
                 root_dir:str =f"{user_dir}/.hotam/pipelines" #".hotam/pipelines"       
                 ):
         
-        self.tasks = tasks
         self.project = project
-        self.prediction_level = prediction_level
         self.pipeline_id = self.__pipeline_hash([
-                                                prediction_level,
+                                                dataset.prediction_level,
                                                 dataset.name(),
-                                                sample_level, 
-                                                input_level,
+                                                dataset.sample_level, 
+                                                dataset.input_level,
                                                 ]
-                                                +tasks
+                                                +dataset.tasks
                                                 +encodings
                                                 +[f.name for f in features]
                                                 )        
@@ -74,10 +72,10 @@ class Pipeline:
         self.config = dict(
                             project=project,
                             dataset=dataset.name(),
-                            prediction_level=prediction_level, 
-                            input_level=input_level,
-                            sample_level=sample_level, 
-                            tasks=tasks, 
+                            prediction_level=dataset.prediction_level, 
+                            input_level=dataset.input_level,
+                            sample_level=dataset.sample_level, 
+                            tasks=dataset.tasks, 
                             features={f.name:f.params for f in features}, 
                             encodings=encodings,
                             tokens_per_sample=tokens_per_sample,
@@ -87,9 +85,9 @@ class Pipeline:
         self.__dump_config()
     
         self.preprocessor = Preprocessor(                
-                                        prediction_level=prediction_level,
-                                        sample_level=sample_level, 
-                                        input_level=input_level,
+                                        prediction_level=dataset.prediction_level,
+                                        sample_level=dataset.sample_level, 
+                                        input_level=dataset.input_level,
                                         features=features,
                                         encodings=encodings,
                                         tokens_per_sample=tokens_per_sample,
@@ -98,10 +96,6 @@ class Pipeline:
 
 
         self.dataset  = self.process_dataset(dataset)
-        self.preprocessor.expect_labels(
-                                        tasks=self.tasks, 
-                                        task_labels=dataset.task_labels
-                                        )
 
         self.__eval_set = False
         if model_dir:

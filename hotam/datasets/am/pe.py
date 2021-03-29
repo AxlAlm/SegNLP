@@ -82,63 +82,60 @@ class PE(DataSet):
 
     """
 
-    def __init__(self, 
+    def __init__(self,
                 prediction_level:str="token", 
                 sample_level:str="document", 
                 dump_path:str="/tmp/"
                 ):
-        assert prediction_level in ["token", "unit"]
-        assert sample_level in ["document", "paragraph", "sentence"]
-
-        self.level = "document"
- 
 
 
-   
-
-        self._name = "pe"
-        self.dump_path = dump_path
-        #self._dataset_path = "datasets/pe/data"
-    
-        self._stance2new_stance = {
-                                    "supports":"PRO", 
-                                    "Against":"CON", 
-                                    "For":"PRO", 
-                                    "attacks":"CON",
-                                    }
-        #self._tasks = ["ac", "relation", "stance"]
-        self._tasks = ["label", "link", "link_label"]
-        self.__task_labels = {
+        task_labels = {
                             "label":["MajorClaim", "Claim", "Premise"],
-
                             # Originally stance labels are For and Against for Claims and MajorClaims
                             # and for premsies supports or attacks. 
                             # However, Against and attacks are functional equivalent so will use CON for both
                             # and for For and supports we will use PRO
                             #"stance":["For", "Against", "supports", "attacks"],
-                            "link_label": ["PRO", "CON", "None"],
+                            "link_label": ["support", "attack", "None"],
                             "link": set()
                             }
+
+
+        super().__init__(
+                        name="pe",
+                        tasks=tasks,
+                        prediction_level=prediction_level,
+                        sample_level=sample_level,
+                        task_labels=task_labels,
+                        level="document",
+                        supported_tasks=["seg", "label", "link", "link_label"],
+                        supported_prediction_levels=["unit", "token"],
+                        supported_sample_levels=["document", "paragraph", "sentence"],
+                        about:str="",
+                        url:str="",
+                        dump_path:str="/tmp/",
+                        label_remapping:dict={},
+                        )
+
+
+
+
+        self.level = "document"
+        self._name = "pe"
+        self.dump_path = dump_path    
+        self._stance2new_stance = {
+                                    "supports": "support", 
+                                    "For": "support", 
+                                    "Against": "attack", 
+                                    "attacks": "attack",
+                                    }
+
 
         self.about = """The corpus consists of argument annotated persuasive essays including annotations of argument components and argumentative relations.
                         """
         self.url = "https://www.informatik.tu-darmstadt.de/ukp/research_6/data/argumentation_mining_1/argument_annotated_essays_version_2/index.en.jsp"
         self._download_url = "https://www.informatik.tu-darmstadt.de/media/ukp/data/fileupload_2/argument_annotated_news_articles/ArgumentAnnotatedEssays-2.0.zip"
         
-  
-        assert prediction_level in ["token", "unit"]
-        assert sample_level in ["paragraph", "sentence"]
-        
-        unpacked_tasks = set()
-        for task in tasks:
-            for st in tasks.split("+"):
-                if st in unpacked_tasks:
-                    raise RuntimeError(f"{st} found in more than one task")
-                else:
-                    st.add(st)
-                    
-        assert set(subtasks).issubset(set([self._tasks]))
-    
         
         self._dataset_path = self.__download_data()
         self._splits = self.__splits()

@@ -52,21 +52,6 @@ class MTC(DataSet):
                 ):
 
 
-        self.level = "paragraph"
-        self.prediction_level=prediction_level, 
-        self.sample_level=sample_level, 
-        self.input_level= self.level
-        self.dump_path = dump_path
-        self._tasks = ["seg", "label", "link", "link_label"]
-        self._task_labels = {
-                            "label": ["pro", "opp"],
-                            "link_label": ["None", "sup", "exa", "add", "reb", "und"],
-                            "link": set()
-                            }
-
-        self.about = """The arg-microtexts corpus features 112 short argumentative texts. All texts were originally written in German and have been professionally translated to English. """
-        self.url = "https://github.com/peldszus/arg-microtexts"
-
         assert prediction_level in ["token", "unit"]
         assert sample_level in ["paragraph", "sentence"]
         
@@ -80,10 +65,28 @@ class MTC(DataSet):
                     
         assert set(subtasks).issubset(set([self._tasks]))
 
+        self._level = "paragraph"
+        self._supported_prediction_levels = ["token", "unit"]
+        self._supported_sample_levels = ["paragraph", "sentence"]
+        self._prediction_level=prediction_level, 
+        self._sample_level=sample_level, 
+        self._input_level= self._level
+        self.dump_path = dump_path
 
-        self._download_path = self.__download_data()
+        self._tasks = ["seg", "label", "link", "link_label"]
+        self._task_labels = {
+                            "label": ["pro", "opp"],
+                            "link_label": ["None", "sup", "exa", "add", "reb", "und"],
+                            "link": set()
+                            }
+
+        self.about = """The arg-microtexts corpus features 112 short argumentative texts. All texts were originally written in German and have been professionally translated to English. """
+        self.url = "https://github.com/peldszus/arg-microtexts"
+
+        self._dataset_path = self.__download_data()
         self.data = self.__process_data()
         self._splits = self.__splits()
+
 
 
     def name(self):
