@@ -8,7 +8,10 @@ class DataSet:
 
 
     def __getitem__(self,key):
-        return self.data.loc[key].to_dict("record")
+        if isinstance(key, int):
+            return self.data.iloc[key].to_dict()
+        else:
+            return self.data.loc[key].to_dict("record")
 
     def __len__(self):
         return self._size
