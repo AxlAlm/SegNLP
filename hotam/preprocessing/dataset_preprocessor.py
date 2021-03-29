@@ -130,6 +130,13 @@ class PreProcessedDataset(ptl.LightningDataModule):
         return self._splits
 
 
+    def overwrite_test(self, outputs):
+        
+        for split_id in splits:
+            keys = self.splits[split_id]["test"]
+            test_data = self[keys]
+
+
     def train_dataloader(self):
         sampler = BatchSampler(self.splits[self.split_id]["train"], batch_size=self.batch_size, drop_last=False)
         return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=8)

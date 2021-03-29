@@ -50,8 +50,9 @@ class PairingLayer(torch.nn.Module):
     THE LAST 5 DIMENSIONS is the one-hot encoding representing the relative position of the paired unit. 5 dimensions 
     is due to the possible relative relations, stretching from ( -(max_units -1), (max_units-1)). In this example
     the max_units==3, which means that a unit can either be related to 2 units behind itself (-2), 1 unit behind
-    itself (-1) and so on, hence leaving us with a 5 dim one-hot-encodings.
-    h = the unit embedding at some position
+    itself (-1) , 0 units behind itself (0)  and so on, hence leaving us with a 5 dim one-hot-encodings.
+
+    h = unit embedding
     
     A sample in out input matrix will look like:
 
@@ -66,9 +67,10 @@ class PairingLayer(torch.nn.Module):
        
     3) then we transpose output of 2) to create columns 1 (h:h+h)
     
-    4) then we create the positional one-hot-encodings. These encodings will follow a strict diagonal
-       pattern as we can seen in the example above.
+    4) then we create the relattive positional one-hot-encodings. These encodings will follow a strict diagonal
+       pattern as we can seen in the example above. 
        
+    
     5) concatenate output from steps 2,3 and 4, along with the multiplication of output of step 2 and 3 which 
        creates the columns 2 (h*2:(h*2)).
 

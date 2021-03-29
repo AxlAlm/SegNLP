@@ -65,13 +65,14 @@ default_ptl_trn_args = dict(
                             )
 
 
-def setup_trainer_args(
-                        experiment_id:str, 
-                        save_choice:str,
+def setup_ptl_trainer(
                         ptl_trn_args:dict, 
                         hyperparamaters:dict, 
-                        model_dump_path:str=None, 
+                        save_choice:str,
+                        model_dump_path:str,
+                        prefix:str,
                         ):
+
 
 
     if save_choice:
@@ -94,7 +95,7 @@ def setup_trainer_args(
                                 save_top_k=save_top_k,
                                 monitor=monitor_metric,
                                 mode='min' if "loss" in monitor_metric else "max",
-                                prefix=experiment_id,
+                                prefix=prefix,
                                 verbose=0,
 
                                 )

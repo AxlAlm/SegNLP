@@ -24,7 +24,6 @@ import torch
 from hotam.datasets import DataSet
 from hotam.preprocessing import Preprocessor
 from hotam.preprocessing.dataset_preprocessor import PreProcessedDataset
-from hotam.ptl import get_ptl_trainer, PTLBase
 from hotam.ptl.ptl_trainer_setup import default_ptl_trn_args
 from hotam import get_logger
 from hotam.utils import set_random_seed, get_timestamp
@@ -190,31 +189,6 @@ class Pipeline:
         return pipeline_folder_path
 
 
-    # def __config(self, experiment_id:str, ptl_trn_args:dict, hyperparamaters:dict, evaluation_method:str, save_choice:str, model_name:str):
-
-    #     config = {}
-
-    #     #same for whole pipeline
-    #     config["experiment_id"] = experiment_id
-    #     config["project"] = self.project
-    #     config["dataset"] = self.dataset.name
-    #     config["model"] = model_name
-    #     config.update(self.preprocessor.config)
-
-    #     config["start_timestamp"] = get_timestamp()
-    #     config["ptl_trn_args"] = ptl_trn_args
-    #     config["status"] = "ongoing"
-
-    #     #for each exp / model
-    #     config["evaluation_method"] = evaluation_method
-    #     config["model_selection"] = save_choice
-    #     config["hyperparamaters"] = hyperparamaters
-
-    #     config["dataset_stats"] = self.dataset.stats.to_dict()
-
-    #     return config
-
-
     def __create_hyperparam_sets(self, hyperparamaters:Dict[str,Union[str, int, float, list]]) -> Union[dict,List[dict]]:
         """creates a set of hyperparamaters for hyperparamaters based on given hyperparamaters lists.
         takes a hyperparamaters and create a set of new paramaters given that any
@@ -238,6 +212,54 @@ class Pipeline:
         return set_hyperparamaters
 
 
+    def __get_save_model_args(model:torch.nn.Module, hyperparamaters:dict, exp_dump_path:str):
+
+        model_args = dict(
+                        model=model, 
+                        hyperparamaters=hyperparamater,
+                        tasks=self.preprocessor.tasks,
+                        all_tasks=self.preprocessor.all_tasks,
+                        label_encoders=self.preprocessor.encoders,
+                        prediction_level=self.preprocessor.prediction_level,
+                        task_dims={t:len(l) for t,l in self.preprocessor.task2labels.items() if t in self.preprocessor.tasks},
+                        feature_dims=self.preprocessor.feature2dim,
+                        )
+
+        #dumping the arguments
+        model_args_c = deepcopy(model_args)
+        model_args_c.pop("label_encoders")
+        model_args_c["model"] = model_args_c["model"].name()
+        with open(os.path.join(exp_dump_path, "args.json"), "w") as f:
+            json.dump(model_args_c, f, indent=4)
+
+        with open(os.path.join(exp_dump_path, "pipeline_id.txt"), "w") as f:
+            f.write(self.pipeline_id)
+    
+        return model_args
+
+
+    def __get_exp_config(
+                        model:str,
+                        evaluation_method:str, 
+                        monitor_metric:str,
+                        experiment_id:str,
+                        exp_dump_path:str,
+
+                        ):
+        config = {
+                    "model":model.name(),
+                    "dataset":self.dataset.name(),
+                    "evaluation_method": evaluation_method,
+                    "monitor_metric": monitor_metric,
+                    "experiment_id": experiment_id,
+                    "model_dump_path": exp_dump_path,
+                    }
+        config.update(self.config)
+        config.update(self.preprocessor.config)
+
+        return config
+
+
     def fit(    self,
                 model:torch.nn.Module,
                 hyperparamaters:dict,
@@ -251,14 +273,8 @@ class Pipeline:
                 ):
 
     
-        #if ptl_trn_args is None:
-        #     ptl_trn_args = default_ptl_trn_args
-        # else:
-        #     default_ptl_trn_args.update(ptl_trn_args)
-        #     ptl_trn_args = default_ptl_trn_args
-    
-        # if exp_logger:
-        #     ptl_trn_args["logger"] = exp_logger
+        if exp_logger:
+            ptl_trn_args["logger"] = exp_logger
 
         set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
 
@@ -269,83 +285,40 @@ class Pipeline:
             if "random_seed" not in hyperparamater:
                 hyperparamater["random_seed"] = 42
 
-
             set_random_seed(hyperparamater["random_seed"])
     
             experiment_id = "_".join([model.name(), str(uuid.uuid4())[:8]])
             exp_dump_path = os.path.join(model_dump_path, experiment_id)
             os.makedirs(exp_dump_path, exist_ok=True) 
 
-
-            config = {
-                        "model":model.name(),
-                        "dataset":self.dataset.name(),
-                        "evaluation_method": evaluation_method,
-                        "monitor_metric": monitor_metric,
-                        "experiment_id": experiment_id,
-                        "model_dump_path": exp_dump_path,
-                        }
-            config.update(self.config)
-            config.update(self.preprocessor.config)
-
-
-            ptl_trn_args = get_ptl_trn_args( 
-                                            ptl_trn_args=ptl_trn_args,
-                                            exp_logger = exp_logger,
-                                            experiment_id=experiment_id, 
-                                            hyperparamaters=hyperparamater, 
-                                            model_dump_path=exp_dump_path,
-                                            save_choice=save, 
-                                            )
-            model_args = dict(
-                                model=model, 
-                                hyperparamaters=hyperparamater,
-                                tasks=self.preprocessor.tasks,
-                                all_tasks=self.preprocessor.all_tasks,
-                                label_encoders=self.preprocessor.encoders,
-                                prediction_level=self.preprocessor.prediction_level,
-                                task_dims={t:len(l) for t,l in self.preprocessor.task2labels.items() if t in self.preprocessor.tasks},
-                                feature_dims=self.preprocessor.feature2dim,
-                                )
-            #ptl_model = PTLBase(**model_params)
-
-            #dumping the arguments
-            model_args_c = deepcopy(model_args)
-            model_args_c.pop("label_encoders")
-            model_args_c["model"] = model_args_c["model"].name()
-            with open(os.path.join(exp_dump_path, "args.json"), "w") as f:
-                json.dump(model_args_c, f, indent=4)
-
-            with open(os.path.join(exp_dump_path, "pipeline_id.txt"), "w") as f:
-                f.write(self.pipeline_id)
+            exp_config = self.__get_exp_config(
+                                                model=model,
+                                                evaluation_method=evaluation_method, 
+                                                monitor_metric=monitor_metric,
+                                                experiment_id=experiment_id,
+                                                exp_dump_path=exp_dump_path,
+                                                )
+            model_args = self.__get_save_model_args(model, hyperparamaters, exp_dump_path)
 
             self.dataset.batch_size = hyperparamaters["batch_size"]
 
-
             if exp_logger:
                 exp_logger.log_hyperparams(hyperparamater)
-                #exp_logger.log_graph(ptl_model)
 
                 if isinstance(exp_logger, CometLogger):
-                    #print(config)
-                    #print(pd.DataFrame(config))
                     exp_logger.experiment.add_tags([model.name()])
-                    exp_logger.experiment.log_others(config)
-                    #exp_logger.experiment.log_asset_data(config)
-                    # exp_logger.experiment.log_table(
-                    #                                 "exp_config.csv", 
-                    #                                 pd.DataFrame(config)
-                    #                                 )
+                    exp_logger.experiment.log_others(exp_config)
 
 
-            #logger.info(f"Experiment {experiment_id}")
             get_evaluation_method(evaluation_method)(
+                                                    experiment_id=experiment_id, 
                                                     ptl_trn_args = ptl_trn_args, 
                                                     model_args = model_args,
+                                                    hyperparamaters=hyperparamater, 
                                                     dataset=self.dataset,
-                                                    save_choice = save,
+                                                    model_dump_path=exp_dump_path,
+                                                    save_choice=save, 
                                                     )
-
 
 
     def eval(self):
@@ -358,6 +331,10 @@ class Pipeline:
         self._model.freeze()
         self.preprocessor.deactivate_labeling()
         self.__eval_set = True
+
+
+    def test(self):
+        pass
 
 
     def predict(self, doc:str):

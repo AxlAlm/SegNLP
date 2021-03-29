@@ -43,6 +43,19 @@ class ChainedPipeline:
             pipeline.eval()
 
 
+    def test(self):
+        outputs = []
+        for pipeline in self.pipelines:
+
+            if not output:
+                pipeline.dataset.overwrite_test(outputs[-1])
+
+            output = self.pipelines.test()
+            outputs.append(output)
+
+        return outputs
+
+
     def predict(self, doc:Union[str,List[str]], chain_predictions:bool = True):
         
         for pipeline in self.pipelines:

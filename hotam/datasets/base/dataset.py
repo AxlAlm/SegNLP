@@ -4,6 +4,7 @@ import pandas as pd
 from collections import Counter
 from pprint import pprint
 
+
 class DataSet:
 
 
@@ -11,7 +12,7 @@ class DataSet:
         return self.data.loc[key].to_dict("record")
 
     def __len__(self):
-        return self._size
+        return self.data.shape[0]
     
     @property
     def tasks(self):

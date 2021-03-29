@@ -124,6 +124,7 @@ class PE(DataSet):
     def name(self):
         return "PE"
 
+
     def __download_data(self, force=False) -> str:
         """downloads the data from sourse website
 
@@ -404,7 +405,6 @@ class PE(DataSet):
         try:
             split_path = str(list(Path(self.dump_path).rglob("train-test-split.csv"))[0])
         except IndexError as e:
-            logger.info("Failed to find data, will download PE.")
             self._dataset_path = self.__download_data(force=True)
             split_path = str(list(Path(self.dump_path).rglob("train-test-split.csv"))[0])
 
@@ -471,11 +471,10 @@ class PE(DataSet):
         ann_files = sorted(glob(self._dataset_path+"/*.ann"))
         text_files = sorted(glob(self._dataset_path+"/*.txt"))
         number_files = len(ann_files) + len(text_files)
-        logger.info("found {} files".format(number_files))
 
         data = []
         grouped_files = list(zip(ann_files, text_files))
-        for ann_file,txt_file in tqdm(grouped_files, desc="reading and formating PE files"):
+        for ann_file, txt_file in grouped_files:
 
             # -1 one as we want index 0 to be sample 1
             file_id = int(re.sub(r'[^0-9]', "", ann_file.rsplit("/",1)[-1])) -1
@@ -495,7 +494,6 @@ class PE(DataSet):
                             "span_labels": span2label
                             })
 
-        self._size = len(data)
         self.__task_labels["link"] = sorted(self.__task_labels["link"])
         self._task_labels = self.__task_labels
 

@@ -2,9 +2,19 @@
 import xml.etree.ElementTree as ET
 import glob
 import re
+import os
+import pandas as pd
+import numpy as np
+
+#hotam
 from hotam.utils import RangeDict
 from hotam.datasets.base import DataSet
-from sklearn import cross_validation
+
+#sklearn
+from sklearn.model_selection import KFold
+
+#git
+from git import Repo
 
 #<?xml version='1.0' encoding='UTF-8'?>
 # <arggraph id="micro_b001" topic_id="waste_separation" stance="pro">
@@ -34,15 +44,10 @@ from sklearn import cross_validation
 
 class MTC(DataSet):
 
-    def __init__(self, path_to_data:str, dump_path="/tmp/"):
+    def __init__(self, dump_path="/tmp/mtc"):
         #super().__init__()
         self.dump_path = dump_path
-        #self._dataset_path = "datasets/pe/data"
-        #self._splits = self.__splits()
-
-        # also called Edge Types
-        #self.argumentative_functions = ["support", "attack", "linked", "central claim", "normal", "example", "rebut", "undercut"]
-    
+ 
         self._tasks = ["label", "link", "link_label"]
         self._task_labels = {
                             "label": ["pro", "opp"],
@@ -53,31 +58,40 @@ class MTC(DataSet):
         self.level = "document"
         self.about = """The arg-microtexts corpus features 112 short argumentative texts. All texts were originally written in German and have been professionally translated to English. """
         self.url = "https://github.com/peldszus/arg-microtexts"
-        self.data = self.__process_data(path_to_data)
+        self._download_path = self.__download_data()
+        self.data = self.__process_data()
         self._splits = self.__splits()
 
 
     def name(self):
         return "MTC"
 
-    
+
+    def __download_data(self):
+        if not os.path.exists(self.dump_path):
+            os.makedirs(self.dump_path)
+            Repo.clone_from(self.url, self.dump_path)
+
+        return os.path.join(self.dump_path,"corpus", "en")
+
+
     def __splits(self):
         ### MTC normaly uses Cross Validation
-        kf = cross_validation.KFold(len(self), n_folds=10, shuffle=True, random_state=42)
+        kf = KFold(n_splits=10, shuffle=True, random_state=42)
         ids = np.arange(len(self))
-        splits = {i:{"train": train_index,  "test":test_index} for i, (train_index, test_index) in enumerate(kf)}
+        splits = {i:{"train": train_index,  "test":test_index} for i, (train_index, test_index) in enumerate(kf.split(ids))}
         return splits
 
 
-    def __process_data(self, path_to_data):
+    def __process_data(self):
         
         def sort_info(x):
             letter = re.findall(r"(?<=micro_)\w", x.rsplit("/",1)[1])[0]
             nr = int(re.findall(r"(?!0)\d+", x.rsplit("/",1)[1])[0])
             return letter, nr
 
-        xml_files = sorted(glob.glob(path_to_data + "/*.xml"), key=sort_info)
-        text_files = sorted(glob.glob(path_to_data + "/*.txt"), key=sort_info)
+        xml_files = sorted(glob.glob(self._download_path + "/*.xml"), key=sort_info)
+        text_files = sorted(glob.glob(self._download_path + "/*.txt"), key=sort_info)
             
         data = []
         for i in range(len(xml_files)):
@@ -142,7 +156,7 @@ class MTC(DataSet):
                     link = (int(c.attrib["trg"][1:])-1) - (int(ID)-1)
                     edus[ID]["link"] = link
 
-                    self.__task_labels["link"].add(link)
+                    self._task_labels["link"].add(link)
                 
                 
             assert len(text) == start-1, f"text={len(text)},  start={start}"
@@ -158,4 +172,4 @@ class MTC(DataSet):
 
 
         self._task_labels["link"] = sorted(self._task_labels["link"])
-        return data
+        return pd.DataFrame(data)
