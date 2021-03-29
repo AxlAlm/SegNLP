@@ -263,7 +263,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         deprels = []
         depheads = []
         root_idx = None
-        for sent_id, sent_df in enumerate(sentences):
+        for sent_id, sent_df in sentences:
             
             sent_deprels = sent_df["deprel"].to_numpy()
             sent_depheads = sent_df["dephead"].to_numpy()
@@ -282,7 +282,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             deprels.extend(sent_deprels)
             depheads.extend(sent_depheads)
 
-        Input.add("root_idxs", root_id, "token")
+        Input.add("root_idxs", root_idx, "token")
         Input.add("deprel", np.array(deprels, dtype=np.int), "token")
         Input.add("dephead", np.array(depheads, dtype=np.int), "token")
   
@@ -316,6 +316,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
     def __get_feature_data(self, Input:ModelInput, sample:pd.DataFrame):
         
         feature_dict = {}
+        sample_length = sample.shape[0]
 
         for feature, fm in self.feature2model.items():
     
