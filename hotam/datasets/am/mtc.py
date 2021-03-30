@@ -50,58 +50,43 @@ class MTC(DataSet):
                 sample_level:str="paragraph", 
                 dump_path="/tmp/mtc"
                 ):
-
-
-        assert prediction_level in ["token", "unit"]
-        assert sample_level in ["paragraph", "sentence"]
-        
-        unpacked_tasks = set()
-        for task in tasks:
-            for st in tasks.split("+"):
-                if st in unpacked_tasks:
-                    raise RuntimeError(f"{st} found in more than one task")
-                else:
-                    st.add(st)
-                    
-        assert set(subtasks).issubset(set([self._tasks]))
-
-        self._level = "paragraph"
-        self._supported_prediction_levels = ["token", "unit"]
-        self._supported_sample_levels = ["paragraph", "sentence"]
-        self._prediction_level=prediction_level, 
-        self._sample_level=sample_level, 
-        self._input_level= self._level
-        self.dump_path = dump_path
-
-        self._tasks = ["seg", "label", "link", "link_label"]
-        self._task_labels = {
-                            "label": ["pro", "opp"],
+        task_labels = {     
+                            "seg":  ["O","B","I"],
+                            "label":["pro", "opp"],
                             "link_label": ["None", "sup", "exa", "add", "reb", "und"],
-                            "link": set()
+                            "link": list(range(-6,6,1))
                             }
 
-        self.about = """The arg-microtexts corpus features 112 short argumentative texts. All texts were originally written in German and have been professionally translated to English. """
-        self.url = "https://github.com/peldszus/arg-microtexts"
+        super().__init__(
+                        name = "pe",
+                        tasks = tasks,
+                        prediction_level = prediction_level,
+                        sample_level = sample_level,
+                        supported_task_labels = task_labels,
+                        level = "paragraph",
+                        supported_tasks = [ "seg", "label", "link", "link_label"],
+                        supported_prediction_levels = ["unit", "token"],
+                        supported_sample_levels = ["paragraph", "sentence"],
+                        about = """The arg-microtexts corpus features 112 short argumentative texts. All texts were originally written in German and have been professionally translated to English. """,
+                        url = "https://github.com/peldszus/arg-microtexts",                        
+                        download_url = "https://github.com/peldszus/arg-microtexts",
+                        dump_path = dump_path,
+                        )
 
-        self._dataset_path = self.__download_data()
-        self.data = self.__process_data()
-        self._splits = self.__splits()
-
-
-
+    @classmethod
     def name(self):
         return "MTC"
 
 
-    def __download_data(self):
+    def _download_data(self):
         if not os.path.exists(self.dump_path):
             os.makedirs(self.dump_path)
-            Repo.clone_from(self.url, self.dump_path)
+            Repo.clone_from(self.download_url, self.dump_path)
 
         return os.path.join(self.dump_path,"corpus", "en")
 
 
-    def __splits(self):
+    def _splits(self):
         ### MTC normaly uses Cross Validation
         kf = KFold(n_splits=10, shuffle=True, random_state=42)
         ids = np.arange(len(self))
@@ -109,15 +94,15 @@ class MTC(DataSet):
         return splits
 
 
-    def __process_data(self):
+    def _process_data(self, path_to_data):
         
         def sort_info(x):
             letter = re.findall(r"(?<=micro_)\w", x.rsplit("/",1)[1])[0]
             nr = int(re.findall(r"(?!0)\d+", x.rsplit("/",1)[1])[0])
             return letter, nr
 
-        xml_files = sorted(glob.glob(self._download_path + "/*.xml"), key=sort_info)
-        text_files = sorted(glob.glob(self._download_path + "/*.txt"), key=sort_info)
+        xml_files = sorted(glob.glob(path_to_data + "/*.xml"), key=sort_info)
+        text_files = sorted(glob.glob(path_to_data + "/*.txt"), key=sort_info)
             
         data = []
         for i in range(len(xml_files)):
@@ -182,9 +167,7 @@ class MTC(DataSet):
                     link = (int(c.attrib["trg"][1:])-1) - (int(ID)-1)
                     edus[ID]["link"] = link
 
-                    self._task_labels["link"].add(link)
-                
-                
+            
             assert len(text) == start-1, f"text={len(text)},  start={start}"
             
             span_labels = RangeDict({e.pop("span"):e for _,e in edus.items()})
@@ -196,6 +179,4 @@ class MTC(DataSet):
                         "span_labels": span_labels
                         })
 
-
-        self._task_labels["link"] = sorted(self._task_labels["link"])
         return pd.DataFrame(data)

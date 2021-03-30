@@ -83,13 +83,13 @@ class PE(DataSet):
     """
 
     def __init__(self,
+                tasks:list,
                 prediction_level:str="token", 
                 sample_level:str="document", 
                 dump_path:str="/tmp/"
                 ):
-
-
         task_labels = {
+                            "seg": ["O","B","I"],
                             "label":["MajorClaim", "Claim", "Premise"],
                             # Originally stance labels are For and Against for Claims and MajorClaims
                             # and for premsies supports or attacks. 
@@ -97,60 +97,37 @@ class PE(DataSet):
                             # and for For and supports we will use PRO
                             #"stance":["For", "Against", "supports", "attacks"],
                             "link_label": ["support", "attack", "None"],
-                            "link": set()
+                            "link": list(range(-11,12,1))
                             }
 
-
-        super().__init__(
-                        name="pe",
-                        tasks=tasks,
-                        prediction_level=prediction_level,
-                        sample_level=sample_level,
-                        task_labels=task_labels,
-                        level="document",
-                        supported_tasks=["seg", "label", "link", "link_label"],
-                        supported_prediction_levels=["unit", "token"],
-                        supported_sample_levels=["document", "paragraph", "sentence"],
-                        about:str="",
-                        url:str="",
-                        dump_path:str="/tmp/",
-                        label_remapping:dict={},
-                        )
-
-
-
-
-        self.level = "document"
-        self._name = "pe"
-        self.dump_path = dump_path    
         self._stance2new_stance = {
                                     "supports": "support", 
                                     "For": "support", 
                                     "Against": "attack", 
                                     "attacks": "attack",
                                     }
+        super().__init__(
+                        name="pe",
+                        tasks=tasks,
+                        prediction_level=prediction_level,
+                        sample_level=sample_level,
+                        supported_task_labels=task_labels,
+                        level="document",
+                        supported_tasks=["seg", "label", "link", "link_label"],
+                        supported_prediction_levels=["unit", "token"],
+                        supported_sample_levels=["document", "paragraph", "sentence"],
+                        about="""The corpus consists of argument annotated persuasive essays including annotations of argument components and argumentative relations.""",
+                        url="https://www.informatik.tu-darmstadt.de/ukp/research_6/data/argumentation_mining_1/argument_annotated_essays_version_2/index.en.jsp",
+                        download_url= "https://www.informatik.tu-darmstadt.de/media/ukp/data/fileupload_2/argument_annotated_news_articles/ArgumentAnnotatedEssays-2.0.zip",
+                        dump_path=dump_path,
+                        )
 
-
-        self.about = """The corpus consists of argument annotated persuasive essays including annotations of argument components and argumentative relations.
-                        """
-        self.url = "https://www.informatik.tu-darmstadt.de/ukp/research_6/data/argumentation_mining_1/argument_annotated_essays_version_2/index.en.jsp"
-        self._download_url = "https://www.informatik.tu-darmstadt.de/media/ukp/data/fileupload_2/argument_annotated_news_articles/ArgumentAnnotatedEssays-2.0.zip"
-        
-        
-        self._dataset_path = self.__download_data()
-        self._splits = self.__splits()
-        self.data = self.__process_data()
-
-
-    def __len__(self):
-        return self._size
 
     @classmethod
     def name(self):
         return "PE"
 
-
-    def __download_data(self, force=False) -> str:
+    def _download_data(self, force=False) -> str:
         """downloads the data from sourse website
 
         Returns
@@ -373,7 +350,9 @@ class PE(DataSet):
         for i, (ac_id, span) in enumerate(ac_id2span.items()):
 
             relation = ac_id2relation.get(ac_id, 0)
-            self.__task_labels["link"].add(relation)
+            #self.__task_labels["link"].add(relation)
+
+
             ac = ac_id2ac.get(ac_id,"None")
             stance = self._stance2new_stance.get(ac_id2stance.get(ac_id,"None"), "None")
 
@@ -397,7 +376,7 @@ class PE(DataSet):
         return span2label
 
 
-    def __splits(self) -> Dict[int, Dict[str, np.ndarray]]:
+    def _splits(self) -> Dict[int, Dict[str, np.ndarray]]:
         """creates a dict of split ids from the premade splits
 
         Returns
@@ -477,7 +456,7 @@ class PE(DataSet):
        	return splits
 
 
-    def __process_data(self):
+    def _process_data(self, path_to_data):
         """loads the Pursuasive Essay data and parse it into a DataSet. Also dumps the dataset 
         locally so that one does not need to parse it again, only load the parsed data.
 
@@ -488,13 +467,8 @@ class PE(DataSet):
         DataSet
             
         """
-        #dump_path = "/tmp/pe_dataset.pkl"
-        #dataset = DataSet("pe", data_path=dump_path)
-        #dataset.add_splits(self.splits)
-        #if not hasattr(dataset, "data"):
-            
-        ann_files = sorted(glob(self._dataset_path+"/*.ann"))
-        text_files = sorted(glob(self._dataset_path+"/*.txt"))
+        ann_files = sorted(glob(path_to_data+"/*.ann"))
+        text_files = sorted(glob(path_to_data+"/*.txt"))
         number_files = len(ann_files) + len(text_files)
 
         data = []
@@ -518,11 +492,7 @@ class PE(DataSet):
                             "text_type":"document",
                             "span_labels": span2label
                             })
-
-        self.__task_labels["link"] = sorted(self.__task_labels["link"])
-        self._task_labels = self.__task_labels
-
-        del self.__task_labels
+ 
         return pd.DataFrame(data)
         
     

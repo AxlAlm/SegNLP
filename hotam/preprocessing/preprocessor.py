@@ -457,60 +457,13 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             df[task] = subtask_labels
 
 
-    def __get_subtasks(self, tasks):
-        subtasks = []
-        for task in tasks:
-            subtasks.extend(task.split("+"))
-        return subtasks
-
-
-    def __get_task_labels(self, task, task_labels):
-        
-        task2labels = {}
-        for task in task:
-
-            subtasks = task.split("+")
-
-            if len(subtasks) < 2:
-                task2labels[task] = task_labels[task]
-                continue
-
-            label_groups = []
-            has_seg = False
-            for st in subtasks:
-                task2labels[st] = task_labels[st]
-
-                if st == "seg":
-                    BIO = task2labels["seg"].copy()
-                    BIO.remove("O")
-                    label_groups.append(BIO)
-                    has_seg = True
-                else:
-                    label_groups.append(task2labels[st])
-
-            combs = list(itertools.product(*label_groups))
-
-            if has_seg:
-                none_label = ["O"] + ["None" if s != "link" else "0" for s in task2labels if s != "seg"]
-                combs.insert(0,none_label)
-
-            task2labels[task] = ["_".join([str(c) for c in comb]) for comb in combs]
-        
-        return task2labels
-
-
-    def expect_labels(self, tasks:list, task_labels:dict):
-        self.__need_bio = False
+    def expect_labels(self, tasks:list, subtasks:list, task_labels:dict):
         self.activate_labeling()
+        self.__need_bio = "seg" in subtasks
         self.tasks = tasks
-        self.subtasks = self.__get_subtasks(tasks)
+        self.subtasks = subtasks
         self.all_tasks = sorted(set(tasks + self.subtasks))
-        self.__need_bio = "seg" in self.subtasks
-
-        if self.__need_bio:
-            task_labels["seg"] = ["O","B","I"]
-        
-        self.task2labels = self.__get_task_labels(tasks, task_labels)
+        self.task2labels = task_labels
         self._create_label_encoders()
     
 

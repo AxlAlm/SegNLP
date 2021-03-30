@@ -62,7 +62,7 @@ class Pipeline:
                                                 dataset.prediction_level,
                                                 dataset.name(),
                                                 dataset.sample_level, 
-                                                dataset.input_level,
+                                                dataset.level,
                                                 ]
                                                 +dataset.tasks
                                                 +encodings
@@ -73,7 +73,7 @@ class Pipeline:
                             project=project,
                             dataset=dataset.name(),
                             prediction_level=dataset.prediction_level, 
-                            input_level=dataset.input_level,
+                            input_level=dataset.level,
                             sample_level=dataset.sample_level, 
                             tasks=dataset.tasks, 
                             features={f.name:f.params for f in features}, 
@@ -87,7 +87,7 @@ class Pipeline:
         self.preprocessor = Preprocessor(                
                                         prediction_level=dataset.prediction_level,
                                         sample_level=dataset.sample_level, 
-                                        input_level=dataset.input_level,
+                                        input_level=dataset.level,
                                         features=features,
                                         encodings=encodings,
                                         tokens_per_sample=tokens_per_sample,
@@ -131,7 +131,8 @@ class Pipeline:
     def process_dataset(self, dataset:Union[DataSet, PreProcessedDataset]):
 
         self.preprocessor.expect_labels(
-                                        tasks=self.tasks, 
+                                        tasks=dataset.tasks, 
+                                        subtasks=dataset.subtasks,
                                         task_labels=dataset.task_labels
                                         )
 
