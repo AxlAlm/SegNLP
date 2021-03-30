@@ -1,6 +1,10 @@
 import torch
 import numpy as np
+
+from math import floor, exp
+from random import random
 from itertools import product
+
 
 def masked_mean(m, mask):
     """
@@ -30,41 +34,38 @@ def masked_mean(m, mask):
     return masked_mean
 
 
-
 def multiply_mask_matrix(matrix, mask):
     """
         Tedious way of multiplying a 4D matrix with a 3D mask.
 
-        example when we need to do this is when we have a matrix of word embeddings
-        for paragraphs  (batch_size, nr_paragraphs, nr_tok, word_emb) and we want
-        to get spans of the paragraphs based on a mask.
+        Example when we need to do this is when we have a matrix of word
+        embeddings for paragraphs (batch_size, nr_paragraphs, nr_tok, word_emb)
+        and we want to get spans of the paragraphs based on a mask.
 
-        We can then use the mask which signify the spans to turn everything we dont
-        want to zeros
+        We can then use the mask which signify the spans to turn everything we
+        dont want to zeros
     """
     og_shape = matrix.shape
 
-    ## flatten to 2D
+    # # flatten to 2D
     matrix_f = torch.flatten(matrix, end_dim=-2)
 
-    ## 2 flatten mask to 2D, last value needs to be [0] or [1]
+    # # 2 flatten mask to 2D, last value needs to be [0] or [1]
     mask_f = mask.view((np.prod([matrix.shape[:-1]]), 1))
 
-    ## 3 turn embs into 0 where mask is 0
+    # # 3 turn embs into 0 where mask is 0
     matrix_f_masked = matrix_f * mask_f
 
-    ## 4 return to original shape
+    # # 4 return to original shape
     masked_matrix = matrix_f_masked.view(og_shape)
 
     return masked_matrix
 
 
-
 def agg_emb(m, lengths, span_indexes, mode="average"):
 
-
     if mode == "mix":
-        feature_dim = matrix.shape[-1]*3
+        feature_dim = matrix.shape[-1] * 3
     else:
         feature_dim = matrix.shape[-1]
 
@@ -72,17 +73,17 @@ def agg_emb(m, lengths, span_indexes, mode="average"):
 
     for i in range(batch_size):
         for j in range(lengths[i]):
-            ii,jj = span_indexes[i][j]
+            ii, jj = span_indexes[i][j]
 
             if mode == "average":
                 agg_m[i][j] = torch.mean(m[i][ii:jj], dim=0)
 
             elif mode == "max":
-                v,_ = torch.max(m[i][ii:jj])
+                v, _ = torch.max(m[i][ii:jj])
                 agg_m[i][j] = v
 
             elif mode == "min":
-                v,_ = torch.max(m[i][ii:jj])
+                v, _ = torch.max(m[i][ii:jj])
                 agg_m[i][j] = v
 
             elif mode == "mix":
@@ -92,8 +93,9 @@ def agg_emb(m, lengths, span_indexes, mode="average"):
                 agg_m[i][j] = torch.cat((_min, _max, _mean))
 
             else:
-                raise RuntimeError(f"'{mode}' is not a supported mode, chose 'min', 'max','mean' or 'mix'")
-
+                raise RuntimeError(
+                    f"'{mode}' is not a supported mode, chose 'min', 'max','mean' or 'mix'"
+                )
 
 
 # def reduce_and_remove(matrix, mask):
@@ -102,7 +104,6 @@ def agg_emb(m, lengths, span_indexes, mode="average"):
 #     Given a 4D matrix turn it into a 3D by removing 3D dimension while perserving padding.
 
 #     (similar to pytroch.utils.pad_packed_sequences, sort of)
-
 
 #     for example:
 #         given a 4D matrix where dims are (batch_size, nr_paragraphs, nr_spans, feature_dim),
@@ -127,7 +128,7 @@ def agg_emb(m, lengths, span_indexes, mode="average"):
 #     return new_tensor
 
 
-def index_4D(a:torch.tensor, index:torch.tensor):
+def index_4D(a: torch.tensor, index: torch.tensor):
     """
     a is 4D tensors
     index is 3D tensor
@@ -137,25 +138,17 @@ def index_4D(a:torch.tensor, index:torch.tensor):
     """
     b = torch.zeros((a.shape[0], a.shape[1], a.shape[-1]))
     for i in range(index.shape[0]):
-        for j,k in enumerate(index[i]):
+        for j, k in enumerate(index[i]):
             b[i][j] = a[i][j][k]
     return b
 
 
-# def schedule_sampling(current_epoch, k):
-#     schedule_sampling = k / (k + exp(current_epoch / k))
-#     coin_flip = floor(random() * 10) / 10
-#     return schdule_sampling > coin_flip:
-
-
 def get_all_possible_pairs(span_lengths, none_unit_mask):
 
-    batch_size = span_lengths.shape[0]
-    end_idxs = torch.cumsum(span_lengths, dim=-1)
-
     all_possible_pairs = []
-    for i in range(batch_size):
-        idxes = end_idxs[i][none_unit_mask[i]]
+    for span, mask in zip(span_lengths, none_unit_mask):
+        end_idxs = np.cumsum(span)
+        idxes = end_idxs[np.array(mask, dtype=bool)]
         all_possible_pairs.append(list(product(idxes, repeat=2)))
 
     return all_possible_pairs

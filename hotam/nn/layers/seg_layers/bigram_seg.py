@@ -37,10 +37,10 @@ class BigramSegLayer(nn.Module):
         device = X.device
 
         # construct tensors
-        logits = th.zeros(*size, device=device)
-        probs = th.zeros(*size, device=device)
-        one_hots = th.zeros(*size, device=device)
-        preds = th.zeros(batch_size, max_lenght, device=device)
+        logits = th.zeros(*size, device=device, requires_grad=True)
+        probs = th.zeros(*size, device=device, requires_grad=True)
+        one_hots = th.zeros(*size, dtype=th.long, device=device)
+        preds = th.zeros(batch_size, max_lenght, dtype=th.long, device=device)
 
         # predict labels token by token
         for i in range(max_lenght):
@@ -48,7 +48,7 @@ class BigramSegLayer(nn.Module):
             logit = self.clf(x)  # (B, NE-OUT)
             logits[:, i] = logit
             probs[:, i] = F.softmax(logit, dim=1)
-            preds[:, i] = F.argmax(probs[i:], dim=1)
+            preds[:, i] = th.argmax(probs[:, i], dim=1)
             one_hots[:, i] = F.one_hot(preds[:, i],
                                        num_classes=self.label_emb_dim)
 

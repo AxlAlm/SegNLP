@@ -24,5 +24,5 @@ exp.fit(
     model=LSTM_ER,
     hyperparamaters=get_default_hps(LSTM_ER.name()),
     # exp_logger=exp_logger,
-    gpus=[2],
+    gpus=None,
 )
