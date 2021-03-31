@@ -53,6 +53,8 @@ class PreProcessedDataset(ptl.LightningDataModule):
         with open(os.path.join(dir_path, f"{name}_splits.pkl"), "rb") as f:
             self._splits = pickle.load(f)
         
+        self.__chained_model_outputs = {}
+        
 
     def __getitem__(self, key:Union[np.ndarray, list]) -> ModelInput:
         Input = ModelInput(
@@ -70,6 +72,9 @@ class PreProcessedDataset(ptl.LightningDataModule):
 
                 if group == "idxs":
                     continue
+
+                if group in self.__chained_model_outputs:
+                    Input[group] = self.__chained_model_outputs[group]
                 
                 max_len = max(data[group]["lengths"][sorted_key])
 
@@ -138,17 +143,22 @@ class PreProcessedDataset(ptl.LightningDataModule):
 
 
     def train_dataloader(self):
+        # ids are given as a nested list (e.g [[42, 43]]) hence using lambda x:x[0] to select the inner list.
         sampler = BatchSampler(self.splits[self.split_id]["train"], batch_size=self.batch_size, drop_last=False)
         return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=8)
 
 
     def val_dataloader(self):
+        # ids are given as a nested list (e.g [[42, 43]]) hence using lambda x:x[0] to select the inner list.
         sampler = BatchSampler(self.splits[self.split_id]["val"], batch_size=self.batch_size, drop_last=False)
         return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=8) #, shuffle=True)
 
 
-    def test_dataloader(self):
+    def test_dataloader(self, seg):
         sampler = BatchSampler(self.splits[self.split_id]["test"], batch_size=self.batch_size, drop_last=False)
+
+        self.__chained_model_outputs["unit"] = seg
+
         return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=8)
 
 

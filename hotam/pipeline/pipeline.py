@@ -328,8 +328,24 @@ class Pipeline:
         self.__eval_set = True
 
 
-    def test(self):
-        pass
+    def test(self, save_choice, unit_data):
+
+       # seg:{lengths:array, mask:array ... ,} 
+ 
+        if save_choice == "last":
+            trainer.test(
+                        model=ptl_model, 
+                        test_dataloaders=dataset.test_dataloader(unit_data)
+                        )
+        elif save_choice == "best":
+            trainer.test(
+                        model="best",
+                        test_dataloaders=dataset.test_dataloader(unit_data)
+                        )
+        else:
+            raise RuntimeError(f"'{save_choice}' is not an approptiate choice when testing models")
+    
+
 
 
     def predict(self, doc:str):
