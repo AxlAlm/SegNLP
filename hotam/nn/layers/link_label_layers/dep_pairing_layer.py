@@ -33,6 +33,24 @@ class DepPairingLayer(nn.Module):
 
         self.__supported_modes = set(["shortest_path"])
 
+    def assert_graph(self,
+                     u: Tensor,
+                     v: Tensor,
+                     roots: Tensor,
+                     self_loop: Tensor,
+                     mode: str = "self looping") -> None:
+        # check that self loops do not exist in places other than roots
+        self_loop_check = u == roots[:, None]
+        if not torch.all(self_loop == self_loop_check):
+            # we have a problem. Get samples ids where we have more than one
+            # self loop
+            problem_id = torch.where(torch.sum(self_loop, 1) > 1)[0].tolist()
+            self_loop_id = v[problem_id, :][self_loop[problem_id, :]].tolist()
+            theroot = roots[problem_id].tolist()
+            error_msg_1 = f"Self loop found in sample(s): {problem_id}, "
+            error_msg_2 = f"Node(s) {self_loop_id}. Root(s): {theroot}."
+            raise Exception(error_msg_1 + error_msg_2)
+
     def build_dep_graphs(self, deplinks: Tensor, roots: Tensor,
                          token_mask: Tensor, token_reps: Tensor,
                          subgraphs: List[List[Tuple]], mode: str):
@@ -43,13 +61,8 @@ class DepPairingLayer(nn.Module):
 
         U = torch.arange(max_lenght).repeat(batch_size, 1)
         # remove self loops at root nodes
-        self_loop = deplinks == U
-        self_loop_check = U == roots[:, None]
-        assert torch.all(self_loop == self_loop_check)
-        # pb_id = torch.nonzero(torch.sum(self_loop, 1) > 1)
-        # pb_id = torch.nonzero(torch.sum(self_loop_check, 1) > 1)
-        # deplinks[pb_id, :][self_loop[pb_id, :]]
-        # deplinks[pb_id, :][self_loop_check[pb_id, :]]
+        self_loop = U == deplinks
+        self.assert_graph(U, deplinks, roots, self_loop)
 
     def forward(self,
                 input_embs: Tensor,
