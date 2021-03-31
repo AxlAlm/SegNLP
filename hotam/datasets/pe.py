@@ -357,7 +357,7 @@ class PE(DataSet):
                         "link_label": self._stance2new_stance.get(ac_id2stance.get(ac_id,"None"), "None"), 
                         "link": relation,
                         "span_id": i,
-                        "unit_id": None if "None" in ac_id else i,
+                        "unit_id": np.nan if "None" in ac_id else i,
                     }
             
 

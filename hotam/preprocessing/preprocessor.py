@@ -124,7 +124,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
         for i, sample in samples:
             i -= self._removed
-
+            
             #everything within this block should be sped up
             if self.__labeling:
                 if span_labels:
@@ -138,7 +138,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 
                 self.__fuse_subtasks(sample)
                 self._encode_labels(sample)
-
+            
 
             if self.argumentative_markers:
                 sample = self._label_ams(sample)
@@ -251,26 +251,25 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
         sentences  = sample.groupby("sentence_id")
 
-        last_sent_end = None
+        sent_length = 0
         deprels = []
         depheads = []
-        root_idx = None
+        root_idx = -1
         for sent_id, sent_df in sentences:
             
             sent_deprels = sent_df["deprel"].to_numpy()
-            sent_depheads = sent_df["dephead"].to_numpy()
+            sent_depheads = sent_df["dephead"].to_numpy() + sent_length
 
             sent_root_id = self.encode_list(["root"], "deprel")[0]
             sent_root_idx = int(np.where(sent_df["deprel"].to_numpy() == sent_root_id)[0])
             
-
-            if last_sent_end is not None:
-                sent_depheads[sent_root_idx] = last_sent_end
-                last_sent_end = sent_df.shape[0]
-            else:
+            if sent_length == 0 and root_idx == -1:
                 root_idx = sent_root_idx
-                last_sent_end = sent_root_idx
-            
+                sent_length = sent_df.shape[0]
+            else:
+                sent_depheads[sent_root_idx] = sent_length-1
+                sent_length += sent_df.shape[0]
+      
             deprels.extend(sent_deprels)
             depheads.extend(sent_depheads)
 

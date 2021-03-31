@@ -155,8 +155,11 @@ class Pipeline:
                                                         label_encoders=self.preprocessor.encoders,
                                                         prediction_level=self.prediction_level
                                                         )
-                except EOFError as e:
-                    shutil.rmtree(self._pipeline_folder_path)
+                except OSError as e:
+                    try:
+                        shutil.rmtree(self._pipeline_folder_path)
+                    except FileNotFoundError as e:
+                        pass
 
 
             try:
