@@ -35,20 +35,20 @@ def default(
                     val_dataloaders=dataset.val_dataloader()
                     )
 
-    #picking model to run on test split
-    if save_choice is not None:
+    # #picking model to run on test split
+    # if save_choice is not None:
         
-        if save_choice == "last":
-            trainer.test(
-                        model=ptl_model, 
-                        test_dataloaders=dataset.test_dataloader()
-                        )
-        elif save_choice == "best":
-            trainer.test(
-                        model="best",
-                        test_dataloaders=dataset.test_dataloader()
-                        )
-        else:
-            raise RuntimeError(f"'{save_choice}' is not an approptiate choice when testing models")
+    #     if save_choice == "last":
+    #         trainer.test(
+    #                     model=ptl_model, 
+    #                     test_dataloaders=dataset.test_dataloader()
+    #                     )
+    #     elif save_choice == "best":
+    #         trainer.test(
+    #                     model="best",
+    #                     test_dataloaders=dataset.test_dataloader()
+    #                     )
+    #     else:
+    #         raise RuntimeError(f"'{save_choice}' is not an approptiate choice when testing models")
     
 

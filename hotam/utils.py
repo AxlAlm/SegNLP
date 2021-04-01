@@ -279,3 +279,7 @@ def tensor_dtype(numpy_dtype):
         return torch.bool
 
 
+
+def create_uid(string):
+    uid = str(int(hashlib.sha256(string.encode('utf-8')).hexdigest(), 16) % 10**8)
+    return uid

@@ -16,6 +16,8 @@ import pandas as pd
 
 #pytorch Lightning
 from pytorch_lightning.loggers import LightningLoggerBase
+from pytorch_lightning.loggers import CometLogger
+
 
 #pytorch
 import torch
@@ -26,12 +28,11 @@ from hotam.preprocessing import Preprocessor
 from hotam.preprocessing.dataset_preprocessor import PreProcessedDataset
 from hotam.ptl.ptl_trainer_setup import default_ptl_trn_args
 from hotam import get_logger
-from hotam.utils import set_random_seed, get_timestamp
+from hotam.utils import set_random_seed, get_timestamp, create_uid
 from hotam.evaluation_methods import get_evaluation_method
 from hotam.nn.models import get_model
 from hotam.features import get_feature
 from hotam.nn import ModelOutput
-from pytorch_lightning.loggers import CometLogger
 
 logger = get_logger("PIPELINE")
 
@@ -58,7 +59,8 @@ class Pipeline:
                 ):
         
         self.project = project
-        self.pipeline_id = self.__pipeline_hash([
+        self.pipeline_id = create_uid(
+                                            "".join([
                                                 dataset.prediction_level,
                                                 dataset.name(),
                                                 dataset.sample_level, 
@@ -67,7 +69,8 @@ class Pipeline:
                                                 +dataset.tasks
                                                 +encodings
                                                 +[f.name for f in features]
-                                                )        
+                                                    )
+                                            )        
         self._pipeline_folder_path = self.__create_pipe_folder(root_dir=root_dir, pipe_hash=self.pipeline_id)
         self.config = dict(
                             project=project,
@@ -164,12 +167,6 @@ class Pipeline:
         fp = os.path.join(pipeline_folder_path, f"{dataset_name}_data.hdf5")
         return os.path.exists(fp)
      
-
-    def __pipeline_hash(self, strings):
-        big_string = "%".join(strings)
-        hash_encoding = str(int(hashlib.sha256(big_string.encode('utf-8')).hexdigest(), 16) % 10**8)
-        return hash_encoding
-
 
     def __dump_config(self):
         config_fp = os.path.join(self._pipeline_folder_path, "config.json")
@@ -273,16 +270,21 @@ class Pipeline:
 
         set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
 
-        for hyperparamater in set_hyperparamaters:
+        for hyperparamaters in set_hyperparamaters:
 
-            hyperparamater["monitor_metric"] = monitor_metric
+            hyperparamaters["monitor_metric"] = monitor_metric
 
             if "random_seed" not in hyperparamater:
-                hyperparamater["random_seed"] = 42
+                hyperparamaters["random_seed"] = 42
 
-            set_random_seed(hyperparamater["random_seed"])
+            set_random_seed(hyperparamaters["random_seed"])
     
-            experiment_id = "_".join([model.name(), str(uuid.uuid4())[:8]])
+            model_unique_str = "".join(
+                                            [model.name()]
+                                            + list(map(str, hyperparamaters.keys()))
+                                            + list(map(str, hyperparamaters.keys()))
+                                        )
+            experiment_id = create_uid(model_unique_str)
             exp_dump_path = os.path.join(model_dump_path, experiment_id)
             os.makedirs(exp_dump_path, exist_ok=True) 
 
@@ -298,6 +300,7 @@ class Pipeline:
             self.dataset.batch_size = hyperparamaters["batch_size"]
 
             if exp_logger:
+                exp_logger.set_id(experiment_id)
                 exp_logger.log_hyperparams(hyperparamater)
 
                 if isinstance(exp_logger, CometLogger):
@@ -329,21 +332,25 @@ class Pipeline:
 
 
     def test(self, save_choice, unit_data):
+        trainer.test(
+                    model="best", 
+                    test_dataloaders=self.dataset.test_dataloader()
+                    )
 
-       # seg:{lengths:array, mask:array ... ,} 
- 
-        if save_choice == "last":
-            trainer.test(
-                        model=ptl_model, 
-                        test_dataloaders=dataset.test_dataloader(unit_data)
-                        )
-        elif save_choice == "best":
-            trainer.test(
-                        model="best",
-                        test_dataloaders=dataset.test_dataloader(unit_data)
-                        )
-        else:
-            raise RuntimeError(f"'{save_choice}' is not an approptiate choice when testing models")
+
+
+        # if save_choice == "last":
+        #     trainer.test(
+        #                 model=ptl_model, 
+        #                 test_dataloaders=dataset.test_dataloader(unit_data)
+        #                 )
+        # elif save_choice == "best":
+        #     trainer.test(
+        #                 model="best",
+        #                 test_dataloaders=dataset.test_dataloader(unit_data)
+        #                 )
+        # else:
+        #     raise RuntimeError(f"'{save_choice}' is not an approptiate choice when testing models")
     
 
 

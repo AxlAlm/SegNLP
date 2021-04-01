@@ -47,8 +47,8 @@ class PreProcessedDataset(ptl.LightningDataModule):
 
         self.prediction_level = prediction_level
 
-        # self._stats = pd.read_csv(os.path.join(dir_path, f"{name}_stats.csv"))
-        # self._stats.columns = ["split_id", "split", "task", "label", "count"]
+        self._stats = pd.read_csv(os.path.join(dir_path, f"{name}_stats.csv"))
+        self._stats.columns = ["split_id", "split", "task", "label", "count"]
 
         with open(os.path.join(dir_path, f"{name}_splits.pkl"), "rb") as f:
             self._splits = pickle.load(f)
@@ -74,12 +74,14 @@ class PreProcessedDataset(ptl.LightningDataModule):
                     continue
 
                 if group in self.__chained_model_outputs:
-                    Input[group] = self.__chained_model_outputs[group]
+                    data_group = Input[group] = self.__chained_model_outputs[group]
+                else:
+                    data_group = data[group]
                 
                 max_len = max(data[group]["lengths"][sorted_key])
 
                 Input[group] = {}
-                for k, v in data[group].items():
+                for k, v in data_group.items():
                     
                     a = v[sorted_key]
                 
