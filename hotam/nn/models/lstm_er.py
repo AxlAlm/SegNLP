@@ -150,7 +150,8 @@ class LSTM_ER(nn.Module):
             token_mask=batch["token"]["mask"],
             roots=output.batch["token"]["root_idxs"],
             pairs=all_possible_pairs,
-            mode="shortest_path")
+            mode="shortest_path",
+            assertion=False)
 
         # if self.train_mode:
         #     #CALCULATE LOSS HERE
