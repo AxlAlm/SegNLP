@@ -1,13 +1,17 @@
+from functools import reduce
+from operator import iconcat
+
 from collections import defaultdict
 
-import torch as th
+import numpy as np
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from hotam.nn.layers.seg_layers.bigram_seg import BigramSegLayer
 from hotam.nn.layers.link_label_layers.dep_pairing_layer import DepPairingLayer
 from hotam.nn.layers.lstm import LSTM_LAYER
-from hotam.nn.utils import index_4D, get_all_possible_pairs
+from hotam.nn.utils import get_all_possible_pairs, range_3d_tensor_index
 from hotam.nn.schedule_sample import ScheduleSampling
 from hotam.nn.bio_decoder import bio_decode
 
@@ -23,7 +27,7 @@ class LSTM_ER(nn.Module):
 
         self.train_mode = train_mode
 
-        self.model_param = nn.Parameter(th.empty(0))
+        self.model_param = nn.Parameter(torch.empty(0))
 
         self.sub_graph_type = hyperparamaters["sub_graph_type"]
 
@@ -90,10 +94,11 @@ class LSTM_ER(nn.Module):
 
     def forward(self, batch, output):
 
+        check = True
         # 1)
         # pos_word_embs.shape =
         # (batch_size, max_nr_tokens, word_embs + pos_embs)
-        pos_word_embs = th.cat(
+        pos_word_embs = torch.cat(
             (batch["token"]["word_embs"], batch["token"]["pos_embs"]), dim=2)
         pos_word_embs = self.dropout(pos_word_embs)
 
@@ -120,7 +125,7 @@ class LSTM_ER(nn.Module):
 
         # 5)
         # NOTE It would be better to have during initialization instead of
-        # getting labels ids each step
+        # getting the same labels ids each step
         bio_dict = defaultdict(list)
         for (i, label) in enumerate(output.label_encoders["seg+label"].labels):
             bio_dict[label[0]].append(i)
@@ -134,24 +139,46 @@ class LSTM_ER(nn.Module):
         )
 
         # 6)
-        # NOTE! we can change this to output a tensor or array if its suits
-        # better.
         all_possible_pairs = get_all_possible_pairs(span_lengths,
-                                                    none_unit_mask)
+                                                    none_unit_mask,
+                                                    assertion=check)
 
         # 7)
-        node_embs = th.cat((lstm_out, embs_used, batch['token']['deprel_embs']),
-                           dim=-1)
+        node_embs = torch.cat(
+            (lstm_out, embs_used, batch['token']['deprel_embs']), dim=-1)
+        # construct Si: average of sequential lstm hidden state for each unit
+        # flatten List[List[Tuple[int]]] to List[Tuple[int]], separate the
+        # list of tuples candidate pairs into two lists
+        units_start_ids = reduce(iconcat, all_possible_pairs["start"], [])
+        units_end_ids = reduce(iconcat, all_possible_pairs["end"], [])
+        unit1_start, unit2_start = np.array(list(zip(*units_start_ids)))
+        unit1_end, unit2_end = np.array(list(zip(*units_end_ids)))
+        # number of pairs in each sample
+        units_pair_num = list(map(len, all_possible_pairs["end"]))
+
+        # Indexing sequential lstm hidden state for each unit
+        unit1_s = range_3d_tensor_index(lstm_out,
+                                        unit1_start,
+                                        unit1_end,
+                                        units_pair_num,
+                                        reduce_="mean")
+        unit2_s = range_3d_tensor_index(lstm_out,
+                                        unit2_start,
+                                        unit2_end,
+                                        units_pair_num,
+                                        reduce_="mean")
+        s = torch.cat((unit1_s, unit2_s), dim=-1)
 
         # 8)
         link_label_logits, link_preds = self.link_label_clf(
             input_embs=node_embs,
+            unit_repr=s,
             dependencies=batch["token"]["dephead"],
             token_mask=batch["token"]["mask"],
             roots=output.batch["token"]["root_idxs"],
-            pairs=all_possible_pairs,
+            pairs=all_possible_pairs["end"],
             mode="shortest_path",
-            assertion=False)
+            assertion=check)
 
         # if self.train_mode:
         #     #CALCULATE LOSS HERE

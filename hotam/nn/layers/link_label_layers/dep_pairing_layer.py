@@ -27,6 +27,9 @@ class DepPairingLayer(nn.Module):
                  dropout: int = 0.0):
         super(DepPairingLayer, self).__init__()
 
+        self.tree_lstm_h_size = tree_lstm_h_size
+        self.tree_lstm_bidir = tree_bidirectional
+
         self.tree_lstm = TypeTreeLSTM(embedding_dim=tree_input_size,
                                       h_size=tree_lstm_h_size,
                                       dropout=dropout,
@@ -55,13 +58,35 @@ class DepPairingLayer(nn.Module):
             raise Exception(error_msg_1 + error_msg_2)
             # remove the sample that has the problem
 
+    def get_sample_graph(self, deplinks: Tensor, roots: Tensor,
+                         token_mask: Tensor, assertion: bool) -> List[Tensor]:
+
+        batch_size = deplinks.size(0)
+        max_lenght = deplinks.size(1)
+        device = torch.device("cpu")
+
+        # G(U, V)
+        U = torch.arange(max_lenght, device=self.device).repeat(batch_size, 1)
+        V = deplinks.clone()
+        M = token_mask.clone().type(torch.bool)
+
+        # remove self loops at root nodes
+        self_loop = U == V
+        if assertion:
+            self.assert_graph(U, V, roots, self_loop)
+        U = U[~self_loop].view(batch_size, -1).to(device)
+        V = V[~self_loop].view(batch_size, -1).to(device)
+        M = M[~self_loop].view(batch_size, -1).to(device)
+
+        return [U, V, M]
+
     def get_subgraph(self,
                      start: int,
                      end: int,
                      g: DGLGraph,
                      g_nx: nxGraph,
                      sub_graph_type: str,
-                     assertion: bool = False):
+                     assertion: bool = False) -> DGLGraph:
         """
         """
         if sub_graph_type == "shortest_path":
@@ -98,34 +123,28 @@ class DepPairingLayer(nn.Module):
             pass
         return sub_g
 
-    def build_dep_graphs(self, deplinks: Tensor, roots: Tensor,
-                         token_mask: Tensor, token_reps: Tensor,
+    def build_dep_graphs(self, token_embs: Tensor, deplinks: Tensor,
+                         roots: Tensor, token_mask: Tensor, token_reps: Tensor,
                          subgraphs: List[List[Tuple]], mode: str,
-                         assertion: bool):
+                         assertion: bool) -> List[DGLGraph]:
 
         batch_size = deplinks.size(0)
-        max_lenght = deplinks.size(1)
 
-        U = torch.arange(max_lenght).repeat(batch_size, 1).to(self.device)
-        # remove self loops at root nodes
-        self_loop = U == deplinks
-        if assertion:
-            self.assert_graph(U, deplinks, roots, self_loop)
-        device = torch.device("cpu")
-        U = U[~self_loop].view(batch_size, -1).to(device)
-        deplinks = deplinks[~self_loop].view(batch_size, -1).to(device)
-        token_mask_copy = token_mask.to(device)[~self_loop]
-        token_mask_copy = token_mask_copy.view(batch_size, -1).type(torch.bool)
-
+        # creat sample graphs G(U, V) tensor on CPU
+        U, V, M = self.get_sample_graph(deplinks=deplinks,
+                                        roots=roots,
+                                        token_mask=token_mask,
+                                        assertion=assertion)
         # creat sub_graph for each pair
         dep_graphs = []
+        nodes_emb = []
         for b_i in range(batch_size):
-            mask = token_mask_copy[b_i]
+            mask = M[b_i]
             u = U[b_i][mask]
-            v = deplinks[b_i][mask]
-            # creat sample graph, convert it to unidirection, separate the list
-            # of tuples candidate pairs into two lists: (start and end tokens),
-            # then create subgraph
+            v = V[b_i][mask]
+            # creat sample DGLGraph, convert it to unidirection, separate the
+            # list of tuples candidate pairs into two lists: (start and end
+            # tokens), then create subgraph
             graph = dgl.graph((u, v))
             graph_unidir = graph.to_networkx().to_undirected()
             start, end = list(zip(*subgraphs[b_i]))
@@ -134,16 +153,25 @@ class DepPairingLayer(nn.Module):
                                               g_nx=graph_unidir,
                                               sub_graph_type=mode,
                                               assertion=assertion)
-            dep_graphs.append(list(map(subgraph_func, start, end)))
+            dep_graphs.append(dgl.batch(list(map(subgraph_func, start, end))))
+            # get nodes' token embedding
+            nodes_emb.append(token_embs[b_i, dep_graphs[b_i].ndata["_ID"]])
+
+        # batch graphs, move to model device, update nodes data by tokens
+        # embedding
+        nodes_emb = torch.cat(nodes_emb, dim=0)
+        dep_graphs = dgl.batch(dep_graphs).to(self.device)
+        dep_graphs.ndata["emb"] = nodes_emb
 
         return dep_graphs
 
     def forward(self,
                 input_embs: Tensor,
+                unit_repr: Tensor,
                 dependencies: Tensor,
                 token_mask: Tensor,
                 roots: Tensor,
-                pairs: List[List[Tuple]],
+                pairs: List[List[Tuple[int]]],
                 mode: str = "shortest_path",
                 assertion: bool = False):
 
@@ -151,10 +179,11 @@ class DepPairingLayer(nn.Module):
         assert mode_bool, f"{mode} is not a supported mode for DepPairingLayer"
 
         self.device = input_embs.device
+        dir_n = 2 if self.tree_lstm_bidir else 1
 
         # 8)
-
-        dep_graphs = self.build_dep_graphs(deplinks=dependencies,
+        dep_graphs = self.build_dep_graphs(token_embs=input_embs,
+                                           deplinks=dependencies,
                                            roots=roots,
                                            token_mask=token_mask,
                                            token_reps=input_embs,
@@ -162,10 +191,30 @@ class DepPairingLayer(nn.Module):
                                            mode=mode,
                                            assertion=assertion)
 
-        test = 1
         # 9)
-        #
-        # tree_lstm_out = self.tree_lstm(graphs)
+        h0 = torch.zeros(dep_graphs.num_nodes(),
+                         self.tree_lstm_h_size,
+                         device=self.device)
+        c0 = torch.zeros_like(h0)
+        tree_lstm_out = self.tree_lstm(dep_graphs, h0, c0)
+
+        # construct dp = [↑hpA; ↓hp1; ↓hp2]
+        # ↑hpA: hidden state of dep_graphs' root
+        # ↓hp1: hidden state of the first token in the candidate pair
+        # ↓hp2: hidden state of the second token in the candidate pair
+        # get ids of roots and token in relation
+        root_id = (dep_graphs.ndata["root"] == 1)
+        start_id = dep_graphs.ndata["start"] == 1
+        end_id = dep_graphs.ndata["end"] == 1
+        tree_lstm_out = tree_lstm_out.view(-1, dir_n, self.tree_lstm_h_size)
+        tree_logits = tree_lstm_out[root_id, 0, :]  # ↑hpA
+        if self.tree_lstm_bidir:
+            hp1 = tree_lstm_out[start_id, 1, :]  # ↓hp1
+            hp2 = tree_lstm_out[end_id, 1, :]  # ↓hp2
+            tree_logits = torch.cat((tree_logits, hp1, hp2), dim=-1)
+        # [dp; s]
+        link_label_input_emb = torch.cat((tree_logits, unit_repr), dim=-1)
+        logits = self.label_link_clf(link_label_input_emb)
 
         # 10) Here we should format the data to the following structure:
         # t1 = representation of the last token in the first unit of the pair

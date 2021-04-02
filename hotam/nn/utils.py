@@ -1,10 +1,12 @@
 import torch
+from torch import Tensor
 import numpy as np
 
+from typing import List, Tuple, DefaultDict
 from math import floor, exp
 from random import random
-from itertools import product
-
+from itertools import product, repeat
+from collections import defaultdict
 
 def masked_mean(m, mask):
     """
@@ -143,12 +145,64 @@ def index_4D(a: torch.tensor, index: torch.tensor):
     return b
 
 
-def get_all_possible_pairs(span_lengths, none_unit_mask):
+def get_all_possible_pairs(
+        span_lengths: List[List[int]],
+        none_unit_mask: List[List[int]],
+        assertion: bool = False) -> DefaultDict[str, List[List[Tuple[int]]]]:
 
-    all_possible_pairs = []
+    all_possible_pairs = defaultdict(list)
     for span, mask in zip(span_lengths, none_unit_mask):
-        end_idxs = np.cumsum(span)
-        idxes = end_idxs[np.array(mask, dtype=bool)]
-        all_possible_pairs.append(list(product(idxes, repeat=2)))
+        idx_abs = np.cumsum(span)
+        idx_start = idx_abs[:-1][np.array(mask, dtype=bool)[1:]]
+        idx_end = idx_abs[1:][np.array(mask, dtype=bool)[1:]]
+        all_possible_pairs["start"].append(list(product(idx_start, repeat=2)))
+        all_possible_pairs["end"].append(list(product(idx_end, repeat=2)))
+        if assertion:
+            lens_cal = idx_end - idx_start
+            span_len = np.array(span)[np.array(mask, dtype=bool)][1:]
+            assert np.all(lens_cal == span_len)
 
     return all_possible_pairs
+
+
+def range_3d_tensor_index(matrix: Tensor,
+                          start: list,
+                          end: list,
+                          batch_lens: list,
+                          reduce_: str = "none") -> Tensor:
+
+    # to avoid bugs, if there is a sample that does not have a unit the
+    # corresponding len should be zero in batch_lens
+    batch_size = matrix.size(0)
+    dim_1_size = matrix.size(1)
+    new_size = (batch_size, dim_1_size)
+    shape_ = len(matrix.size())
+
+    reduce_fn = reduce_ in ["none", "mean", "sum"]
+    assert reduce_fn, f"{reduce_} is not a supported."
+    assert batch_size == len(batch_lens), "wrong number of lengthes per batch"
+    assert shape_ == 3, f"wrong matrix shape, provided {shape_}, expected 3"
+
+    # change matrix to to be 2d matrix (dim0*dim1, dim2)
+    mat = matrix.clone().contiguous().view(-1, matrix.size(-1))
+
+    # construct array of indices for dimesion 0, repeating batch_id
+    span_len = np.array(end) - np.array(start)
+    idx_0 = np.repeat(np.arange(batch_size), batch_lens)
+    idx_0 = np.repeat(idx_0, span_len)
+
+    # construct array of indices for dimesion 1
+    idx_1 = np.hstack(list(map(np.arange, start, end)))
+
+    # Converts idx_0 and idx_1 into an array of indices suitable for the
+    # converted 2d tensor
+    idx_0_2d = np.ravel_multi_index(np.array([idx_0, idx_1]), new_size)
+
+    # index 2d tensor using idx_0_2d
+    mat = torch.split(mat[idx_0_2d, :], span_len.tolist())
+    if reduce_ == "mean":
+        mat = torch.stack(list(map(torch.mean, mat, repeat(0))))
+    elif reduce_ == "sum":
+        mat = torch.stack(list(map(torch.sum, mat, repeat(0))))
+
+    return mat

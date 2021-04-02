@@ -1,5 +1,3 @@
-
-
 """
 A. Reference:
 --------------
@@ -195,7 +193,7 @@ E. TreeLSTMCell Impelementation:
 
 import numpy as np
 
-import torch as th
+import torch
 from torch import Tensor
 import torch.nn as nn
 
@@ -208,11 +206,11 @@ class TreeLSTMCell(nn.Module):
         super(TreeLSTMCell, self).__init__()
         self.W_iou = nn.Linear(xemb_size, 3 * h_size, bias=False)
         self.U_iou = nn.Linear(2 * h_size, 3 * h_size, bias=False)
-        self.b_iou = nn.Parameter(th.zeros(1, 3 * h_size))
+        self.b_iou = nn.Parameter(torch.zeros(1, 3 * h_size))
 
         self.W_f = nn.Linear(xemb_size, h_size, bias=False)
         self.U_f = nn.Linear(2 * h_size, 2 * h_size)
-        self.b_f = nn.Parameter(th.zeros(1, h_size))
+        self.b_f = nn.Parameter(torch.zeros(1, h_size))
 
     def message_func(self, edges):
         return {
@@ -235,22 +233,22 @@ class TreeLSTMCell(nn.Module):
 
         # 1.b: creat mask matrix with the same size of h and c with zeros at
         # either type_0 node ids or type_1 node ids
-        mask = th.zeros((*h_child.size()))
+        mask = torch.zeros_like(h_child)
         mask[type_n0_id] = 1  # mask one at type_0 nodes
         ht_0 = mask * h_child  # (Nt, Nchn, H)
-        ht_0 = th.sum(ht_0, dim=1)  # sum over child nodes => (Nt, H)
+        ht_0 = torch.sum(ht_0, dim=1)  # sum over child nodes => (Nt, H)
 
-        mask = th.zeros((*h_child.size()))  # do the same for type_1
+        mask = torch.zeros_like(h_child)  # do the same for type_1
         mask[type_n1_id] = 1
         ht_1 = mask * h_child  # (Nt, Nchn, H)
-        ht_1 = th.sum(ht_1, dim=1)  # sum over child nodes => (Nt, H)
+        ht_1 = torch.sum(ht_1, dim=1)  # sum over child nodes => (Nt, H)
 
         # # Step 2
-        h_iou = th.cat((ht_0, ht_1), dim=1)  # (Nt, 2H)
+        h_iou = torch.cat((ht_0, ht_1), dim=1)  # (Nt, 2H)
 
         # Step 3
         # (Nt, 2H) => (Nt, 2, H)
-        f = self.U_f(th.cat((ht_0, ht_1), dim=1)).view(-1, 2, hidden_size)
+        f = self.U_f(torch.cat((ht_0, ht_1), dim=1)).view(-1, 2, hidden_size)
         # 3.b select from f either f_0 or f_1 using type_n as index
         # generate array repeating elements of nodes_id by their number of
         # children. e.g. if we have 3 nodes that have 2 children.
@@ -261,8 +259,8 @@ class TreeLSTMCell(nn.Module):
         # Steps 3.c,d
         X = self.W_f(nodes.data["emb"])  # (Nt, H)
         X = X.repeat(childrn_num, 1).view(*c_child.size())  # (Nt, Nchn, H)
-        f_tk = th.sigmoid(X + f_cell + self.b_f)  # (Nt, Nchn, H)
-        c_cell = th.sum(f_tk * c_child, dim=1)  # (Nt, H)
+        f_tk = torch.sigmoid(X + f_cell + self.b_f)  # (Nt, Nchn, H)
+        c_cell = torch.sum(f_tk * c_child, dim=1)  # (Nt, H)
 
         return {"h": h_iou, "c": c_cell}
 
@@ -275,14 +273,14 @@ class TreeLSTMCell(nn.Module):
         if nodes._graph.srcnodes().nelement() == 0:  # leaf nodes
             # initialize h states, for node type-0 and node type-1
             # NOTE: initialization for node type-0 == node type-1
-            h_cell = th.cat((h_cell, h_cell), dim=1)  # (Nt, Nchn*H)
+            h_cell = torch.cat((h_cell, h_cell), dim=1)  # (Nt, Nchn*H)
 
         iou = self.W_iou(nodes.data["emb"]) + self.U_iou(h_cell) + self.b_iou
-        i, o, u = th.chunk(iou, 3, 1)  # (Nt x H) for each of i,o,u
-        i, o, u = th.sigmoid(i), th.sigmoid(o), th.tanh(u)
+        i, o, u = torch.chunk(iou, 3, 1)  # (Nt x H) for each of i,o,u
+        i, o, u = torch.sigmoid(i), torch.sigmoid(o), torch.tanh(u)
 
         c = i * u + c_cell
-        h = o * th.tanh(c)
+        h = o * torch.tanh(c)
 
         return {"h": h, "c": c}
 
@@ -302,7 +300,7 @@ class TypeTreeLSTM(nn.Module):
         self.TeeLSTM_cell = TreeLSTMCell(embedding_dim, h_size)
         # self.dropout = nn.Dropout(dropout)
 
-    def forward(self, g: DGLGraph, h0: Tensor, c0: Tensor, s_i: Tensor):
+    def forward(self, g: DGLGraph, h0: Tensor, c0: Tensor):
         """A modified N-ary tree-lstm (LSTM-ER) network
         ----------
         g:      dgl.DGLGraph
@@ -311,7 +309,6 @@ class TypeTreeLSTM(nn.Module):
                 Initial hidden state.
         c0:     Tensor
                 Initial cell state.
-        s_i:    argument componetns hidden states (s_i)
         Returns
         -------
         logits: Tensor
@@ -321,15 +318,6 @@ class TypeTreeLSTM(nn.Module):
         # Tree-LSTM (LSTM-ER) according to arXiv:1601.00770v3 sections 3.3 & 3.4
         g.ndata["h"] = h0
         g.ndata["c"] = c0
-
-        # get ids of roots and token in relation
-        root_mark = g.ndata["root"]
-        start_mark = g.ndata["start"]
-        end_mark = g.ndata["end"]
-
-        roots_id = root_mark == 1
-        token_ac1_id = start_mark == 1
-        token_ac2_id = end_mark == 1
 
         # copy graph
         if self.bidirectional:
@@ -342,7 +330,7 @@ class TypeTreeLSTM(nn.Module):
             reduce_func=self.TeeLSTM_cell.reduce_func,
             apply_node_func=self.TeeLSTM_cell.apply_node_func,
         )
-        logits = g.ndata.pop("h")[roots_id, :]
+        logits = g.ndata.pop("h")
 
         if self.bidirectional:
             # propagate top bottom direction
@@ -355,11 +343,7 @@ class TypeTreeLSTM(nn.Module):
             )
             logits_tb = g_copy.ndata.pop("h")
 
-            logits_tb1 = logits_tb[token_ac1_id, :]
-            logits_tb2 = logits_tb[token_ac2_id, :]
             # concatenate both tree directions
-            logits = th.cat((logits, logits_tb1, logits_tb2), dim=-1)
-
-        logits = th.cat((logits, s_i), dim=-1)
+            logits = torch.cat((logits, logits_tb), dim=-1)
 
         return logits
