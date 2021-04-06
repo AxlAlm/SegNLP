@@ -106,110 +106,103 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 }
 
 
-    def __call__(self, docs:List[Union[dict, str]]) -> ModelInput: #docs:List[str],token_labels:List[List[dict]] = None, span_labels:List[dict] = None):
+    def __call__(self, doc:dict) -> ModelInput: #docs:List[str],token_labels:List[List[dict]] = None, span_labels:List[dict] = None):
 
         Input = ModelInput()
-        
-        for doc in docs:
-                        
-            if isinstance(doc,dict):
-                span_labels = doc.get("span_labels", None)
-                token_labels = doc.get("token_labels", None)
-                doc = doc["text"]
 
-            doc_df = self._process_doc(doc)
-            doc_id = int(doc_df["id"].to_numpy()[0])
+        span_labels = doc.get("span_labels", None)
+        token_labels = doc.get("token_labels", None)
+        doc = doc["text"]
 
+        doc_df = self._process_doc(doc)
+        doc_id = int(doc_df["document_id"].to_numpy()[0])
 
-            if self.input_level != self.sample_level:
-                samples = doc_df.groupby(f"{self.sample_level}_id")
-            else:
-                samples = [(doc_id,doc_df)]
+        if self.input_level != self.sample_level:
+            samples = doc_df.groupby(f"{self.sample_level}_id")
+        else:
+            samples = [(doc_id,doc_df)]
 
-            for i, sample in samples:
-                i -= self._removed
+        for i, sample in samples:
+            i -= self._removed
+            
+            #everything within this block should be sped up
+            if self.__labeling:
+                if span_labels:
+                    sample = self._label_spans(sample, span_labels)
 
-                #everything within this block should be sped up
-                if self.__labeling:
-                    if span_labels:
-                        sample = self._label_spans(sample, span_labels)
-
-                    if token_labels:
-                        sample = self._label_tokens(sample, token_labels)
-                    
-                    if self.__need_bio:
-                        sample = self._label_bios(sample)
-
-
-                    self.__fuse_subtasks(sample)
-                    self._encode_labels(sample)
-
-
-                if self.argumentative_markers:
-                    sample = self._label_ams(sample)
+                if token_labels:
+                    sample = self._label_tokens(sample, token_labels)
                 
-                if self.encodings:
-                    self._encode_data(sample)
-                    
-
-                #units
-                if self.prediction_level == "unit":
-                    units = sample.groupby("unit_id")
-
-                    #if we are prediction on Units but sample doesnt have any, we can skip it
-                    if not len(units):
-                        self._removed += 1
-                        continue
-
-                    unit_length = len(units)
-                    unit_token_lengths = np.array([g.shape[0] for i, g in units])
-
-                    Input.add("lengths", unit_length, "unit")
-                    Input.add("lengths_tok", unit_token_lengths, "unit")
-                    Input.add("mask", np.ones(unit_length, dtype=np.uint8), "unit")
-                    self.__get_unit_idxs(Input, sample)
-
-                #tokens
-                Input.add("idxs", i, None)
-                Input.add("lengths", sample.shape[0], "token")
-                Input.add("mask", np.ones(sample.shape[0], dtype=np.uint8), "token")
+                if self.__need_bio:
+                    sample = self._label_bios(sample)
                 
+                self.__fuse_subtasks(sample)
+                self._encode_labels(sample)
+            
 
-                #spans
-                if self.__labeling:
-                    spans_grouped = sample.groupby("span_id")
-                    length = len(spans_grouped)
-                    lengths = np.array([g.shape[0] for i, g in spans_grouped])
+            if self.argumentative_markers:
+                sample = self._label_ams(sample)
+            
+            if self.encodings:
+                self._encode_data(sample)
+                
+            units = sample.groupby("unit_id")
 
-                    Input.add("lengths", length, "span")
-                    Input.add("lengths_tok", lengths, "span")
+            if self.sample_level == "unit" and len(units):
+                #if we are prediction on Units but sample doesnt have any, we can skip it
+                self._removed += 1
+                continue
+            
+            #tokens
+            Input.add("idxs", i, None)
+            Input.add("lengths", sample.shape[0], "token")
+            Input.add("mask", np.ones(sample.shape[0], dtype=np.uint8), "token")
+            
+            #units
+            unit_length = len(units)
+            unit_token_lengths = np.array([g.shape[0] for i, g in units])
+            Input.add("lengths", unit_length, "unit")
+            Input.add("lengths_tok", unit_token_lengths, "unit")
+            Input.add("mask", np.ones(unit_length, dtype=np.uint8), "unit")
 
-                    non_span_mask = (~np.isnan(spans_grouped.first()["unit_id"].to_numpy())).astype(np.uint8)
-                    Input.add("none_span_mask", non_span_mask, "span")
+
+            #spans
+            if self.__labeling:
+                spans_grouped = sample.groupby("span_id")
+                length = len(spans_grouped)
+                lengths = np.array([g.shape[0] for i, g in spans_grouped])
+
+                Input.add("lengths", length, "span")
+                Input.add("lengths_tok", lengths, "span")
+
+                non_span_mask = (~np.isnan(spans_grouped.first()["unit_id"].to_numpy())).astype(np.uint8)
+                Input.add("none_span_mask", non_span_mask, "span")
 
 
+            #ams
+            if self.argumentative_markers:
+                ams = sample.groupby("am_id")
+                # as length of <= 1 is problematic later when working with NNs
+                # we set lenght to 1 as default, this should not change anything as 
+                # representations for such AMs will remain 0
+                Input.add("lengths", unit_length, "am")
+                Input.add("lengths", unit_length, "adu")
 
-                #ams
-                if self.argumentative_markers:
-                    ams = sample.groupby("am_id")
-                    # as length of <= 1 is problematic later when working with NNs
-                    # we set lenght to 1 as default, this should not change anything as 
-                    # representations for such AMs will remain 0
-                    Input.add("lengths", unit_length, "am")
-                    Input.add("lengths", unit_length, "adu")
-                    self.__get_am_unit_idxs(Input, sample)
 
-                self.__get_text(Input, sample)
-                self.__get_encs(Input, sample)
-                self.__get_feature_data(Input, sample)
+            self.__get_text(Input, sample)
+            self.__get_encs(Input, sample)
+            self.__get_feature_data(Input, sample)
 
-                if self.__labeling:
-                    self.__get_labels(Input, sample)
+            if self.__labeling:
+                self.__get_labels(Input, sample)
 
+            if self.prediction_level == "unit":
+                self.__get_am_unit_idxs(Input, sample)
 
 
         return Input.to_numpy()
   
+
 
     def __get_text(self, Input:ModelInput, sample:pd.DataFrame):
 
@@ -257,28 +250,29 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
         sentences  = sample.groupby("sentence_id")
 
-        last_sent_end = None
+        sent_length = 0
         deprels = []
         depheads = []
-        root_id = []
-        for _, sent_df in sentences:
+        root_idx = -1
+        for sent_id, sent_df in sentences:
             
             sent_deprels = sent_df["deprel"].to_numpy()
-            sent_depheads = sent_df["dephead"].to_numpy()
+            sent_depheads = sent_df["dephead"].to_numpy() + sent_length
 
-            root_id = self.encode_list(["root"], "deprel")[0]
-            root_idx = int(np.where(sent_df["deprel"].to_numpy() == root_id)[0])
+            sent_root_id = self.encode_list(["root"], "deprel")[0]
+            sent_root_idx = int(np.where(sent_df["deprel"].to_numpy() == sent_root_id)[0])
             
-
-            if last_sent_end is not None:
-                sent_depheads[root_idx] = last_sent_end
+            if sent_length == 0 and root_idx == -1:
+                root_idx = sent_root_idx
+                sent_length = sent_df.shape[0]
             else:
-                last_sent_endc = sent_df.shape[0]
-            
+                sent_depheads[sent_root_idx] = sent_length-1
+                sent_length += sent_df.shape[0]
+      
             deprels.extend(sent_deprels)
             depheads.extend(sent_depheads)
 
-        Input.add("root_idxs", root_id, "token")
+        Input.add("root_idxs", root_idx, "token")
         Input.add("deprel", np.array(deprels, dtype=np.int), "token")
         Input.add("dephead", np.array(depheads, dtype=np.int), "token")
   
@@ -288,13 +282,11 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         deps_done = False
         for enc in self.encodings:
 
-            if self.sample_level != "sentence" and enc in ["deprel", "dephead"]:
-
-                if deps_done:
-                    continue
-
-                self.__get_sample_dep_encs(Input=Input, sample=sample)
-
+            #if self.sample_level != "sentence" and enc in ["deprel", "dephead"]:
+            if enc in ["deprel", "dephead"]:
+                if not deps_done:
+                    self.__get_sample_dep_encs(Input=Input, sample=sample)
+                    deps_done = True
             else:
                 # if self.prediction_level == "unit" and not self.tokens_per_sample:
 
@@ -312,6 +304,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
     def __get_feature_data(self, Input:ModelInput, sample:pd.DataFrame):
         
         feature_dict = {}
+        sample_length = sample.shape[0]
 
         sample_length = sample.shape[0]
 

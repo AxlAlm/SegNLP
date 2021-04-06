@@ -324,23 +324,13 @@ class DataPreprocessor:
         file_path = os.path.join(dump_dir, f"{dataset.name()}_data.hdf5")
         self.__setup_h5py(file_path=file_path) 
 
-
-        progress_bar = tqdm(total=len(dataset), desc="Processing and Storing Dataset")
-        #last_id = 0
-        for i in range(0, len(dataset), chunks):
-            Input = self(dataset[i:i+chunks])
-
-            # Input._idxs = Input._idxs + (last_id + (1 if last_id else 0))
-            # last_id = Input.idxs[-1]
+        for i in tqdm(range(len(dataset)), desc="Processing and Storing Dataset"):
+            Input = self(dataset[i])
 
             if not self.__init_storage_done:
                 self.__init_store(Input)
             else:
                 self.__append_store(Input)
-
-            progress_bar.update(chunks)
-
-        progress_bar.close()
 
         splits = self.__set_splits(dump_dir, dataset=dataset)
         self.__calc_stats(dump_dir, splits, dataset.name())

@@ -357,7 +357,7 @@ class PE(DataSet):
             stance = self._stance2new_stance.get(ac_id2stance.get(ac_id,"None"), "None")
 
             if "None" in ac_id:
-                unit_id = None 
+                unit_id = np.nan 
             else:
                 unit_id = current_unit_id
                 current_unit_id += 1
