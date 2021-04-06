@@ -143,23 +143,16 @@ class Pipeline:
         else:
 
             if self.__check_for_preprocessed_data(self._pipeline_folder_path, dataset.name()):
-                logger.info(f"Loading preprocessed data from {self._pipeline_folder_path}")
-                dataset = PreProcessedDataset(
-                                                    name=dataset.name(),
-                                                    dir_path=self._pipeline_folder_path,
-                                                    label_encoders=self.preprocessor.encoders,
-                                                    prediction_level=dataset.prediction_level
-                                                    )
-            else:
                 try:
                     logger.info(f"Loading preprocessed data from {self._pipeline_folder_path}")
                     return PreProcessedDataset(
                                                         name=dataset.name(),
                                                         dir_path=self._pipeline_folder_path,
                                                         label_encoders=self.preprocessor.encoders,
-                                                        prediction_level=self.prediction_level
+                                                        prediction_level=dataset.prediction_level
                                                         )
                 except OSError as e:
+                    logger.info(f"Loading failed. Will continue to preprocess data")
                     try:
                         shutil.rmtree(self._pipeline_folder_path)
                     except FileNotFoundError as e:
