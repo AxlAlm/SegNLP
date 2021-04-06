@@ -203,6 +203,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         return Input.to_numpy()
   
 
+
     def __get_text(self, Input:ModelInput, sample:pd.DataFrame):
 
         # if self.prediction_level == "unit":
@@ -230,19 +231,17 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         sample_labels = {}
         for task in self.all_tasks:
 
-            unit_i = 0
             units = sample.groupby(f"unit_id")
             unit_task_matrix = np.zeros(len(units))
-            for unit_id, unit in units:
-                unit_task_matrix[unit_i] = np.nanmax(unit[task].to_numpy())
-                unit_i += 1
+            for i, (unit_id, unit) in enumerate(units):
+                unit_task_matrix[i] = np.nanmax(unit[task].to_numpy())
 
             #if self.prediction_level == "token":
             #task_matrix = np.zeros(len(sample.index))
             #task_matrix[:sample.shape[0]] = sample[task].to_numpy()
 
-            Input.add(task, sample[task].to_numpy().astype(np.int), "token")
-            Input.add(task, unit_task_matrix.astype(np.int), "unit")
+            Input.add(task, sample[task].to_numpy().astype(np.int), "token", pad_value=-1)
+            Input.add(task, unit_task_matrix.astype(np.int), "unit", pad_value=-1)
         
         return sample_labels
     
@@ -307,6 +306,8 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         feature_dict = {}
         sample_length = sample.shape[0]
 
+        sample_length = sample.shape[0]
+
         for feature, fm in self.feature2model.items():
     
             if fm.level == "doc" and self.prediction_level == "unit":
@@ -366,6 +367,28 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 Input.add(group_name, group_dict["data"][0], group_dict["level"])
 
 
+    def __get_unit_idxs(self, Input:ModelInput, sample:pd.DataFrame):
+
+        am_spans = []
+        unit_spans = []
+        adu_spans = []
+
+        units = sample.groupby("unit_id")
+
+        for unit_id, gdf in units:
+    
+            unit_start = min(gdf[f"{self.sample_level}_token_id"])
+            unit_end = max(gdf[f"{self.sample_level}_token_id"])
+            unit_span = (unit_start, unit_end)
+
+            unit_spans.append(unit_span)
+        
+        if not unit_spans:
+            unit_spans = [(0,0)]
+
+        Input.add("span_idxs", np.array(unit_spans), "unit")
+
+
     def __get_am_unit_idxs(self, Input:ModelInput, sample:pd.DataFrame):
         """
         for each sample we get the units of am, unit and the whole adu.
@@ -376,7 +399,6 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         """
         
         am_spans = []
-        unit_spans = []
         adu_spans = []
 
         units = sample.groupby("unit_id")
@@ -406,23 +428,16 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 adu_span = (unit_start, unit_end)
 
             am_spans.append(am_span)
-            unit_spans.append(unit_span)
             adu_spans.append(adu_span)
         
         if not am_spans:
             am_spans = [(0,0)]
 
-        if not unit_spans:
-            unit_spans = [(0,0)]
-
         if not adu_spans:
             adu_spans = [(0,0)]
 
         Input.add("span_idxs", np.array(am_spans), "am")
-        Input.add("span_idxs", np.array(unit_spans), "unit")
         Input.add("span_idxs", np.array(adu_spans), "adu")
-
-        #return {"am_spans":am_spans, "span_spans":span_spans, "adu_spans":adu_spans}
 
 
     def __fuse_subtasks(self, df):
@@ -437,60 +452,13 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             df[task] = subtask_labels
 
 
-    def __get_subtasks(self, tasks):
-        subtasks = []
-        for task in tasks:
-            subtasks.extend(task.split("+"))
-        return subtasks
-
-
-    def __get_task_labels(self, task, task_labels):
-        
-        task2labels = {}
-        for task in task:
-
-            subtasks = task.split("+")
-
-            if len(subtasks) < 2:
-                task2labels[task] = task_labels[task]
-                continue
-
-            label_groups = []
-            has_seg = False
-            for st in subtasks:
-                task2labels[st] = task_labels[st]
-
-                if st == "seg":
-                    BIO = task2labels["seg"].copy()
-                    BIO.remove("O")
-                    label_groups.append(BIO)
-                    has_seg = True
-                else:
-                    label_groups.append(task2labels[st])
-
-            combs = list(itertools.product(*label_groups))
-
-            if has_seg:
-                none_label = ["O"] + ["None" if s != "link" else "0" for s in task2labels if s != "seg"]
-                combs.insert(0,none_label)
-
-            task2labels[task] = ["_".join([str(c) for c in comb]) for comb in combs]
-        
-        return task2labels
-
-
-    def expect_labels(self, tasks:list, task_labels:dict):
-        self.__need_bio = False
+    def expect_labels(self, tasks:list, subtasks:list, task_labels:dict):
         self.activate_labeling()
+        self.__need_bio = "seg" in subtasks
         self.tasks = tasks
-        self.subtasks = self.__get_subtasks(tasks)
+        self.subtasks = subtasks
         self.all_tasks = sorted(set(tasks + self.subtasks))
-        self.__need_bio = "seg" in self.subtasks
-
-        if self.__need_bio:
-            task_labels["seg"] = ["O","B","I"]
-        
-        self.task2labels = self.__get_task_labels(tasks, task_labels)
+        self.task2labels = task_labels
         self._create_label_encoders()
     
 

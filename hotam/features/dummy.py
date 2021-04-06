@@ -22,7 +22,7 @@ class DummyFeature(FeatureModel):
     def __init__(self, level="word"):
 
         #self.vocab = vocab
-        self._name = "dummy"
+        self._name = f"dummy_{level}_feature"
         self._level = level
         self._feature_dim = 100
         self._dtype = np.float32

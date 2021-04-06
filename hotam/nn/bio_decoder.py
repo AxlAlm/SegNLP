@@ -47,6 +47,9 @@ def bio_decode(
             match_string = m.group(0).replace("<START>-", "")
             length = len(match_string.split("-")[:-1])
 
+            if length == 0:
+                continue
+
             span_type = 0 if m.groupdict()["UNIT"] is None else 1
 
             span_lengths.append(length)

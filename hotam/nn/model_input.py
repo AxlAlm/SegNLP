@@ -23,7 +23,7 @@ class ModelInput(dict):
         self.label_encoders = label_encoders
         self.label_colors = label_colors
         self.current_epoch = None
-        self.pad_value = 0
+        self.label_pad_value = -1
         self._size = 0
         self._idxs = []
         self.oo = []
@@ -83,12 +83,10 @@ class ModelInput(dict):
 
 
     def change_pad_value(self, level:str, task:str, new_value:int):
-        #for task in self.all_tasks:
-        self[level][task][self[level][task] == self.pad_value] = new_value
-            # self[task][~self[f"{self.prediction_level}_mask"].type(torch.bool)] = -1
+        self[level][task][self[level][task] == self.label_pad_value] = new_value
      
 
-    def add(self, k, v, level):
+    def add(self, k, v, level, pad_value=0):
         # if k not in self:
         #     self[k] = [v]
         # else:
@@ -116,7 +114,7 @@ class ModelInput(dict):
             if isinstance(v, int):
                 self[level][k].append(v)
             else:
-                self[level][k] = dynamic_update(self[level][k], v)
+                self[level][k] = dynamic_update(self[level][k], v, pad_value=pad_value)
 
 
     def sort(self):
