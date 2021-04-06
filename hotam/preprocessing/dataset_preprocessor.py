@@ -53,14 +53,14 @@ class PreProcessedDataset(ptl.LightningDataModule):
         with open(os.path.join(dir_path, f"{name}_splits.pkl"), "rb") as f:
             self._splits = pickle.load(f)
         
-        self.__chained_model_outputs = {}
-        
+
 
     def __getitem__(self, key:Union[np.ndarray, list]) -> ModelInput:
         Input = ModelInput(
                             label_encoders=self.label_encoders, 
                             label_colors=self.label_colors
                             )
+
 
         with h5py.File(self._fp, "r") as data:
             sorted_key = np.sort(key)
@@ -73,15 +73,10 @@ class PreProcessedDataset(ptl.LightningDataModule):
                 if group == "idxs":
                     continue
 
-                if group in self.__chained_model_outputs:
-                    data_group = Input[group] = self.__chained_model_outputs[group]
-                else:
-                    data_group = data[group]
-                
                 max_len = max(data[group]["lengths"][sorted_key])
 
                 Input[group] = {}
-                for k, v in data_group.items():
+                for k, v in data[group].items():
                     
                     a = v[sorted_key]
                 
@@ -106,15 +101,17 @@ class PreProcessedDataset(ptl.LightningDataModule):
     def info(self):
         
         structure = { }
-        for group in self.data.keys():
 
-            if group == "idxs":
-                structure["idxs"] = f'dtype={str(self.data["idxs"].dtype)}, shape={self.data["idxs"].shape}'
-                continue
+        with h5py.File(self._fp, "r") as data:
+            for group in data.keys():
 
-            structure[group] = {}
-            for k, v in self.data[group].items():
-                structure[group][k] = f"dtype={str(v.dtype)}, shape={v.shape}"
+                if group == "idxs":
+                    structure["idxs"] = f'dtype={str(data["idxs"].dtype)}, shape={data["idxs"].shape}'
+                    continue
+
+                structure[group] = {}
+                for k, v in data[group].items():
+                    structure[group][k] = f"dtype={str(v.dtype)}, shape={v.shape}"
 
 
         s = f"""

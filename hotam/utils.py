@@ -15,7 +15,9 @@ import sys
 import requests
 import random
 import zipfile
+import hashlib
 
+#hotam
 from hotam import get_logger
 
 #torch

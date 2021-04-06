@@ -22,18 +22,18 @@ def default(
 
     trainer = setup_ptl_trainer( 
                                 ptl_trn_args=ptl_trn_args,
-                                hyperparamaters=hyperparamater, 
-                                model_dump_path=exp_dump_path,
-                                save_choice=save, 
+                                hyperparamaters=hyperparamaters, 
+                                model_dump_path=model_dump_path,
+                                save_choice=save_choice, 
                                 prefix=experiment_id,
                                 )
 
-    ptl_model = PTLBase(**model_params)
+    ptl_model = PTLBase(**model_args)
     trainer.fit(    
-                    model=ptl_model, 
-                    train_dataloader=dataset.train_dataloader(), 
-                    val_dataloaders=dataset.val_dataloader()
-                    )
+                        model=ptl_model, 
+                        train_dataloader=dataset.train_dataloader(), 
+                        val_dataloaders=dataset.val_dataloader()
+                        )
 
     # #picking model to run on test split
     # if save_choice is not None:

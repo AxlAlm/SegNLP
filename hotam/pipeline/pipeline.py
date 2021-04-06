@@ -6,7 +6,6 @@ import itertools
 import json
 import warnings
 import numpy as np
-import hashlib
 import os
 import shutil
 import pwd
@@ -149,7 +148,7 @@ class Pipeline:
                                                     name=dataset.name(),
                                                     dir_path=self._pipeline_folder_path,
                                                     label_encoders=self.preprocessor.encoders,
-                                                    prediction_level=self.prediction_level
+                                                    prediction_level=dataset.prediction_level
                                                     )
             else:
                 try:
@@ -204,11 +203,15 @@ class Pipeline:
         return set_hyperparamaters
 
 
-    def __get_save_model_args(model:torch.nn.Module, hyperparamaters:dict, exp_dump_path:str):
+    def __get_save_model_args(  self,
+                                model:torch.nn.Module, 
+                                hyperparamaters:dict, 
+                                exp_dump_path:str
+                                ):
 
         model_args = dict(
                         model=model, 
-                        hyperparamaters=hyperparamater,
+                        hyperparamaters=hyperparamaters,
                         tasks=self.preprocessor.tasks,
                         all_tasks=self.preprocessor.all_tasks,
                         label_encoders=self.preprocessor.encoders,
@@ -230,19 +233,17 @@ class Pipeline:
         return model_args
 
 
-    def __get_exp_config(
-                        model:str,
-                        evaluation_method:str, 
-                        monitor_metric:str,
-                        experiment_id:str,
-                        exp_dump_path:str,
-
-                        ):
+    def __get_exp_config(   self,
+                            model:str,
+                            evaluation_method:str, 
+                            monitor_metric:str,
+                            experiment_id:str,
+                            exp_dump_path:str,
+                            ):
         config = {
                     "model":model.name(),
                     "dataset":self.dataset.name(),
                     "evaluation_method": evaluation_method,
-                    "monitor_metric": monitor_metric,
                     "experiment_id": experiment_id,
                     "model_dump_path": exp_dump_path,
                     }
@@ -256,7 +257,7 @@ class Pipeline:
                 model:torch.nn.Module,
                 hyperparamaters:dict,
                 exp_logger:LightningLoggerBase=None,  
-                ptl_trn_args:dict=None, 
+                ptl_trn_args:dict={}, 
                 save:str = "last", 
                 evaluation_method:str = "default", 
                 model_dump_path:str = f"{user_dir}/.hotam/models",
@@ -267,6 +268,8 @@ class Pipeline:
     
         if exp_logger:
             ptl_trn_args["logger"] = exp_logger
+        else:
+            ptl_trn_args["logger"] = None
 
         set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
 
@@ -274,7 +277,7 @@ class Pipeline:
 
             hyperparamaters["monitor_metric"] = monitor_metric
 
-            if "random_seed" not in hyperparamater:
+            if "random_seed" not in hyperparamaters:
                 hyperparamaters["random_seed"] = 42
 
             set_random_seed(hyperparamaters["random_seed"])
@@ -295,13 +298,17 @@ class Pipeline:
                                                 experiment_id=experiment_id,
                                                 exp_dump_path=exp_dump_path,
                                                 )
-            model_args = self.__get_save_model_args(model, hyperparamaters, exp_dump_path)
+            model_args = self.__get_save_model_args(
+                                                    model=model, 
+                                                    hyperparamaters=hyperparamaters, 
+                                                    exp_dump_path=exp_dump_path
+                                                    )
 
             self.dataset.batch_size = hyperparamaters["batch_size"]
 
             if exp_logger:
                 exp_logger.set_id(experiment_id)
-                exp_logger.log_hyperparams(hyperparamater)
+                exp_logger.log_hyperparams(hyperparamaters)
 
                 if isinstance(exp_logger, CometLogger):
                     exp_logger.experiment.add_tags([model.name()])
@@ -312,7 +319,7 @@ class Pipeline:
                                                     experiment_id=experiment_id, 
                                                     ptl_trn_args = ptl_trn_args, 
                                                     model_args = model_args,
-                                                    hyperparamaters=hyperparamater, 
+                                                    hyperparamaters=hyperparamaters, 
                                                     dataset=self.dataset,
                                                     model_dump_path=exp_dump_path,
                                                     save_choice=save, 
@@ -331,27 +338,23 @@ class Pipeline:
         self.__eval_set = True
 
 
-    def test(self, save_choice, unit_data):
-        trainer.test(
-                    model="best", 
-                    test_dataloaders=self.dataset.test_dataloader()
-                    )
+    def test(self, save_choice="best"):
+        pass
 
-
-
-        # if save_choice == "last":
-        #     trainer.test(
-        #                 model=ptl_model, 
-        #                 test_dataloaders=dataset.test_dataloader(unit_data)
-        #                 )
+        #if save_choice == "last":
+        #     outputs = trainer.test(
+        #                             model=ptl_model, 
+        #                             test_dataloaders=dataset.test_dataloader()
+        #                             )
         # elif save_choice == "best":
-        #     trainer.test(
-        #                 model="best",
-        #                 test_dataloaders=dataset.test_dataloader(unit_data)
-        #                 )
+        #     outputs = trainer.test(
+        #                             model="best",
+        #                             test_dataloaders=dataset.test_dataloader()
+        #                             )
         # else:
         #     raise RuntimeError(f"'{save_choice}' is not an approptiate choice when testing models")
-    
+
+        # return outputs
 
 
 

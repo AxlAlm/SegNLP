@@ -146,7 +146,7 @@ class PE(DataSet):
         
         if not os.path.exists(zip_dump_path):
             desc = f"Downloading ArgumentAnnotatedEssays-2.0"
-            u.download(url=self._download_url, save_path=zip_dump_path, desc=desc)
+            u.download(url=self.download_url, save_path=zip_dump_path, desc=desc)
 
         u.unzip(zip_dump_path, self.dump_path)
         u.unzip(data_folder + ".zip", parent_folder)
@@ -409,7 +409,7 @@ class PE(DataSet):
         try:
             split_path = str(list(Path(self.dump_path).rglob("train-test-split.csv"))[0])
         except IndexError as e:
-            self._dataset_path = self.__download_data(force=True)
+            self._dataset_path = self._download_data(force=True)
             split_path = str(list(Path(self.dump_path).rglob("train-test-split.csv"))[0])
 
 

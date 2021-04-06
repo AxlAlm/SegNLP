@@ -5,6 +5,7 @@ import re
 import os
 import pandas as pd
 import numpy as np
+import shutil
 
 #hotam
 from hotam.utils import RangeDict
@@ -79,10 +80,15 @@ class MTC(DataSet):
 
 
     def _download_data(self):
+
         if not os.path.exists(self.dump_path):
             os.makedirs(self.dump_path)
             Repo.clone_from(self.download_url, self.dump_path)
-
+        
+        if len(glob.glob(self.dump_path+"/corpus/en/*.xml")) == 0:
+            shutil.rmtree(self.dump_path)
+            self._download_data()
+          
         return os.path.join(self.dump_path,"corpus", "en")
 
 

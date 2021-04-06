@@ -44,27 +44,28 @@ class ChainedPipeline:
 
 
     def test(self):
-        outputs = []
-        for pipeline in self.pipelines:
+        pass
+        # outputs = []
+        # for pipeline in self.pipelines:
 
-            if not output:
-                pipeline.dataset.overwrite_test(outputs[-1])
+        #     if not output:
+        #         pipeline.dataset.overwrite_test(outputs[-1])
 
-            output = self.pipelines.test()
-            outputs.append(output)
+        #     output = self.pipelines.test()
+        #     outputs.append(output)
 
-        return outputs
+        # return outputs
 
 
     def predict(self, doc:Union[str,List[str]], chain_predictions:bool = True):
-        
-        for pipeline in self.pipelines:
-            out = pipeline.predict(doc)
+        pass
+        # for pipeline in self.pipelines:
+        #     out = pipeline.predict(doc)
 
-            #overwrite the doc so input to the next pipeline is output of the previuos pipeline
-            if chain_predictions:
-                doc = out
+        #     #overwrite the doc so input to the next pipeline is output of the previuos pipeline
+        #     if chain_predictions:
+        #         doc = out
         
-        #return output of last pipeline
-        return out
+        # #return output of last pipeline
+        # return out
         

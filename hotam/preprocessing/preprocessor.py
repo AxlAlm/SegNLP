@@ -313,6 +313,8 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         
         feature_dict = {}
 
+        sample_length = sample.shape[0]
+
         for feature, fm in self.feature2model.items():
     
             if fm.level == "doc" and self.prediction_level == "unit":
