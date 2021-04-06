@@ -17,6 +17,9 @@ exp = Pipeline(
                             DummyFeature(),
                                 ]
             )
+        
+
+hps = get_default_hps(LSTM_CRF.name())
 
 exp.fit(
         model=LSTM_CRF,
@@ -26,3 +29,6 @@ exp.fit(
         #                     gpus=[2]
         #                     )
         )
+
+
+exp.test()
