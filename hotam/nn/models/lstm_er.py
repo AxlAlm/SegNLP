@@ -124,8 +124,8 @@ class LSTM_ER(nn.Module):
             embs_used = seg_label_embs
 
         # 5)
-        # NOTE It would be better to have during initialization instead of
-        # getting the same labels ids each step
+        # NOTE It would be better to have the bio_dict during initialization
+        # instead of getting the same labels ids each step
         bio_dict = defaultdict(list)
         for (i, label) in enumerate(output.label_encoders["seg+label"].labels):
             bio_dict[label[0]].append(i)
@@ -142,55 +142,62 @@ class LSTM_ER(nn.Module):
         all_possible_pairs = get_all_possible_pairs(span_lengths,
                                                     none_unit_mask,
                                                     assertion=check)
+        # get number of pairs in each sample
+        pair_num = list(map(len, all_possible_pairs["end"]))
+        if check:
+            pair_num_calc = [(n - 1) * (n - 1) if n > 1 else 0
+                             for n in nr_units]
+            assert np.all(np.array(pair_num) == np.array(pair_num_calc))
 
         # 7)
         node_embs = torch.cat(
             (lstm_out, embs_used, batch['token']['deprel_embs']), dim=-1)
         # construct Si: average of sequential lstm hidden state for each unit
-        # flatten List[List[Tuple[int]]] to List[Tuple[int]], separate the
-        # list of tuples candidate pairs into two lists
+        # 1. Get start and end ids for each unit in two separate lists.
+        # reduce(iconcat): flatten List[List[Tuple[int]]] to List[Tuple[int]]
+        # list(zip*) separate the list of tuples candidate pairs into two lists
         units_start_ids = reduce(iconcat, all_possible_pairs["start"], [])
         units_end_ids = reduce(iconcat, all_possible_pairs["end"], [])
         unit1_start, unit2_start = np.array(list(zip(*units_start_ids)))
         unit1_end, unit2_end = np.array(list(zip(*units_end_ids)))
-        # number of pairs in each sample
-        units_pair_num = list(map(len, all_possible_pairs["end"]))
 
-        # Indexing sequential lstm hidden state for each unit
+        # Indexing sequential lstm hidden state using two lists of
+        # start and end ids of each unit
         unit1_s = range_3d_tensor_index(lstm_out,
                                         unit1_start,
                                         unit1_end,
-                                        units_pair_num,
+                                        pair_num,
                                         reduce_="mean")
         unit2_s = range_3d_tensor_index(lstm_out,
                                         unit2_start,
                                         unit2_end,
-                                        units_pair_num,
+                                        pair_num,
                                         reduce_="mean")
         s = torch.cat((unit1_s, unit2_s), dim=-1)
 
         # 8)
-        link_label_logits, link_preds = self.link_label_clf(
+        link_label_data = self.link_label_clf(
             input_embs=node_embs,
             unit_repr=s,
+            unit_num=nr_units,
             dependencies=batch["token"]["dephead"],
             token_mask=batch["token"]["mask"],
             roots=output.batch["token"]["root_idxs"],
-            pairs=all_possible_pairs["end"],
+            pairs=all_possible_pairs,
             mode="shortest_path",
             assertion=check)
 
-        # if self.train_mode:
-        #     #CALCULATE LOSS HERE
+        # 9
+        link_label_logits,
+        if self.train_mode:
+            output.add_loss(task="total", data=total_loss)
+            output.add_loss(task="link_label", data=link_label_loss)
+            output.add_loss(task="label", data=label_loss)
 
-        #     output.add_loss(task="total", data=total_loss)
-        #     output.add_loss(task="link_label", data=link_label_loss)
-        #     output.add_loss(task="label", data=label_loss)
-
-        # output.add_preds(task="seg+label", level="token", data=label_preds)
-        # output.add_preds(task="link", level="unit", data=link_preds)
-        # output.add_preds(task="link_label",
-        #                  level="unit",
-        #                  data=link_label_preds)
+        output.add_preds(task="seg+label", level="token", data=label_preds)
+        output.add_preds(task="link", level="unit", data=link_preds)
+        output.add_preds(task="link_label",
+                         level="unit",
+                         data=link_label_preds)
 
         return 1

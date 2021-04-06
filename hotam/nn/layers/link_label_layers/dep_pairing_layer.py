@@ -1,10 +1,12 @@
-from typing import List, Tuple
+from typing import List, Tuple, DefaultDict
 
 import functools
 
 import torch
 from torch import Tensor
 import torch.nn as nn
+import torch.nn.functional as F
+from torch.nn.utils.rnn import pad_sequence
 
 import networkx as nx
 from networkx import Graph as nxGraph
@@ -148,6 +150,9 @@ class DepPairingLayer(nn.Module):
             graph = dgl.graph((u, v))
             graph_unidir = graph.to_networkx().to_undirected()
             start, end = list(zip(*subgraphs[b_i]))
+            if start == []:  # no candidate pair
+                continue
+
             subgraph_func = functools.partial(self.get_subgraph,
                                               g=graph,
                                               g_nx=graph_unidir,
@@ -168,10 +173,11 @@ class DepPairingLayer(nn.Module):
     def forward(self,
                 input_embs: Tensor,
                 unit_repr: Tensor,
+                unit_num: list,
                 dependencies: Tensor,
                 token_mask: Tensor,
                 roots: Tensor,
-                pairs: List[List[Tuple[int]]],
+                pairs: DefaultDict[str, List[List[Tuple[int]]]],
                 mode: str = "shortest_path",
                 assertion: bool = False):
 
@@ -180,6 +186,7 @@ class DepPairingLayer(nn.Module):
 
         self.device = input_embs.device
         dir_n = 2 if self.tree_lstm_bidir else 1
+        batch_size = input_embs.size(0)
 
         # 8)
         dep_graphs = self.build_dep_graphs(token_embs=input_embs,
@@ -187,7 +194,7 @@ class DepPairingLayer(nn.Module):
                                            roots=roots,
                                            token_mask=token_mask,
                                            token_reps=input_embs,
-                                           subgraphs=pairs,
+                                           subgraphs=pairs["end"],
                                            mode=mode,
                                            assertion=assertion)
 
@@ -202,7 +209,7 @@ class DepPairingLayer(nn.Module):
         # ↑hpA: hidden state of dep_graphs' root
         # ↓hp1: hidden state of the first token in the candidate pair
         # ↓hp2: hidden state of the second token in the candidate pair
-        # get ids of roots and token in relation
+        # get ids of roots and tokens in relation
         root_id = (dep_graphs.ndata["root"] == 1)
         start_id = dep_graphs.ndata["start"] == 1
         end_id = dep_graphs.ndata["end"] == 1
@@ -213,8 +220,45 @@ class DepPairingLayer(nn.Module):
             hp2 = tree_lstm_out[end_id, 1, :]  # ↓hp2
             tree_logits = torch.cat((tree_logits, hp1, hp2), dim=-1)
         # [dp; s]
-        link_label_input_emb = torch.cat((tree_logits, unit_repr), dim=-1)
-        logits = self.label_link_clf(link_label_input_emb)
+        link_label_input_repr = torch.cat((tree_logits, unit_repr), dim=-1)
+        logits = self.label_link_clf(link_label_input_repr)
+        prob = F.softmax(logits, dim=-1)
+
+        # reshape logits and prob
+        size_4d = [
+            batch_size,
+            max(unit_num) - 1,
+            max(unit_num) - 1,
+            prob.size(-1)
+        ]
+        # NOTE: When there are multiple equal values, torch.argmax() and
+        # torch.max() do not return the first max value.  Instead, they
+        # randamly return any valid index. Thus, for the padded ac, the
+        # predection could be any value, as they have the same padded value.
+        # To
+        prob_4d = input_embs.new_ones(size=size_4d) * -1
+        pair_num = list(map(len, pairs["end"]))
+        prob_ = torch.split(prob, split_size_or_sections=pair_num)
+        for i, (p, n) in enumerate(zip(prob_, unit_num)):
+            if n > 1:
+                prob_4d[i, :n - 1, :n - 1] = p.view(n - 1, n - 1, -1)
+
+        logits_ = torch.split(logits, split_size_or_sections=pair_num)
+        logits_ = pad_sequence(logits_, batch_first=True, padding_value=-1000)
+        logits_ = logits_.view(*size_4d)
+
+        # get link label max logits and link_label and link predictions
+        prob_max_pair, _ = torch.max(prob_4d, dim=-1)
+        link_preds = torch.argmax(prob_max_pair, dim=-1)
+        link_label_prob_dist = index_4D(prob_4d, index=link_preds)
+        link_label_preds = torch.argmax(link_label_prob_dist, dim=-1)
+
+        link_label_max_logits = index_4D(logits_, index=link_preds)
+
+        return link_label_max_logits, link_label_preds, link_preds
+
+        # NOTE
+        # Need to return the logits to check if the negative relation
 
         # 10) Here we should format the data to the following structure:
         # t1 = representation of the last token in the first unit of the pair

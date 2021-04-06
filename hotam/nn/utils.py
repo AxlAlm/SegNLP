@@ -168,27 +168,31 @@ def get_all_possible_pairs(
 def range_3d_tensor_index(matrix: Tensor,
                           start: list,
                           end: list,
-                          batch_lens: list,
+                          pair_batch_num: list,
                           reduce_: str = "none") -> Tensor:
 
     # to avoid bugs, if there is a sample that does not have a unit the
-    # corresponding len should be zero in batch_lens
+    # corresponding len should be zero in batch_lens.
     batch_size = matrix.size(0)
     dim_1_size = matrix.size(1)
     new_size = (batch_size, dim_1_size)
     shape_ = len(matrix.size())
 
     reduce_fn = reduce_ in ["none", "mean", "sum"]
-    assert reduce_fn, f"{reduce_} is not a supported."
-    assert batch_size == len(batch_lens), "wrong number of lengthes per batch"
-    assert shape_ == 3, f"wrong matrix shape, provided {shape_}, expected 3"
+    # assertion messages:
+    reduce_msg = f"Function \"{reduce_}\" is not a supported."
+    num_msg = "Wrong number of pairs per sample is provided. "
+    num_msg += f"Provided {len(pair_batch_num)}, expected {batch_size}."
+    assert reduce_fn, reduce_msg
+    assert batch_size == len(pair_batch_num), num_msg
+    assert shape_ == 3, f"Wrong matrix shape, provided {shape_}, expected 3."
 
-    # change matrix to to be 2d matrix (dim0*dim1, dim2)
+    # change matrix to be 2d matrix (dim0*dim1, dim2)
     mat = matrix.clone().contiguous().view(-1, matrix.size(-1))
 
     # construct array of indices for dimesion 0, repeating batch_id
     span_len = np.array(end) - np.array(start)
-    idx_0 = np.repeat(np.arange(batch_size), batch_lens)
+    idx_0 = np.repeat(np.arange(batch_size), pair_batch_num)
     idx_0 = np.repeat(idx_0, span_len)
 
     # construct array of indices for dimesion 1
