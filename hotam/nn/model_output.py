@@ -45,6 +45,7 @@ class ModelOutput:
         self.metrics = {}
         self.outputs = {}
         self.pred_spans = {}
+        self._pred_span_set = False
         
 
     def __add_subtask_preds(self, decoded_labels:np.ndarray, lengths:np.ndarray, level:str,  task:str):
@@ -149,10 +150,11 @@ class ModelOutput:
 
 
     def __unfold_span_labels(self, span_labels:np.ndarray, span_indexes:np.ndarray, max_nr_token:int):
-
-        tok_labels = np.zeros((span_labels.shape[0], max_nr_token))
+        
+        batch_size = span_labels.shape[0]
+        tok_labels = np.zeros((batch_size, max_nr_token))
         for i in range(batch_size):
-            for start,end in span_indexes[i]:
+            for j,(start,end) in enumerate(span_indexes[i]):
                 tok_labels[i][start:end] = span_labels[i][j]
         return tok_labels
         
@@ -213,7 +215,7 @@ class ModelOutput:
                 else:
                     self.loss["total"] += data
     
-        self.metrics.update({f"{task}-loss":int(data)})
+        self.metrics.update({f"{task}-loss":int(data) if not torch.isnan(data) else 0})
 
 
     def add_preds(self, task:str, level:str, data:torch.tensor, decoded:bool=False, sample_ids="same"):
@@ -261,14 +263,20 @@ class ModelOutput:
 
             # turn labels for each span to labels across all tokens in sample
             data = self.__unfold_span_labels(
-                                            unit_labels=data,
+                                            span_labels=data,
                                             span_indexes=span_indexes,
                                             max_nr_token=max(ensure_numpy(self.batch["token"]["lengths"])),
                                             )
+
+            if not self._pred_span_set:
+                self.pred_spans["lengths"] = self.batch[level]["lengths"]
+                self.pred_spans["lengths_tok"] = self.batch["span"]["lengths_tok"]
+                self.pred_spans["none_span_mask"] = self.batch["span"]["none_span_mask"]
+                self._pred_span_set = True
+
             level = "token"
 
 
-        
         if task == "link":
             data = self.__correct_links(
                                         data,

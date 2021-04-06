@@ -12,24 +12,22 @@ from hotam.nn.utils import agg_emb
 
 
 
-
 class Encoder(nn.Module):
 
     def __init__(   
                     self,  
                     input_size:int, 
-                    input_layer_dim:int, 
                     hidden_size:int, 
                     num_layers:int, 
                     bidirectional:int,
                     dropout:float=None,
                     ):
         super().__init__()
+        self.input_layer = nn.Linear(input_size, input_size)
 
-        self.input_layer = nn.Linear(input_size, input_layer_dim)
 
         self.lstm =  LSTM_LAYER(  
-                                input_size=input_layer_dim,
+                                input_size=input_size,
                                 hidden_size=hidden_size,
                                 num_layers=num_layers,
                                 bidirectional=bidirectional,
@@ -43,9 +41,7 @@ class Encoder(nn.Module):
 
     def forward(self, X, lengths):
 
-        X = self.input_layer(X)
-        dense_out = F.sigmoid(X)
-
+        dense_out = torch.sigmoid(self.input_layer(X))
         out, hidden = self.lstm(dense_out, lengths)
 
         if self.use_dropout:
@@ -79,11 +75,8 @@ class JointPN(nn.Module):
     ______
     1) pass input to a fully-connected layer with sigmoid activation
 
-    2)  pass output of 1) to a Bi-LSTM. We will use the encoder outputs as representations
-        for each argument component and the last states to pass to the decoder
-
-        (output are the concatenate hidden outputs for each timestep)
-
+    2)  pass output of 1) to a Bi-LSTM. 
+  
 
     Decoder:
     ______
@@ -93,9 +86,7 @@ class JointPN(nn.Module):
 
     For each timestep (max seq length):
 
-    4)  Decoder takes the last states from the encoder to init the decoder.
-        NOTE as the encoder is Bi-Directional we cannot just pass on the states
-        from the encoder to the decoder. What do we pass on?
+    4)  Decoder takes the last states (cell and timestep) from the encoder to init the decoder.
 
         foward and backwards concatenations of last layer in encoder lstm. 
 
@@ -149,18 +140,18 @@ class JointPN(nn.Module):
         self.ENCODER_NUM_LAYERS = hyperparamaters["encoder_num_layers"]
         self.ENCODER_BIDIR = hyperparamaters["encoder_bidir"]
             
-        self.F_DROPOUT = hyperparamaters["feature_dropout"]
+        self.F_DROPOUT = hyperparamaters.get("feature_dropout", None)
         self.ENC_DROPOUT = hyperparamaters["encoder_dropout"]
         self.DEC_DROPOUT = hyperparamaters["decoder_dropout"]
 
-        self.FEATURE_DIM = feature_dims["doc_embs"]
+        # times 3 becasue we use the max+min+avrg embeddings
+        self.FEATURE_DIM =  feature_dims["doc_embs"] + (feature_dims["word_embs"] * 3)
 
         # α∈[0,1], will specify how much to weight the two task in the loss function
         self.TASK_WEIGHT = hyperparamaters["task_weight"]
 
-
-        if self.DECODER_HIDDEN_DIM != self.ENCODER_HIDDEN_DIM*self.ENCODER_NUM_LAYERS:
-            raise RuntimeError("Encoder - Decoder dimension missmatch. As the decoder is initialized by the encoder states the decoder dimenstion has to be encoder_dim * num_encoder_layers")
+        if self.DECODER_HIDDEN_DIM != self.ENCODER_HIDDEN_DIM*(2 if self.ENCODER_BIDIR else 1):
+            raise RuntimeError("Encoder - Decoder dimension missmatch. As the decoder is initialized by the encoder states the decoder dimenstion has to be encoder_dim * nr_directions")
         
         self.use_feature_dropout = False
         if self.F_DROPOUT:
@@ -169,7 +160,6 @@ class JointPN(nn.Module):
 
         self.encoder = Encoder(
                                 input_size=self.FEATURE_DIM,
-                                input_layer_dim=self.ENCODER_INPUT_DIM,
                                 hidden_size=self.ENCODER_HIDDEN_DIM,
                                 num_layers= self.ENCODER_NUM_LAYERS,
                                 bidirectional=self.ENCODER_BIDIR,
@@ -183,8 +173,8 @@ class JointPN(nn.Module):
                                 )
 
 
-        self.ac_clf_layer = nn.Linear(self.ENCODER_HIDDEN_DIM*(2 if self.ENCODER_BIDIR else 1), task_dims["ac"])
-        self.loss = nn.NLLLoss(reduction="sum", ignore_index=-1)
+        self.label_clf = nn.Linear(self.ENCODER_HIDDEN_DIM*(2 if self.ENCODER_BIDIR else 1), task_dims["label"])
+        self.loss = nn.CrossEntropyLoss(reduction="sum", ignore_index=-1)
 
 
     @classmethod
@@ -192,41 +182,45 @@ class JointPN(nn.Module):
         return "JointPN"
 
 
-    def forward(self, batch):
-                        
+    def forward(self, batch, output):
+        
         unit_embs = agg_emb(batch["token"]["word_embs"], 
                             lengths = batch["unit"]["lengths"],
                             span_indexes = batch["unit"]["span_idxs"], 
-                            mode = "average"
+                            mode = "mix"
                             )
         
-        #combining features
         X = torch.cat((unit_embs, batch["unit"]["doc_embs"]), dim=-1)
         
         if self.use_feature_dropout:
             X = self.feature_dropout(X)
-
+    
         # 1-2 | Encoder
         # encoder_output = (BATCH_SIZE, SEQ_LEN, HIDDEN_DIM*LAYER*DIRECTION)
         encoder_out, (encoder_h_s, encoder_c_s) = self.encoder(X, batch["unit"]["lengths"])
 
         # 3-7 | Decoder
-        # (BATCH_SIZE, SEQ_LEN, SEQ_LEN)
-        # prob distributions (softmax)
-        pointer_probs = self.decoder(encoder_out, encoder_h_s, encoder_c_s, batch["unit"]["mask"])
+        # We get the last hidden cell states and timesteps and concatenate them for each directions
+        # from (NUM_LAYER*DIRECTIONS, BATCH_SIZE, HIDDEN_SIZE) -> (BATCH_SIZE, HIDDEN_SIZE*NR_DIRECTIONS)
+        layer_dir_idx = list(range(0,encoder_h_s.shape[0],2))
+        encoder_h_s = torch.cat([*encoder_h_s[layer_dir_idx]],dim=1)
+        encoder_c_s = torch.cat([*encoder_c_s[layer_dir_idx]],dim=1)
 
-        label_probs =  F.softmax(self.ac_clf_layer(encoder_out),dim=-1)
+        # OUTPUT: (BATCH_SIZE, SEQ_LEN, SEQ_LEN)
+        link_logits = self.decoder(
+                                    encoder_out, 
+                                    encoder_h_s, 
+                                    encoder_c_s, 
+                                    batch["unit"]["mask"], 
+                                    return_softmax=False
+                                    )
+
+        # OUTPUT: (BATCH_SIZE, SEQ_LEN, nr_labels)
+        label_logits =  self.label_clf(encoder_out)
 
         if self.train_mode:
-            # we want to ignore -1  in the loss function so we set pad_values to -1, default is 0
-            batch.change_pad_value(-1)
-
-            pointer_probs_2d = torch.flatten(pointer_probs, end_dim=-2)
-            link_loss = self.loss(torch.log(pointer_probs_2d), batch["relation"].view(-1))
-
-            label_probs_2d = torch.flatten(ac_probs, end_dim=-2)
-            label_loss = self.loss(torch.log(ac_probs_2d), batch["ac"].view(-1))
-
+            link_loss = self.loss(torch.flatten(link_logits, end_dim=-2), batch["unit"]["link"].view(-1))
+            label_loss = self.loss(torch.flatten(label_logits, end_dim=-2), batch["unit"]["label"].view(-1))
             
             total_loss = ((1-self.TASK_WEIGHT) * link_loss) + ((1-self.TASK_WEIGHT) * label_loss)
 
@@ -235,10 +229,11 @@ class JointPN(nn.Module):
             output.add_loss(task="label",       data=label_loss)
 
 
-        label_preds = torch.argmax(label_probs,  dim=-1)
-        link_preds = torch.argmax(pointer_probs, dim=-1)
+        label_preds = torch.argmax(link_logits,  dim=-1)
+        link_preds = torch.argmax(label_logits, dim=-1)
 
         output.add_preds(task="label",          level="unit", data=label_preds)
         output.add_preds(task="link",           level="unit", data=link_preds)
 
+        return output
 

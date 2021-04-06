@@ -67,11 +67,13 @@ def multiply_mask_matrix(matrix, mask):
 def agg_emb(m, lengths, span_indexes, mode="average"):
 
     if mode == "mix":
-        feature_dim = matrix.shape[-1] * 3
+        feature_dim = m.shape[-1]*3
     else:
-        feature_dim = matrix.shape[-1]
+        feature_dim = m.shape[-1]
 
-    agg_m = torch.zeros(matrix.shape[0], torch.max(lengths), matrix.shape[-1])
+    batch_size = m.shape[0]
+    device = m.device
+    agg_m = torch.zeros(batch_size, torch.max(lengths), feature_dim, device=device)
 
     for i in range(batch_size):
         for j in range(lengths[i]):
@@ -89,15 +91,16 @@ def agg_emb(m, lengths, span_indexes, mode="average"):
                 agg_m[i][j] = v
 
             elif mode == "mix":
-                _min, _ = torch.min(m[i][ii:jj])
-                _max, _ = torch.max(m[i][ii:jj])
-                _mean = torch.mean(m[i][ii:jj])
-                agg_m[i][j] = torch.cat((_min, _max, _mean))
+                _min, _ = torch.min(m[i][ii:jj],dim=0) 
+                _max, _ = torch.max(m[i][ii:jj], dim=0)  
+                _mean = torch.mean(m[i][ii:jj], dim=0)     
+
+                agg_m[i][j] = torch.cat((_min, _max, _mean), dim=0)
 
             else:
-                raise RuntimeError(
-                    f"'{mode}' is not a supported mode, chose 'min', 'max','mean' or 'mix'"
-                )
+                raise RuntimeError(f"'{mode}' is not a supported mode, chose 'min', 'max','mean' or 'mix'")  
+
+    return agg_m
 
 
 # def reduce_and_remove(matrix, mask):

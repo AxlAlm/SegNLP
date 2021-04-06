@@ -12,10 +12,12 @@
 
 ```python
 from hotam.datasets import PE
-
-pe = PE()
+pe = PE(
+        tasks=["label", "link","link_label"],
+        prediction_level="unit",
+        sample_level="paragraph",
+        )
 ```
-
 
 ##### Prepare dataset for experiment
 
@@ -24,17 +26,12 @@ from hotam import Pipeline
 from hotam.features import GloveEmbeddings, BOW
 
 exp = Pipeline(
-                project="debugging",
-                tasks=["label", "link","link_label"],
-                dataset=PE(),
-                prediction_level="unit",
-                sample_level="paragraph",
-                input_level="document", # same as dataset level
+                project="my_project",
+                dataset=pe,
                 features = [
                             GloveEmbeddings(),
                             BOW(),
                             ],
-                argumentative_markers=True
             )
 ```
 
@@ -42,16 +39,18 @@ exp = Pipeline(
 
 ```python
 from hotam.nn.models import LSTM_DIST
+from hotam.nn.default_hyperparamaters import get_default_hps
+hps = get_default_hps(LSTM_DIST.name())
 ```
 
 ##### Run an experiment
 
 ```python
+from hotam.nn.default_hyperparamaters import get_default_hps
+
 exp1.fit(
         model=LSTM_DIST,
-        hyperparamaters = get_default_hps(LSTM_DIST.name()),
-        exp_logger=exp_logger,
-        gpus=[1],
+        hyperparamaters = hps,
         )
 ```
 

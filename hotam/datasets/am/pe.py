@@ -82,49 +82,52 @@ class PE(DataSet):
 
     """
 
-    def __init__(self, dump_path:str="/tmp/"):
-        #super().__init__()
-        self._name = "pe"
-        self.dump_path = dump_path
-        #self._dataset_path = "datasets/pe/data"
-        self._download_url = "https://www.informatik.tu-darmstadt.de/media/ukp/data/fileupload_2/argument_annotated_news_articles/ArgumentAnnotatedEssays-2.0.zip"
-        self._dataset_path = self.__download_data()
-        self._splits = self.__splits()
-        self._stance2new_stance = {
-                                    "supports":"PRO", 
-                                    "Against":"CON", 
-                                    "For":"PRO", 
-                                    "attacks":"CON",
-                                    }
-        #self._tasks = ["ac", "relation", "stance"]
-        self._tasks = ["label", "link", "link_label"]
-        self.__task_labels = {
+    def __init__(self,
+                tasks:list,
+                prediction_level:str="token", 
+                sample_level:str="document", 
+                dump_path:str="/tmp/"
+                ):
+        task_labels = {
+                            "seg": ["O","B","I"],
                             "label":["MajorClaim", "Claim", "Premise"],
-
                             # Originally stance labels are For and Against for Claims and MajorClaims
                             # and for premsies supports or attacks. 
                             # However, Against and attacks are functional equivalent so will use CON for both
                             # and for For and supports we will use PRO
                             #"stance":["For", "Against", "supports", "attacks"],
-                            "link_label": ["PRO", "CON", "None"],
-                            "link": set()
+                            "link_label": ["support", "attack", "None"],
+                            "link": list(range(-11,12,1))
                             }
 
-        self.level = "document"
-        self.about = """The corpus consists of argument annotated persuasive essays including annotations of argument components and argumentative relations.
-                        """
-        self.url = "https://www.informatik.tu-darmstadt.de/ukp/research_6/data/argumentation_mining_1/argument_annotated_essays_version_2/index.en.jsp"
-        self.data = self.__process_data()
+        self._stance2new_stance = {
+                                    "supports": "support", 
+                                    "For": "support", 
+                                    "Against": "attack", 
+                                    "attacks": "attack",
+                                    }
+        super().__init__(
+                        name="pe",
+                        tasks=tasks,
+                        prediction_level=prediction_level,
+                        sample_level=sample_level,
+                        supported_task_labels=task_labels,
+                        level="document",
+                        supported_tasks=["seg", "label", "link", "link_label"],
+                        supported_prediction_levels=["unit", "token"],
+                        supported_sample_levels=["document", "paragraph", "sentence"],
+                        about="""The corpus consists of argument annotated persuasive essays including annotations of argument components and argumentative relations.""",
+                        url="https://www.informatik.tu-darmstadt.de/ukp/research_6/data/argumentation_mining_1/argument_annotated_essays_version_2/index.en.jsp",
+                        download_url= "https://www.informatik.tu-darmstadt.de/media/ukp/data/fileupload_2/argument_annotated_news_articles/ArgumentAnnotatedEssays-2.0.zip",
+                        dump_path=dump_path,
+                        )
 
-
-    def __len__(self):
-        return self._size
 
     @classmethod
     def name(self):
         return "PE"
 
-    def __download_data(self, force=False) -> str:
+    def _download_data(self, force=False) -> str:
         """downloads the data from sourse website
 
         Returns
@@ -143,7 +146,7 @@ class PE(DataSet):
         
         if not os.path.exists(zip_dump_path):
             desc = f"Downloading ArgumentAnnotatedEssays-2.0"
-            u.download(url=self._download_url, save_path=zip_dump_path, desc=desc)
+            u.download(url=self.download_url, save_path=zip_dump_path, desc=desc)
 
         u.unzip(zip_dump_path, self.dump_path)
         u.unzip(data_folder + ".zip", parent_folder)
@@ -343,21 +346,28 @@ class PE(DataSet):
         """
 
         span2label = RangeDict()
-        unit_id = 0
+        current_unit_id = 0
         for i, (ac_id, span) in enumerate(ac_id2span.items()):
 
             relation = ac_id2relation.get(ac_id, 0)
-            self.__task_labels["link"].add(relation)
+            #self.__task_labels["link"].add(relation)
+
+
             ac = ac_id2ac.get(ac_id,"None")
             stance = self._stance2new_stance.get(ac_id2stance.get(ac_id,"None"), "None")
 
+            if "None" in ac_id:
+                unit_id = np.nan 
+            else:
+                unit_id = current_unit_id
+                current_unit_id += 1
 
             label = {   
                         "label": ac_id2ac.get(ac_id,"None"), 
                         "link_label": self._stance2new_stance.get(ac_id2stance.get(ac_id,"None"), "None"), 
                         "link": relation,
                         "span_id": i,
-                        "unit_id": np.nan if "None" in ac_id else i,
+                        "unit_id": unit_id,
                     }
             
 
@@ -366,7 +376,7 @@ class PE(DataSet):
         return span2label
 
 
-    def __splits(self) -> Dict[int, Dict[str, np.ndarray]]:
+    def _splits(self) -> Dict[int, Dict[str, np.ndarray]]:
         """creates a dict of split ids from the premade splits
 
         Returns
@@ -399,8 +409,7 @@ class PE(DataSet):
         try:
             split_path = str(list(Path(self.dump_path).rglob("train-test-split.csv"))[0])
         except IndexError as e:
-            logger.info("Failed to find data, will download PE.")
-            self._dataset_path = self.__download_data(force=True)
+            self._dataset_path = self._download_data(force=True)
             split_path = str(list(Path(self.dump_path).rglob("train-test-split.csv"))[0])
 
 
@@ -447,7 +456,7 @@ class PE(DataSet):
        	return splits
 
 
-    def __process_data(self):
+    def _process_data(self, path_to_data):
         """loads the Pursuasive Essay data and parse it into a DataSet. Also dumps the dataset 
         locally so that one does not need to parse it again, only load the parsed data.
 
@@ -458,19 +467,13 @@ class PE(DataSet):
         DataSet
             
         """
-        #dump_path = "/tmp/pe_dataset.pkl"
-        #dataset = DataSet("pe", data_path=dump_path)
-        #dataset.add_splits(self.splits)
-        #if not hasattr(dataset, "data"):
-            
-        ann_files = sorted(glob(self._dataset_path+"/*.ann"))
-        text_files = sorted(glob(self._dataset_path+"/*.txt"))
+        ann_files = sorted(glob(path_to_data+"/*.ann"))
+        text_files = sorted(glob(path_to_data+"/*.txt"))
         number_files = len(ann_files) + len(text_files)
-        logger.info("found {} files".format(number_files))
 
         data = []
         grouped_files = list(zip(ann_files, text_files))
-        for ann_file,txt_file in tqdm(grouped_files, desc="reading and formating PE files"):
+        for ann_file, txt_file in grouped_files:
 
             # -1 one as we want index 0 to be sample 1
             file_id = int(re.sub(r'[^0-9]', "", ann_file.rsplit("/",1)[-1])) -1
@@ -489,12 +492,7 @@ class PE(DataSet):
                             "text_type":"document",
                             "span_labels": span2label
                             })
-
-        self._size = len(data)
-        self.__task_labels["link"] = sorted(self.__task_labels["link"])
-        self._task_labels = self.__task_labels
-
-        del self.__task_labels
+ 
         return pd.DataFrame(data)
         
     

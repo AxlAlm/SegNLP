@@ -15,7 +15,9 @@ import sys
 import requests
 import random
 import zipfile
+import hashlib
 
+#hotam
 from hotam import get_logger
 
 #torch
@@ -234,12 +236,12 @@ def unzip(zip_path:str, save_path:str):
         zipf.extractall(save_path)
 
 
-def dynamic_update(src, v): 
+def dynamic_update(src, v, pad_value=0): 
 
     a = np.array(list(src.shape[1:]))
     b = np.array(list(v.shape))
     new_shape = np.maximum(a, b)
-    new_src = np.zeros((src.shape[0]+1, *new_shape), dtype=src.dtype)
+    new_src = np.full((src.shape[0]+1, *new_shape), pad_value, dtype=src.dtype)
 
     if len(v.shape) > 2:
         new_src[:src.shape[0],:src.shape[1], :src.shape[2]] = src
@@ -279,3 +281,7 @@ def tensor_dtype(numpy_dtype):
         return torch.bool
 
 
+
+def create_uid(string):
+    uid = str(int(hashlib.sha256(string.encode('utf-8')).hexdigest(), 16) % 10**8)
+    return uid
