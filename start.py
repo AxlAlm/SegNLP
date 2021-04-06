@@ -23,7 +23,7 @@ exp.fit(
     model=LSTM_ER,
     hyperparamaters=get_default_hps(LSTM_ER.name()),
     # exp_logger=exp_logger,
-    ptl_trn_args=dict(
-                        gpus=[2]
-                        )
+    # ptl_trn_args=dict(
+    #                     gpus=[2]
+    #                     )
 )
