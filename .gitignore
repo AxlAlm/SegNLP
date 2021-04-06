@@ -1,6 +1,5 @@
 ## my ignores
-test*
-test_*.py
+test_*.ipynb
 .vscode/*
 
 # Byte-compiled / optimized / DLL files

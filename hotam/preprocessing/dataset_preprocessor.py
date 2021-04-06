@@ -41,25 +41,26 @@ class PreProcessedDataset(ptl.LightningDataModule):
         self.label_colors = get_dataset(name).label_colors()
         self.label_encoders = label_encoders
         self._fp = os.path.join(dir_path, f"{name}_data.hdf5")
-        #self.data = h5py.File(self._fp, "r")
 
         with h5py.File(self._fp, "r") as f:
             self._size = f["idxs"].shape[0]
 
         self.prediction_level = prediction_level
 
-        # self._stats = pd.read_csv(os.path.join(dir_path, f"{name}_stats.csv"))
-        # self._stats.columns = ["split_id", "split", "task", "label", "count"]
+        self._stats = pd.read_csv(os.path.join(dir_path, f"{name}_stats.csv"))
+        self._stats.columns = ["split_id", "split", "task", "label", "count"]
 
         with open(os.path.join(dir_path, f"{name}_splits.pkl"), "rb") as f:
             self._splits = pickle.load(f)
         
+
 
     def __getitem__(self, key:Union[np.ndarray, list]) -> ModelInput:
         Input = ModelInput(
                             label_encoders=self.label_encoders, 
                             label_colors=self.label_colors
                             )
+
 
         with h5py.File(self._fp, "r") as data:
             sorted_key = np.sort(key)
@@ -71,7 +72,7 @@ class PreProcessedDataset(ptl.LightningDataModule):
 
                 if group == "idxs":
                     continue
-                
+
                 max_len = max(data[group]["lengths"][sorted_key])
 
                 Input[group] = {}
@@ -100,15 +101,17 @@ class PreProcessedDataset(ptl.LightningDataModule):
     def info(self):
         
         structure = { }
-        for group in self.data.keys():
 
-            if group == "idxs":
-                structure["idxs"] = f'dtype={str(self.data["idxs"].dtype)}, shape={self.data["idxs"].shape}'
-                continue
+        with h5py.File(self._fp, "r") as data:
+            for group in data.keys():
 
-            structure[group] = {}
-            for k, v in self.data[group].items():
-                structure[group][k] = f"dtype={str(v.dtype)}, shape={v.shape}"
+                if group == "idxs":
+                    structure["idxs"] = f'dtype={str(data["idxs"].dtype)}, shape={data["idxs"].shape}'
+                    continue
+
+                structure[group] = {}
+                for k, v in data[group].items():
+                    structure[group][k] = f"dtype={str(v.dtype)}, shape={v.shape}"
 
 
         s = f"""
@@ -131,18 +134,30 @@ class PreProcessedDataset(ptl.LightningDataModule):
         return self._splits
 
 
+    def overwrite_test(self, outputs):
+        
+        for split_id in splits:
+            keys = self.splits[split_id]["test"]
+            test_data = self[keys]
+
+
     def train_dataloader(self):
+        # ids are given as a nested list (e.g [[42, 43]]) hence using lambda x:x[0] to select the inner list.
         sampler = BatchSampler(self.splits[self.split_id]["train"], batch_size=self.batch_size, drop_last=False)
         return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=8)
 
 
     def val_dataloader(self):
+        # ids are given as a nested list (e.g [[42, 43]]) hence using lambda x:x[0] to select the inner list.
         sampler = BatchSampler(self.splits[self.split_id]["val"], batch_size=self.batch_size, drop_last=False)
         return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=8) #, shuffle=True)
 
 
-    def test_dataloader(self):
+    def test_dataloader(self, seg):
         sampler = BatchSampler(self.splits[self.split_id]["test"], batch_size=self.batch_size, drop_last=False)
+
+        self.__chained_model_outputs["unit"] = seg
+
         return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=8)
 
 
@@ -228,10 +243,11 @@ class DataPreprocessor:
                         }
                     }
 
+
         splits = dataset.splits
 
         if self.sample_level != dataset.level:
-            splits = create_new_splits(self.h5py_f["idxs"][:])
+            splits = create_new_splits(self.h5py_f["idxs"][:], self.evaluation_method)
 
         file_path = os.path.join(dump_dir, f"{dataset.name()}_splits.pkl")
         with open(file_path, "wb") as f:
