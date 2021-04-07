@@ -1,33 +1,27 @@
-
-
-
 #hotam
 from hotam.preprocessing.dataset_preprocessor import PreProcessedDataset
 from hotam.ptl import PTLBase
 from hotam.ptl import setup_ptl_trainer
 
+#pytorch lightning
+from pytorch_lightning import Trainer 
 
-def default(
-            experiment_id:dict, 
-            ptl_trn_args:dict, 
-            model_args:dict,
-            hyperparamaters:dict, 
-            dataset:PreProcessedDataset,
-            model_dump_path:str,
-            save_choice:str, 
-            ):
+def cross_validation(
+                    model_args:dict,
+                    trainer:Trainer,
+                    dataset:PreProcessedDataset,
+                    ):
+
 
 
     for i, ids in self.splits.items():
 
+        for callback in trainer.callbacks:
+            if isinstance(callback, ModelCheckpoint):
+                new_filename = callback.filename + f"_fold={i}"
+                setattr(model_ckpt_callback, 'filename', new_filename)
+
         dataset.split_id = i
-        trainer = setup_ptl_trainer( 
-                                    ptl_trn_args=ptl_trn_args,
-                                    hyperparamaters=hyperparamaters, 
-                                    model_dump_path=model_dump_path,
-                                    save_choice=save_choice, 
-                                    prefix=experiment_id+"_cv={i}",
-                                    )
 
         ptl_model = PTLBase(**model_args)
         trainer.fit(    

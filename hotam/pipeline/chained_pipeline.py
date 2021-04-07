@@ -19,7 +19,6 @@ import time
 import sys
 
 #hotam
-from hotam.utils import get_timestamp
 from hotam import get_logger
 from hotam.pipeline import Pipeline
 

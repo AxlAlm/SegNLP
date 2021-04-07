@@ -319,7 +319,7 @@ class DataPreprocessor:
         #     pickle.dump(stats, f)
 
 
-    def process_dataset(self, dataset:DataSet, chunks:int = 50, dump_dir:str = None) -> PreProcessedDataset:
+    def process_dataset(self, dataset:DataSet, dump_dir:str = None) -> PreProcessedDataset:
         
         file_path = os.path.join(dump_dir, f"{dataset.name()}_data.hdf5")
         self.__setup_h5py(file_path=file_path) 

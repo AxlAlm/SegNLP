@@ -16,6 +16,11 @@ import requests
 import random
 import zipfile
 import hashlib
+from glob import glob
+from pathlib import Path
+from pprint import pprint
+import re
+import pandas as pd
 
 #hotam
 from hotam import get_logger
@@ -169,10 +174,11 @@ def one_tqdm(desc:str):
     return decorator
 
 
-def get_timestamp():
+def get_time():
     sweden = pytz.timezone('Europe/Stockholm')
-    timestamp = datetime.now().astimezone(sweden).timestamp()
-    return int(timestamp)
+    time = datetime.now().astimezone(sweden)
+    #timestamp = timestamp.timestamp()
+    return time
 
 
 def copy_and_vet_dict(input_dict:dict):
@@ -285,3 +291,105 @@ def tensor_dtype(numpy_dtype):
 def create_uid(string):
     uid = str(int(hashlib.sha256(string.encode('utf-8')).hexdigest(), 16) % 10**8)
     return uid
+
+
+
+def list_pipelines():
+    pass
+
+
+def list_experiments():    
+    home_path =  str(Path.home())
+    root_exp_path =  f"{home_path}/.hotam/"
+    exps = os.listdir(root_exp_path)
+
+    print("__________ EXPERIMENTS _________")
+    for exp in exps:
+        exp_path = os.path.join(root_exp_path, exp)
+        exp_id = exp
+
+        exp_config_file = os.path.join(exp_path, "config.json")
+        with open(exp_config_file, "r") as f:
+            exp_config = json.load(f)
+
+        print(f'ID = {exp_id}\nModel = {exp_config["model"]}\ndataset = {exp_config["dataset"]}\ntasks = {exp_config["tasks"]}\nsample_level = {exp_config["sample_level"]}\nfor more info look in:\n   {exp_config_file} \n--------')
+
+
+def exp_summery(exp_id, rank:str="val_loss"):
+    home_path =  str(Path.home())
+    exp_path =  f"{home_path}/.hotam/{exp_id}/models/"
+    model_ids = [f for f  in os.listdir(exp_path) if "." not in f]
+
+    pattern = re.compile("(?P<epoch>epoch=\d+)|(?P<val_loss>val_loss=\d+.\d+)|(?P<val_f1>val_f1=\d+.\d+)")
+
+
+    summery = []
+    for model_id in model_ids:
+        model_dir = os.path.join(exp_path, model_id)
+
+        model_config_fp = os.path.join(model_dir,"model_config.json")
+        with open(model_config_fp, "r") as f:
+            model_config = json.load(f)
+
+        save_choice = model_config["save_choice"]
+        model_files = glob(model_dir+"/*.ckpt")
+
+        rows = []
+        for mf in model_files:
+            
+            if "last" in mf:
+                continue
+            else:
+                row = {"model_id":model_id, "path":mf, "model_config_path": model_config_fp}
+                matches = re.finditer(pattern, mf)
+
+                for m in matches:
+                    k, v = m.group(0).split("=")
+                    row[k] = int(v) if k == "epoch" else float(v)
+
+                rows.append(row)
+            
+        
+        model_df = pd.DataFrame(rows)
+        model_df.sort_values("epoch", inplace=True, ascending=True)
+        
+        if save_choice == "last":
+            last_fp = glob(model_dir+"/*last.ckpt")[0]
+            last_epoch = model_df.iloc[0].to_dict()
+
+            best_row = {
+                        "model_id":model_id, 
+                        "path":mf, 
+                        "last":True, 
+                        "epoch":f'+{last_epoch["epoch"]}',
+                        "val_f1":f'+-{last_epoch["val_f1"]}',
+                        "val_loss":f'+-{last_epoch["val_loss"]}',
+                        "model_config_path": model_config_fp,
+                        } 
+        else:
+            best_row = model_df.iloc[0].to_dict()
+
+
+        summery.append(best_row)
+    
+    summery = pd.DataFrame(summery)
+    summery.sort_values(rank, inplace=True, ascending=False if rank == "val_f1" else True)
+
+    pd.set_option('display.max_rows', None)
+    pd.set_option('display.max_columns', None)
+    pd.set_option('display.width', None)
+    pd.set_option('display.max_colwidth', None)
+    
+    print(f"__________ Experiment {exp_id} model rankings ({rank}) _________")
+    print()
+    print(summery)
+    print()
+    print("________ best model config _________")
+    best_model = summery.iloc[0].to_dict()
+    with open(best_model["model_config_path"], "r") as f:
+        model_config = json.load(f)
+    print()
+    pprint(model_config)
+    print()
+    print("__________________________________________________________________")
+

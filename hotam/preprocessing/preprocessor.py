@@ -53,18 +53,19 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 input_level:str,
                 features:list = [],
                 encodings:list = [],
-                tokens_per_sample:bool=False,
-                argumentative_markers:bool=False
+                other_levels:list = [],
                 ):
         super().__init__()
 
         self.prediction_level = prediction_level
         self.sample_level = sample_level
         self.input_level = input_level
-        self.tokens_per_sample = tokens_per_sample
 
         self.__labeling = False
-        self.argumentative_markers = argumentative_markers
+
+        self.argumentative_markers = False 
+        if "am" in other_levels:
+            self.argumentative_markers = True
 
         self.encodings = encodings
 
@@ -100,7 +101,6 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 "prediction_level": self.prediction_level,
                 "sample_level": self.sample_level,
                 "input_level": self.input_level,
-                "token_per_sample":self.tokens_per_sample,
                 "feature2dim": self.feature2dim,
                 "encodings":self.encodings
                 }

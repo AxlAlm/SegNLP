@@ -25,9 +25,9 @@ import torch
 from hotam.datasets import DataSet
 from hotam.preprocessing import Preprocessor
 from hotam.preprocessing.dataset_preprocessor import PreProcessedDataset
-from hotam.ptl.ptl_trainer_setup import default_ptl_trn_args
+from hotam.ptl.ptl_trainer_setup import setup_ptl_trainer
 from hotam import get_logger
-from hotam.utils import set_random_seed, get_timestamp, create_uid
+from hotam.utils import set_random_seed, get_time, create_uid
 from hotam.evaluation_methods import get_evaluation_method
 from hotam.nn.models import get_model
 from hotam.features import get_feature
@@ -48,43 +48,39 @@ class Pipeline:
     def __init__(self,
                 project:str,
                 dataset:str,
+                model:torch.nn.Module,
                 features:list =[],
                 encodings:list =[],
                 model_dir:str = None,
                 tokens_per_sample:bool=False,
                 other_levels:list=[],
-                argumentative_markers:bool=False,
-                root_dir:str =f"{user_dir}/.hotam/pipelines" #".hotam/pipelines"       
+                evaluation_method:str = "default",
+                root_dir:str =f"{user_dir}/.hotam/" #".hotam/pipelines"       
                 ):
         
         self.project = project
-        self.pipeline_id = create_uid(
-                                            "".join([
-                                                dataset.prediction_level,
-                                                dataset.name(),
-                                                dataset.sample_level, 
-                                                dataset.level,
-                                                ]
-                                                +dataset.tasks
-                                                +encodings
-                                                +[f.name for f in features]
-                                                    )
-                                            )        
-        self._pipeline_folder_path = self.__create_pipe_folder(root_dir=root_dir, pipe_hash=self.pipeline_id)
-        self.config = dict(
-                            project=project,
-                            dataset=dataset.name(),
-                            prediction_level=dataset.prediction_level, 
-                            input_level=dataset.level,
-                            sample_level=dataset.sample_level, 
-                            tasks=dataset.tasks, 
-                            features={f.name:f.params for f in features}, 
-                            encodings=encodings,
-                            tokens_per_sample=tokens_per_sample,
-                            argumentative_markers=argumentative_markers,
-                            root_dir=root_dir
-                            )
-        self.__dump_config()
+        self.evaluation_method = evaluation_method
+        self.model = model
+        self.id = create_uid(
+                            "".join([
+                                    model.name(),
+                                    dataset.prediction_level,
+                                    dataset.name(),
+                                    dataset.sample_level, 
+                                    dataset.level,
+                                    evaluation_method
+                                    ]
+                                    +dataset.tasks
+                                    +encodings
+                                    +[f.name for f in features]
+                                    )
+                                )   
+
+        self._path = self.__create_folder(root_dir=root_dir, pipe_hash=self.id)
+        self._path_to_models  = os.path.join(self._path, "models")
+        self._path_to_data = os.path.join(self._path, "data")
+        os.makedirs(self._path_to_models, exist_ok=True)
+        os.makedirs(self._path_to_data, exist_ok=True)
     
         self.preprocessor = Preprocessor(                
                                         prediction_level=dataset.prediction_level,
@@ -92,17 +88,30 @@ class Pipeline:
                                         input_level=dataset.level,
                                         features=features,
                                         encodings=encodings,
-                                        tokens_per_sample=tokens_per_sample,
-                                        argumentative_markers=argumentative_markers
+                                        other_levels=other_levels
                                         )
 
-
         self.dataset  = self.process_dataset(dataset)
+
+        #create and save config
+        self.config = dict(
+                            project=project,
+                            dataset=dataset.name(),
+                            model=model.name(),
+                            features={f.name:f.params for f in features}, 
+                            encodings=encodings,
+                            other_levels=other_levels,
+                            root_dir=root_dir,
+                            evaluation_method=evaluation_method,
+                            )
+        self.config.update(self.preprocessor.config)
+        self.__dump_config()
+
 
         self.__eval_set = False
         if model_dir:
             ckpt_fp = glob(model_dir + "/*.ckpt")[0]
-            args_fp = os.path.join(model_dir, "args.json")
+            args_fp = os.path.join(model_dir, "model_args.json")
 
             with open(args_fp, "r") as f:
                 model_args = json.load(f)
@@ -142,27 +151,27 @@ class Pipeline:
             pass
         else:
 
-            if self.__check_for_preprocessed_data(self._pipeline_folder_path, dataset.name()):
+            if self.__check_for_preprocessed_data(self._path_to_data, dataset.name()):
                 try:
-                    logger.info(f"Loading preprocessed data from {self._pipeline_folder_path}")
+                    logger.info(f"Loading preprocessed data from {self._path_to_data}")
                     return PreProcessedDataset(
                                                         name=dataset.name(),
-                                                        dir_path=self._pipeline_folder_path,
+                                                        dir_path=self._path_to_data,
                                                         label_encoders=self.preprocessor.encoders,
                                                         prediction_level=dataset.prediction_level
                                                         )
                 except OSError as e:
                     logger.info(f"Loading failed. Will continue to preprocess data")
                     try:
-                        shutil.rmtree(self._pipeline_folder_path)
+                        shutil.rmtree(self._path_to_data)
                     except FileNotFoundError as e:
                         pass
 
 
             try:
-                return self.preprocessor.process_dataset(dataset, dump_dir=self._pipeline_folder_path, chunks=5)
+                return self.preprocessor.process_dataset(dataset, dump_dir=self._path_to_data)
             except BaseException as e:
-                shutil.rmtree(self._pipeline_folder_path)
+                shutil.rmtree(self._path_to_data)
                 raise e
 
 
@@ -172,13 +181,13 @@ class Pipeline:
      
 
     def __dump_config(self):
-        config_fp = os.path.join(self._pipeline_folder_path, "config.json")
+        config_fp = os.path.join(self._path, "config.json")
         if not os.path.exists(config_fp):
             with open(config_fp, "w") as f:
-                json.dump(self.config, f)  
+                json.dump(self.config, f, indent=4)  
 
 
-    def __create_pipe_folder(self, root_dir:str, pipe_hash:str):
+    def __create_folder(self, root_dir:str, pipe_hash:str):
         pipeline_folder_path = os.path.join(root_dir, pipe_hash)
         os.makedirs(pipeline_folder_path, exist_ok=True)
         return pipeline_folder_path
@@ -207,11 +216,10 @@ class Pipeline:
         return set_hyperparamaters
 
 
-    def __get_save_model_args(  self,
-                                model:torch.nn.Module, 
-                                hyperparamaters:dict, 
-                                exp_dump_path:str
-                                ):
+    def __get_model_args(self,
+                        model:torch.nn.Module, 
+                        hyperparamaters:dict,
+                        ):
 
         model_args = dict(
                         model=model, 
@@ -223,111 +231,32 @@ class Pipeline:
                         task_dims={t:len(l) for t,l in self.preprocessor.task2labels.items() if t in self.preprocessor.tasks},
                         feature_dims=self.preprocessor.feature2dim,
                         )
+        return model_args
+
+
+    def __save_model_config(  self,
+                            model_args:str,
+                            save_choice:str, 
+                            monitor_metric:str,
+                            exp_model_path:str,
+                            ):
 
         #dumping the arguments
         model_args_c = deepcopy(model_args)
         model_args_c.pop("label_encoders")
         model_args_c["model"] = model_args_c["model"].name()
-        with open(os.path.join(exp_dump_path, "args.json"), "w") as f:
-            json.dump(model_args_c, f, indent=4)
 
-        with open(os.path.join(exp_dump_path, "pipeline_id.txt"), "w") as f:
-            f.write(self.pipeline_id)
-    
-        return model_args
-
-
-    def __get_exp_config(   self,
-                            model:str,
-                            evaluation_method:str, 
-                            monitor_metric:str,
-                            experiment_id:str,
-                            exp_dump_path:str,
-                            ):
+        time = get_time()
         config = {
-                    "model":model.name(),
-                    "dataset":self.dataset.name(),
-                    "evaluation_method": evaluation_method,
-                    "experiment_id": experiment_id,
-                    "model_dump_path": exp_dump_path,
+                    "time": str(time),
+                    "timestamp": str(time.timestamp()),
+                    "save_choice":save_choice,
+                    "monitor_metric":monitor_metric,
+                    "args":model_args_c,
                     }
-        config.update(self.config)
-        config.update(self.preprocessor.config)
 
-        return config
-
-
-    def fit(    self,
-                model:torch.nn.Module,
-                hyperparamaters:dict,
-                exp_logger:LightningLoggerBase=None,  
-                ptl_trn_args:dict={}, 
-                save:str = "last", 
-                evaluation_method:str = "default", 
-                model_dump_path:str = f"{user_dir}/.hotam/models",
-                monitor_metric:str = "val_loss",
-                run_test:bool = True, 
-                ):
-
-    
-        if exp_logger:
-            ptl_trn_args["logger"] = exp_logger
-        else:
-            ptl_trn_args["logger"] = None
-
-        set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
-
-        for hyperparamaters in set_hyperparamaters:
-
-            hyperparamaters["monitor_metric"] = monitor_metric
-
-            if "random_seed" not in hyperparamaters:
-                hyperparamaters["random_seed"] = 42
-
-            set_random_seed(hyperparamaters["random_seed"])
-    
-            model_unique_str = "".join(
-                                            [model.name()]
-                                            + list(map(str, hyperparamaters.keys()))
-                                            + list(map(str, hyperparamaters.keys()))
-                                        )
-            experiment_id = create_uid(model_unique_str)
-            exp_dump_path = os.path.join(model_dump_path, experiment_id)
-            os.makedirs(exp_dump_path, exist_ok=True) 
-
-            exp_config = self.__get_exp_config(
-                                                model=model,
-                                                evaluation_method=evaluation_method, 
-                                                monitor_metric=monitor_metric,
-                                                experiment_id=experiment_id,
-                                                exp_dump_path=exp_dump_path,
-                                                )
-            model_args = self.__get_save_model_args(
-                                                    model=model, 
-                                                    hyperparamaters=hyperparamaters, 
-                                                    exp_dump_path=exp_dump_path
-                                                    )
-
-            self.dataset.batch_size = hyperparamaters["batch_size"]
-
-            if exp_logger:
-                exp_logger.set_id(experiment_id)
-                exp_logger.log_hyperparams(hyperparamaters)
-
-                if isinstance(exp_logger, CometLogger):
-                    exp_logger.experiment.add_tags([model.name()])
-                    exp_logger.experiment.log_others(exp_config)
-
-
-            get_evaluation_method(evaluation_method)(
-                                                    experiment_id=experiment_id, 
-                                                    ptl_trn_args = ptl_trn_args, 
-                                                    model_args = model_args,
-                                                    hyperparamaters=hyperparamaters, 
-                                                    dataset=self.dataset,
-                                                    model_dump_path=exp_dump_path,
-                                                    save_choice=save, 
-                                                    )
+        with open(os.path.join(exp_model_path, "model_config.json"), "w") as f:
+            json.dump(config, f, indent=4)
 
 
     def eval(self):
@@ -342,23 +271,150 @@ class Pipeline:
         self.__eval_set = True
 
 
-    def test(self, save_choice="best"):
-        pass
+    def fit(    self,
+                hyperparamaters:dict,
+                exp_logger:LightningLoggerBase=None,  
+                ptl_trn_args:dict={}, 
+                save_choice:str = "last",  
+                monitor_metric:str = "val_loss",
+                ):
 
-        #if save_choice == "last":
-        #     outputs = trainer.test(
-        #                             model=ptl_model, 
-        #                             test_dataloaders=dataset.test_dataloader()
-        #                             )
+        model = deepcopy(self.model)
+    
+        if exp_logger:
+            ptl_trn_args["logger"] = exp_logger
+        else:
+            ptl_trn_args["logger"] = None
+
+        #ptl_trn_args = {**default_ptl_trn_args, **ptl_trn_args}
+
+        set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
+        for hyperparamaters in set_hyperparamaters:
+
+            hyperparamaters["monitor_metric"] = monitor_metric
+
+            if "random_seed" not in hyperparamaters:
+                hyperparamaters["random_seed"] = 42
+
+            set_random_seed(hyperparamaters["random_seed"])
+    
+            model_unique_str = "".join(
+                                            [model.name()]
+                                            + list(map(str, hyperparamaters.keys()))
+                                            + list(map(str, hyperparamaters.values()))
+                                        )
+            model_id = create_uid(model_unique_str)
+            exp_model_path = os.path.join(self._path_to_models, model_id)
+
+            if os.path.exists(exp_model_path):
+                shutil.rmtree(exp_model_path)
+                
+            os.makedirs(exp_model_path, exist_ok=True) 
+
+            model_args = self.__get_model_args(
+                                                model=model, 
+                                                hyperparamaters=hyperparamaters, 
+                                                )
+
+            self.__save_model_config(
+                                    model_args=model_args,
+                                    save_choice=save_choice,
+                                    monitor_metric=monitor_metric,
+                                    exp_model_path=exp_model_path
+                                    )
+
+            self.dataset.batch_size = hyperparamaters["batch_size"]
+
+            if exp_logger:
+                exp_logger.set_id(model_id)
+                exp_logger.log_hyperparams(hyperparamaters)
+
+                if isinstance(exp_logger, CometLogger):
+                    exp_logger.experiment.add_tags([self.project, self.id])
+                    exp_logger.experiment.log_others(exp_config)
+
+
+            trainer, checkpoint_cb = setup_ptl_trainer( 
+                                                        ptl_trn_args=ptl_trn_args,
+                                                        hyperparamaters=hyperparamaters, 
+                                                        exp_model_path=exp_model_path,
+                                                        save_choice=save_choice, 
+                                                        #prefix=model_id,
+                                                        )
+
+            get_evaluation_method(self.evaluation_method)(
+                                                            model_args = model_args,
+                                                            trainer = trainer,
+                                                            dataset = self.dataset,
+                                                            )
+
+            checkpoint_cb.best_model_path
+            checkpoint_cb.best_model_score
+            checkpoint_cb.last_model_path
+
+
+    def test(   self, 
+                ckpt_path:str=None,
+                model_id:str=None,
+                save_choice=None, 
+                ptl_trn_args:dict={}
+                ):
+
+        if ckpt_path:
+            model_ckpt_path = ckpt_path
+        
+        elif model_id:
+
+            if save_choice:
+                pass
+
+            elif:
+                logger.info(f"Will select the best epoch from {model_id}")
+        
+        elif save_choice:
+            pass
+    
+
+        else:
+            logger.info("Will select the best model based on the save_choice given when fit()")
+
+
+
+        model_config = os.path.join(self._path_to_models,model_id, "model_config.json")
+
+        with open(model_config, "r") as f:
+            model_config = json.load(f)
+
+        hyperparamaters = model_config["args"]["hyperparamaters"]
+        trainer = setup_ptl_trainer( 
+                                    ptl_trn_args=ptl_trn_args,
+                                    hyperparamaters=hyperparamaters, 
+                                    exp_model_path="",
+                                    save_choice="", 
+                                    )
+
+        # if save_choice == "last":
+     
         # elif save_choice == "best":
         #     outputs = trainer.test(
-        #                             model="best",
-        #                             test_dataloaders=dataset.test_dataloader()
-        #                             )
+        #                                 model="best",
+        #                                 test_dataloaders=dataset.test_dataloader()
+        #                                 )
         # else:
         #     raise RuntimeError(f"'{save_choice}' is not an approptiate choice when testing models")
 
-        # return outputs
+
+        model = MyLightningModule.load_from_checkpoint(
+                                                        checkpoint_path=model_ckpt_fp,
+                                                    )
+
+        outputs = trainer.test(
+                                model=model, 
+                                test_dataloaders=self.dataset.test_dataloader()
+                                )
+
+        return outputs
+        
 
 
 

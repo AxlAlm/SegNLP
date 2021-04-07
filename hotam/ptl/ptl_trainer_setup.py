@@ -69,49 +69,55 @@ def setup_ptl_trainer(
                         ptl_trn_args:dict, 
                         hyperparamaters:dict, 
                         save_choice:str,
-                        model_dump_path:str,
-                        prefix:str,
+                        exp_model_path:str,
+                        #prefix:str,
                         ):
-
-
+    
+    ptl_trn_args = {**default_ptl_trn_args, **ptl_trn_args}
 
     if save_choice:
 
-        ptl_trn_args["callbacks"] = []
+        if ptl_trn_args["callbacks"] == None:
+            ptl_trn_args["callbacks"] = []
+        
 
-        save_top_k = 1
-        # if save_choice == "best":
-        #     save_top_k = 1
+        if len([c for c in ptl_trn_args["callbacks"] if isinstance(c, ModelCheckpoint)]) == 0:
 
-        if save_choice == "all":
-            save_top_k = -1
+            save_top_k = 1
 
-        monitor_metric = hyperparamaters["monitor_metric"]
+            if save_choice == "all":
+                save_top_k = -1
 
-        os.makedirs(model_dump_path, exist_ok=True)
-        mc  = ModelCheckpoint(
-                                dirpath=model_dump_path,
-                                save_last=True if save_choice == "last" else False,
-                                save_top_k=save_top_k,
-                                monitor=monitor_metric,
-                                mode='min' if "loss" in monitor_metric else "max",
-                                prefix=prefix,
-                                verbose=0,
+            monitor_metric = hyperparamaters["monitor_metric"]
 
-                                )
+            os.makedirs(exp_model_path, exist_ok=True)
+            mc  = ModelCheckpoint(
+                                    dirpath=exp_model_path,
+                                    filename='{epoch}-{val_loss:.2f}-{val_f1:.2f}',
+                                    save_last=True if save_choice == "last" else False,
+                                    save_top_k=save_top_k,
+                                    monitor=monitor_metric,
+                                    mode='min' if "loss" in monitor_metric else "max",
+                                    #prefix=prefix,
+                                    verbose=0,
 
-        ptl_trn_args["callbacks"].append(mc)
+                                    )
 
-    # if "early_stop":
-    #     if trainer_args["callbacks"] == None:
-    #         trainer_args["callbacks"] = []
+            ptl_trn_args["callbacks"].append(mc)
 
-    #     trainer_args["callbacks"].append(EarlyStopping(
-    #                                                         monitor=hyperparamaters["monitor_metric"], 
-    #                                                         patience=hyperparamaters["patience"],
-    #                                                         mode='min' if "loss" in hyperparamaters["monitor_metric"] else "max",
-    #                                                         verbose=0,
-    #                                                         ))
+
+    if "patience" in hyperparamaters:
+
+        if ptl_trn_args["callbacks"] == None:
+            ptl_trn_args["callbacks"] = []
+
+        if len([c for c in ptl_trn_args["callbacks"] if isinstance(c, EarlyStopping)]) == 0:
+            ptl_trn_args["callbacks"].append(EarlyStopping(
+                                                                monitor=hyperparamaters["monitor_metric"], 
+                                                                patience=hyperparamaters["patience"],
+                                                                mode='min' if "loss" in hyperparamaters["monitor_metric"] else "max",
+                                                                verbose=0,
+                                                                ))
 
 
     #overwrite the Pytroch Lightning Training arguments that are writen in Hyperparamaters 
@@ -122,12 +128,12 @@ def setup_ptl_trainer(
         ptl_trn_args["gradient_clip_val"] = hyperparamaters["gradient_clip_val"]
                     
 
-    ptl_trn_args["default_root_dir"] = model_dump_path
+    ptl_trn_args["default_root_dir"] = exp_model_path
     trainer = Trainer(**ptl_trn_args)
 
     if ptl_trn_args["callbacks"]:
         ptl_trn_args["callbacks"] = [str(c) for c in ptl_trn_args["callbacks"]]
 
-    return trainer
+    return trainer, mc
 
 
