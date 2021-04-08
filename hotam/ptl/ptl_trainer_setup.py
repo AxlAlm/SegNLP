@@ -74,7 +74,8 @@ def setup_ptl_trainer(
                         ):
     
     ptl_trn_args = {**default_ptl_trn_args, **ptl_trn_args}
-
+    
+    mc = None
     if save_choice:
 
         if ptl_trn_args["callbacks"] == None:

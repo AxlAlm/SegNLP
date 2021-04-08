@@ -11,6 +11,7 @@ import pickle
 from collections import Counter
 import pandas as pd
 from IPython.display import display
+import multiprocessing
 
 #pytroch lighnting
 import pytorch_lightning as ptl
@@ -144,21 +145,18 @@ class PreProcessedDataset(ptl.LightningDataModule):
     def train_dataloader(self):
         # ids are given as a nested list (e.g [[42, 43]]) hence using lambda x:x[0] to select the inner list.
         sampler = BatchSampler(self.splits[self.split_id]["train"], batch_size=self.batch_size, drop_last=False)
-        return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=8)
+        return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=multiprocessing.cpu_count())
 
 
     def val_dataloader(self):
         # ids are given as a nested list (e.g [[42, 43]]) hence using lambda x:x[0] to select the inner list.
         sampler = BatchSampler(self.splits[self.split_id]["val"], batch_size=self.batch_size, drop_last=False)
-        return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=8) #, shuffle=True)
+        return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=multiprocessing.cpu_count()) #, shuffle=True)
 
 
-    def test_dataloader(self, seg):
+    def test_dataloader(self):
         sampler = BatchSampler(self.splits[self.split_id]["test"], batch_size=self.batch_size, drop_last=False)
-
-        self.__chained_model_outputs["unit"] = seg
-
-        return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=8)
+        return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=multiprocessing.cpu_count())
 
 
 

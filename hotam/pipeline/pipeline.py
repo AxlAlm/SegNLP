@@ -16,6 +16,8 @@ import pandas as pd
 #pytorch Lightning
 from pytorch_lightning.loggers import LightningLoggerBase
 from pytorch_lightning.loggers import CometLogger
+from pytorch_lightning.callbacks import ModelCheckpoint
+
 
 
 #pytorch
@@ -26,12 +28,14 @@ from hotam.datasets import DataSet
 from hotam.preprocessing import Preprocessor
 from hotam.preprocessing.dataset_preprocessor import PreProcessedDataset
 from hotam.ptl.ptl_trainer_setup import setup_ptl_trainer
+from hotam.ptl.ptl_base import PTLBase
 from hotam import get_logger
 from hotam.utils import set_random_seed, get_time, create_uid
 from hotam.evaluation_methods import get_evaluation_method
 from hotam.nn.models import get_model
 from hotam.features import get_feature
 from hotam.nn import ModelOutput
+
 
 logger = get_logger("PIPELINE")
 
@@ -109,19 +113,6 @@ class Pipeline:
 
 
         self.__eval_set = False
-        if model_dir:
-            ckpt_fp = glob(model_dir + "/*.ckpt")[0]
-            args_fp = os.path.join(model_dir, "model_args.json")
-
-            with open(args_fp, "r") as f:
-                model_args = json.load(f)
-
-            model_args["model"] = get_model(model_args["model"])
-            model_args["label_encoders"] = self.preprocessor.encoders
-            model_args["training"] = False
-            self._model = PTLBase(**model_args)
-            self._model = self._model.load_from_checkpoint(ckpt_fp, **model_args)
-
 
     @classmethod
     def load(self, model_dir_path:str=None, pipeline_folder:str=None, root_dir:str =f"{user_dir}/.hotam/pipelines"):
@@ -286,7 +277,7 @@ class Pipeline:
         else:
             ptl_trn_args["logger"] = None
 
-        #ptl_trn_args = {**default_ptl_trn_args, **ptl_trn_args}
+        model_scores = []
 
         set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
         for hyperparamaters in set_hyperparamaters:
@@ -348,65 +339,77 @@ class Pipeline:
                                                             dataset = self.dataset,
                                                             )
 
-            checkpoint_cb.best_model_path
-            checkpoint_cb.best_model_score
-            checkpoint_cb.last_model_path
+
+            if save_choice == "last":
+                model_fp = checkpoint_cb.last_model_path
+                checkpoint_dict = torch.load(model_fp)
+                model_score = float(checkpoint_dict["callbacks"][ModelCheckpoint]["current_score"])
+                
+            else:
+                model_fp = checkpoint_cb.best_model_path
+                model_score = float(checkpoint_cb.best_model_score)
+
+            model_scores.append({
+                                "model_id":model_id, 
+                                "score":model_score, 
+                                "monitor_metric":monitor_metric,
+                                "path":model_fp, 
+                                "config_path": os.path.join(exp_model_path, "model_config.json")
+                                })
+
+        model_ranking = pd.DataFrame(model_scores)
+        model_ranking.sort_values("score", ascending=False if "loss" in monitor_metric else True, inplace=True)
+
+
+        with open(os.path.join(self._path_to_models,"model_rankings.json"), "w") as f:
+            json.dump(model_ranking.to_dict(), f, indent=4)
 
 
     def test(   self, 
-                ckpt_path:str=None,
+                path_to_ckpt:str=None,
                 model_id:str=None,
-                save_choice=None, 
                 ptl_trn_args:dict={}
                 ):
 
-        if ckpt_path:
-            model_ckpt_path = ckpt_path
-        
-        elif model_id:
 
-            if save_choice:
-                pass
+        self.dataset.split_id = 0
 
-            elif:
-                logger.info(f"Will select the best epoch from {model_id}")
-        
-        elif save_choice:
-            pass
+
+        with open(os.path.join(self._path_to_models,"model_rankings.json"), "r") as f:
+            model_rankings = pd.DataFrame(json.load(f))
     
-
+        if path_to_ckpt:
+            ckpt_fp = path_to_ckpt
+            model_config_fp = os.path.join(path_to_ckpt.split("/", 1)[0], "model_config.json")
         else:
-            logger.info("Will select the best model based on the save_choice given when fit()")
 
+            if model_id:
+                row = model_rankings[model_rankings["model_id"] == model_id].to_dict()
+            else:
+                row = model_rankings.iloc[0].to_dict()
 
+            ckpt_fp = row["path"]
+            model_config_fp = row["config_path"]
 
-        model_config = os.path.join(self._path_to_models,model_id, "model_config.json")
-
-        with open(model_config, "r") as f:
+        with open(model_config_fp, "r") as f:
             model_config = json.load(f)
 
         hyperparamaters = model_config["args"]["hyperparamaters"]
-        trainer = setup_ptl_trainer( 
+
+        self.dataset.batch_size = hyperparamaters["batch_size"]
+
+        trainer, _ = setup_ptl_trainer( 
                                     ptl_trn_args=ptl_trn_args,
                                     hyperparamaters=hyperparamaters, 
                                     exp_model_path="",
                                     save_choice="", 
                                     )
 
-        # if save_choice == "last":
-     
-        # elif save_choice == "best":
-        #     outputs = trainer.test(
-        #                                 model="best",
-        #                                 test_dataloaders=dataset.test_dataloader()
-        #                                 )
-        # else:
-        #     raise RuntimeError(f"'{save_choice}' is not an approptiate choice when testing models")
 
-
-        model = MyLightningModule.load_from_checkpoint(
-                                                        checkpoint_path=model_ckpt_fp,
-                                                    )
+        model_config["args"]["model"] = get_model(model_config["args"]["model"])
+        model_config["args"]["label_encoders"] = self.preprocessor.encoders
+        model_config["args"]["training"] = False
+        model = PTLBase.load_from_checkpoint(ckpt_fp, **model_config["args"])
 
         outputs = trainer.test(
                                 model=model, 

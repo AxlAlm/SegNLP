@@ -317,63 +317,13 @@ def list_experiments():
 
 def exp_summery(exp_id, rank:str="val_loss"):
     home_path =  str(Path.home())
-    exp_path =  f"{home_path}/.hotam/{exp_id}/models/"
-    model_ids = [f for f  in os.listdir(exp_path) if "." not in f]
+    path_to_models = f"{home_path}/.hotam/{exp_id}/models/"
+    model_rankings_fp =  os.path.join(path_to_models, "model_rankings.json")
 
-    pattern = re.compile("(?P<epoch>epoch=\d+)|(?P<val_loss>val_loss=\d+.\d+)|(?P<val_f1>val_f1=\d+.\d+)")
+    with open(model_rankings_fp, "r") as f:
+        model_rankings = json.load(f)
 
-
-    summery = []
-    for model_id in model_ids:
-        model_dir = os.path.join(exp_path, model_id)
-
-        model_config_fp = os.path.join(model_dir,"model_config.json")
-        with open(model_config_fp, "r") as f:
-            model_config = json.load(f)
-
-        save_choice = model_config["save_choice"]
-        model_files = glob(model_dir+"/*.ckpt")
-
-        rows = []
-        for mf in model_files:
-            
-            if "last" in mf:
-                continue
-            else:
-                row = {"model_id":model_id, "path":mf, "model_config_path": model_config_fp}
-                matches = re.finditer(pattern, mf)
-
-                for m in matches:
-                    k, v = m.group(0).split("=")
-                    row[k] = int(v) if k == "epoch" else float(v)
-
-                rows.append(row)
-            
-        
-        model_df = pd.DataFrame(rows)
-        model_df.sort_values("epoch", inplace=True, ascending=True)
-        
-        if save_choice == "last":
-            last_fp = glob(model_dir+"/*last.ckpt")[0]
-            last_epoch = model_df.iloc[0].to_dict()
-
-            best_row = {
-                        "model_id":model_id, 
-                        "path":mf, 
-                        "last":True, 
-                        "epoch":f'+{last_epoch["epoch"]}',
-                        "val_f1":f'+-{last_epoch["val_f1"]}',
-                        "val_loss":f'+-{last_epoch["val_loss"]}',
-                        "model_config_path": model_config_fp,
-                        } 
-        else:
-            best_row = model_df.iloc[0].to_dict()
-
-
-        summery.append(best_row)
-    
-    summery = pd.DataFrame(summery)
-    summery.sort_values(rank, inplace=True, ascending=False if rank == "val_f1" else True)
+    model_rankings = pd.DataFrame(model_rankings)
 
     pd.set_option('display.max_rows', None)
     pd.set_option('display.max_columns', None)
@@ -382,11 +332,11 @@ def exp_summery(exp_id, rank:str="val_loss"):
     
     print(f"__________ Experiment {exp_id} model rankings ({rank}) _________")
     print()
-    print(summery)
+    print(model_rankings)
     print()
     print("________ best model config _________")
-    best_model = summery.iloc[0].to_dict()
-    with open(best_model["model_config_path"], "r") as f:
+    best_model = model_rankings.iloc[0].to_dict()
+    with open(best_model["config_path"], "r") as f:
         model_config = json.load(f)
     print()
     pprint(model_config)

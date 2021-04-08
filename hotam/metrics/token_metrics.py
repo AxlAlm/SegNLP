@@ -9,6 +9,7 @@ from typing import List, Dict, Union, Tuple
 import re
 from copy import deepcopy
 from collections import Counter
+import warnings
 
 
 #pytroch
@@ -20,6 +21,7 @@ from sklearn.metrics import f1_score
 from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 from sklearn.metrics import confusion_matrix
+from sklearn.exceptions import UndefinedMetricWarning
 
 #SegeVal
 #import segeval
@@ -29,6 +31,9 @@ from sklearn.metrics import confusion_matrix
 from hotam.utils import ensure_flat, ensure_numpy
 from hotam import get_logger
 
+
+warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
 def token_metrics(targets:np.ndarray, preds:np.ndarray, mask:np.ndarray, task:str, labels:list):
