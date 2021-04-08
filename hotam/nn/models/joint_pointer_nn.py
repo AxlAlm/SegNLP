@@ -129,9 +129,9 @@ class JointPN(nn.Module):
 
     """
     
-    def __init__(self, hyperparamaters:dict, task_dims:dict, feature_dims:dict, train_mode:bool):
+    def __init__(self, hyperparamaters:dict, task_dims:dict, feature_dims:dict, inference:bool):
         super().__init__()
-        self.train_mode = train_mode
+        self.inference = inference
         self.OPT = hyperparamaters["optimizer"]
         self.LR = hyperparamaters["lr"]
         self.ENCODER_INPUT_DIM = hyperparamaters["encoder_input_dim"]
@@ -218,7 +218,7 @@ class JointPN(nn.Module):
         # OUTPUT: (BATCH_SIZE, SEQ_LEN, nr_labels)
         label_logits =  self.label_clf(encoder_out)
 
-        if self.train_mode:
+        if not self.inference:
             link_loss = self.loss(torch.flatten(link_logits, end_dim=-2), batch["unit"]["link"].view(-1))
             label_loss = self.loss(torch.flatten(label_logits, end_dim=-2), batch["unit"]["label"].view(-1))
             

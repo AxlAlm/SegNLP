@@ -70,9 +70,9 @@ class LSTM_CNN_CRF(nn.Module):
 
     """ 
 
-    def __init__(self, hyperparamaters:dict, task_dims:dict, feature_dims:dict, training:bool=True):
+    def __init__(self, hyperparamaters:dict, task_dims:dict, feature_dims:dict, inference:bool):
         super().__init__()
-        self.training = training
+        self.inference = inference
         
         self.OPT = hyperparamaters["optimizer"]
         self.LR = hyperparamaters["lr"]
@@ -142,7 +142,7 @@ class LSTM_CNN_CRF(nn.Module):
             #6
             crf = self.crf_layers[task]
 
-            if self.training:
+            if not self.inference:
 
                 # crf doesnt work if padding is not a possible class, so we put padding as 0 which
                 # will be default to "O" in BIO or "None" (see label encoders)

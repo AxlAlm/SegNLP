@@ -70,7 +70,7 @@ class PTLBase(ptl.LightningModule):
                     prediction_level:str,
                     task_dims:dict,
                     feature_dims:dict,
-                    train_mode:bool=True
+                    inference:bool=False
                     ):
         super().__init__()
         self.hyperparamaters = hyperparamaters
@@ -79,14 +79,16 @@ class PTLBase(ptl.LightningModule):
         self.tasks = tasks
         self.all_tasks = all_tasks
         self.label_encoders = label_encoders
-        self.train_mode = train_mode
+        self.inference = inference
         self.model = model(
                             hyperparamaters=hyperparamaters,
                             task_dims=task_dims,
                             feature_dims=feature_dims,
-                            train_mode=train_mode
+                            inference=inference
                             )
         self.metrics = MetricContainer()
+        self.outputs = {"val":[], "test":[]}
+
 
     def forward(self, batch:ModelInput):
         return self._step(batch, split="test")
@@ -107,7 +109,7 @@ class PTLBase(ptl.LightningModule):
                                             tasks=self.tasks,
                                             all_tasks=self.all_tasks,
                                             prediction_level=self.prediction_level,
-                                            calc_metrics=True if self.train_mode else False, 
+                                            inference = self.inference,
                                             )
                                     )
 
@@ -120,9 +122,6 @@ class PTLBase(ptl.LightningModule):
         loss, output = self._step(batch, "train")
         self.log('train_loss', loss, prog_bar=True)
 
-        # if self.monitor_metric != "loss":
-        #     self.log(f'train_{self.monitor_metric}', self.metrics["train"][self.monitor_metric], prog_bar=True)
-
         return loss
 
 
@@ -133,26 +132,15 @@ class PTLBase(ptl.LightningModule):
         if self.monitor_metric != "val_loss":
             self.log(f'val_{self.monitor_metric}', self.metrics["val"][-1][self.monitor_metric.replace("val","")], prog_bar=True)
 
+        self.outputs["val"].extend(output.to_record())
         return {"val_loss": loss}
 
 
     def test_step(self, batch, batch_idx):
         _, output = self._step(batch, "test")
+        self.outputs["test"].extend(output.to_record())
         return output
 
-
-
-    # def training_step_end(self, outs):
-    #     return outs
-
-
-    # def validation_step_end(self, outs):
-    #     return outs
-
-
-    # def test_step_end(self, outs):
-    #     return outs
-     
 
     def _end_of_epoch(self, split):
         #if self.logger is not None:
@@ -184,24 +172,6 @@ class PTLBase(ptl.LightningModule):
     def on_test_epoch_end(self):
         self._end_of_epoch("test")
 
-
-
-    # def validation_step(self, batch_ids, batch_idx):
-    #     loss, metrics = self._step(batch_ids, "val")
-    #     # result = ptl.EvalResult(
-    #     #                             early_stop_on=torch.Tensor([metrics[self.monitor_metric]]), 
-    #     #                             checkpoint_on=torch.Tensor([metrics[self.monitor_metric]])
-    #     #                         )
-    #     # result.log_dict(metrics, on_epoch=True, reduce_fx=my_mean, tbptt_reduce_fx=my_mean)
-    #     #return result
-
-
-    # def test_step(self, batch_ids, batch_idx):
-    #     loss, metrics = self._step(batch_ids, "test")
-    #     result = ptl.EvalResult()
-    #     result.log_dict(metrics, on_epoch=True, reduce_fx=my_mean, tbptt_reduce_fx=my_mean)
-    #     #return result
-     
 
     def configure_optimizers(self):
 

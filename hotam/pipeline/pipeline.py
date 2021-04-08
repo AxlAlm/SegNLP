@@ -258,6 +258,7 @@ class Pipeline:
         # else:
         self._model.eval()
         self._model.freeze()
+        self._model.inference = True
         self.preprocessor.deactivate_labeling()
         self.__eval_set = True
 
@@ -408,18 +409,18 @@ class Pipeline:
 
         model_config["args"]["model"] = get_model(model_config["args"]["model"])
         model_config["args"]["label_encoders"] = self.preprocessor.encoders
-        model_config["args"]["training"] = False
         model = PTLBase.load_from_checkpoint(ckpt_fp, **model_config["args"])
-
-        outputs = trainer.test(
+        scores = trainer.test(
                                 model=model, 
                                 test_dataloaders=self.dataset.test_dataloader()
                                 )
-
-        return outputs
         
+        output_df = pd.DataFrame(model.outputs["test"])
+        output_df["text"] = output_df["text"].apply(np.vectorize(lambda x:x.decode("utf-8")))
 
-
+        print(output_df.head(10))
+        return scores, output_df
+        
 
     def predict(self, doc:str):
 
@@ -431,6 +432,5 @@ class Pipeline:
         Input.to_tensor(device="cpu")
 
         output = self._model(Input)
-        #output.chain()
         return output
         

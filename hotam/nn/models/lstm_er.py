@@ -17,15 +17,14 @@ from hotam.nn.bio_decoder import bio_decode
 
 
 class LSTM_ER(nn.Module):
-    def __init__(self, hyperparamaters: dict, task_dims: dict,
-                 feature_dims: dict, train_mode: bool):
-        super(LSTM_ER, self).__init__()
+    def __init__(self, hyperparamaters:dict, task_dims:dict, feature_dims:dict, inference:bool):
+        super().__init__()
+        self.inference = inference
 
         # number of arguemnt components
         self.num_ac = task_dims["seg+label"]
         self.num_stances = task_dims["link_label"]  # number of relations
 
-        self.train_mode = train_mode
 
         self.model_param = nn.Parameter(torch.empty(0))
 

@@ -31,9 +31,9 @@ class LSTM_CRF(nn.Module):
 
     """
 
-    def __init__(self, hyperparamaters:dict, task_dims:dict, feature_dims:dict, train_mode:bool):
+    def __init__(self, hyperparamaters:dict, task_dims:dict, feature_dims:dict, inference:bool):
         super().__init__()
-        self.train_mode = train_mode
+        self.inference = inference
         self.OPT = hyperparamaters["optimizer"]
         self.LR = hyperparamaters["lr"]
         self.HIDDEN_DIM = hyperparamaters["hidden_dim"]
@@ -109,7 +109,7 @@ class LSTM_CRF(nn.Module):
 
             crf = self.crf_layers[task]
             
-            if self.train_mode:
+            if not self.inference:
                 # crf doesnt work if padding is not a possible class, so we put padding as 0 which
                 # will be default to "O" in BIO or "None" (see label encoders)                
                 batch.change_pad_value(level="token", task=task, new_value=0)

@@ -55,9 +55,9 @@ class LSTM_DIST(nn.Module):
 
     """
 
-    def __init__(self,  hyperparamaters:dict, task_dims:dict, feature_dims:dict, train_mode:bool):
+    def __init__(self, hyperparamaters:dict, task_dims:dict, feature_dims:dict, inference:bool):
         super().__init__()
-        self.train_mode = train_mode
+        self.inference = inference
         self.BATCH_SIZE = hyperparamaters["batch_size"]
         self.OPT = hyperparamaters["optimizer"]
         self.LR = hyperparamaters["lr"]
@@ -262,7 +262,7 @@ class LSTM_DIST(nn.Module):
 
 
         
-        if self.train_mode:   
+        if not self.inference:   
             link_loss = self.loss(torch.flatten(link_out, end_dim=-2), batch["unit"]["link"].view(-1))
             link_label_loss = self.loss(torch.flatten(link_label_out, end_dim=-2), batch["unit"]["link_label"].view(-1))
             label_loss = self.loss(torch.flatten(label_out, end_dim=-2), batch["unit"]["label"].view(-1))
