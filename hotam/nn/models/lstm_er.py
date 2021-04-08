@@ -6,12 +6,12 @@ from collections import defaultdict
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from hotam.nn.layers.seg_layers.bigram_seg import BigramSegLayer
 from hotam.nn.layers.link_label_layers.dep_pairing_layer import DepPairingLayer
 from hotam.nn.layers.lstm import LSTM_LAYER
 from hotam.nn.utils import get_all_possible_pairs, range_3d_tensor_index
+from hotam.nn.utils import util_one_hot
 from hotam.nn.schedule_sample import ScheduleSampling
 from hotam.nn.bio_decoder import bio_decode
 
@@ -23,7 +23,7 @@ class LSTM_ER(nn.Module):
 
         # number of arguemnt components
         self.num_ac = task_dims["seg+label"]
-        self.num_stances = task_dims["link_label"]  # number of relations
+        self.num_labels = task_dims["link_label"]  # number of relations
 
         self.train_mode = train_mode
 
@@ -55,7 +55,6 @@ class LSTM_ER(nn.Module):
         dropout = hyperparamaters["dropout"]
         self.dropout = nn.Dropout(dropout)
 
-        self.loss = nn.CrossEntropyLoss(reduction="sum", ignore_index=-1)
         self.schedule = ScheduleSampling(schedule="inverse_sig",
                                          k=hyperparamaters["k"])
 
@@ -85,8 +84,12 @@ class LSTM_ER(nn.Module):
             tree_bidirectional=tree_bidirectional,
             decoder_input_size=link_label_input_size,
             decoder_h_size=link_label_clf_h_size,
-            decoder_output_size=self.num_stances,
+            decoder_output_size=self.num_labels,
             dropout=dropout)
+
+        self.loss_fn = hyperparamaters["loss_fn"].lower()
+        self.mse_loss = nn.MSELoss(reduction="mean")
+        self.nll_loss = nn.NLLLoss(reduction="none", ignore_index=-1)
 
     @classmethod
     def name(self):
@@ -95,6 +98,8 @@ class LSTM_ER(nn.Module):
     def forward(self, batch, output):
 
         check = True
+        tokens_mask = batch["token"]["mask"].type(torch.bool)
+        batch_size = batch["token"]["mask"].size(0)
         # 1)
         # pos_word_embs.shape =
         # (batch_size, max_nr_tokens, word_embs + pos_embs)
@@ -115,10 +120,9 @@ class LSTM_ER(nn.Module):
         seg_label_preds, seg_label_embs = clf_output[-2:]
 
         # 4)
-
         if self.schedule.next(batch.current_epoch):
             preds_used = batch["token"]["seg+label"]
-            embs_used = F.one_hot(preds_used, num_classes=self.num_ac)
+            embs_used = util_one_hot(preds_used, tokens_mask, self.num_ac)
         else:
             preds_used = seg_label_preds
             embs_used = seg_label_embs
@@ -145,8 +149,7 @@ class LSTM_ER(nn.Module):
         # get number of pairs in each sample
         pair_num = list(map(len, all_possible_pairs["end"]))
         if check:
-            pair_num_calc = [(n - 1) * (n - 1) if n > 1 else 0
-                             for n in nr_units]
+            pair_num_calc = [n * n for n in nr_units]
             assert np.all(np.array(pair_num) == np.array(pair_num_calc))
 
         # 7)
@@ -181,23 +184,60 @@ class LSTM_ER(nn.Module):
             unit_repr=s,
             unit_num=nr_units,
             dependencies=batch["token"]["dephead"],
-            token_mask=batch["token"]["mask"],
+            token_mask=tokens_mask,
             roots=output.batch["token"]["root_idxs"],
             pairs=all_possible_pairs,
             mode="shortest_path",
             assertion=check)
 
         # 9
-        link_label_logits,
+        link_label_max_logits, link_label_preds, link_preds = link_label_data
+
+        seg_label_truth = batch["token"]["seg+label"]
+        link_label_truth = batch["token"]["link_label"]
+        link_truth = batch["token"]["link"]
+        # negative link_label
+        # Wrong label prediction
+        seg_label_preds[~tokens_mask] = -1  # to avoid falses in below compare
+        label_preds_wrong = seg_label_preds != seg_label_truth
+        # wrong predictions' indices
+        idx_0, idx_1 = torch.nonzero(label_preds_wrong, as_tuple=True)
+        link_label_preds[idx_0, idx_1] = idx_1
+
         if self.train_mode:
+            if self.loss_fn == "mse_loss":
+                # mse does not have ignore_index
+                link_label_preds[~tokens_mask] = -1
+                label_loss = self.mse_loss(seg_label_preds.type(torch.float),
+                                           seg_label_truth.type(torch.float))
+                link_label_loss = self.mse_loss(
+                    link_label_preds.type(torch.float),
+                    link_label_truth.type(torch.float))
+            elif self.loss_fn == "nll_loss":
+                label_loss = self.nll_loss(
+                    seg_label_logits.view(-1, self.num_ac),
+                    seg_label_truth.view(-1))
+                link_label_loss = self.nll_loss(
+                    link_label_max_logits.view(-1, self.num_labels),
+                    link_label_truth.view(-1))
+                label_loss = label_loss.view(batch_size, -1).sum(1).mean()
+                link_label_loss = link_label_loss.view(batch_size,
+                                                       -1).sum(1).mean()
+
+            link_preds[~tokens_mask] = -1
+            label_loss = self.mse_loss(link_preds.type(torch.float),
+                                       link_truth.type(torch.float))
+
+            total_loss = label_loss + link_label_loss + label_loss
+
             output.add_loss(task="total", data=total_loss)
             output.add_loss(task="link_label", data=link_label_loss)
             output.add_loss(task="label", data=label_loss)
 
-        output.add_preds(task="seg+label", level="token", data=label_preds)
-        output.add_preds(task="link", level="unit", data=link_preds)
+        output.add_preds(task="seg+label", level="token", data=seg_label_preds)
+        output.add_preds(task="link", level="token", data=link_preds)
         output.add_preds(task="link_label",
-                         level="unit",
+                         level="token",
                          data=link_label_preds)
 
-        return 1
+        return output

@@ -6,7 +6,6 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.utils.rnn import pad_sequence
 
 import networkx as nx
 from networkx import Graph as nxGraph
@@ -15,7 +14,7 @@ from dgl import DGLGraph
 from dgl.traversal import topological_nodes_generator as traverse_topo
 
 from hotam.nn.layers.type_treelstm import TypeTreeLSTM
-from hotam.nn.utils import index_4D
+from hotam.nn.utils import index_4D, unfold_matrix
 
 
 class DepPairingLayer(nn.Module):
@@ -70,7 +69,7 @@ class DepPairingLayer(nn.Module):
         # G(U, V)
         U = torch.arange(max_lenght, device=self.device).repeat(batch_size, 1)
         V = deplinks.clone()
-        M = token_mask.clone().type(torch.bool)
+        M = token_mask.clone()
 
         # remove self loops at root nodes
         self_loop = U == V
@@ -222,96 +221,64 @@ class DepPairingLayer(nn.Module):
         # [dp; s]
         link_label_input_repr = torch.cat((tree_logits, unit_repr), dim=-1)
         logits = self.label_link_clf(link_label_input_repr)
-        prob = F.softmax(logits, dim=-1)
+        prob_dist = F.softmax(logits, dim=-1)
 
-        # reshape logits and prob
-        size_4d = [
-            batch_size,
-            max(unit_num) - 1,
-            max(unit_num) - 1,
-            prob.size(-1)
-        ]
         # NOTE: When there are multiple equal values, torch.argmax() and
         # torch.max() do not return the first max value.  Instead, they
-        # randamly return any valid index. Thus, for the padded ac, the
-        # predection could be any value, as they have the same padded value.
-        # To
-        prob_4d = input_embs.new_ones(size=size_4d) * -1
-        pair_num = list(map(len, pairs["end"]))
-        prob_ = torch.split(prob, split_size_or_sections=pair_num)
-        for i, (p, n) in enumerate(zip(prob_, unit_num)):
-            if n > 1:
-                prob_4d[i, :n - 1, :n - 1] = p.view(n - 1, n - 1, -1)
+        # randamly return any valid index.
 
+        # reshape logits and prob into 4d tensors
+        size_4d = [
+            batch_size,
+            max(unit_num),
+            max(unit_num),
+            prob_dist.size(-1)
+        ]
+        prob_4d = input_embs.new_ones(size=size_4d) * -1
+        logits_4d = input_embs.new_ones(size=size_4d) * -1
+        unit_start = []
+        unit_end = []
+
+        # split prob_dist and logits based on number of pairs in each batch
+        pair_num = list(map(len, pairs["end"]))
+        prob_ = torch.split(prob_dist, split_size_or_sections=pair_num)
         logits_ = torch.split(logits, split_size_or_sections=pair_num)
-        logits_ = pad_sequence(logits_, batch_first=True, padding_value=-1000)
-        logits_ = logits_.view(*size_4d)
+
+        # fill 4d tensors
+        data = zip(prob_, logits_, pairs["start"], pairs["end"], unit_num)
+        for i, (prob, logs, s, e, n) in enumerate(data):
+            if n > 0:
+                prob_4d[i, :n, :n] = prob.view(n, n, -1)
+                logits_4d[i, :n, :n] = logs.view(n, n, -1)
+                unit_start.extend(list(zip(*s))[1][:n])
+                unit_end.extend(list(zip(*e))[1][:n])
 
         # get link label max logits and link_label and link predictions
         prob_max_pair, _ = torch.max(prob_4d, dim=-1)
         link_preds = torch.argmax(prob_max_pair, dim=-1)
         link_label_prob_dist = index_4D(prob_4d, index=link_preds)
         link_label_preds = torch.argmax(link_label_prob_dist, dim=-1)
+        link_label_max_logits = index_4D(logits_4d, index=link_preds)
 
-        link_label_max_logits = index_4D(logits_, index=link_preds)
+        link_label_max_logits = unfold_matrix(
+            matrix_to_fold=link_label_max_logits,
+            start_idx=unit_start,
+            end_idx=unit_end,
+            class_num_betch=unit_num,
+            fold_dim=input_embs.size(1))
 
-        return link_label_max_logits, link_label_preds, link_preds
+        link_label_preds = unfold_matrix(matrix_to_fold=link_label_preds,
+                                         start_idx=unit_start,
+                                         end_idx=unit_end,
+                                         class_num_betch=unit_num,
+                                         fold_dim=input_embs.size(1))
 
-        # NOTE
-        # Need to return the logits to check if the negative relation
+        link_preds = unfold_matrix(matrix_to_fold=link_preds,
+                                   start_idx=unit_start,
+                                   end_idx=unit_end,
+                                   class_num_betch=unit_num,
+                                   fold_dim=input_embs.size(1))
 
-        # 10) Here we should format the data to the following structure:
-        # t1 = representation of the last token in the first unit of the pair
-        # t2 = representation of the last token in the second unit of the pair
-        # a = lowest ancestor of t1 and t2
-        # pair(unit_i, unit_j) = a+t1+t2 where t1
-        # (batch_size, nr_units, nr_units, a+t1+t2)
-        # for a sample:
-        # [
-        #   [
-        #    pair(unit0,unit0),
-        #       ...
-        #     pair(unit0, unitn),
-        #   ],
-        #    ....
-        #   [
-        #    pair(unitn,unitn),
-        #       ...
-        #     pair(unitn, unitn+1),
-        #   ],
-        #
-        # ]
-        # pairs = ""
-
-        # now we should get logist  for each link_labels
-        # (batch_size, nr_units, nr_units, nr_link_labels)
-        #
-        # for a sample:
-        # [
-        #   [
-        #    [link_label_0_score, .., link_label_n_score],
-        #       ...
-        #    [link_label_0_score, .., link_label_n_score]
-        #   ],
-        #   [
-        #    [link_label_0_score, .., link_label_n_score],
-        #       ....
-        #    [link_label_0_score, .., link_label_n_score]
-        #   ],
-        # ]
-        # link_label_logits = self.link_label_clf(pairs)
-
-        # 11)
-        # first we get the index of the unit each unit links to
-        # we do this by first get the highest score of the link label
-        # for each unit pair. Then we argmax that to get the index of
-        # the linked unit.
-        # max_link_label_logits = torch.max(link_label_logits, dim=-1)
-        # link_preds = torch.argmax(max_link_label_logits, dim=-1)
-
-        # 12)
-        # we index the link_label_scores by the link predictions, selecting
-        # the logits for the link_labels for the linked pairs
-        # top_link_label_logits = index_4D(link_label_logits, index=link_preds)
-
-        # return top_link_label_logits, link_preds
+        # Would not be easier to save a mapping ac_id, token_strat/end, instead
+        # of all of these calc and loops !
+        return [link_label_max_logits, link_label_preds, link_preds]

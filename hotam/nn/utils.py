@@ -1,5 +1,6 @@
 import torch
 from torch import Tensor
+from torch.nn import functional as F
 import numpy as np
 
 from typing import List, Tuple, DefaultDict
@@ -91,14 +92,14 @@ def agg_emb(m, lengths, span_indexes, mode="average"):
                 agg_m[i][j] = v
 
             elif mode == "mix":
-                _min, _ = torch.min(m[i][ii:jj],dim=0) 
-                _max, _ = torch.max(m[i][ii:jj], dim=0)  
-                _mean = torch.mean(m[i][ii:jj], dim=0)     
+                _min, _ = torch.min(m[i][ii:jj],dim=0)
+                _max, _ = torch.max(m[i][ii:jj], dim=0)
+                _mean = torch.mean(m[i][ii:jj], dim=0)
 
                 agg_m[i][j] = torch.cat((_min, _max, _mean), dim=0)
 
             else:
-                raise RuntimeError(f"'{mode}' is not a supported mode, chose 'min', 'max','mean' or 'mix'")  
+                raise RuntimeError(f"'{mode}' is not a supported mode, chose 'min', 'max','mean' or 'mix'")
 
     return agg_m
 
@@ -162,16 +163,16 @@ def get_all_possible_pairs(
         all_possible_pairs["end"].append(list(product(idx_end, repeat=2)))
         if assertion:
             lens_cal = idx_end - idx_start
-            span_len = np.array(span)[np.array(mask, dtype=bool)][1:]
+            span_len = np.array(span)[np.array(mask, dtype=bool)]
             assert np.all(lens_cal == span_len)
 
     return all_possible_pairs
 
 
 def range_3d_tensor_index(matrix: Tensor,
-                          start: list,
-                          end: list,
-                          pair_batch_num: list,
+                          start: List[int],
+                          end: List[int],
+                          pair_batch_num: List[int],
                           reduce_: str = "none") -> Tensor:
 
     # to avoid bugs, if there is a sample that does not have a unit the
@@ -213,3 +214,47 @@ def range_3d_tensor_index(matrix: Tensor,
         mat = torch.stack(list(map(torch.sum, mat, repeat(0))))
 
     return mat
+
+
+def util_one_hot(matrix: Tensor, mask: Tensor, num_classes: int):
+    # check padding = -1
+    thematrix = matrix.clone()  # avoid possible changing of the original Tensor
+    pad_emb = thematrix[~mask.type(torch.bool)]
+    if torch.all(pad_emb == -1):
+        # change padding = 0
+        pad_emb = ~mask.type(torch.bool) * 1
+        thematrix += pad_emb
+
+    return F.one_hot(thematrix, num_classes=num_classes)
+
+
+def unfold_matrix(matrix_to_fold: Tensor, start_idx: List[int],
+                  end_idx: List[int], class_num_betch: List[int],
+                  fold_dim: int) -> Tensor:
+
+    batch_size = matrix_to_fold.size(0)
+    # construct array of indices for dimesion 0, repeating batch_id
+    span_len = np.array(end_idx) - np.array(start_idx)
+    idx_0 = np.repeat(np.arange(batch_size), class_num_betch)
+    idx_0 = np.repeat(idx_0, span_len)
+
+    # construct array of indices for dimesion 1
+    idx_1 = np.hstack(list(map(np.arange, start_idx, end_idx)))
+
+    # Get unit id for each start, end token
+    unit_id = np.hstack(list(map(np.arange, repeat(0), class_num_betch)))
+    unit_id = np.repeat(unit_id, span_len)
+
+    # construct the folded matrix
+    if len(matrix_to_fold.size()) > 2:
+        size = [batch_size, fold_dim, matrix_to_fold.size(-1)]
+    else:
+        size = [batch_size, fold_dim]
+    matrix = matrix_to_fold.new_zeros(size=size)
+
+    # fill matrix
+
+
+    matrix[idx_0, idx_1] = matrix_to_fold[idx_0, unit_id]
+
+    return matrix
