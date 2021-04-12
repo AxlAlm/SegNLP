@@ -52,4 +52,9 @@ class BigramSegLayer(nn.Module):
             one_hots[:, i] = F.one_hot(preds[:, i],
                                        num_classes=self.label_emb_dim)
 
-        return logits, probs, preds, one_hots
+        return {
+                "logits": logits, 
+                "probs": probs, 
+                "preds": preds, 
+                "one_hots": one_hots
+                }

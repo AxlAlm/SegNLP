@@ -10,7 +10,7 @@ import torch.nn as nn
 from hotam.nn.layers.seg_layers.bigram_seg import BigramSegLayer
 from hotam.nn.layers.link_label_layers.dep_pairing_layer import DepPairingLayer
 from hotam.nn.layers.lstm import LSTM_LAYER
-from hotam.nn.utils import get_all_possible_pairs, range_3d_tensor_index
+#from hotam.nn.utils import get_all_possible_pairs, range_3d_tensor_index
 from hotam.nn.utils import util_one_hot
 from hotam.nn.schedule_sample import ScheduleSampling
 from hotam.nn.bio_decoder import bio_decode
@@ -22,8 +22,16 @@ class LSTM_ER(nn.Module):
         super(LSTM_ER, self).__init__()
 
         # number of arguemnt components
-        self.num_ac = task_dims["seg+label"]
-        self.num_labels = task_dims["link_label"]  # number of relations
+        self.num_seg_labels = task_dims["seg+label"]
+        self.num_link_labels = task_dims["link_label"]  # number of relations
+
+        # # 5)
+        # # NOTE It would be better to have the bio_dict during initialization
+        # # instead of getting the same labels ids each step
+        # bio_dict = defaultdict(list)
+        # for (i, label) in enumerate(output.label_encoders["seg+label"].labels):
+        #     bio_dict[label[0]].append(i)
+
 
         self.train_mode = train_mode
 
@@ -36,60 +44,58 @@ class LSTM_ER(nn.Module):
         self.BATCH_SIZE = hyperparamaters["batch_size"]
 
         token_embs_size = feature_dims["word_embs"] + feature_dims["pos_embs"]
-        label_embs_size = self.num_ac
         dep_embs_size = feature_dims["deprel_embs"]
-
         seq_lstm_h_size = hyperparamaters["seq_lstm_h_size"]
         tree_lstm_h_size = hyperparamaters["tree_lstm_h_size"]
-
         clf_h_size = hyperparamaters["ac_seg_hidden_size"]
-        clf_output_size = self.num_ac
-
         link_label_clf_h_size = hyperparamaters["re_hidden_size"]
-
         seq_lstm_num_layers = hyperparamaters["seq_lstm_num_layers"]
-
         lstm_bidirectional = hyperparamaters["lstm_bidirectional"]
         tree_bidirectional = hyperparamaters["tree_bidirectional"]
 
         dropout = hyperparamaters["dropout"]
         self.dropout = nn.Dropout(dropout)
 
-        self.schedule = ScheduleSampling(schedule="inverse_sig",
-                                         k=hyperparamaters["k"])
+        self.schedule = ScheduleSampling(
+                                        schedule="inverse_sig",
+                                        k=hyperparamaters["k"]
+                                        )
 
-        self.lstm = LSTM_LAYER(input_size=token_embs_size,
-                               hidden_size=seq_lstm_h_size,
-                               num_layers=seq_lstm_num_layers,
-                               bidirectional=lstm_bidirectional,
-                               dropout=0.0)
+        self.lstm = LSTM_LAYER(
+                                input_size=token_embs_size,
+                                hidden_size=seq_lstm_h_size,
+                                num_layers=seq_lstm_num_layers,
+                                bidirectional=lstm_bidirectional,
+                                dropout=0.0
+                               )
 
         num_dirs = 2 if lstm_bidirectional else 1
-        clf_input_size = label_embs_size + (seq_lstm_h_size * num_dirs)
+        clf_input_size = self.num_seg_labels + (seq_lstm_h_size * num_dirs)
         self.seg_label_clf = BigramSegLayer(
-            input_size=clf_input_size,
-            hidden_size=clf_h_size,
-            output_size=clf_output_size,
-            label_emb_dim=label_embs_size,
-            dropout=dropout,
-        )
+                                            input_size=clf_input_size,
+                                            hidden_size=clf_h_size,
+                                            output_size=self.num_seg_labels,
+                                            label_emb_dim=self.num_seg_labels,
+                                            dropout=dropout,
+                                        )
 
         nt = 3 if tree_bidirectional else 1
         ns = 2 if lstm_bidirectional else 1
-        tree_input_size = seq_lstm_h_size * ns + dep_embs_size + label_embs_size
+        tree_input_size = seq_lstm_h_size * ns + dep_embs_size + self.num_seg_labels
         link_label_input_size = tree_lstm_h_size * nt + 2 * seq_lstm_h_size * ns
         self.link_label_clf = DepPairingLayer(
-            tree_input_size=tree_input_size,
-            tree_lstm_h_size=tree_lstm_h_size,
-            tree_bidirectional=tree_bidirectional,
-            decoder_input_size=link_label_input_size,
-            decoder_h_size=link_label_clf_h_size,
-            decoder_output_size=self.num_labels,
-            dropout=dropout)
+                                                tree_input_size=tree_input_size,
+                                                tree_lstm_h_size=tree_lstm_h_size,
+                                                tree_bidirectional=tree_bidirectional,
+                                                decoder_input_size=link_label_input_size,
+                                                decoder_h_size=link_label_clf_h_size,
+                                                decoder_output_size=self.num_link_labels,
+                                                dropout=dropout
+                                                )
 
-        self.loss_fn = hyperparamaters["loss_fn"].lower()
-        self.mse_loss = nn.MSELoss(reduction="mean")
-        self.nll_loss = nn.NLLLoss(reduction="none", ignore_index=-1)
+        #self.loss_fn = hyperparamaters["loss_fn"].lower()
+        self.loss = nn.NLLLoss(reduction="mean", ignore_index=-1)
+        #self.ce_loss = nn.CrossEntropyLoss(reduction="mean", ignore_index=-1)
 
     @classmethod
     def name(self):
@@ -98,34 +104,21 @@ class LSTM_ER(nn.Module):
     def forward(self, batch, output):
 
         check = True
-        tokens_mask = batch["token"]["mask"].type(torch.bool)
+        token_mask = batch["token"]["mask"].type(torch.bool)
         batch_size = batch["token"]["mask"].size(0)
         # 1)
         # pos_word_embs.shape =
         # (batch_size, max_nr_tokens, word_embs + pos_embs)
-        pos_word_embs = torch.cat(
-            (batch["token"]["word_embs"], batch["token"]["pos_embs"]), dim=2)
+        pos_word_embs = torch.cat((batch["token"]["word_embs"], batch["token"]["pos_embs"]), dim=2)
         pos_word_embs = self.dropout(pos_word_embs)
 
         # 2) lstm_out = (batch_size, max_nr_tokens, lstm_hidden)
         lstm_out, _ = self.lstm(pos_word_embs, batch["token"]["lengths"])
 
-        # 3)
-        # seg_label_logits = (batch_size, max_nr_tokens, nr_labels)
-        # seg_label_probs = (batch_size, max_nr_tokens, nr_labels)
-        # seg_label_preds = (batch_size, max_nr_tokens)
-        # one_hots = (batch_size, max_nr_tokens, nr_layers)
-        clf_output = self.seg_label_clf(lstm_out, batch["token"]["lengths"])
-        seg_label_logits, seg_label_probs = clf_output[:2]
-        seg_label_preds, seg_label_embs = clf_output[-2:]
+        # 3) seg+label outputs is dict containing the logits, preds, probs and label one_hots
+        # (batch_size, max_nr_tokens,  nr_seg_labels) # last dim not present in preds
+        seg_label_output = self.seg_label_clf(lstm_out, batch["token"]["lengths"])
 
-        # 4)
-        if self.schedule.next(batch.current_epoch):
-            preds_used = batch["token"]["seg+label"]
-            embs_used = util_one_hot(preds_used, tokens_mask, self.num_ac)
-        else:
-            preds_used = seg_label_preds
-            embs_used = seg_label_embs
 
         # 5)
         # NOTE It would be better to have the bio_dict during initialization
@@ -133,111 +126,98 @@ class LSTM_ER(nn.Module):
         bio_dict = defaultdict(list)
         for (i, label) in enumerate(output.label_encoders["seg+label"].labels):
             bio_dict[label[0]].append(i)
-        span_lengths, none_unit_mask, nr_units = bio_decode(
-            batch_encoded_bios=preds_used,
-            lengths=batch["token"]["lengths"],
-            apply_correction=True,
-            B=bio_dict["B"],  # ids for labels counted as B
-            I=bio_dict["I"],  # ids for labels counted as I
-            O=bio_dict["O"],  # ids for labels counted as O
-        )
 
-        # 6)
-        all_possible_pairs = get_all_possible_pairs(span_lengths,
-                                                    none_unit_mask,
-                                                    assertion=check)
-        # get number of pairs in each sample
-        pair_num = list(map(len, all_possible_pairs["end"]))
-        if check:
-            pair_num_calc = [n * n for n in nr_units]
-            assert np.all(np.array(pair_num) == np.array(pair_num_calc))
 
-        # 7)
-        node_embs = torch.cat(
-            (lstm_out, embs_used, batch['token']['deprel_embs']), dim=-1)
-        # construct Si: average of sequential lstm hidden state for each unit
-        # 1. Get start and end ids for each unit in two separate lists.
-        # reduce(iconcat): flatten List[List[Tuple[int]]] to List[Tuple[int]]
-        # list(zip*) separate the list of tuples candidate pairs into two lists
-        units_start_ids = reduce(iconcat, all_possible_pairs["start"], [])
-        units_end_ids = reduce(iconcat, all_possible_pairs["end"], [])
-        unit1_start, unit2_start = np.array(list(zip(*units_start_ids)))
-        unit1_end, unit2_end = np.array(list(zip(*units_end_ids)))
+        # 4)
+        if self.schedule.next(batch.current_epoch):
+            preds_used = batch["token"]["seg+label"]
+            one_hot_embs = util_one_hot(preds_used, token_mask, self.num_seg_labels)
+        else:
+            preds_used = seg_label_output["preds"]
+            one_hot_embs = seg_label_output["one_hot"]
 
-        # Indexing sequential lstm hidden state using two lists of
-        # start and end ids of each unit
-        unit1_s = range_3d_tensor_index(lstm_out,
-                                        unit1_start,
-                                        unit1_end,
-                                        pair_num,
-                                        reduce_="mean")
-        unit2_s = range_3d_tensor_index(lstm_out,
-                                        unit2_start,
-                                        unit2_end,
-                                        pair_num,
-                                        reduce_="mean")
-        s = torch.cat((unit1_s, unit2_s), dim=-1)
+
+        bio_data = bio_decode(
+                                batch_encoded_bios=preds_used,
+                                lengths=batch["token"]["lengths"],
+                                apply_correction=True,
+                                B=bio_dict["B"],  # ids for labels counted as B
+                                I=bio_dict["I"],  # ids for labels counted as I
+                                O=bio_dict["O"],  # ids for labels counted as O
+                            )
 
         # 8)
-        link_label_data = self.link_label_clf(
-            input_embs=node_embs,
-            unit_repr=s,
-            unit_num=nr_units,
-            dependencies=batch["token"]["dephead"],
-            token_mask=tokens_mask,
-            roots=output.batch["token"]["root_idxs"],
-            pairs=all_possible_pairs,
-            mode="shortest_path",
-            assertion=check)
+        link_label_outputs = self.link_label_clf(  
+                                                    token_embs = lstm_out,
+                                                    dep_embs = batch["token"]["deprel_embs"],
+                                                    one_hot_embs = one_hot_embs,
+                                                    roots = batch["token"]["root_idxs"],
+                                                    deplinks = batch["token"]["dephead"],
+                                                    token_mask = token_mask,
+                                                    bio_data = bio_data,
+                                                    mode="shortest_path",
+                                                    assertion=check
+                                                )
 
         # 9
-        link_label_max_logits, link_label_preds, link_preds = link_label_data
+        seg_label_preds = seg_label_output["preds"]
+        seg_label_preds[seg_label_preds == 0]
+        
 
-        seg_label_truth = batch["token"]["seg+label"]
-        link_label_truth = batch["token"]["link_label"]
-        link_truth = batch["token"]["link"]
-        # negative link_label
-        # Wrong label prediction
-        seg_label_preds[~tokens_mask] = -1  # to avoid falses in below compare
-        label_preds_wrong = seg_label_preds != seg_label_truth
-        # wrong predictions' indices
-        idx_0, idx_1 = torch.nonzero(label_preds_wrong, as_tuple=True)
-        link_label_preds[idx_0, idx_1] = idx_1
+        link_label_probs = link_label_outputs["link_label_probs"]
+        #link_label_probs[seg_label_preds] == torch.tensor([1.0] + [0.0])
+        link_probs = link_label_outputs["link_probs"]
 
         if self.train_mode:
-            if self.loss_fn == "mse_loss":
-                # mse does not have ignore_index
-                link_label_preds[~tokens_mask] = -1
-                label_loss = self.mse_loss(seg_label_preds.type(torch.float),
-                                           seg_label_truth.type(torch.float))
-                link_label_loss = self.mse_loss(
-                    link_label_preds.type(torch.float),
-                    link_label_truth.type(torch.float))
-            elif self.loss_fn == "nll_loss":
-                label_loss = self.nll_loss(
-                    seg_label_logits.view(-1, self.num_ac),
-                    seg_label_truth.view(-1))
-                link_label_loss = self.nll_loss(
-                    link_label_max_logits.view(-1, self.num_labels),
-                    link_label_truth.view(-1))
-                label_loss = label_loss.view(batch_size, -1).sum(1).mean()
-                link_label_loss = link_label_loss.view(batch_size,
-                                                       -1).sum(1).mean()
 
-            link_preds[~tokens_mask] = -1
-            label_loss = self.mse_loss(link_preds.type(torch.float),
-                                       link_truth.type(torch.float))
+            
+            
+            # negative link_label
+            # Wrong label prediction
+            seg_label_preds[~tokens_mask] = -1  # to avoid falses in below compare
+            label_preds_wrong = seg_label_preds != seg_label_truth
 
-            total_loss = label_loss + link_label_loss + label_loss
+
+
+            # wrong predictions' indices
+            idx_0, idx_1 = torch.nonzero(label_preds_wrong, as_tuple=True)
+            link_label_preds[idx_0, idx_1] = idx_1
+
+
+            torch.log(seg_label_probs)
+
+            seg_label_probs = seg_label_output["probs"]
+            link_label_probs = link_label_outputs["link_label_probs"]
+            link_probs = link_label_outputs["link_probs"]
+
+            label_loss = self.ce_loss(
+                                        torch.log(seg_label_probs).view(-1, self.num_seg_labels), 
+                                        batch["token"]["seg+label"]
+                                        )
+
+
+            link_label_loss = self.nll_loss(
+                                            torch.log(link_label_probs).view(-1, self.num_link_labels), 
+                                            batch["token"]["link_label"]
+                                            )
+
+
+            #link_loss = self.loss(link_label_max_logits.view(-1, self.num_link_labels), batch["token"]["link"])
+
+            total_loss = label_loss + link_label_loss 
 
             output.add_loss(task="total", data=total_loss)
             output.add_loss(task="link_label", data=link_label_loss)
             output.add_loss(task="label", data=label_loss)
 
+
+
         output.add_preds(task="seg+label", level="token", data=seg_label_preds)
         output.add_preds(task="link", level="token", data=link_preds)
-        output.add_preds(task="link_label",
-                         level="token",
-                         data=link_label_preds)
+        output.add_preds(
+                        task="link_label",
+                        level="token",
+                        data=link_label_preds
+                        )
 
         return output

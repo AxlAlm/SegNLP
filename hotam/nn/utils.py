@@ -74,7 +74,7 @@ def agg_emb(m, lengths, span_indexes, mode="average"):
 
     batch_size = m.shape[0]
     device = m.device
-    agg_m = torch.zeros(batch_size, torch.max(lengths), feature_dim, device=device)
+    agg_m = torch.zeros(batch_size, max(lengths), feature_dim, device=device)
 
     for i in range(batch_size):
         for j in range(lengths[i]):
@@ -102,6 +102,190 @@ def agg_emb(m, lengths, span_indexes, mode="average"):
                 raise RuntimeError(f"'{mode}' is not a supported mode, chose 'min', 'max','mean' or 'mix'")
 
     return agg_m
+
+
+def index_4D(a: torch.tensor, index: torch.tensor):
+    """
+    a is 4D tensors
+    index is 3D tensor
+
+    index will select values/vectors
+
+    """
+    b = torch.zeros((a.shape[0], a.shape[1], a.shape[-1]))
+    for i in range(index.shape[0]):
+        for j, k in enumerate(index[i]):
+            b[i][j] = a[i][j][k]
+    return b
+
+
+def create_mask(lengths, as_bool=True, flat=False):
+
+    if not torch.is_tensor(lengths):
+        lengths = torch.tensor(lengths)
+
+    max_len = torch.max(lengths)
+    print(max_len, len(lengths))
+    mask = torch.arange(max_len).expand(len(lengths), max_len)  < lengths.unsqueeze(1)
+    
+    if not as_bool:
+        mask = mask.type(torch.uint8)
+
+    if flat:
+        mask = mask.view(-1)      
+    
+    return mask
+
+
+def get_all_possible_pairs(
+                            start: List[List[int]],
+                            end: List[List[int]],
+                            ) -> DefaultDict[str, List[List[Tuple[int]]]]:
+
+    all_possible_pairs = defaultdict(lambda:[])
+    for idx_start, idx_end in zip(start, end):
+        #all_possible_pairs["idx"].append(list(product(list(range(len(idx_start))), repeat=2)))
+        all_possible_pairs["start"].append(list(product(idx_start, repeat=2)))
+        all_possible_pairs["end"].append(list(product(idx_end, repeat=2)))
+        all_possible_pairs["lengths"].append(len(all_possible_pairs["start"][-1]))
+
+    all_possible_pairs["total_pairs"] = sum(all_possible_pairs["lengths"])
+    return all_possible_pairs
+
+
+def pair_matrix(input_emb, modes=["cat", "mean"], rel_pos=False, pair_mask:torch.Tensor=None):
+    
+    device = input_emb.device
+    batch_size = input_emb.shape[0]
+    dim1 = input_emb.shape[1]
+
+    shape = (batch_size, dim1, dim1, input_emb.shape[-1])
+    m = torch.reshape(torch.repeat_interleave(input_emb, dim1, dim=1), shape)
+    mT = m.transpose(2, 1)
+
+    to_cat = []
+    if "cat" in modes:
+        to_cat.append(m)
+        to_cat.append(mT)
+    
+    if "multi" in modes:
+        to_cat.append(m*mT)
+
+    if "mean" in modes:
+        to_cat.append((m+mT /2))
+
+    if "sum" in modes:
+        to_cat.append(m+mT)
+    
+
+    #adding one_hot encoding for the relative position
+    if rel_pos:
+        one_hot_dim = (max_units*2)-1
+        one_hots = torch.tensor(
+                                    [
+                                    np.diag(np.ones(one_hot_dim),i)[:max_units,:one_hot_dim] 
+                                    for i in range(dim1-1, -1, -1)
+                                    ], 
+                                    dtype=torch.uint8,
+                                    device=device
+                                    )
+        one_hots = one_hots.repeat_interleave(batch_size, dim=0)
+        one_hots = one_hots.view((batch_size, dim1, dim1, one_hot_dim))
+        
+        to_cat.append(one_hots)
+
+    pair_matrix = torch.cat(to_cat, axis=-1)
+
+    if pair_mask is not None:
+        pairs_flat = torch.flatten(pair_matrix, end_dim=-2)
+        return pairs_flat[pair_mask]
+    else:
+        return pair_matrix
+    
+
+
+def util_one_hot(matrix: Tensor, mask: Tensor, num_classes: int):
+    # check padding = -1
+    thematrix = matrix.clone()  # avoid possible changing of the original Tensor
+    pad_emb = thematrix[~mask.type(torch.bool)]
+    if torch.all(pad_emb == -1):
+        # change padding = 0
+        pad_emb = ~mask.type(torch.bool) * 1
+        thematrix += pad_emb
+
+    return F.one_hot(thematrix, num_classes=num_classes)
+
+
+
+def scatter_unit_values(unit_values:torch.tensor, unit_lengths:torch.tensor, max_unit_length:int):
+    unit_token_scores = torch.repeat_interleave(a, unit_values, dim=0)
+    
+    # if we have a logits and not predictions
+    if len(unit_values.shape) == 2:
+        index = torch.repeat_interleave(unit_lengths.unsqueeze(1), repeats=unit_values.shape[-1], dim=1)
+        
+        token_scores = torch.zeros((
+                                    max_unit_length,
+                                    unit_values.shape[-1]
+                                    ))
+
+    else:
+        index = unit_lengths
+        token_scores = torch.zeros((
+                                    max_unit_length,
+                                    ))
+    
+    token_scores = token_scores.scatter_(0, index, unit_token_scores)
+    return token_scores
+
+
+def cumsum_zero(input:torch.tensor):
+    """
+    torch.cumsum([4,5,10]) -> [4,9,19]
+    cumsum_zero([4,5,10]) -> [0,4,19]
+    """
+    return torch.cat((torch.zeros(1),torch.cumsum(input, dim=0)))[:-1].type(torch.int)
+
+
+def index_select_array(input:torch.tensor, index:torch.tensor):
+    """
+    given a input 3d tensor and a 1d index tensor selects an array at 
+    dim == -1 according to index
+    
+    selecting works like following.
+
+        input[i][index[i]]
+
+    Example:
+
+        input = [
+                    [
+                        [0.1,0.1],
+                        [0.2,0.2],
+                        [0.3,0.3],
+                    ],
+                    [
+                        [0.4,0.4],
+                        [0.5,0.5],
+                        [0.6,0.6],
+                    ]
+                ]
+    
+    index = [2,1]
+
+
+    returns  [
+                [0.3,0.3],
+                [0.5,0.5],
+            ]
+
+
+
+    """
+    index_idxes = torch.full((index.shape[0],),index.shape[0],  dtype=torch.int16)
+    flat_idxs = cumsum_zero(index_idxes)
+    flat_input = torch.flatten(input,end_dim=-2)
+    return flat_input[flat_idx]
 
 
 # def reduce_and_remove(matrix, mask):
@@ -134,127 +318,83 @@ def agg_emb(m, lengths, span_indexes, mode="average"):
 #     return new_tensor
 
 
-def index_4D(a: torch.tensor, index: torch.tensor):
-    """
-    a is 4D tensors
-    index is 3D tensor
 
-    index will select values/vectors
+# def range_3d_tensor_index(matrix: Tensor,
+#                           start: List[int],
+#                           end: List[int],
+#                           pair_batch_num: List[int],
+#                           reduce_: str = "none") -> Tensor:
 
-    """
-    b = torch.zeros((a.shape[0], a.shape[1], a.shape[-1]))
-    for i in range(index.shape[0]):
-        for j, k in enumerate(index[i]):
-            b[i][j] = a[i][j][k]
-    return b
+#     # to avoid bugs, if there is a sample that does not have a unit the
+#     # corresponding len should be zero in batch_lens.
+#     batch_size = matrix.size(0)
+#     dim_1_size = matrix.size(1)
+#     new_size = (batch_size, dim_1_size)
+#     shape_ = len(matrix.size())
 
+#     reduce_fn = reduce_ in ["none", "mean", "sum"]
+#     # assertion messages:
+#     reduce_msg = f"Function \"{reduce_}\" is not a supported."
+#     num_msg = "Wrong number of pairs per sample is provided. "
+#     num_msg += f"Provided {len(pair_batch_num)}, expected {batch_size}."
+#     assert reduce_fn, reduce_msg
+#     assert batch_size == len(pair_batch_num), num_msg
+#     assert shape_ == 3, f"Wrong matrix shape, provided {shape_}, expected 3."
 
-def get_all_possible_pairs(
-        span_lengths: List[List[int]],
-        none_unit_mask: List[List[int]],
-        assertion: bool = False) -> DefaultDict[str, List[List[Tuple[int]]]]:
+#     # change matrix to be 2d matrix (dim0*dim1, dim2)
+#     mat = matrix.clone().contiguous().view(-1, matrix.size(-1))
 
-    all_possible_pairs = defaultdict(list)
-    for span, mask in zip(span_lengths, none_unit_mask):
-        idx_abs = np.cumsum(span)
-        idx_start = idx_abs[:-1][np.array(mask, dtype=bool)[1:]]
-        idx_end = idx_abs[1:][np.array(mask, dtype=bool)[1:]]
-        all_possible_pairs["start"].append(list(product(idx_start, repeat=2)))
-        all_possible_pairs["end"].append(list(product(idx_end, repeat=2)))
-        if assertion:
-            lens_cal = idx_end - idx_start
-            span_len = np.array(span)[np.array(mask, dtype=bool)]
-            assert np.all(lens_cal == span_len)
+#     # construct array of indices for dimesion 0, repeating batch_id
+#     span_len = np.array(end) - np.array(start)
+#     idx_0 = np.repeat(np.arange(batch_size), pair_batch_num)
+#     idx_0 = np.repeat(idx_0, span_len)
 
-    return all_possible_pairs
+#     # construct array of indices for dimesion 1
+#     idx_1 = np.hstack(list(map(np.arange, start, end)))
 
+#     # Converts idx_0 and idx_1 into an array of indices suitable for the
+#     # converted 2d tensor
+#     idx_0_2d = np.ravel_multi_index(np.array([idx_0, idx_1]), new_size)
 
-def range_3d_tensor_index(matrix: Tensor,
-                          start: List[int],
-                          end: List[int],
-                          pair_batch_num: List[int],
-                          reduce_: str = "none") -> Tensor:
+#     # index 2d tensor using idx_0_2d
+#     mat = torch.split(mat[idx_0_2d, :], span_len.tolist())
+#     if reduce_ == "mean":
+#         mat = torch.stack(list(map(torch.mean, mat, repeat(0))))
+#     elif reduce_ == "sum":
+#         mat = torch.stack(list(map(torch.sum, mat, repeat(0))))
 
-    # to avoid bugs, if there is a sample that does not have a unit the
-    # corresponding len should be zero in batch_lens.
-    batch_size = matrix.size(0)
-    dim_1_size = matrix.size(1)
-    new_size = (batch_size, dim_1_size)
-    shape_ = len(matrix.size())
-
-    reduce_fn = reduce_ in ["none", "mean", "sum"]
-    # assertion messages:
-    reduce_msg = f"Function \"{reduce_}\" is not a supported."
-    num_msg = "Wrong number of pairs per sample is provided. "
-    num_msg += f"Provided {len(pair_batch_num)}, expected {batch_size}."
-    assert reduce_fn, reduce_msg
-    assert batch_size == len(pair_batch_num), num_msg
-    assert shape_ == 3, f"Wrong matrix shape, provided {shape_}, expected 3."
-
-    # change matrix to be 2d matrix (dim0*dim1, dim2)
-    mat = matrix.clone().contiguous().view(-1, matrix.size(-1))
-
-    # construct array of indices for dimesion 0, repeating batch_id
-    span_len = np.array(end) - np.array(start)
-    idx_0 = np.repeat(np.arange(batch_size), pair_batch_num)
-    idx_0 = np.repeat(idx_0, span_len)
-
-    # construct array of indices for dimesion 1
-    idx_1 = np.hstack(list(map(np.arange, start, end)))
-
-    # Converts idx_0 and idx_1 into an array of indices suitable for the
-    # converted 2d tensor
-    idx_0_2d = np.ravel_multi_index(np.array([idx_0, idx_1]), new_size)
-
-    # index 2d tensor using idx_0_2d
-    mat = torch.split(mat[idx_0_2d, :], span_len.tolist())
-    if reduce_ == "mean":
-        mat = torch.stack(list(map(torch.mean, mat, repeat(0))))
-    elif reduce_ == "sum":
-        mat = torch.stack(list(map(torch.sum, mat, repeat(0))))
-
-    return mat
+#     return mat
 
 
-def util_one_hot(matrix: Tensor, mask: Tensor, num_classes: int):
-    # check padding = -1
-    thematrix = matrix.clone()  # avoid possible changing of the original Tensor
-    pad_emb = thematrix[~mask.type(torch.bool)]
-    if torch.all(pad_emb == -1):
-        # change padding = 0
-        pad_emb = ~mask.type(torch.bool) * 1
-        thematrix += pad_emb
-
-    return F.one_hot(thematrix, num_classes=num_classes)
 
 
-def unfold_matrix(matrix_to_fold: Tensor, start_idx: List[int],
-                  end_idx: List[int], class_num_betch: List[int],
-                  fold_dim: int) -> Tensor:
+# def unfold_matrix(matrix_to_fold: Tensor, start_idx: List[int],
+#                   end_idx: List[int], class_num_betch: List[int],
+#                   fold_dim: int) -> Tensor:
 
-    batch_size = matrix_to_fold.size(0)
-    # construct array of indices for dimesion 0, repeating batch_id
-    span_len = np.array(end_idx) - np.array(start_idx)
-    idx_0 = np.repeat(np.arange(batch_size), class_num_betch)
-    idx_0 = np.repeat(idx_0, span_len)
+#     batch_size = matrix_to_fold.size(0)
+#     # construct array of indices for dimesion 0, repeating batch_id
+#     span_len = np.array(end_idx) - np.array(start_idx)
+#     idx_0 = np.repeat(np.arange(batch_size), class_num_betch)
+#     idx_0 = np.repeat(idx_0, span_len)
 
-    # construct array of indices for dimesion 1
-    idx_1 = np.hstack(list(map(np.arange, start_idx, end_idx)))
+#     # construct array of indices for dimesion 1
+#     idx_1 = np.hstack(list(map(np.arange, start_idx, end_idx)))
 
-    # Get unit id for each start, end token
-    unit_id = np.hstack(list(map(np.arange, repeat(0), class_num_betch)))
-    unit_id = np.repeat(unit_id, span_len)
+#     # Get unit id for each start, end token
+#     unit_id = np.hstack(list(map(np.arange, repeat(0), class_num_betch)))
+#     unit_id = np.repeat(unit_id, span_len)
 
-    # construct the folded matrix
-    if len(matrix_to_fold.size()) > 2:
-        size = [batch_size, fold_dim, matrix_to_fold.size(-1)]
-    else:
-        size = [batch_size, fold_dim]
-    matrix = matrix_to_fold.new_zeros(size=size)
+#     # construct the folded matrix
+#     if len(matrix_to_fold.size()) > 2:
+#         size = [batch_size, fold_dim, matrix_to_fold.size(-1)]
+#     else:
+#         size = [batch_size, fold_dim]
+#     matrix = matrix_to_fold.new_zeros(size=size)
 
-    # fill matrix
+#     # fill matrix
 
 
-    matrix[idx_0, idx_1] = matrix_to_fold[idx_0, unit_id]
+#     matrix[idx_0, idx_1] = matrix_to_fold[idx_0, unit_id]
 
-    return matrix
+#     return matrix

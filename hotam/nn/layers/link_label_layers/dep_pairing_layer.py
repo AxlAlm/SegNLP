@@ -13,8 +13,15 @@ import dgl
 from dgl import DGLGraph
 from dgl.traversal import topological_nodes_generator as traverse_topo
 
+# hotam
+from hotam.nn.model_input import ModelInput
 from hotam.nn.layers.type_treelstm import TypeTreeLSTM
-from hotam.nn.utils import index_4D, unfold_matrix
+from hotam.nn.utils import scatter_unit_values
+from hotam.nn.utils import get_all_possible_pairs
+from hotam.nn.utils import pair_matrix
+from hotam.nn.utils import agg_emb
+from hotam.nn.utils import create_mask
+from hotam.nn.utils import index_select_array
 
 
 class DepPairingLayer(nn.Module):
@@ -59,6 +66,7 @@ class DepPairingLayer(nn.Module):
             raise Exception(error_msg_1 + error_msg_2)
             # remove the sample that has the problem
 
+
     def get_sample_graph(self, deplinks: Tensor, roots: Tensor,
                          token_mask: Tensor, assertion: bool) -> List[Tensor]:
 
@@ -80,6 +88,7 @@ class DepPairingLayer(nn.Module):
         M = M[~self_loop].view(batch_size, -1).to(device)
 
         return [U, V, M]
+
 
     def get_subgraph(self,
                      start: int,
@@ -124,10 +133,15 @@ class DepPairingLayer(nn.Module):
             pass
         return sub_g
 
-    def build_dep_graphs(self, token_embs: Tensor, deplinks: Tensor,
-                         roots: Tensor, token_mask: Tensor, token_reps: Tensor,
-                         subgraphs: List[List[Tuple]], mode: str,
-                         assertion: bool) -> List[DGLGraph]:
+
+    def build_dep_graphs(self, 
+                        token_embs: Tensor, 
+                        deplinks: Tensor,
+                        roots: Tensor, 
+                        token_mask: Tensor, 
+                        subgraphs: List[List[Tuple]], mode: str,
+                        assertion: bool
+                         ) -> List[DGLGraph]:
 
         batch_size = deplinks.size(0)
 
@@ -149,6 +163,7 @@ class DepPairingLayer(nn.Module):
             graph = dgl.graph((u, v))
             graph_unidir = graph.to_networkx().to_undirected()
             start, end = list(zip(*subgraphs[b_i]))
+
             if start == []:  # no candidate pair
                 continue
 
@@ -157,7 +172,9 @@ class DepPairingLayer(nn.Module):
                                               g_nx=graph_unidir,
                                               sub_graph_type=mode,
                                               assertion=assertion)
+
             dep_graphs.append(dgl.batch(list(map(subgraph_func, start, end))))
+
             # get nodes' token embedding
             nodes_emb.append(token_embs[b_i, dep_graphs[b_i].ndata["_ID"]])
 
@@ -169,40 +186,152 @@ class DepPairingLayer(nn.Module):
 
         return dep_graphs
 
+
+    def create_pair_embs(self, token_embs:Tensor, bio_data:dict, pair_data:dict):
+
+        unit_embs = agg_emb(
+                            token_embs, 
+                            bio_data["unit"]["lengths"], 
+                            bio_data["unit"]["span_idxs"],
+                            mode="average"
+                            )
+
+        pair_mask = create_mask(pair_data["lengths"], flat=True)
+        pair_embs = pair_matrix(unit_embs, modes=["cat"], pair_mask=pair_mask)
+
+        print(pair_embs.shape)
+        return pair_embs
+
+
+    def get_outputs(self, 
+                    pair_probs:torch.tensor, 
+                    pair_lengths:torch.tensor, 
+                    unit_lengths:torch.tensor,
+                    max_units:int, 
+                    batch_size:int, 
+                    max_tokens:int
+                    ) -> dict:
+        """
+        this functions does 2 things:
+
+        1)  it selects the best link and link_label predictions and logits for each unit in each sample 
+            from all possible pairs
+
+        2)  scatters the predictions of units over tokens. This is because we cannot align
+            predicted units with ground truth units, but we CAN align predictions on tokens 
+            with ground truths of tokens. To calculate loss we hence need to copy the unit prediction 
+            value for over to all the tokens which the unit comprise of.
+        
+        Input is a 2D matrix containing the link_label softmax score for all possible pairs in the whole batch
+
+        """
+        
+        nr_link_labels = pair_probs.shape[-1]
+        output = {
+                    "link_preds": torch.zeros((batch_size, max_tokens)),
+                    "link_label_preds": torch.zeros((batch_size, max_tokens)),
+                    "link_probs": torch.zeros((batch_size, max_tokens, max_units)),
+                    "link_label_probs": torch.zeros((batch_size, max_tokens, nr_link_labels)),
+                    }
+
+        # as we have probabilies for all link_labels for all pairs in a flat tensor, we need to
+        # loop through the batch, select the pairs for each sample and calculate the best link
+        # and link label for each unit
+        sample_pairs = torch.split(pair_probs, split_size_or_sections=pair_lengths)
+        for i in range(batch_size):
+            link_label_probs = sample_pairs[i].view(unit_lengths[i], unit_lengths[i], -1)
+
+            print(link_label_probs)
+            # first we get the max link_label score for all pairs and treat them as the
+            # score for LINK. For each unit we have a score for all other units.
+            # NOTE! to maintain a probability distribution over units we apply softmax,
+            link_probs, _ = torch.max(link_label_probs, dim=-1)
+            link_probs = torch.softmax(link_probs, dim=-1)
+
+            # we an argmax link_logits to get the best link
+            link_preds = torch.argmax(link_probs, dim=-1)
+
+            # then can use the link predictions to pick out the link label scores
+            # for the best link pair
+            max_link_label_probs = index_select_array(link_label_probs, index=link_preds)
+
+            #lastly, we can get the predictions
+            link_label_preds = torch.argmax(max_link_label_probs, dim=-1)
+
+
+            output["link_preds"][i] = scatter_unit_values(
+                                                        unit_values=link_preds, 
+                                                        unit_lengths= "",
+                                                        max_units="",  
+                                                        )
+            output["link_label_preds"][i] = scatter_unit_values(
+                                                        unit_values=link_preds, 
+                                                        unit_lengths= "", 
+                                                        max_units= "",
+                                                        )
+            output["link_probs"][i] = scatter_unit_values(
+                                                        unit_values=link_preds, 
+                                                        unit_lengths= "", 
+                                                        max_units= "",
+                                                        )
+            output["link_label_probs"][i] = scatter_unit_values(
+                                                                unit_values=link_preds, 
+                                                                unit_lengths= "",
+                                                                max_units= "",
+                                                                )
+
+        return output
+
+
     def forward(self,
-                input_embs: Tensor,
-                unit_repr: Tensor,
-                unit_num: list,
-                dependencies: Tensor,
-                token_mask: Tensor,
+                token_embs: Tensor,
+                dep_embs : Tensor,
+                one_hot_embs : Tensor,
                 roots: Tensor,
-                pairs: DefaultDict[str, List[List[Tuple[int]]]],
+                token_mask: Tensor,
+                deplinks: Tensor,
+                bio_data: dict,
                 mode: str = "shortest_path",
-                assertion: bool = False):
+                assertion: bool = False
+                ):
 
-        mode_bool = mode in self.__supported_modes
-        assert mode_bool, f"{mode} is not a supported mode for DepPairingLayer"
+        assert mode in self.__supported_modes, f"{mode} is not a supported mode for DepPairingLayer"
 
-        self.device = input_embs.device
-        dir_n = 2 if self.tree_lstm_bidir else 1
-        batch_size = input_embs.size(0)
+        self.device = token_embs.device
+        batch_size = token_embs.shape[0]
+        max_tokens = token_mask.shape[-1]
+        max_units = bio_data["max_units"]
+
+
+        pair_data = get_all_possible_pairs(
+                                        start=bio_data["unit"]["start"],
+                                        end=bio_data["unit"]["end"],
+                                        )
+                            
+
+        #unit_embs = self.create_unit_embs(token_embs, bio_data)
+        node_embs = torch.cat((token_embs, one_hot_embs, dep_embs), dim=-1)
 
         # 8)
-        dep_graphs = self.build_dep_graphs(token_embs=input_embs,
-                                           deplinks=dependencies,
-                                           roots=roots,
-                                           token_mask=token_mask,
-                                           token_reps=input_embs,
-                                           subgraphs=pairs["end"],
-                                           mode=mode,
-                                           assertion=assertion)
+        dep_graphs = self.build_dep_graphs(
+                                            token_embs=node_embs,
+                                            deplinks=deplinks,
+                                            roots=roots,
+                                            token_mask=token_mask,
+                                            subgraphs=pair_data["end"],
+                                            mode=mode,
+                                            assertion=assertion
+                                            )
 
         # 9)
-        h0 = torch.zeros(dep_graphs.num_nodes(),
-                         self.tree_lstm_h_size,
-                         device=self.device)
+        h0 = torch.zeros(
+                        dep_graphs.num_nodes(),
+                        self.tree_lstm_h_size,
+                        device=self.device
+                        )
         c0 = torch.zeros_like(h0)
         tree_lstm_out = self.tree_lstm(dep_graphs, h0, c0)
+
 
         # construct dp = [↑hpA; ↓hp1; ↓hp2]
         # ↑hpA: hidden state of dep_graphs' root
@@ -212,73 +341,98 @@ class DepPairingLayer(nn.Module):
         root_id = (dep_graphs.ndata["root"] == 1)
         start_id = dep_graphs.ndata["start"] == 1
         end_id = dep_graphs.ndata["end"] == 1
-        tree_lstm_out = tree_lstm_out.view(-1, dir_n, self.tree_lstm_h_size)
-        tree_logits = tree_lstm_out[root_id, 0, :]  # ↑hpA
-        if self.tree_lstm_bidir:
-            hp1 = tree_lstm_out[start_id, 1, :]  # ↓hp1
-            hp2 = tree_lstm_out[end_id, 1, :]  # ↓hp2
-            tree_logits = torch.cat((tree_logits, hp1, hp2), dim=-1)
+
+        tree_lstm_out = tree_lstm_out.view(-1, 2, self.tree_lstm_h_size)
+        tree_emb = torch.cat((
+                                tree_lstm_out[root_id, 0, :],  # ↑hpA
+                                tree_lstm_out[start_id, 1, :], # ↓hp1
+                                tree_lstm_out[end_id, 1, :]    # ↓hp2
+                                ), 
+                                dim=-1)
+
         # [dp; s]
-        link_label_input_repr = torch.cat((tree_logits, unit_repr), dim=-1)
-        logits = self.label_link_clf(link_label_input_repr)
-        prob_dist = F.softmax(logits, dim=-1)
+        pair_embs = self.create_pair_embs(
+                                            token_embs = token_embs, 
+                                            bio_data = bio_data, 
+                                            pair_data = pair_data
+                                            )
+        pair_embs = torch.cat((tree_emb, pair_embs), dim=-1)
+        pair_probs = torch.softmax(self.label_link_clf(pair_embs), dim=-1)
+        
+        outputs = self.get_outputs(
+                                    pair_probs = pair_probs, 
+                                    pair_lengths = pair_data["lengths"], 
+                                    unit_lengths= bio_data["unit"]["lengths"],
+                                    batch_size = batch_size, 
+                                    max_units = max_units, 
+                                    max_tokens = max_tokens,
+                                )
 
-        # NOTE: When there are multiple equal values, torch.argmax() and
-        # torch.max() do not return the first max value.  Instead, they
-        # randamly return any valid index.
+        return outputs
 
-        # reshape logits and prob into 4d tensors
-        size_4d = [
-            batch_size,
-            max(unit_num),
-            max(unit_num),
-            prob_dist.size(-1)
-        ]
-        prob_4d = input_embs.new_ones(size=size_4d) * -1
-        logits_4d = input_embs.new_ones(size=size_4d) * -1
-        unit_start = []
-        unit_end = []
 
-        # split prob_dist and logits based on number of pairs in each batch
-        pair_num = list(map(len, pairs["end"]))
-        prob_ = torch.split(prob_dist, split_size_or_sections=pair_num)
-        logits_ = torch.split(logits, split_size_or_sections=pair_num)
 
-        # fill 4d tensors
-        data = zip(prob_, logits_, pairs["start"], pairs["end"], unit_num)
-        for i, (prob, logs, s, e, n) in enumerate(data):
-            if n > 0:
-                prob_4d[i, :n, :n] = prob.view(n, n, -1)
-                logits_4d[i, :n, :n] = logs.view(n, n, -1)
-                unit_start.extend(list(zip(*s))[1][:n])
-                unit_end.extend(list(zip(*e))[1][:n])
+        # prob_dist = F.softmax(logits, dim=-1)
 
-        # get link label max logits and link_label and link predictions
-        prob_max_pair, _ = torch.max(prob_4d, dim=-1)
-        link_preds = torch.argmax(prob_max_pair, dim=-1)
-        link_label_prob_dist = index_4D(prob_4d, index=link_preds)
-        link_label_preds = torch.argmax(link_label_prob_dist, dim=-1)
-        link_label_max_logits = index_4D(logits_4d, index=link_preds)
+        # # NOTE: When there are multiple equal values, torch.argmax() and
+        # # torch.max() do not return the first max value.  Instead, they
+        # # randamly return any valid index.
 
-        link_label_max_logits = unfold_matrix(
-            matrix_to_fold=link_label_max_logits,
-            start_idx=unit_start,
-            end_idx=unit_end,
-            class_num_betch=unit_num,
-            fold_dim=input_embs.size(1))
 
-        link_label_preds = unfold_matrix(matrix_to_fold=link_label_preds,
-                                         start_idx=unit_start,
-                                         end_idx=unit_end,
-                                         class_num_betch=unit_num,
-                                         fold_dim=input_embs.size(1))
+        # create_pair_matrix()
 
-        link_preds = unfold_matrix(matrix_to_fold=link_preds,
-                                   start_idx=unit_start,
-                                   end_idx=unit_end,
-                                   class_num_betch=unit_num,
-                                   fold_dim=input_embs.size(1))
+        # # reshape logits and prob into 4d tensors
+        # size_4d = [
+        #         batch_size,
+        #         bio_data["max_units"],
+        #         bio_data["max_units"],
+        #         prob_dist.size(-1)
+        #     ]
+        # prob_4d = input_embs.new_ones(size=size_4d) * -1
+        # logits_4d = input_embs.new_ones(size=size_4d) * -1
+        # unit_start = []
+        # unit_end = []
 
-        # Would not be easier to save a mapping ac_id, token_strat/end, instead
-        # of all of these calc and loops !
-        return [link_label_max_logits, link_label_preds, link_preds]
+        # # split prob_dist and logits based on number of pairs in each batch
+        # #pair_lenghts = list(map(len, pairs["end"]))
+        # prob_ = torch.split(prob_dist, split_size_or_sections=pair_data["nr_pairs"])
+        # logits_ = torch.split(logits, split_size_or_sections=pair_data["nr_pairs"])
+
+        # # fill 4d tensors
+        # data = zip(prob_, logits_, pairs["start"], pairs["end"], unit_num)
+        # for i, (prob, logs, s, e, n) in enumerate(data):
+        #     if n > 0:
+        #         prob_4d[i, :n, :n] = prob.view(n, n, -1)
+        #         logits_4d[i, :n, :n] = logs.view(n, n, -1)
+        #         unit_start.extend(list(zip(*s))[1][:n])
+        #         unit_end.extend(list(zip(*e))[1][:n])
+
+        # # get link label max logits and link_label and link predictions
+        # prob_max_pair, _ = torch.max(prob_4d, dim=-1)
+        # link_preds = torch.argmax(prob_max_pair, dim=-1)
+        # link_label_prob_dist = index_4D(prob_4d, index=link_preds)
+        # link_label_preds = torch.argmax(link_label_prob_dist, dim=-1)
+        # link_label_max_logits = index_4D(logits_4d, index=link_preds)
+
+        # link_label_max_logits = unfold_matrix(
+        #     matrix_to_fold=link_label_max_logits,
+        #     start_idx=unit_start,
+        #     end_idx=unit_end,
+        #     class_num_betch=unit_num,
+        #     fold_dim=input_embs.size(1))
+
+        # link_label_preds = unfold_matrix(matrix_to_fold=link_label_preds,
+        #                                  start_idx=unit_start,
+        #                                  end_idx=unit_end,
+        #                                  class_num_betch=unit_num,
+        #                                  fold_dim=input_embs.size(1))
+
+        # link_preds = unfold_matrix(matrix_to_fold=link_preds,
+        #                            start_idx=unit_start,
+        #                            end_idx=unit_end,
+        #                            class_num_betch=unit_num,
+        #                            fold_dim=input_embs.size(1))
+
+        # # Would not be easier to save a mapping ac_id, token_strat/end, instead
+        # # of all of these calc and loops !
+        # return [link_label_max_logits, link_label_preds, link_preds]
