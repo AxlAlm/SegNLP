@@ -104,28 +104,32 @@ def agg_emb(m, lengths, span_indexes, mode="average"):
     return agg_m
 
 
-def index_4D(a: torch.tensor, index: torch.tensor):
-    """
-    a is 4D tensors
-    index is 3D tensor
-
-    index will select values/vectors
-
-    """
-    b = torch.zeros((a.shape[0], a.shape[1], a.shape[-1]))
-    for i in range(index.shape[0]):
-        for j, k in enumerate(index[i]):
-            b[i][j] = a[i][j][k]
-    return b
-
 
 def create_mask(lengths, as_bool=True, flat=False):
+    """
+        >> torch.arange(max_len)
+        tensor([0, 1, 2, 3, 4, 5])
+        
+        >> torch.arange(max_len).expand(len(lengths), max_len)
+        tensor([[0, 1, 2, 3, 4, 5],
+                [0, 1, 2, 3, 4, 5],
+                [0, 1, 2, 3, 4, 5],
+                [0, 1, 2, 3, 4, 5]])
+
+        >> torch.arange(max_len).expand(len(lengths), max_len)  < lengths.unsqueeze(1)
+        tensor([[ True,  True, False, False, False, False],
+                [ True,  True,  True,  True, False, False],
+                [ True,  True, False, False, False, False],
+                [ True,  True,  True,  True,  True,  True]])
+
+        Creates a 2D range then checks for each rows where the values are smaller than the length
+
+    """
 
     if not torch.is_tensor(lengths):
         lengths = torch.tensor(lengths)
 
     max_len = torch.max(lengths)
-    print(max_len, len(lengths))
     mask = torch.arange(max_len).expand(len(lengths), max_len)  < lengths.unsqueeze(1)
     
     if not as_bool:
@@ -217,26 +221,68 @@ def util_one_hot(matrix: Tensor, mask: Tensor, num_classes: int):
 
 
 
-def scatter_unit_values(unit_values:torch.tensor, unit_lengths:torch.tensor, max_unit_length:int):
-    unit_token_scores = torch.repeat_interleave(a, unit_values, dim=0)
-    
-    # if we have a logits and not predictions
-    if len(unit_values.shape) == 2:
-        index = torch.repeat_interleave(unit_lengths.unsqueeze(1), repeats=unit_values.shape[-1], dim=1)
-        
-        token_scores = torch.zeros((
-                                    max_unit_length,
-                                    unit_values.shape[-1]
-                                    ))
+# def costum_tensor(shape, fill_value=):
 
-    else:
-        index = unit_lengths
-        token_scores = torch.zeros((
-                                    max_unit_length,
-                                    ))
+#     #    if len(src.shape) == 2:
+#     #         shape = (lengths.shape[0], src.shape[-1])
+#     #     else:
+#     #         shape = (lengths.shape[0],)
+
+#     scattered = torch.zeros(shape, dtype=src.dtype)
+
+
+def scatter_repeat(
+                    src:torch.tensor,
+                    value: torch.tensor, 
+                    lengths:torch.tensor, 
+                    length_mask:torch.BoolTensor, 
+                    ):
+    """
     
-    token_scores = token_scores.scatter_(0, index, unit_token_scores)
-    return token_scores
+
+    scatter_repeat will shatter repeats of the src values into a new tensor.
+
+    for example:
+
+        if
+            src = [1,2,3]
+            lengths = [3,2,5,1,2]
+            length_mask = [1,0,1,0,1]
+
+        function returns
+
+        src = [1,1,1,0,0,2,2,2,2,2,0,3,3]
+
+
+        what we do is we take the values in the src, place them (scatter them) in a larger tensor,
+        then repeat each value in the larger tensor by a specified length
+        
+        use case if for exampel if you want the scores for segments in a document to be scattered over the tokens
+        which the segment comprise of, but keep the values for tokens that are not apart of segments to 0
+
+        TODO: add fill value?
+
+
+    Parameters
+    ----------
+    src : torch.tensor
+        [description]
+    lengths : torch.tensor
+        [description]
+    length_mask : torch.tensor
+        [description]
+    max_length : int
+        [description]
+
+    Returns
+    -------
+    [type]
+        [description]
+    """
+    src[length_mask] = value
+    repeated_src = torch.repeat_interleave(src, lengths, dim=0)
+    return repeated_src
+
 
 
 def cumsum_zero(input:torch.tensor):
@@ -282,11 +328,27 @@ def index_select_array(input:torch.tensor, index:torch.tensor):
 
 
     """
-    index_idxes = torch.full((index.shape[0],),index.shape[0],  dtype=torch.int16)
-    flat_idxs = cumsum_zero(index_idxes)
+    index_idxes = torch.full((index.shape[0],),index.shape[0],  dtype=torch.uint8)
+    flat_idx = cumsum_zero(index_idxes).type(torch.LongTensor)
     flat_input = torch.flatten(input,end_dim=-2)
     return flat_input[flat_idx]
 
+
+
+
+# def index_4D(a: torch.tensor, index: torch.tensor):
+#     """
+#     a is 4D tensors
+#     index is 3D tensor
+
+#     index will select values/vectors
+
+#     """
+#     b = torch.zeros((a.shape[0], a.shape[1], a.shape[-1]))
+#     for i in range(index.shape[0]):
+#         for j, k in enumerate(index[i]):
+#             b[i][j] = a[i][j][k]
+#     return b
 
 # def reduce_and_remove(matrix, mask):
 
@@ -398,3 +460,32 @@ def index_select_array(input:torch.tensor, index:torch.tensor):
 #     matrix[idx_0, idx_1] = matrix_to_fold[idx_0, unit_id]
 
 #     return matrix
+
+
+
+
+
+#     # repeated_src = torch.repeat_interleave(src, lengths[length_mask], dim=0)
+
+#     # print(repeated_src)
+
+#     # index_ranges = torch.split(torch.arange(max_length),lengths)
+#     # index = index_ranges[length_mask].view(-1)
+
+#     # print(index)
+
+#     # # if we have a logits and not predictions
+#     # if len(src.shape) == 2:
+#     #     index = torch.repeat_interleave(index.unsqueeze(1), repeats=src.shape[-1], dim=1)
+#     #     shape = (
+#     #             max_length,
+#     #             src.shape[-1]
+#     #             )
+#     # else:
+#     #     shape = (
+#     #             max_length,
+#     #             )
+    
+#     # print(index)
+#     # scattered = torch.zeros(shape, dtype=repeated_src.dtype).scatter_(0, index, repeated_src)
+#     # return scattered

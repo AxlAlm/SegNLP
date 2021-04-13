@@ -17,6 +17,13 @@ from hotam.nn.bio_decoder import bio_decode
 
 
 class LSTM_ER(nn.Module):
+    """
+
+    https://www.aclweb.org/anthology/P16-1105.pdf
+
+    """
+
+
     def __init__(self, hyperparamaters: dict, task_dims: dict,
                  feature_dims: dict, train_mode: bool):
         super(LSTM_ER, self).__init__()
@@ -42,6 +49,7 @@ class LSTM_ER(nn.Module):
         self.OPT = hyperparamaters["optimizer"]
         self.LR = hyperparamaters["lr"]
         self.BATCH_SIZE = hyperparamaters["batch_size"]
+        self.LINK_LOSS = hyperparamaters.get("link_loss", False)
 
         token_embs_size = feature_dims["word_embs"] + feature_dims["pos_embs"]
         dep_embs_size = feature_dims["deprel_embs"]
@@ -129,12 +137,13 @@ class LSTM_ER(nn.Module):
 
 
         # 4)
-        if self.schedule.next(batch.current_epoch):
-            preds_used = batch["token"]["seg+label"]
-            one_hot_embs = util_one_hot(preds_used, token_mask, self.num_seg_labels)
-        else:
-            preds_used = seg_label_output["preds"]
-            one_hot_embs = seg_label_output["one_hot"]
+        if self.train_mode:
+            if self.schedule.next(batch.current_epoch):
+                preds_used = batch["token"]["seg+label"]
+                one_hot_embs = util_one_hot(preds_used, token_mask, self.num_seg_labels)
+            else:
+                preds_used = seg_label_output["preds"]
+                one_hot_embs = seg_label_output["one_hot"]
 
 
         bio_data = bio_decode(
@@ -159,65 +168,72 @@ class LSTM_ER(nn.Module):
                                                     assertion=check
                                                 )
 
-        # 9
-        seg_label_preds = seg_label_output["preds"]
-        seg_label_preds[seg_label_preds == 0]
+        # # When 
+        # seg_label_preds = seg_label_output["preds"]
+        # O_units = seg_label_preds[seg_label_preds == 0]
         
+        # link_preds = link_label_outputs["link_preds"] * O_units
+        # link_label_preds = link_label_outputs["link_label_preds"] * O_units
+        # link_label_probs = link_label_outputs["link_label_probs"] * O_units
+        # link_probs = link_label_outputs["link_probs"] * O_units
 
-        link_label_probs = link_label_outputs["link_label_probs"]
-        #link_label_probs[seg_label_preds] == torch.tensor([1.0] + [0.0])
-        link_probs = link_label_outputs["link_probs"]
+        # # # negative link_label
+        # # # Wrong label prediction
+        # # seg_label_preds[~tokens_mask] = -1  # to avoid falses in below compare
+        # # label_preds_wrong = seg_label_preds != seg_label_truth
+
+        # # wrong predictions' indices
+        # idx_0, idx_1 = torch.nonzero(label_preds_wrong, as_tuple=True)
+        # link_label_preds[idx_0, idx_1] = idx_1
 
         if self.train_mode:
-
-            
-            
-            # negative link_label
-            # Wrong label prediction
-            seg_label_preds[~tokens_mask] = -1  # to avoid falses in below compare
-            label_preds_wrong = seg_label_preds != seg_label_truth
-
-
-
-            # wrong predictions' indices
-            idx_0, idx_1 = torch.nonzero(label_preds_wrong, as_tuple=True)
-            link_label_preds[idx_0, idx_1] = idx_1
-
-
-            torch.log(seg_label_probs)
-
             seg_label_probs = seg_label_output["probs"]
             link_label_probs = link_label_outputs["link_label_probs"]
             link_probs = link_label_outputs["link_probs"]
 
-            label_loss = self.ce_loss(
-                                        torch.log(seg_label_probs).view(-1, self.num_seg_labels), 
-                                        batch["token"]["seg+label"]
-                                        )
+            label_loss = self.loss(
+                                    torch.log_softmax(seg_label_probs, dim=-1).view(-1, self.num_seg_labels), 
+                                    batch["token"]["seg+label"].view(-1)
+                                    )
 
-
-            link_label_loss = self.nll_loss(
+            link_label_loss = self.loss(
                                             torch.log(link_label_probs).view(-1, self.num_link_labels), 
-                                            batch["token"]["link_label"]
+                                            batch["token"]["link_label"].view(-1)
                                             )
 
 
-            #link_loss = self.loss(link_label_max_logits.view(-1, self.num_link_labels), batch["token"]["link"])
-
             total_loss = label_loss + link_label_loss 
 
+
+            if self.LINK_LOSS:
+                link_loss = self.loss(
+                                    torch.log(link_probs).view(-1, bio_data["max_units"]), 
+                                    batch["token"]["link"].view(-1)
+                                    )
+                total_loss += link_loss
+                output.add_loss(task="link", data=link_loss)
+
+
+            
             output.add_loss(task="total", data=total_loss)
             output.add_loss(task="link_label", data=link_label_loss)
-            output.add_loss(task="label", data=label_loss)
+            output.add_loss(task="seg+label", data=label_loss)
 
 
-
-        output.add_preds(task="seg+label", level="token", data=seg_label_preds)
-        output.add_preds(task="link", level="token", data=link_preds)
+        output.add_preds(
+                        task="seg+label", 
+                        level="token", 
+                        data=seg_label_output["preds"]
+                        )
+        output.add_preds(
+                        task="link", 
+                        level="token", 
+                        data=link_label_outputs["link_preds"]
+                        )
         output.add_preds(
                         task="link_label",
                         level="token",
-                        data=link_label_preds
+                        data=link_label_outputs["link_label_preds"]
                         )
 
         return output

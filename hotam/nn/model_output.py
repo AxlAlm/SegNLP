@@ -269,7 +269,7 @@ class ModelOutput:
                                             )
 
             if not self._pred_span_set:
-                self.pred_spans["lengths"] = self.batch[level]["lengths"]
+                self.pred_spans["unit_lengths"] = self.batch[level]["lengths"]
                 self.pred_spans["lengths_tok"] = self.batch["span"]["lengths_tok"]
                 self.pred_spans["none_span_mask"] = self.batch["span"]["none_span_mask"]
                 self._pred_span_set = True
@@ -280,7 +280,7 @@ class ModelOutput:
         if task == "link":
             data = self.__correct_links(
                                         data,
-                                        lengths_units=ensure_numpy(self.pred_spans["lengths"]),
+                                        lengths_units=ensure_numpy(self.pred_spans["unit_lengths"]),
                                         span_token_lengths=ensure_numpy(self.pred_spans["lengths_tok"]),
                                         none_spans=ensure_numpy(self.pred_spans["none_span_mask"]),
                                         decoded=decoded
@@ -337,13 +337,13 @@ class ModelOutput:
 
 
         if task == "seg":
-            lengths_tok, none_span_mask, lengths = bio_decode(
-                                                                batch_encoded_bios=decoded_preds,
-                                                                lengths=ensure_numpy(self.batch[level]["lengths"]),
-                                                            )
-            self.pred_spans["lengths_tok"] = lengths_tok
-            self.pred_spans["none_span_mask"] = none_span_mask
-            self.pred_spans["lengths"]  = lengths
+            bio_data = bio_decode(
+                                    batch_encoded_bios=decoded_preds,
+                                    lengths=ensure_numpy(self.batch[level]["lengths"]),
+                                )
+            self.pred_spans["lengths_tok"] = bio_data["span"]["lengths_tok"]
+            self.pred_spans["none_span_mask"] = bio_data["span"]["none_span_mask"]
+            self.pred_spans["unit_lengths"]  = bio_data["unit"]["lengths"]
         
 
         if task not in self.outputs:

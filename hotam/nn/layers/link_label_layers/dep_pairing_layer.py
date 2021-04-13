@@ -16,7 +16,7 @@ from dgl.traversal import topological_nodes_generator as traverse_topo
 # hotam
 from hotam.nn.model_input import ModelInput
 from hotam.nn.layers.type_treelstm import TypeTreeLSTM
-from hotam.nn.utils import scatter_unit_values
+from hotam.nn.utils import scatter_repeat
 from hotam.nn.utils import get_all_possible_pairs
 from hotam.nn.utils import pair_matrix
 from hotam.nn.utils import agg_emb
@@ -25,6 +25,7 @@ from hotam.nn.utils import index_select_array
 
 
 class DepPairingLayer(nn.Module):
+
     def __init__(self,
                  tree_input_size: int,
                  tree_lstm_h_size: int,
@@ -49,6 +50,7 @@ class DepPairingLayer(nn.Module):
                                            decoder_output_size))
 
         self.__supported_modes = set(["shortest_path"])
+
 
     def assert_graph(self, u: Tensor, v: Tensor, roots: Tensor,
                      self_loop: Tensor) -> None:
@@ -199,14 +201,13 @@ class DepPairingLayer(nn.Module):
         pair_mask = create_mask(pair_data["lengths"], flat=True)
         pair_embs = pair_matrix(unit_embs, modes=["cat"], pair_mask=pair_mask)
 
-        print(pair_embs.shape)
         return pair_embs
 
 
     def get_outputs(self, 
                     pair_probs:torch.tensor, 
-                    pair_lengths:torch.tensor, 
-                    unit_lengths:torch.tensor,
+                    pair_data:dict,
+                    bio_data:dict,
                     max_units:int, 
                     batch_size:int, 
                     max_tokens:int
@@ -225,23 +226,42 @@ class DepPairingLayer(nn.Module):
         Input is a 2D matrix containing the link_label softmax score for all possible pairs in the whole batch
 
         """
-        
         nr_link_labels = pair_probs.shape[-1]
+        max_units = bio_data["max_units"]
+        device = pair_probs.device
+  
         output = {
-                    "link_preds": torch.zeros((batch_size, max_tokens)),
-                    "link_label_preds": torch.zeros((batch_size, max_tokens)),
-                    "link_probs": torch.zeros((batch_size, max_tokens, max_units)),
-                    "link_label_probs": torch.zeros((batch_size, max_tokens, nr_link_labels)),
+                    "link_preds": torch.zeros(
+                                                (batch_size, max_tokens), 
+                                                dtype=torch.long, 
+                                                device=device,
+                                                ),
+                    "link_label_preds": torch.zeros(
+                                                    (batch_size, max_tokens), 
+                                                    dtype=torch.long, 
+                                                    device=device,
+                                                    ),
+                    "link_probs": torch.zeros(
+                                                (batch_size, max_tokens, max_units), 
+                                                dtype=torch.float,
+                                                device=device,
+                                                ),
+                    "link_label_probs": torch.zeros(
+                                                    (batch_size, max_tokens, nr_link_labels), 
+                                                    dtype=torch.float, 
+                                                    device=device,
+                                                    ),
                     }
-
+        
         # as we have probabilies for all link_labels for all pairs in a flat tensor, we need to
         # loop through the batch, select the pairs for each sample and calculate the best link
         # and link label for each unit
-        sample_pairs = torch.split(pair_probs, split_size_or_sections=pair_lengths)
+        sample_pairs = torch.split(pair_probs, split_size_or_sections=pair_data["lengths"])
         for i in range(batch_size):
-            link_label_probs = sample_pairs[i].view(unit_lengths[i], unit_lengths[i], -1)
+            n = bio_data["unit"]["lengths"][i]
+            t = sum(bio_data["span"]["lengths_tok"][i])
+            link_label_probs = sample_pairs[i].view(n, n, -1)
 
-            print(link_label_probs)
             # first we get the max link_label score for all pairs and treat them as the
             # score for LINK. For each unit we have a score for all other units.
             # NOTE! to maintain a probability distribution over units we apply softmax,
@@ -255,30 +275,58 @@ class DepPairingLayer(nn.Module):
             # for the best link pair
             max_link_label_probs = index_select_array(link_label_probs, index=link_preds)
 
-            #lastly, we can get the predictions
+            #then we can get the predictions
             link_label_preds = torch.argmax(max_link_label_probs, dim=-1)
 
+            length_mask = torch.tensor(bio_data["span"]["none_span_mask"][i], device=device)
+            lengths = torch.tensor(bio_data["span"]["lengths_tok"][i], device=device)
 
-            output["link_preds"][i] = scatter_unit_values(
-                                                        unit_values=link_preds, 
-                                                        unit_lengths= "",
-                                                        max_units="",  
+
+            # For any span that is not a unit we set the link and  link label probability
+            # to 1.0 for class at index 0. 
+            default_link_probs = torch.zeros(
+                                            (lengths.shape[0], link_probs.shape[-1]), 
+                                            dtype=torch.float,
+                                            device=device
+                                            )
+            default_link_probs[:,0] = 1.0
+
+            default_link_label_probs = torch.zeros(
+                                                    (lengths.shape[0], max_link_label_probs.shape[-1]), 
+                                                    dtype=torch.float, 
+                                                    device=device
+                                                    )
+            default_link_label_probs[:,0] = 1.0
+            
+
+            output["link_preds"][i, :t] = scatter_repeat(
+                                                        src = torch.zeros(lengths.shape[0], dtype=torch.long, device=device),
+                                                        value = link_preds, 
+                                                        lengths = lengths,
+                                                        length_mask = length_mask,
                                                         )
-            output["link_label_preds"][i] = scatter_unit_values(
-                                                        unit_values=link_preds, 
-                                                        unit_lengths= "", 
-                                                        max_units= "",
-                                                        )
-            output["link_probs"][i] = scatter_unit_values(
-                                                        unit_values=link_preds, 
-                                                        unit_lengths= "", 
-                                                        max_units= "",
-                                                        )
-            output["link_label_probs"][i] = scatter_unit_values(
-                                                                unit_values=link_preds, 
-                                                                unit_lengths= "",
-                                                                max_units= "",
+
+            output["link_label_preds"][i, :t] = scatter_repeat(
+                                                                src = torch.zeros(lengths.shape[0],  dtype=torch.long, device=device),
+                                                                value = link_label_preds, 
+                                                                lengths = lengths,
+                                                                length_mask = length_mask,
+                                                            )
+
+            output["link_probs"][i, :t, :n] = scatter_repeat(   
+                                                            src=default_link_probs,
+                                                            value = link_probs, 
+                                                            lengths = lengths,
+                                                            length_mask = length_mask,
+                                                            )
+
+            output["link_label_probs"][i, :t] = scatter_repeat(
+                                                                src=default_link_label_probs,
+                                                                value=max_link_label_probs, 
+                                                                lengths = lengths,
+                                                                length_mask = length_mask,
                                                                 )
+
 
         return output
 
@@ -304,9 +352,9 @@ class DepPairingLayer(nn.Module):
 
 
         pair_data = get_all_possible_pairs(
-                                        start=bio_data["unit"]["start"],
-                                        end=bio_data["unit"]["end"],
-                                        )
+                                            start=bio_data["unit"]["start"],
+                                            end=bio_data["unit"]["end"],
+                                            )
                             
 
         #unit_embs = self.create_unit_embs(token_embs, bio_data)
@@ -332,7 +380,6 @@ class DepPairingLayer(nn.Module):
         c0 = torch.zeros_like(h0)
         tree_lstm_out = self.tree_lstm(dep_graphs, h0, c0)
 
-
         # construct dp = [↑hpA; ↓hp1; ↓hp2]
         # ↑hpA: hidden state of dep_graphs' root
         # ↓hp1: hidden state of the first token in the candidate pair
@@ -343,32 +390,41 @@ class DepPairingLayer(nn.Module):
         end_id = dep_graphs.ndata["end"] == 1
 
         tree_lstm_out = tree_lstm_out.view(-1, 2, self.tree_lstm_h_size)
-        tree_emb = torch.cat((
+        tree_embs = torch.cat((
                                 tree_lstm_out[root_id, 0, :],  # ↑hpA
                                 tree_lstm_out[start_id, 1, :], # ↓hp1
                                 tree_lstm_out[end_id, 1, :]    # ↓hp2
                                 ), 
                                 dim=-1)
 
-        # [dp; s]
+
         pair_embs = self.create_pair_embs(
                                             token_embs = token_embs, 
                                             bio_data = bio_data, 
                                             pair_data = pair_data
                                             )
-        pair_embs = torch.cat((tree_emb, pair_embs), dim=-1)
+
+        #[dp; s]
+        pair_embs = torch.cat((tree_embs, pair_embs), dim=-1)
+        
         pair_probs = torch.softmax(self.label_link_clf(pair_embs), dim=-1)
         
         outputs = self.get_outputs(
                                     pair_probs = pair_probs, 
-                                    pair_lengths = pair_data["lengths"], 
-                                    unit_lengths= bio_data["unit"]["lengths"],
+                                    pair_data = pair_data,
+                                    bio_data = bio_data,
                                     batch_size = batch_size, 
                                     max_units = max_units, 
                                     max_tokens = max_tokens,
                                 )
 
         return outputs
+
+
+
+
+
+
 
 
 

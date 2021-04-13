@@ -5,6 +5,16 @@ from hotam.nn.models import LSTM_ER
 from hotam.nn.default_hyperparamaters import get_default_hps
 
 
+# from torch.nn import functional as F
+
+# import torch 
+
+# d =F.one_hot(
+#                     torch.arange(16).expand(32,16), 
+#                     num_classes=16
+#                     )
+# print(d.shape)
+
 
 exp = Pipeline(project="debugging",
                dataset=PE(
@@ -28,6 +38,34 @@ exp.fit(
                     gpus=None
                     )
                     )
+
+
+
+
+
+
+# import torch
+
+# # v = torch.rand((4,3))
+
+# # mask = torch.BoolTensor([0,1,0,1])
+
+# # new_v = torch.tensor([[1.,1.,1.],[1.,1.,1.]])
+
+# lengths = torch.tensor([2,4,2,6])
+# max_len = torch.max(lengths)
+
+# # print(v[mask])
+# # v[mask] = new_v
+# # print(v)
+
+# # repeated_src = torch.repeat_interleave(v, lengths, dim=0)
+
+# # print(repeated_src)
+
+# print(torch.arange(max_len))
+# print(torch.arange(max_len).expand(len(lengths), max_len))
+# print(torch.arange(max_len).expand(len(lengths), max_len)  < lengths.unsqueeze(1))
 
 
 

@@ -81,7 +81,7 @@ def bio_decode(
                         "lengths_tok":[],
                         "lengths": [],
                         "span_idxs": [],
-                        "none_span_masks":[],
+                        "none_span_mask":[],
                         "start":[],
                         "end":[],
                         },
@@ -89,23 +89,13 @@ def bio_decode(
                         "lengths_tok":[],
                         "lengths":[],
                         "span_idxs": [],
-                        "none_span_masks":[],
+                        "none_span_mask":[],
                         "start":[],
                         "end":[],
                         },
                 "max_units":0
                 }
-    # sample = [2,3,10,6] where each number indicate the lenght of a spans
-    all_span_lengths = []
 
-    # sample = [0,1,0,1,0,1,1] mask which tells us which spans are unit and whihc are not
-    all_none_span_mask = []
-
-    # sample = 3, nr of predicted units in the sample
-    unit_lengths = []
-
-    #sample = [(0,10),(11,30 ...] 
-    all_span_indexes = []
 
     for i in range(batch_size):
         span_lengths, none_span_mask = bio_decode_sample(
@@ -121,7 +111,7 @@ def bio_decode(
 
         bio_data["span"]["lengths"].append(len(span_lengths))
         bio_data["span"]["lengths_tok"].append(span_lengths.tolist())
-        bio_data["span"]["none_span_masks"].append(none_span_mask.tolist())
+        bio_data["span"]["none_span_mask"].append(none_span_mask.tolist())
         bio_data["span"]["span_idxs"].append(span_indexes.tolist())
         bio_data["span"]["start"].append(span_starts.tolist())
         bio_data["span"]["end"].append(span_ends.tolist())
