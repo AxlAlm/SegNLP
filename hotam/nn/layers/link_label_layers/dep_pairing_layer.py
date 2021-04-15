@@ -355,49 +355,39 @@ class DepPairingLayer(nn.Module):
                     max_units:int, 
                     batch_size:int, 
                     max_tokens:int,
-                    unit_label_data:dict=None,
+                    token_label:dict=None,
                     ) -> dict:
-        """
-        this functions does 2 things:
-
-        1)  it selects the best link and link_label predictions and logits for each unit in each sample 
-            from all possible pairs
-
-        2)  scatters the predictions of units over tokens. This is because we cannot align
-            predicted units with ground truth units, but we CAN align predictions on tokens 
-            with ground truths of tokens. To calculate loss we hence need to copy the unit prediction 
-            value for over to all the tokens which the unit comprise of.
-        
-        Input is a 2D matrix containing the link_label softmax score for all possible pairs in the whole batch
-
-        """
+     
         nr_link_labels = pair_probs.shape[-1]
         max_units = bio_data["max_units"]
         device = pair_probs.device
   
-        # output = {
-        #             "link_preds": torch.zeros(
-        #                                         (batch_size, max_tokens), 
-        #                                         dtype=torch.long, 
-        #                                         device=device,
-        #                                         ),
-        #             "link_label_preds": torch.zeros(
-        #                                             (batch_size, max_tokens), 
-        #                                             dtype=torch.long, 
-        #                                             device=device,
-        #                                             ),
-        #             "link_probs": torch.zeros(
-        #                                         (batch_size, max_tokens, max_units), 
-        #                                         dtype=torch.float,
-        #                                         device=device,
-        #                                         ),
-        #             "link_label_probs": torch.zeros(
-        #                                             (batch_size, max_tokens, nr_link_labels), 
-        #                                             dtype=torch.float, 
-        #                                             device=device,
-        #                                             ),
-        #             }
+        outputs = {
+                    "link_preds": torch.zeros(
+                                                (batch_size, max_tokens), 
+                                                dtype=torch.long, 
+                                                device=device,
+                                                ),
+                    "link_label_preds": torch.zeros(
+                                                    (batch_size, max_tokens), 
+                                                    dtype=torch.long, 
+                                                    device=device,
+                                                    ),
+                    # "link_probs": torch.zeros(
+                    #                             (batch_size, max_tokens, max_units), 
+                    #                             dtype=torch.float,
+                    #                             device=device,
+                    #                             ),
+                    "link_label_probs": torch.zeros(
+                                                    (batch_size, max_tokens, nr_link_labels), 
+                                                    dtype=torch.float, 
+                                                    device=device,
+                                                    ),
+                    }
 
+        #we set the default prob for all tokens to be link_label "None"
+        # value set so not to produce any -inf
+        outputs["link_label_probs"][:,:] = torch.FloatTensor([0.999,0.0005,0.0005], device=device)
 
         # first we figure out which of the members of the pairs 
         # are the roots. Is root at idx 1 or index 0. We can figure this 
@@ -410,7 +400,7 @@ class DepPairingLayer(nn.Module):
         #       index, 
         #       global index of unit 1 in pair, 
         #       global index of unit 2 in pair,
-        #       global index of unit 1 OR 2 in pair, 
+        #       global index of unit 1 OR 2 in pair (e.g. the root)
         pair_info = torch.cat((
                                 torch.arange(p1g.shape[0]).unsqueeze(-1), 
                                 p1g.unsqueeze(-1), 
@@ -430,7 +420,6 @@ class DepPairingLayer(nn.Module):
         pair_groups = itertools.groupby(pair_info, lambda x: x[-1])
         
 
-        
         sample_idx = torch.repeat_interleave(
                                             torch.arange(batch_size), 
                                             repeats=torch.LongTensor(bio_data["unit"]["lengths"]), 
@@ -445,7 +434,6 @@ class DepPairingLayer(nn.Module):
             data = torch.stack(list(group))
             idxs = data[:,1]
             ps = data[:,1:3]
-            print(ps)
             
             #print(root)
             #we get the probabilites for this group, i.e. the proabilites over which some unit is related
@@ -463,204 +451,52 @@ class DepPairingLayer(nn.Module):
             # then we get the label
             link_label = torch.argmax(link_label_probs)
 
+            # first we pick out the unit indexes in the pairs
+            # that are not the root
             children = ps[ps != root]
-            
-            #print(ps, children, root)
 
-            # # if direction is 0 this means that the relation is from left to right, hence pair[0]
-            # # is the unit we are looking for links from
-            # # if direction is 1, then we are looking for link from pair[1]
-            # # r = ROOT,
-            # # c = CHILD
-            # if direction[max_i] == 0:
-            #     r = p1[max_i]
-            #     c = p2[max_i]
-            # else:
-            #     r = p2[max_i]
-            #     c = p1[max_i]
-
-            # # we set the link prediciton from the unit index in the sample
-            # # based on 
-            # link = unit_idxs[c]
-
-            # link_probs = torch.softmax(max_link_label_probs,dim=1)
-            # link_probs = 
-
+            # pick sample id
             k = sample_idx[root]
+
+            #normalize the linked unit indexes to the sample (global idx -> sample idx)
+            linked_unit_idxs = children - rel_unit_idxs[k]
+
+            #pick the predicted linked unit idx
+            link = linked_unit_idxs[max_i]
+
+            # normalize the root indx
             root_unit_idx = root - rel_unit_idxs[k]
+        
 
-            i = start_token_idxs[root]
-            j = end_token_idxs[root]
+            i = start_token_idxs[root_unit_idx]
+            j = end_token_idxs[root_unit_idx]
 
+            n = end_token_idxs[link]
 
-            if unit_label_data is not None:
-                if unit_label_data["pred"][j] != unit_label_data["label"][j]:
-                    link_label_probs = torch.FloatTensor([1,0,0])
+            # if we are given the labels of the units (i.e. "label")
+            # We assume that the label of the last token of each unit represent the 
+            # label of the whole unit as end tokens represent units throughout the paper
+            # and there is not explicit information about voting or some label aggregation method
+            # for units
+            if token_label is not None:
+
+                p1_not_correct = token_label["preds"][k][j] != token_label["targets"][k][j]
+                p2_not_correct = token_label["preds"][k][n] != token_label["targets"][k][n]
+
+                if p1_not_correct and p2_not_correct:
+                    link_label_probs = torch.FloatTensor([0.999,0.0005,0.0005], device=device) # value set so not to produce any -inf
                     link_label = 0
-
-            
-            # output["link_preds"][k][i:j] = link_label_probs
-            # output["link_label_preds"][k][i:j] = link_label
-            # output["link_probs"][k][i:j] = link_label_probs
-            # output["link_label_probs"][k][i:j] = link_label_probs
+                    link = 0
+                    #link_probs = ???
 
 
 
-        
-        # # as we have probabilies for all link_labels for all pairs in a flat tensor, we need to
-        # # loop through the batch, select the pairs for each sample and calculate the best link
-        # # and link label for each unit
-        # #sample_pairs = torch.split(pair_probs, split_size_or_sections=pair_data["lengths"])
-        # #s = 0
+            outputs["link_preds"][k][i:j] = link
+            outputs["link_label_preds"][k][i:j] = link_label
+            outputs["link_label_probs"][k][i:j] = link_label_probs
+            #output["link_probs"][k][i:j] = link_label_probs
 
-
-        # """
-
-        # Input is a 2D tensor where is row contain the link_label probabilities or a pair of units
-        
-        # these pair are not bidirectional in the sense that they cover all the direction. These are only
-        # the combinations. 
-
-        # In previous steps the proability with the large
-
-        # lets assume we have the following pairs:
-        
-        #     (0,1,right_to_left)
-        #     (1,0,left_to_right)
-        #     (2,1)
-        
-        # lets also assume that the direction predicted is left-to-right for all pairs
-
-        # this means that 0 points to 1 and 2 which it cannot. Hence we need to select the most probable
-        # direction.
-    
-
-        # p = [
-        #         pair_prob_0
-        #         pair_prob_1,
-        #     ]
-
-        # d   [
-        #         dir_0,
-        #         dir_1
-        #     ]
-
-        # [
-        #     (i, p1, p2, dir),
-        #     (p1,p2)
-        # ]
-        
-        # """
-
-        # # i, p1, p2, p2,
-        # #p1 = torch.hstack(pair_data["p1"])
-        # #p2 = torch.hstack(pair_data["p2"])
-
-
-
-        # unit_pair_groups = itertools.groupby(L, lambda x: x[int(x[-1])])
-        
-        # for k, group in unit_pair_groups:
-        #     idxs, unit1, unit2, direction = torch.tensor_split(torch.stack(list(g)), 2, dim=-1)
-
-        #     link_label_probs = pair_probs[idxs]
-        #     link_probs = torch.softmax(torch.max(link_label_probs), dim=-1)
-        #     link_pred = torch.argmax(link_probs)
-
-        #     probs = link_label_probs[link_pred]
-
-        #     output["link_preds"][i][i:j] = link_label_probs
-        #     output["link_label_preds"][i][i:j] = link_label_probs
-        #     output["link_probs"][i][i:j] = link_label_probs
-        #     output["link_label_probs"][i][i:j] = link_label_probs
-
-
-
-        # # unit_pair_groups
-
-        # # p1 = torch.hstack(pair_data["p1"])
-        # # p2 = torch.hstack(pair_data["p2"])
-        # # link_label_preds = torch.argmax(pair_probs)
-
-
-        # # for l in range(pair_data["lengths"]):
-        # #     link_label_probs = pair_probs[s:s+l]
-        # #     directions = dirs[s:s+l]
-        # #     (10,1) 0 -> 10,1
-        # #     (10,2) 1 -> 2,10
-        # #     (2,9) 1 -> 2,9
-
-        # #     n = bio_data["unit"]["lengths"][i]
-        # #     t = sum(bio_data["span"]["lengths_tok"][i])
-        # #     link_label_probs = sample_pairs[i].view(n, n, -1)
-
-        # #     # first we get the max link_label score for all pairs and treat them as the
-        # #     # score for LINK. For each unit we have a score for all other units.
-        # #     # NOTE! to maintain a probability distribution over units we apply softmax,
-        # #     link_probs, _ = torch.max(link_label_probs, dim=-1)
-        # #     link_probs = torch.softmax(link_probs, dim=-1)
-
-        # #     # we an argmax link_logits to get the best link
-        # #     link_preds = torch.argmax(link_probs, dim=-1)
-
-        # #     # then can use the link predictions to pick out the link label scores
-        # #     # for the best link pair
-        # #     max_link_label_probs = index_select_array(link_label_probs, index=link_preds)
-
-        # #     #then we can get the predictions
-        # #     link_label_preds = torch.argmax(max_link_label_probs, dim=-1)
-
-        # #     length_mask = torch.tensor(bio_data["span"]["none_span_mask"][i], device=device)
-        # #     lengths = torch.tensor(bio_data["span"]["lengths_tok"][i], device=device)
-
-
-        # #     # For any span that is not a unit we set the link and  link label probability
-        # #     # to 1.0 for class at index 0. 
-        # #     default_link_probs = torch.zeros(
-        # #                                     (lengths.shape[0], link_probs.shape[-1]), 
-        # #                                     dtype=torch.float,
-        # #                                     device=device
-        # #                                     )
-        # #     default_link_probs[:,0] = 1.0
-
-        # #     default_link_label_probs = torch.zeros(
-        # #                                             (lengths.shape[0], max_link_label_probs.shape[-1]), 
-        # #                                             dtype=torch.float, 
-        # #                                             device=device
-        # #                                             )
-        # #     default_link_label_probs[:,0] = 1.0
-            
-
-        # #     output["link_preds"][i, :t] = scatter_repeat(
-        # #                                                 src = torch.zeros(lengths.shape[0], dtype=torch.long, device=device),
-        # #                                                 value = link_preds, 
-        # #                                                 lengths = lengths,
-        # #                                                 length_mask = length_mask,
-        # #                                                 )
-
-        # #     output["link_label_preds"][i, :t] = scatter_repeat(
-        # #                                                         src = torch.zeros(lengths.shape[0],  dtype=torch.long, device=device),
-        # #                                                         value = link_label_preds, 
-        # #                                                         lengths = lengths,
-        # #                                                         length_mask = length_mask,
-        # #                                                     )
-
-        # #     output["link_probs"][i, :t, :n] = scatter_repeat(   
-        # #                                                     src=default_link_probs,
-        # #                                                     value = link_probs, 
-        # #                                                     lengths = lengths,
-        # #                                                     length_mask = length_mask,
-        # #                                                     )
-
-        # #     output["link_label_probs"][i, :t] = scatter_repeat(
-        # #                                                         src=default_link_label_probs,
-        # #                                                         value=max_link_label_probs, 
-        # #                                                         lengths = lengths,
-        # #                                                         length_mask = length_mask,
-        # #                                                         )
-
-
-        # # return output
+        return outputs
 
 
     def forward(self,
@@ -672,7 +508,7 @@ class DepPairingLayer(nn.Module):
                 deplinks: Tensor,
                 bio_data: dict,
                 mode: str = "shortest_path",
-                unit_label_data: dict = None,
+                token_label: dict = None,
                 assertion: bool = False,
                 ):
 
@@ -725,7 +561,7 @@ class DepPairingLayer(nn.Module):
                                     max_units = max_tokens, 
                                     batch_size = batch_size, 
                                     max_tokens = max_tokens,
-                                    unit_label_data = unit_label_data,
+                                    token_label = token_label,
                                     )
 
                     

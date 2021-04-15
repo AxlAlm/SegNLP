@@ -32,13 +32,6 @@ class LSTM_ER(nn.Module):
         self.num_seg_labels = task_dims["seg+label"]
         self.num_link_labels = task_dims["link_label"]  # number of relations
 
-        # # 5)
-        # # NOTE It would be better to have the bio_dict during initialization
-        # # instead of getting the same labels ids each step
-        # bio_dict = defaultdict(list)
-        # for (i, label) in enumerate(output.label_encoders["seg+label"].labels):
-        #     bio_dict[label[0]].append(i)
-
 
         self.train_mode = train_mode
 
@@ -49,7 +42,8 @@ class LSTM_ER(nn.Module):
         self.OPT = hyperparamaters["optimizer"]
         self.LR = hyperparamaters["lr"]
         self.BATCH_SIZE = hyperparamaters["batch_size"]
-        self.LINK_LOSS = hyperparamaters.get("link_loss", False)
+
+        #self.LINK_LOSS = hyperparamaters.get("link_loss", False)
 
         token_embs_size = feature_dims["word_embs"] + feature_dims["pos_embs"]
         dep_embs_size = feature_dims["deprel_embs"]
@@ -131,6 +125,7 @@ class LSTM_ER(nn.Module):
         # 5)
         # NOTE It would be better to have the bio_dict during initialization
         # instead of getting the same labels ids each step
+        # TODO! NEEDS TO BE ACCESSABLE IN __INIT__
         bio_dict = defaultdict(list)
         for (i, label) in enumerate(output.label_encoders["seg+label"].labels):
             bio_dict[label[0]].append(i)
@@ -165,31 +160,17 @@ class LSTM_ER(nn.Module):
                                                     token_mask = token_mask,
                                                     bio_data = bio_data,
                                                     mode="shortest_path",
+                                                    token_label= {
+                                                                    "preds": preds_used,
+                                                                    "targets": batch["token"]["seg+label"]
+                                                                    },
                                                     assertion=check
                                                 )
 
-        # # When 
-        # seg_label_preds = seg_label_output["preds"]
-        # O_units = seg_label_preds[seg_label_preds == 0]
-        
-        # link_preds = link_label_outputs["link_preds"] * O_units
-        # link_label_preds = link_label_outputs["link_label_preds"] * O_units
-        # link_label_probs = link_label_outputs["link_label_probs"] * O_units
-        # link_probs = link_label_outputs["link_probs"] * O_units
-
-        # # # negative link_label
-        # # # Wrong label prediction
-        # # seg_label_preds[~tokens_mask] = -1  # to avoid falses in below compare
-        # # label_preds_wrong = seg_label_preds != seg_label_truth
-
-        # # wrong predictions' indices
-        # idx_0, idx_1 = torch.nonzero(label_preds_wrong, as_tuple=True)
-        # link_label_preds[idx_0, idx_1] = idx_1
 
         if self.train_mode:
             seg_label_probs = seg_label_output["probs"]
             link_label_probs = link_label_outputs["link_label_probs"]
-            link_probs = link_label_outputs["link_probs"]
 
             label_loss = self.loss(
                                     torch.log_softmax(seg_label_probs, dim=-1).view(-1, self.num_seg_labels), 
@@ -201,18 +182,7 @@ class LSTM_ER(nn.Module):
                                             batch["token"]["link_label"].view(-1)
                                             )
 
-
             total_loss = label_loss + link_label_loss 
-
-
-            if self.LINK_LOSS:
-                link_loss = self.loss(
-                                    torch.log(link_probs).view(-1, bio_data["max_units"]), 
-                                    batch["token"]["link"].view(-1)
-                                    )
-                total_loss += link_loss
-                output.add_loss(task="link", data=link_loss)
-
 
             
             output.add_loss(task="total", data=total_loss)
