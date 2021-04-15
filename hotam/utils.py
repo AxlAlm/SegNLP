@@ -231,7 +231,8 @@ def download(url:str, save_path:str, desc:str):
 
 
 def unzip(zip_path:str, save_path:str):
-
+    
+    print(zip_path)
     with zipfile.ZipFile(zip_path, 'r') as zipf:
         zipf.extractall(save_path)
 

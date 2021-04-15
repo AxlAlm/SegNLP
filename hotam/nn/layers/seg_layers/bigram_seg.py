@@ -1,4 +1,4 @@
-import torch as th
+import torch 
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -37,19 +37,24 @@ class BigramSegLayer(nn.Module):
         device = X.device
 
         # construct tensors
-        logits = th.zeros(*size, device=device, requires_grad=True)
-        probs = th.zeros(*size, device=device, requires_grad=True)
-        one_hots = th.zeros(*size, dtype=th.long, device=device)
-        preds = th.zeros(batch_size, max_lenght, dtype=th.long, device=device)
+        logits = torch.zeros(size, device=device)
+        probs = torch.zeros(size, device=device)
+        one_hots = torch.zeros(size, dtype=torch.long, device=device)
+        preds = torch.zeros(batch_size, max_lenght, dtype=torch.long, device=device)
 
         # predict labels token by token
         for i in range(max_lenght):
-            x = th.cat((X[:, i], one_hots[:, i - 1]), dim=-1)
+            x = torch.cat((X[:, i], one_hots[:, i - 1]), dim=-1)
             logit = self.clf(x)  # (B, NE-OUT)
             logits[:, i] = logit
             probs[:, i] = F.softmax(logit, dim=1)
-            preds[:, i] = th.argmax(probs[:, i], dim=1)
+            preds[:, i] = torch.argmax(probs[:, i], dim=1)
             one_hots[:, i] = F.one_hot(preds[:, i],
                                        num_classes=self.label_emb_dim)
 
-        return logits, probs, preds, one_hots
+        return {
+                "logits": logits, 
+                "probs": probs, 
+                "preds": preds, 
+                "one_hots": one_hots
+                }
