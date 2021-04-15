@@ -1,6 +1,7 @@
 ## my ignores
 test_*.ipynb
 .vscode/*
+start.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

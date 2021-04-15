@@ -247,7 +247,7 @@ class DataPreprocessor:
         splits = dataset.splits
 
         if self.sample_level != dataset.level:
-            splits = create_new_splits(self.h5py_f["idxs"][:], self.evaluation_method)
+            splits = create_new_splits(self.h5py_f["idxs"][:])
 
         file_path = os.path.join(dump_dir, f"{dataset.name()}_splits.pkl")
         with open(file_path, "wb") as f:
