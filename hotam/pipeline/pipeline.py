@@ -263,107 +263,202 @@ class Pipeline:
         self.__eval_set = True
 
 
+    def ss_test(self):
+
+        """
+
+        Statistical testing is done according to Evaluation 4 mentioned in the paper below
+
+        https://arxiv.org/pdf/1803.09578.pdf
+
+
+        Essentially, we test if some model A is more likely to produce a better working model than B.
+
+        A model is a NN architecture with some hyperparamater.
+        For example, A and B can both be LSTM_CRF but with different hyperparamaters.
+
+        Approach is "formalizes" as following:
+
+             P( 
+                Ψ(Test)A(Train,Dev,Rnd) 
+                ≥
+                Ψ(Test)B(Train,Dev,Rnd)
+                ) > 0.5
+
+        A model is trained on a train set and evaluated on a Dev(val) set over a sequence of random_seeds:
+
+            score_distribution = []
+            for seed in sequence_of_random_seeds:
+                score_distribution.append(fit(model, train, dev))
+
+
+        Mann-Whitney U test
+        
+        Wilcoxon signed-rank test
+
+
+
+        Returns
+        -------
+        [type]
+            [description]
+        """
+
+        if "random_seed" not in hyperparamaters:
+            hyperparamaters["random_seed"] = 42
+
+        seed_scores = []
+        for seed in random_seeds:
+            
+            self.random_seed = seed
+            set_random_seed(seed)
+            hyperparamaters["random_seed"] = seed
+
+            hp_tune_results =  self.tune_hps(
+                                        hyperparamaters = hyperparamaters,
+                                        ptl_trn_args = ptl_trn_args,
+                                        save_choice =  save_choice                                           
+                                        )
+            
+            seed_scores.append(
+                                self.tune_hps(
+                                                hyperparamaters = hyperparamaters,
+                                                ptl_trn_args = ptl_trn_args,
+                                                save_choice =  save_choice                                           
+                                                )
+                                                )
+        
+
+        # DO SOME STATISTICAL SIG TESTING
+        return seed_scores
+
+    
+    def tune_hps(self,
+                hyperparamaters:dict,
+                ptl_trn_args:dict={},
+                save_choice:str,
+                ):
+
+        model_scores = []
+        set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
+
+        for hyperparamaters in set_hyperparamaters:
+            model_scores.append(self.fit(
+                                            hyperparamaters=hyperparamaters,
+                                            ptl_trn_args = ptl_trn_args,
+                                            save_choice=save_choice
+                                            ))
+
+
+        model_ranking = pd.DataFrame(model_scores)
+        model_ranking.sort_values("score", ascending=False if "loss" in monitor_metric else True, inplace=True)
+        
+        # with open(os.path.join(self._path_to_models,"model_rankings.json"), "w") as f:
+        #     json.dump(model_ranking.to_dict(), f, indent=4)
+
+        return model_scores
+
+
+    def run(    self,
+                hyperparamaters:dict,
+                ptl_trn_args:dict={},
+                exp_logger:LightningLoggerBase=None,  
+
+                ):
+
+        self.exp_logger = exp_logger
+
+        pass
+
+
     def fit(    self,
                 hyperparamaters:dict,
-                exp_logger:LightningLoggerBase=None,  
-                ptl_trn_args:dict={}, 
+                ptl_trn_args:dict={},
+                #ptl_trn_args:dict
+                #exp_logger:LightningLoggerBase=None,  
+                #ptl_trn_args:dict={}, 
                 save_choice:str = "last",  
-                monitor_metric:str = "val_loss",
+                #monitor_metric:str = "val_loss",
                 ):
 
         model = deepcopy(self.model)
     
-        if exp_logger:
-            ptl_trn_args["logger"] = exp_logger
+        if self.exp_logger:
+            ptl_trn_args["logger"] = self.exp_logger
         else:
             ptl_trn_args["logger"] = None
 
-        model_scores = []
+        monitor_metric = hyperparamaters["monitor_metric"]
+        self.dataset.batch_size = hyperparamaters["batch_size"]
 
-        set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
-        for hyperparamaters in set_hyperparamaters:
-
-            hyperparamaters["monitor_metric"] = monitor_metric
-
-            if "random_seed" not in hyperparamaters:
-                hyperparamaters["random_seed"] = 42
-
-            set_random_seed(hyperparamaters["random_seed"])
-    
-            model_unique_str = "".join(
-                                            [model.name()]
-                                            + list(map(str, hyperparamaters.keys()))
-                                            + list(map(str, hyperparamaters.values()))
-                                        )
-            model_id = create_uid(model_unique_str)
-            exp_model_path = os.path.join(self._path_to_models, model_id)
-
-            if os.path.exists(exp_model_path):
-                shutil.rmtree(exp_model_path)
-                
-            os.makedirs(exp_model_path, exist_ok=True) 
-
-            model_args = self.__get_model_args(
-                                                model=model, 
-                                                hyperparamaters=hyperparamaters, 
-                                                )
-
-            self.__save_model_config(
-                                    model_args=model_args,
-                                    save_choice=save_choice,
-                                    monitor_metric=monitor_metric,
-                                    exp_model_path=exp_model_path
+        model_unique_str = "".join(
+                                        [model.name()]
+                                        + list(map(str, hyperparamaters.keys()))
+                                        + list(map(str, hyperparamaters.values()))
                                     )
+        model_id = create_uid(model_unique_str)
+        exp_model_path = os.path.join(self._path_to_models, model_id)
 
-            self.dataset.batch_size = hyperparamaters["batch_size"]
+        if os.path.exists(exp_model_path):
+            shutil.rmtree(exp_model_path)
+            
+        os.makedirs(exp_model_path, exist_ok=True) 
 
-            if exp_logger:
-                exp_logger.set_id(model_id)
-                exp_logger.log_hyperparams(hyperparamaters)
+        model_args = self.__get_model_args(
+                                            model=model, 
+                                            hyperparamaters=hyperparamaters, 
+                                            )
 
-                if isinstance(exp_logger, CometLogger):
-                    exp_logger.experiment.add_tags([self.project, self.id])
-                    exp_logger.experiment.log_others(exp_config)
+        self.__save_model_config(
+                                model_args=model_args,
+                                save_choice=save_choice,
+                                monitor_metric=monitor_metric,
+                                exp_model_path=exp_model_path
+                                )
 
 
-            trainer, checkpoint_cb = setup_ptl_trainer( 
-                                                        ptl_trn_args=ptl_trn_args,
-                                                        hyperparamaters=hyperparamaters, 
-                                                        exp_model_path=exp_model_path,
-                                                        save_choice=save_choice, 
-                                                        #prefix=model_id,
+        if self.exp_logger:
+            self.exp_logger.set_id(model_id)
+            self.exp_logger.log_hyperparams(hyperparamaters)
+
+            if isinstance(exp_logger, CometLogger):
+                self.exp_logger.experiment.add_tags([self.project, self.id])
+                self.exp_logger.experiment.log_others(exp_config)
+
+
+        trainer, checkpoint_cb = setup_ptl_trainer( 
+                                                    ptl_trn_args=ptl_trn_args,
+                                                    hyperparamaters=hyperparamaters, 
+                                                    exp_model_path=exp_model_path,
+                                                    save_choice=save_choice, 
+                                                    #prefix=model_id,
+                                                    )
+
+        get_evaluation_method(self.evaluation_method)(
+                                                        model_args = model_args,
+                                                        trainer = trainer,
+                                                        dataset = self.dataset,
                                                         )
 
-            get_evaluation_method(self.evaluation_method)(
-                                                            model_args = model_args,
-                                                            trainer = trainer,
-                                                            dataset = self.dataset,
-                                                            )
+        if save_choice == "last":
+            model_fp = checkpoint_cb.last_model_path
+            checkpoint_dict = torch.load(model_fp)
+            model_score = float(checkpoint_dict["callbacks"][ModelCheckpoint]["current_score"])
+            
+        else:
+            model_fp = checkpoint_cb.best_model_path
+            model_score = float(checkpoint_cb.best_model_score)
 
 
-            if save_choice == "last":
-                model_fp = checkpoint_cb.last_model_path
-                checkpoint_dict = torch.load(model_fp)
-                model_score = float(checkpoint_dict["callbacks"][ModelCheckpoint]["current_score"])
-                
-            else:
-                model_fp = checkpoint_cb.best_model_path
-                model_score = float(checkpoint_cb.best_model_score)
+        return {
+                "model_id":model_id, 
+                "score":model_score, 
+                "monitor_metric":monitor_metric,
+                "path":model_fp, 
+                "config_path": os.path.join(exp_model_path, "model_config.json")
+                }
+ 
 
-            model_scores.append({
-                                "model_id":model_id, 
-                                "score":model_score, 
-                                "monitor_metric":monitor_metric,
-                                "path":model_fp, 
-                                "config_path": os.path.join(exp_model_path, "model_config.json")
-                                })
-
-        model_ranking = pd.DataFrame(model_scores)
-        model_ranking.sort_values("score", ascending=False if "loss" in monitor_metric else True, inplace=True)
-
-
-        with open(os.path.join(self._path_to_models,"model_rankings.json"), "w") as f:
-            json.dump(model_ranking.to_dict(), f, indent=4)
 
 
     def test(   self, 
