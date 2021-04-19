@@ -47,10 +47,10 @@ class ChainedPipeline:
         # outputs = []
         # for pipeline in self.pipelines:
 
-        #     if not output:
-        #         pipeline.dataset.overwrite_test(outputs[-1])
+        #     output = self.pipelines.test(
 
-        #     output = self.pipelines.test()
+        #                                 overrride_label_df = output[-1]
+        #                                 )
         #     outputs.append(output)
 
         # return outputs

@@ -373,29 +373,29 @@ class Pipeline:
         prob = sum(larger_than == True) / larger_than.shape[0]
 
         a_better_than_b = None
+        v = None
         if prob > 0.5:
             
             if ss_test == "aso":
-                aso(df["one"].to_numpy(),df["two"].to_numpy())
+                v = aso(df["one"].to_numpy(),df["two"].to_numpy())
                 a_better_than_b = v <= 0.5
 
             elif ss_test == "mwu":
                 v = stats.mannwhitneyu(df["one"].to_numpy(), df["two"].to_numpy(), alternative='two-sided')
                 a_better_than_b = v <= 0.05
         
-        return a_better_than_b
+        return a_better_than_b, prob, v
 
     
-    def select_model(   self,
-                    hyperparamaters:dict,
-                    ptl_trn_args:dict={},
-                    random_seed=42,
-                    n_random_seeds:int=None,
-                    save_choice:str="last",
-                    monitor_metric:str = "val_f1",
-                    ss_test:str="aso"
-                    ):
-
+    def evaluate(self,
+                hyperparamaters:dict,
+                ptl_trn_args:dict={},
+                random_seed=42,
+                n_random_seeds:int=None,
+                save_choice:str="last",
+                monitor_metric:str = "val_f1",
+                ss_test:str="aso"
+                ):
 
         if n_random_seeds is not None:
             random_seeds = np.random.randint(10**6,size=(n_random_seed,))
@@ -403,54 +403,75 @@ class Pipeline:
             random_seeds = [random_seed]
 
         set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
+        best_model_info_fp = os.path.join(self._path_to_models,"model_info.json")
 
-        best_hp_df = None
-        for hyperparamaters in set_hyperparamaters:
+        # if we have done previous tuning we will start from where we ended, i.e. 
+        # from the previouos best Hyperparamaters
+        if os.path.exists(best_model_info_fp):
+
+            with open(best_model_info_fp, "r") as f:
+                best_model_info = json.load(f)
+
+            best_scores = best_model_info["scores"]
+        else:
+            best_scores = None
+            best_model_info = None
+
+
+        for hp_id, hyperparamaters in enumerate(set_hyperparamaters):
             
             model_scores = []
+            model_outputs = []
             for seed in random_seeds:
-                model_scores.append(self.fit(
-                                                hyperparamaters=hyperparamaters,
-                                                ptl_trn_args = ptl_trn_args,
-                                                save_choice=save_choice,
-                                                random_seed=seed,
-                                                monitor_metric=monitor_metric
-                                                ))
+                output = self.fit(
+                                    hyperparamaters=hyperparamaters,
+                                    ptl_trn_args = ptl_trn_args,
+                                    save_choice=save_choice,
+                                    random_seed=seed,
+                                    monitor_metric=monitor_metric
+                                    )
+                model_outputs.append(output)
+                model_scores.append(model_scores["score"])
 
-            model_score_df = pd.concat(model_scores)
+            model_info["scores"] = model_scores
+            model_info["score_mean"] = np.mean(model_score_df)
+            model_info["score_median"] = np.median(model_score_df)
+            model_info["score_max"] = np.max(model_score_df)
+            model_info["score_min"] = np.min(model_score_df)
+            model_info["monitor_metric"] = monitor_metric
+            model_info["std"] = np.std(model_scores)
+            model_info["ss_test"] = ss_test
+            model_info["n_random_seeds"] = n_random_seeds
+            model_info["hyperparamaters"] = hyperparamaters
+            model_info["outputs"] = model_outputs
 
-            if best_hp_df is not None:
-                a_dist = model_score_df["two"]
-                b_dist = best_hp_df["f1"]
+            if best_scores is not None:
+                is_better, p, v = self.__model_comparison(model_scores, best_scores, test=ss_test):
+                model_info["p"] = p
+                model_info["v"] = v
 
-                if self.__model_comparison(a_dist, b_dist, test=ss_test):
-                    best_hp_df = model_score_df         
-            else:
-                best_hp_df = model_score_df
+            if best_scores is None or is_better:
+                best_scores = model_scores
+                best_model_info = model_info
+                top_mf = os.path.join(self._path_to_models, "top")
+                tmp_mf = os.path.join(self._path_to_models, "tmp")
+                shutil.move(tmp_mf, top_mf)
+                shutil.rmtree(tmp_mf)
 
-            hp_scores.append(model_scores)
+        with open(best_model_info_fp, "w") as f:
+            json.dump(best_model_info.to_dict(), f, indent=4)
 
-        #model_ranking = pd.DataFrame(model_scores)
-        #model_ranking.sort_values("score", ascending=False if "loss" in monitor_metric else True, inplace=True)
-        
-        # with open(os.path.join(self._path_to_models,"model_rankings.json"), "w") as f:
-        #     json.dump(model_ranking.to_dict(), f, indent=4)
-
-        return model_scores
-
+        return best_model_info
 
 
-    def run(    self,
-                hyperparamaters:dict,
-                ptl_trn_args:dict={},
-                exp_logger:LightningLoggerBase=None,
+    # def run(    self,
+    #             hyperparamaters:dict,
+    #             ptl_trn_args:dict={},
+    #             exp_logger:LightningLoggerBase=None,
+    #             )
 
-
-                )
-
-        self.exp_logger = exp_logger
-
-        pass
+    #     self.exp_logger = exp_logger
+    #     pass
 
 
     def fit(    self,
@@ -477,8 +498,10 @@ class Pipeline:
                                         + list(map(str, hyperparamaters.values()))
                                     )
         model_id = create_uid(model_unique_str)
-        exp_model_path = os.path.join(self._path_to_models, random_seed, model_id)
-
+        
+        mid_folder = "top" if not self.__doing_model_selection else "tmp":
+        exp_model_path = os.path.join(self._path_to_models, mid_folder, random_seed, model_id)
+        
         if os.path.exists(exp_model_path):
             shutil.rmtree(exp_model_path)
             
@@ -506,7 +529,7 @@ class Pipeline:
                 self.exp_logger.experiment.log_others(exp_config)
 
 
-        trainer, checkpoint_cb = setup_ptl_trainer( 
+        trainer = setup_ptl_trainer( 
                                                     ptl_trn_args=ptl_trn_args,
                                                     hyperparamaters=hyperparamaters, 
                                                     exp_model_path=exp_model_path,
@@ -514,21 +537,12 @@ class Pipeline:
                                                     #prefix=model_id,
                                                     )
 
-        get_evaluation_method(self.evaluation_method)(
-                                                        model_args = model_args,
-                                                        trainer = trainer,
-                                                        dataset = self.dataset,
-                                                        )
-
-        if save_choice == "last":
-            model_fp = checkpoint_cb.last_model_path
-            checkpoint_dict = torch.load(model_fp)
-            model_score = float(checkpoint_dict["callbacks"][ModelCheckpoint]["current_score"])
-            
-        else:
-            model_fp = checkpoint_cb.best_model_path
-            model_score = float(checkpoint_cb.best_model_score)
-
+        model_fp, model_score = get_evaluation_method(self.evaluation_method)(
+                                                                                model_args = model_args,
+                                                                                trainer = trainer,
+                                                                                dataset = self.dataset,
+                                                                                save_choice=save_choice,
+                                                                                )
 
         return {
                 "model_id":model_id, 
@@ -539,17 +553,15 @@ class Pipeline:
                 }
  
 
-
-
     def test(   self, 
                 path_to_ckpt:str=None,
                 model_id:str=None,
-                ptl_trn_args:dict={}
+                ptl_trn_args:dict={},
+                override_label_df:pd.DataFrame = None
                 ):
 
 
         self.dataset.split_id = 0
-
 
         with open(os.path.join(self._path_to_models,"model_rankings.json"), "r") as f:
             model_rankings = pd.DataFrame(json.load(f))
@@ -574,7 +586,7 @@ class Pipeline:
 
         self.dataset.batch_size = hyperparamaters["batch_size"]
 
-        trainer, _ = setup_ptl_trainer( 
+        trainer = setup_ptl_trainer( 
                                     ptl_trn_args=ptl_trn_args,
                                     hyperparamaters=hyperparamaters, 
                                     exp_model_path="",
@@ -593,7 +605,10 @@ class Pipeline:
         output_df = pd.DataFrame(model.outputs["test"])
         output_df["text"] = output_df["text"].apply(np.vectorize(lambda x:x.decode("utf-8")))
 
-        print(output_df.head(10))
+
+        if override_label_df is not None:
+            output_df = pd.concat((output_df, override_label))
+
         return scores, output_df
         
 
