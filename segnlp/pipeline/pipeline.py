@@ -362,6 +362,8 @@ class Pipeline:
 
         for hp_id, hyperparamaters in enumerate(set_hyperparamaters):
             
+            best_model_score = 99999999 is "loss" in monitor_metric else -1
+            best_model = None
             model_scores = []
             model_outputs = []
             for seed in random_seeds:
@@ -372,21 +374,30 @@ class Pipeline:
                                     random_seed=seed,
                                     monitor_metric=monitor_metric
                                     )
+
+                score = model_scores["score"]
+
+                if score > best_model_score:
+                    best_model_score = score
+                    best_model = output
+
                 model_outputs.append(output)
-                model_scores.append(model_scores["score"])
+                model_scores.append(score)
 
 
             model_info["scores"] = model_scores
-            model_info["score_mean"] = np.mean(model_score_df)
-            model_info["score_median"] = np.median(model_score_df)
-            model_info["score_max"] = np.max(model_score_df)
-            model_info["score_min"] = np.min(model_score_df)
+            model_info["score_mean"] = np.mean(model_scores)
+            model_info["score_median"] = np.median(model_scores)
+            model_info["score_max"] = np.max(model_scores)
+            model_info["score_min"] = np.min(model_scores)
             model_info["monitor_metric"] = monitor_metric
             model_info["std"] = np.std(model_scores)
             model_info["ss_test"] = ss_test
             model_info["n_random_seeds"] = n_random_seeds
             model_info["hyperparamaters"] = hyperparamaters
             model_info["outputs"] = model_outputs
+            model_info["best_model"] = best_model
+            model_info["best_model_score"] = best_model_score
 
 
             if best_scores is not None:
@@ -492,15 +503,24 @@ class Pipeline:
                 path_to_ckpt:str=None,
                 model_id:str=None,
                 ptl_trn_args:dict={},
-                compare_to:str=None,
-                significance:bool=True,
+                monitor_metric:str = "val_f1",
                 override_label_df:pd.DataFrame = None,
                 ):
 
 
         self.dataset.split_id = 0
 
-        seed_scores = []
+
+        with open(self._path_to_model_info, "r") as f:
+            model_info = json.load(f)
+
+        model_info["best_model"]
+
+        top_score = 99999999 is "loss" in monitor_metric else -1
+        output_df = None
+        best_model = best_model
+        seed_scores_dfs = []
+        seeds = []
         for seed_model in self._path_to_top_models:
             model_folder = os.path.join(self._path_to_top_models, seed_model)
 
@@ -530,20 +550,31 @@ class Pipeline:
                                     test_dataloaders=self.dataset.test_dataloader()
                                     )
             
-            output_df = pd.DataFrame(model.outputs["test"])
-            output_df["text"] = output_df["text"].apply(np.vectorize(lambda x:x.decode("utf-8")))
+            if scores[monitor_metric] > top_score:
 
-            if override_label_df is not None:
-                output_df = pd.concat((output_df, override_label))
+                output_df = pd.DataFrame(model.outputs["test"])
+                output_df["text"] = output_df["text"].apply(np.vectorize(lambda x:x.decode("utf-8")))
 
-            seed_scores.append(scores.to_dict())
+                if override_label_df is not None:
+                    output_df = pd.concat((output_df, override_label))
+                
+                best_model = seed_model
 
+            seed_scores_dfs.append(scores)
+
+
+
+        df = pd.concat(seed_scores_dfs, axis=0, keys=seeds)
+
+        max_scores = df.max(axis=0)
+        mean_scores = df.mean(axis=0)
+        std_scores = df.std(axis=0)
+        final_df = pd.concat([max_scores, mean_scores, std_scores], axis=1, keys=seeds)
 
         with open(self._path_to_test_score, "w") as f:
             json.dump(seed_scores, f, indent=4)
         
-        logger.info("tests done")
-
+        return final_df, 
 
 
     def predict(self, doc:str):
