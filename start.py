@@ -1,10 +1,10 @@
-from hotam.datasets import PE
-from hotam import Pipeline
-from hotam.features import DummyFeature, OneHots
-from hotam.nn.models import LSTM_CRF
-from hotam.nn.default_hyperparamaters import get_default_hps
+from segnlp.datasets import PE
+from segnlp import Pipeline
+from segnlp.features import DummyFeature, OneHots
+from segnlp.nn.models import LSTM_CRF
+from segnlp.nn.default_hyperparamaters import get_default_hps
 
-from hotam.utils import list_experiments, exp_summery
+from segnlp.utils import list_experiments, exp_summery
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 
 # list_experiments()

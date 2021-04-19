@@ -8,7 +8,7 @@
 ##### picking a datasets
 
 ```python
-from hotam.datasets import PE
+from segnlp.datasets import PE
 
 pe = PE()
 ```
@@ -18,7 +18,7 @@ pe = PE()
 
 
 ```python
-from hotam.features import Embeddings
+from segnlp.features import Embeddings
 
 pe.setup(
     tasks=["seg"],
@@ -41,4 +41,4 @@ If we pass "ac" our framwork will expect us to predict on Argument Components. I
 **encodings** decides which encodings will be done. If you wish to pass encodings such as characters, words, pos or dephead to your model you decide this here. Encodings are unique IDS.
 Note that labels are always encoded
 
-**features** decided the features that will be extracted from the dataset. In above example glove embeddings will be extracted. Multiple features can be passed. All input to features should be a hotam.FeatureModel (read more about features).
+**features** decided the features that will be extracted from the dataset. In above example glove embeddings will be extracted. Multiple features can be passed. All input to features should be a segnlp.FeatureModel (read more about features).
