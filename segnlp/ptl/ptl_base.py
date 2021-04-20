@@ -1,12 +1,10 @@
 
 #basics
 import numpy as np
-import warnings
 import os
 import pandas as pd
 from typing import List, Dict, Union, Tuple
 import re
-from copy import deepcopy
 
 #pytorch lightning
 import pytorch_lightning as ptl
@@ -20,10 +18,11 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from transformers import get_constant_schedule_with_warmup
 
 #am 
-from segnlp.utils import ensure_numpy, ensure_flat
+from segnlp.utils import ensure_numpy
+from segnlp.utils import ensure_flat
 from segnlp import get_logger
-from segnlp.nn import ModelInput, ModelOutput
-
+from segnlp.nn.utils import ModelInput
+from segnlp.nn.utils import ModelOutput
 
 logger = get_logger("PTLBase (ptl.LightningModule)")
 
@@ -95,11 +94,7 @@ class PTLBase(ptl.LightningModule):
 
 
     def _step(self, batch:ModelInput, split):
-        # fetches the device so we can place tensors on the correct memmory
-        #device = f"cuda:{next(self.parameters()).get_device()}" if self.on_gpu else "cpu"
-
         batch.current_epoch = self.current_epoch
-
         output = self.model.forward(
                                     batch, 
                                     ModelOutput(
@@ -130,7 +125,7 @@ class PTLBase(ptl.LightningModule):
         self.log('val_loss', loss, prog_bar=True)
 
         if self.monitor_metric != "val_loss":
-            self.log(f'val_{self.monitor_metric}', self.metrics["val"][-1][self.monitor_metric.replace("val","")], prog_bar=True)
+            self.log(f'val_{self.monitor_metric}', self.metrics["val"][-1][self.monitor_metric.replace("val_","")], prog_bar=True)
 
         self.outputs["val"].extend(output.to_record())
         return {"val_loss": loss}

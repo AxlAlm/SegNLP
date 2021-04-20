@@ -1,19 +1,25 @@
-from typing import List, Tuple
 
+#basics
+from typing import List, Tuple
 import functools
 
+#pytorch
 import torch
 from torch import Tensor
 import torch.nn as nn
 
+#networkx
 import networkx as nx
 from networkx import Graph as nxGraph
+
+#DGL
 import dgl
 from dgl import DGLGraph
 from dgl.traversal import topological_nodes_generator as traverse_topo
 
-from segnlp.nn.layers.type_treelstm import TypeTreeLSTM
-from segnlp.nn.utils import index_4D
+#segnlp
+from segnlp.nn.layers.rep_layers import TypeTreeLSTM
+
 
 
 class DepPairingLayer(nn.Module):

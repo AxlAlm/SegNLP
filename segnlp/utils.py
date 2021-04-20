@@ -3,7 +3,6 @@
 import functools
 import numpy as np
 from time import time
-import time
 import _pickle as pkl
 import json
 from typing import List, Dict, Tuple
@@ -21,6 +20,8 @@ from pathlib import Path
 from pprint import pprint
 import re
 import pandas as pd
+from numpy.random import MT19937
+from numpy.random import RandomState, SeedSequence
 
 #segnlp
 from segnlp import get_logger
@@ -28,6 +29,10 @@ from segnlp import get_logger
 #torch
 from torch import is_tensor
 import torch
+
+#pytroch lightning 
+from pytorch_lightning import seed_everything
+
 
 logger = get_logger(__name__)
 
@@ -56,6 +61,7 @@ def zero_pad(a):
         b[i][0:len(j)] = j
     return b
 
+
 def string_pad(a, dtype="<U30"):
     b = np.zeros([len(a),len(max(a,key = lambda x: len(x)))]).astype(dtype)
     b[:] = ""
@@ -74,6 +80,7 @@ def ensure_numpy(item):
 
     return item
 
+
 def to_tensor(item, dtype=torch.float):
     try:
         return torch.tensor(item, dtype=dtype)
@@ -81,7 +88,6 @@ def to_tensor(item, dtype=torch.float):
         return item
     except TypeError as e:
         return item
-
 
 
 def check_gpu(self, gpu:int, verbose=1) -> Tuple[bool, torch.device]:
@@ -130,7 +136,6 @@ class RangeDict(dict):
             return self.__getitem__(query_item)
         except KeyError:
             return default
-
 
 
 def pickle_data(data, file_path):
@@ -263,9 +268,8 @@ def dynamic_update(src, v, pad_value=0):
 
 
 def set_random_seed(nr, using_gpu:bool=False):
-    random.seed(nr)
-    np.random.seed(nr)
-    torch.manual_seed(nr)
+
+    seed_everything(nr)
 
     if using_gpu:
         torch.backends.cudnn.deterministic = True
@@ -292,6 +296,13 @@ def create_uid(string):
     uid = str(int(hashlib.sha256(string.encode('utf-8')).hexdigest(), 16) % 10**8)
     return uid
 
+
+
+def random_ints(n):
+    #create a list of n random seed independent of the random seed set. Uses the timestamp
+    ts = int(get_time().timestamp())
+    rs = RandomState(MT19937(SeedSequence(ts)))
+    return rs.randint(10**6,size=(n,)).tolist()
 
 
 # def list_pipelines():

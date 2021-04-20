@@ -1,6 +1,6 @@
 
 #basics
-import uuid
+import sys
 from typing import List, Tuple, Dict, Callable, Union
 import itertools
 import json
@@ -16,25 +16,26 @@ import pandas as pd
 #pytorch Lightning
 from pytorch_lightning.loggers import LightningLoggerBase
 from pytorch_lightning.loggers import CometLogger
-from pytorch_lightning.callbacks import ModelCheckpoint
-
 
 
 #pytorch
 import torch
 
 #segnlp
-from segnlp.datasets import DataSet
+from segnlp.datasets.base import DataSet
 from segnlp.preprocessing import Preprocessor
 from segnlp.preprocessing.dataset_preprocessor import PreProcessedDataset
 from segnlp.ptl.ptl_trainer_setup import setup_ptl_trainer
 from segnlp.ptl.ptl_base import PTLBase
 from segnlp import get_logger
-from segnlp.utils import set_random_seed, get_time, create_uid
+from segnlp.utils import set_random_seed
+from segnlp.utils import get_time
+from segnlp.utils import create_uid
+from segnlp.utils import random_ints
 from segnlp.evaluation_methods import get_evaluation_method
 from segnlp.nn.models import get_model
 from segnlp.features import get_feature
-from segnlp.nn import ModelOutput
+from segnlp.nn.utils import ModelOutput
 
 
 logger = get_logger("PIPELINE")
@@ -60,6 +61,7 @@ class Pipeline:
         self.project = project
         self.evaluation_method = evaluation_method
         self.model = model
+        self.exp_logger = None
         self.id = create_uid(
                             "".join([
                                     model.name(),
@@ -109,7 +111,7 @@ class Pipeline:
         self.config.update(self.preprocessor.config)
         self.__dump_config()
 
-
+        self.__hp_tuning = False
         self.__eval_set = False
 
     @classmethod
@@ -321,6 +323,10 @@ class Pipeline:
 
         """
         larger_than = a_dist >= b_dist
+        x = larger_than == True
+        print("HEEELOO", x.shape)
+        print(sum(larger_than == True))
+
         prob = sum(larger_than == True) / larger_than.shape[0]
 
         a_better_than_b = None
@@ -335,7 +341,7 @@ class Pipeline:
         return a_better_than_b, prob, v
 
     
-    def select_hps(self,
+    def hp_tune(self,
                     hyperparamaters:dict,
                     ptl_trn_args:dict={},
                     n_random_seeds:int=6,
@@ -344,7 +350,9 @@ class Pipeline:
                     ss_test:str="aso"
                     ):
 
-        random_seeds = np.random.randint(10**6,size=(n_random_seed,))
+        self.__hp_tuning = True
+
+        random_seeds = random_ints(n_random_seeds)
         set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
 
         # if we have done previous tuning we will start from where we ended, i.e. 
@@ -360,22 +368,28 @@ class Pipeline:
             best_model_info = None
 
 
+        logger.info(f"----- Tuning {len(set_hyperparamaters)} hyperparamaters -----")
+        #for hp in set_hyperparamaters:
+            
+
+
         for hp_id, hyperparamaters in enumerate(set_hyperparamaters):
             
-            best_model_score = 99999999 is "loss" in monitor_metric else -1
+            best_model_score = 99999999 if "loss" in monitor_metric else -1
             best_model = None
             model_scores = []
             model_outputs = []
-            for seed in random_seeds:
+            for random_seed in random_seeds:
                 output = self.fit(
                                     hyperparamaters=hyperparamaters,
                                     ptl_trn_args = ptl_trn_args,
                                     save_choice=save_choice,
-                                    random_seed=seed,
+                                    random_seed=random_seed,
                                     monitor_metric=monitor_metric
                                     )
+                sys.stdout.flush()
 
-                score = model_scores["score"]
+                score = output["score"]
 
                 if score > best_model_score:
                     best_model_score = score
@@ -385,6 +399,9 @@ class Pipeline:
                 model_scores.append(score)
 
 
+            print("SCORES", model_scores)
+
+            model_info = {}
             model_info["scores"] = model_scores
             model_info["score_mean"] = np.mean(model_scores)
             model_info["score_median"] = np.median(model_scores)
@@ -399,9 +416,10 @@ class Pipeline:
             model_info["best_model"] = best_model
             model_info["best_model_score"] = best_model_score
 
+            print(model_info)
 
             if best_scores is not None:
-                is_better, p, v = self.__model_comparison(model_scores, best_scores, test=ss_test):
+                is_better, p, v = self.__model_comparison(model_scores, best_scores, ss_test=ss_test)
                 model_info["p"] = p
                 model_info["v"] = v
 
@@ -410,13 +428,18 @@ class Pipeline:
                 best_scores = model_scores
                 best_model_info = model_info
 
+                if os.path.exist(self._path_to_top_models):
+                    shutil.rmtree(self._path_to_top_models)
+                    
                 shutil.move(self._path_to_tmp_models, self._path_to_top_models)
+                
+            if os.path.exists(self._path_to_tmp_models):
                 shutil.rmtree(self._path_to_tmp_models)
-
 
         with open(self._path_to_model_info, "w") as f:
             json.dump(best_model_info.to_dict(), f, indent=4)
 
+        print(best_model_info)
         return best_model_info
 
 
@@ -428,7 +451,10 @@ class Pipeline:
                 monitor_metric:str = "val_f1",
                 ):
 
+        set_random_seed(random_seed)
+
         hyperparamaters["random_seed"] = random_seed
+        hyperparamaters["monitor_metric"] = monitor_metric
         self.dataset.batch_size = hyperparamaters["batch_size"]
 
         model = deepcopy(self.model)
@@ -445,8 +471,8 @@ class Pipeline:
                                     )
         model_id = create_uid(model_unique_str)
         
-        mid_folder = "top" if not self.__doing_model_selection else "tmp":
-        exp_model_path = os.path.join(self._path_to_models, mid_folder, random_seed, model_id)
+        mid_folder = "top" if not self.__hp_tuning else "tmp"
+        exp_model_path = os.path.join(self._path_to_models, "tmp", str(random_seed), model_id)
         
         if os.path.exists(exp_model_path):
             shutil.rmtree(exp_model_path)
@@ -494,6 +520,7 @@ class Pipeline:
                 "model_id":model_id, 
                 "score":model_score, 
                 "monitor_metric":monitor_metric,
+                "random_seed":random_seed,
                 "path":model_fp, 
                 "config_path": os.path.join(exp_model_path, "model_config.json")
                 }
@@ -514,11 +541,9 @@ class Pipeline:
         with open(self._path_to_model_info, "r") as f:
             model_info = json.load(f)
 
-        model_info["best_model"]
-
-        top_score = 99999999 is "loss" in monitor_metric else -1
+        best_model_info = model_info["best_model"]
+        best_model_scores = None
         output_df = None
-        best_model = best_model
         seed_scores_dfs = []
         seeds = []
         for seed_model in self._path_to_top_models:
@@ -550,31 +575,29 @@ class Pipeline:
                                     test_dataloaders=self.dataset.test_dataloader()
                                     )
             
-            if scores[monitor_metric] > top_score:
-
+            if seed in best_model_info:
                 output_df = pd.DataFrame(model.outputs["test"])
                 output_df["text"] = output_df["text"].apply(np.vectorize(lambda x:x.decode("utf-8")))
 
                 if override_label_df is not None:
                     output_df = pd.concat((output_df, override_label))
+
+                    scores = metrics(output_df)
                 
-                best_model = seed_model
+                best_model_scores = scores
 
             seed_scores_dfs.append(scores)
 
-
-
         df = pd.concat(seed_scores_dfs, axis=0, keys=seeds)
-
-        max_scores = df.max(axis=0)
         mean_scores = df.mean(axis=0)
         std_scores = df.std(axis=0)
-        final_df = pd.concat([max_scores, mean_scores, std_scores], axis=1, keys=seeds)
+        final_df = pd.concat([best_model_scores,mean_scores, std_scores], axis=1, keys=["best_model", "mean", "std"])
 
+        
         with open(self._path_to_test_score, "w") as f:
             json.dump(seed_scores, f, indent=4)
         
-        return final_df, 
+        return final_df, output_df
 
 
     def predict(self, doc:str):

@@ -1,5 +1,5 @@
 
-from .char_emb import CHAR_EMB_LAYER
-from .lstm import LSTM_LAYER
+from .char_emb import CharEmb
+from .lstm import LSTM
 from .type_treelstm import TypeTreeLSTM
 

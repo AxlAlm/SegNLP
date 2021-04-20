@@ -118,7 +118,7 @@ class PE(DataSet):
                         supported_sample_levels=["document", "paragraph", "sentence"],
                         about="""The corpus consists of argument annotated persuasive essays including annotations of argument components and argumentative relations.""",
                         url="https://www.informatik.tu-darmstadt.de/ukp/research_6/data/argumentation_mining_1/argument_annotated_essays_version_2/index.en.jsp",
-                        download_url= "https://www.informatik.tu-darmstadt.de/media/ukp/data/fileupload_2/argument_annotated_news_articles/ArgumentAnnotatedEssays-2.0.zip",
+                        download_url= "https://tudatalib.ulb.tu-darmstadt.de/bitstream/handle/tudatalib/2422/ArgumentAnnotatedEssays-2.0.zip?sequence=1&isAllowed=y",
                         dump_path=dump_path,
                         )
 

@@ -1,11 +1,11 @@
 numpy==1.18.1
-pytorch-lightning==1.2.7
+pytorch-lightning==1.2.8
 gensim==3.8.1
 regex==2020.1.8 
 nltk==3.4.5
 torch==1.6.0
 pytorch-crf==0.7.2
-flair==0.7.0
+flair==0.8.0
 scikit-learn==0.22.1
 pandas==1.0.1
 plotly==4.9.0
@@ -13,3 +13,7 @@ imgkit==1.0.2
 ipython==7.19.0
 GitPython==3.1.14
 transformers==4.5.1
+deepsig==1.0.0
+spacy==3.0.5
+h5py==3.2.1
+dgl==0.6.1

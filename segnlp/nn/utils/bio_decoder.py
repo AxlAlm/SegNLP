@@ -5,8 +5,7 @@ import torch
 import numpy as np
 
 #segnlp
-from . import ensure_numpy, ensure_flat
-
+from segnlp.utils import ensure_numpy, ensure_flat
 
 def bio_decode(
                 batch_encoded_bios:np.ndarray, 

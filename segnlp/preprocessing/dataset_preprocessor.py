@@ -25,21 +25,21 @@ import torch
 import h5py
 
 # segnlp
+import segnlp
 from segnlp.datasets.base import DataSet
-from segnlp.nn import ModelInput
-from segnlp.nn.model_input import ModelInput
+from segnlp.nn.utils import ModelInput
 from segnlp.utils import ensure_numpy
-from segnlp.datasets import get_dataset
-
 
 #sklearn
 from sklearn.model_selection import train_test_split
+
+from segnlp.utils import timer
+
 
 class PreProcessedDataset(ptl.LightningDataModule):
 
     def __init__(self, name:str, dir_path:str, label_encoders:dict, prediction_level:str):
         self._name = name
-        self.label_colors = get_dataset(name).label_colors()
         self.label_encoders = label_encoders
         self._fp = os.path.join(dir_path, f"{name}_data.hdf5")
 
@@ -55,11 +55,10 @@ class PreProcessedDataset(ptl.LightningDataModule):
             self._splits = pickle.load(f)
         
 
-
     def __getitem__(self, key:Union[np.ndarray, list]) -> ModelInput:
         Input = ModelInput(
                             label_encoders=self.label_encoders, 
-                            label_colors=self.label_colors
+                           #label_colors=self.label_colors
                             )
 
 
@@ -145,18 +144,18 @@ class PreProcessedDataset(ptl.LightningDataModule):
     def train_dataloader(self):
         # ids are given as a nested list (e.g [[42, 43]]) hence using lambda x:x[0] to select the inner list.
         sampler = BatchSampler(self.splits[self.split_id]["train"], batch_size=self.batch_size, drop_last=False)
-        return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=multiprocessing.cpu_count())
+        return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=segnlp.settings["dl_n_workers"])
 
 
     def val_dataloader(self):
         # ids are given as a nested list (e.g [[42, 43]]) hence using lambda x:x[0] to select the inner list.
         sampler = BatchSampler(self.splits[self.split_id]["val"], batch_size=self.batch_size, drop_last=False)
-        return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=multiprocessing.cpu_count()) #, shuffle=True)
+        return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=segnlp.settings["dl_n_workers"]) #, shuffle=True)
 
 
     def test_dataloader(self):
         sampler = BatchSampler(self.splits[self.split_id]["test"], batch_size=self.batch_size, drop_last=False)
-        return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=multiprocessing.cpu_count())
+        return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=segnlp.settings["dl_n_workers"])
 
 
 

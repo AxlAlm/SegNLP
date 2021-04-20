@@ -3,7 +3,7 @@
 import torch.nn as nn
 
 
-class CHAR_EMB_LAYER(nn.Module):
+class CharEmb(nn.Module):
 
     def __init__(   
                 self,

@@ -11,7 +11,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 #segnlp
-from segnlp.nn.layers.lstm import LSTM_LAYER
+from segnlp.nn.layers.lstm import LSTM
 from segnlp.nn.layers.link_layers import PairingLayer
 import segnlp.utils as u
 
@@ -73,7 +73,7 @@ class LSTM_DIST(nn.Module):
         # if this is true we will make a distinction between ams and acs
         #self.DISTICTION = hyperparamaters["distinction"]
 
-        self.word_lstm = LSTM_LAYER(  
+        self.word_lstm = LSTM(  
                                 input_size = self.WORD_FEATURE_DIM,
                                 hidden_size=self.HIDDEN_DIM,
                                 num_layers= self.NUM_LAYERS,
@@ -81,14 +81,14 @@ class LSTM_DIST(nn.Module):
                                 )
 
 
-        self.am_lstm = LSTM_LAYER(  
+        self.am_lstm = LSTM(  
                                 input_size = self.HIDDEN_DIM*3,
                                 hidden_size=self.HIDDEN_DIM,
                                 num_layers= self.NUM_LAYERS,
                                 bidirectional=self.BI_DIR,
                                 )
 
-        self.ac_lstm = LSTM_LAYER(  
+        self.ac_lstm = LSTM(  
                                 input_size = self.HIDDEN_DIM*3,
                                 hidden_size=self.HIDDEN_DIM,
                                 num_layers= self.NUM_LAYERS,

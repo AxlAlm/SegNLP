@@ -2,7 +2,7 @@
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
-class LSTM_LAYER(nn.Module):
+class LSTM(nn.Module):
 
     def __init__(   
                     self,

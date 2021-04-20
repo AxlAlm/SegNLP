@@ -11,8 +11,8 @@ import torch.optim as optim
 from torch.nn.utils.rnn import pad_sequence
 
 #segnlp
-from segnlp.nn.layers.char_emb import CHAR_EMB_LAYER
-from segnlp.nn.layers.lstm import LSTM_LAYER
+from segnlp.nn.layers.rep_layers import CharEmb
+from segnlp.nn.layers.rep_layers import LSTM
 from segnlp.utils import zero_pad
 
 # use a torch implementation of CRF
@@ -85,7 +85,7 @@ class LSTM_CNN_CRF(nn.Module):
 
         self.WORD_EMB_DIM = feature_dims["word_embs"]
 
-        self.lstm = LSTM_LAYER(  
+        self.lstm = LSTM(  
                                 input_size=self.WORD_EMB_DIM+self.CHAR_DIM,
                                 hidden_size=self.HIDDEN_DIM,
                                 num_layers= self.NUM_LAYERS,
@@ -94,7 +94,7 @@ class LSTM_CNN_CRF(nn.Module):
         
         #char_vocab = len(self.dataset.encoders["chars"])
         nr_chars = len(string.printable)+1
-        self.char_cnn  = CHAR_EMB_LAYER(  
+        self.char_cnn  = CharEmb(  
                                         vocab = nr_chars, 
                                         emb_size = self.CHAR_DIM,
                                         kernel_size = self.KERNEL_SIZE
@@ -119,6 +119,7 @@ class LSTM_CNN_CRF(nn.Module):
 
     def forward(self, batch, output):
 
+        print(batch)
         lengths = batch["token"]["lengths"]
         mask = batch["token"]["mask"]
 

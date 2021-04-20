@@ -10,19 +10,13 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 #segnlp
-from segnlp.nn.layers import LSTM_LAYER
+from segnlp.nn.layers.rep_layers import LSTM
 from segnlp.utils import zero_pad
-import segnlp.utils as u
 
 # use a torch implementation of CRF
 from torchcrf import CRF
 
-
-'''
-###MODEL DESCRIPTION### 
-#######################
-
-'''
+from segnlp.utils import timer
 
 class LSTM_CRF(nn.Module):
 
@@ -61,7 +55,7 @@ class LSTM_CRF(nn.Module):
         if self.FINETUNE_EMBS:
             self.emb2emb = torch.nn.Linear(self.WORD_EMB_DIM, self.WORD_EMB_DIM)
 
-        self.lstm = LSTM_LAYER(  
+        self.lstm = LSTM(  
                             input_size = self.WORD_EMB_DIM,
                             hidden_size=self.HIDDEN_DIM,
                             num_layers= self.NUM_LAYERS,

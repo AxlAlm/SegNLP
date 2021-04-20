@@ -9,7 +9,8 @@ from typing import List, Dict, Union, Tuple
 import re
 from copy import deepcopy
 from collections import Counter
-import warnings
+
+
 
 
 #pytroch
@@ -21,7 +22,6 @@ from sklearn.metrics import f1_score
 from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 from sklearn.metrics import confusion_matrix
-from sklearn.exceptions import UndefinedMetricWarning
 
 #SegeVal
 #import segeval
@@ -31,9 +31,6 @@ from sklearn.exceptions import UndefinedMetricWarning
 from segnlp.utils import ensure_flat, ensure_numpy
 from segnlp import get_logger
 
-
-warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
-warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
 def token_metrics(targets:np.ndarray, preds:np.ndarray, task:str, labels:list):
@@ -46,7 +43,6 @@ def token_metrics(targets:np.ndarray, preds:np.ndarray, task:str, labels:list):
     rs = recall_score(targets, preds, labels=labels, average=None)
     ps = precision_score(targets, preds, labels=labels, average=None)
     
-
     label_metrics = []
     for i,label in enumerate(labels):
 

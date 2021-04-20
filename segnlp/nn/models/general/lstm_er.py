@@ -8,12 +8,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+#segnlp
 from segnlp.nn.layers.seg_layers.bigram_seg import BigramSegLayer
-from segnlp.nn.layers.link_label_layers.dep_pairing_layer import DepPairingLayer
-from segnlp.nn.layers.lstm import LSTM_LAYER
-from segnlp.nn.utils import get_all_possible_pairs, range_3d_tensor_index
-from segnlp.nn.schedule_sample import ScheduleSampling
-from segnlp.nn.bio_decoder import bio_decode
+from segnlp.nn.layers.link_label_layers import DepPairingLayer
+from segnlp.nn.layers.rep_layers import LSTM
+from segnlp.nn.utils import get_all_possible_pairs
+#from segnlp.nn.utils import range_3d_tensor_index
+from segnlp.nn.utils import ScheduleSampling
+from segnlp.nn.utils import bio_decode
 
 
 class LSTM_ER(nn.Module):
@@ -24,7 +26,6 @@ class LSTM_ER(nn.Module):
         # number of arguemnt components
         self.num_ac = task_dims["seg+label"]
         self.num_stances = task_dims["link_label"]  # number of relations
-
 
         self.model_param = nn.Parameter(torch.empty(0))
 
@@ -87,9 +88,11 @@ class LSTM_ER(nn.Module):
             decoder_output_size=self.num_stances,
             dropout=dropout)
 
+
     @classmethod
     def name(self):
         return "LSTM_ER"
+
 
     def forward(self, batch, output):
 

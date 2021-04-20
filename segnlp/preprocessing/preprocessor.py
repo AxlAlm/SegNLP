@@ -1,38 +1,17 @@
 #basic
-import numpy as np
-from tqdm import tqdm
-import os
-import webbrowser
-import pandas as pd
-from IPython.display import display, Image
 from typing import Union, List, Dict, Tuple
-import random
-import copy
-import json
-from pathlib import Path
-import time
-import glob
-import hashlib
-import shutil
-import shelve
-from copy import deepcopy
-from pprint import pprint
-import warnings
-from time import time
-import itertools
+import numpy as np
+import os
+import pandas as pd
 
 
 #segnlp
-import segnlp
-from segnlp.utils import ensure_numpy, load_pickle_data, pickle_data, to_tensor, one_tqdm, timer, dynamic_update, string_pad
 from segnlp import get_logger
-
 from .encoder import Encoder
 from .textprocessor import TextProcesser
 from .labeler import Labeler
 from .dataset_preprocessor import DataPreprocessor
-
-from segnlp.nn import ModelInput
+from segnlp.nn.utils import ModelInput
 
 #pytorch lightning
 import pytorch_lightning as ptl

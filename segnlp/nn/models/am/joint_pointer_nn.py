@@ -5,11 +5,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 #segnlp
-from segnlp.nn.layers.lstm import LSTM_LAYER
+from segnlp.nn.layers.rep_layers import LSTM
 from segnlp.nn.layers.link_layers import Pointer
-
 from segnlp.nn.utils import agg_emb
-
 
 
 class Encoder(nn.Module):
@@ -26,7 +24,7 @@ class Encoder(nn.Module):
         self.input_layer = nn.Linear(input_size, input_size)
 
 
-        self.lstm =  LSTM_LAYER(  
+        self.lstm =  LSTM(  
                                 input_size=input_size,
                                 hidden_size=hidden_size,
                                 num_layers=num_layers,

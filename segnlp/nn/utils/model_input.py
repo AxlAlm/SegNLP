@@ -17,19 +17,21 @@ class ModelInput(dict):
 
     def __init__(self, 
                 label_encoders=None,
-                label_colors=None,
+                #label_colors=None,
                 ):
         super().__init__()
         self.label_encoders = label_encoders
-        self.label_colors = label_colors
+        #self.label_colors = label_colors
         self.current_epoch = None
         self.label_pad_value = -1
         self._size = 0
         self._idxs = []
         self.oo = []
 
+
     def __len__(self):
         return len(self._idxs)
+
 
     @property
     def idxs(self):
@@ -131,38 +133,38 @@ class ModelInput(dict):
                 self[group][k] = v[lengths_decending]
 
   
-    def show_sample(self, sample_id=None):
+    # def show_sample(self, sample_id=None):
 
-        if sample_id is None:
-            sample_id = self.idxs[0]
+    #     if sample_id is None:
+    #         sample_id = self.idxs[0]
 
-        idx = int(np.where(self.idxs == sample_id)[0])
+    #     idx = int(np.where(self.idxs == sample_id)[0])
 
-        self.prediction_level = "token"
+    #     self.prediction_level = "token"
         
-        tree_graph = True
-        link_labels = None
+    #     tree_graph = True
+    #     link_labels = None
 
-        if "link" not in self[self.prediction_level]:
-            tree_graph = False
+    #     if "link" not in self[self.prediction_level]:
+    #         tree_graph = False
     
-        if "link_label" in self[self.prediction_level]:
-            link_labels = self.label_encoders["link_label"].decode_list(ensure_numpy(self[self.prediction_level]["link_label"][idx]))
+    #     if "link_label" in self[self.prediction_level]:
+    #         link_labels = self.label_encoders["link_label"].decode_list(ensure_numpy(self[self.prediction_level]["link_label"][idx]))
 
-        links = ensure_numpy(self[self.prediction_level]["link"][idx])
-        labels = self.label_encoders["label"].decode_list(ensure_numpy(self[self.prediction_level]["label"][idx]))
+    #     links = ensure_numpy(self[self.prediction_level]["link"][idx])
+    #     labels = self.label_encoders["label"].decode_list(ensure_numpy(self[self.prediction_level]["label"][idx]))
 
-        if tree_graph:
-            arrays_to_tree(
-                            ensure_numpy(self["span"]["lengths"][idx]), 
-                            ensure_numpy(self["span"]["lengths_tok"][idx]),
-                            ensure_numpy(self["span"]["none_span_mask"][idx]),
-                            links=links,
-                            labels=labels,
-                            tokens=[t.decode("utf-8") for t in self[self.prediction_level]["text"][idx]],
-                            label_colors=self.label_colors,
-                            link_labels=link_labels
-                            )
+    #     if tree_graph:
+    #         arrays_to_tree(
+    #                         ensure_numpy(self["span"]["lengths"][idx]), 
+    #                         ensure_numpy(self["span"]["lengths_tok"][idx]),
+    #                         ensure_numpy(self["span"]["none_span_mask"][idx]),
+    #                         links=links,
+    #                         labels=labels,
+    #                         tokens=[t.decode("utf-8") for t in self[self.prediction_level]["text"][idx]],
+    #                         label_colors=self.label_colors,
+    #                         link_labels=link_labels
+    #                         )
 
 
 

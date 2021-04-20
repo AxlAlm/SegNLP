@@ -90,33 +90,19 @@ class PairingLayer(torch.nn.Module):
         self.link_clf = torch.nn.Linear(input_dim, 1)
 
 
-    def forward(self, x, unit_mask):
+    def forward(self, 
+                x:torch.tensor, 
+                unit_mask:torch.tensor, 
+                pair_rep_mode:list=["cat", "mean"], 
+                rel_pos:bool=True
+                ):
 
-        max_units = x.shape[1]
-        batch_size = x.shape[0]
-        shape = (batch_size,max_units,max_units,x.shape[-1])
-        device = x.device
-        
-        # step 1 -3
-        x = torch.repeat_interleave(x, max_units, dim=1)
-        a_m = torch.reshape(x,shape)
-        a_m_t = a_m.transpose(2, 1)
-        
-        # step 4
-        one_hots = torch.tensor(
-                                    [
-                                    np.diag(np.ones(self.one_hot_dim),i)[:max_units,:self.one_hot_dim] 
-                                    for i in range(max_units-1, -1, -1)
-                                    ], 
-                                    dtype=torch.uint8,
-                                    device=device
+        pair_matrix = pair_matrix(
+                                    x,
+                                    modes=pair_rep_mode, 
+                                    rel_pos=rel_pos,
                                     )
-        one_hots = one_hots.repeat_interleave(batch_size, dim=0)
-        one_hots = one_hots.view((batch_size,max_units,max_units, self.one_hot_dim))
-        
-        # step 5
-        pair_matrix = torch.cat([a_m, a_m_t, a_m*a_m_t, one_hots], axis=-1)
-        
+
         #step 6
         pair_scores = self.link_clf(pair_matrix)
 

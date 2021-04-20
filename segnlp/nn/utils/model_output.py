@@ -8,12 +8,12 @@ import pandas as pd
 
 #segnlp
 from segnlp.metrics import token_metrics
-from segnlp.nn import ModelInput
+from . import ModelInput
 from segnlp.utils import ensure_flat, ensure_numpy
-from segnlp.nn.bio_decoder import bio_decode
-from segnlp.datasets import get_dataset
-from segnlp.visuals.tree_graph import arrays_to_tree
-from segnlp.visuals.text_markers import highlight_text
+from segnlp.nn.utils import bio_decode
+
+# from segnlp.visuals.tree_graph import arrays_to_tree
+# from segnlp.visuals.text_markers import highlight_text
 
 #pytorch
 import torch
@@ -366,85 +366,80 @@ class ModelOutput:
                                             )
                                 )
 
-
-
     def add_probs(self, task:str, level:str, data:torch.tensor):
-
-        assert torch.is_tensor(data), f"{task} probs need to be a tensor"
-        assert len(data.shape) == 3, f"{task} probs need to be a 3D tensor"
-        
-        pass
+        raise NotImplementedError
         
 
     def to_df(self):
         return pd.DataFrame(self.outputs)
 
+
     def to_record(self):
         return self.to_df().to_dict("records")
 
 
-    def show_sample(self, prefix=""):
+    # def show_sample(self, prefix=""):
         
-        tokens = []
-        pred_labels = None
-        pred_span_lengths = []
-        pred_span_mask = []
+    #     tokens = []
+    #     pred_labels = None
+    #     pred_span_lengths = []
+    #     pred_span_mask = []
 
-        if "label" in self.outputs:
-            pred_labels = []
+    #     if "label" in self.outputs:
+    #         pred_labels = []
 
-        for idx in  self.batch.oo:
-            token_len = self.batch["token"]["lengths"][idx]
-            tokens.extend(self.batch[self.prediction_level]["text"][idx][:token_len])
+    #     for idx in  self.batch.oo:
+    #         token_len = self.batch["token"]["lengths"][idx]
+    #         tokens.extend(self.batch[self.prediction_level]["text"][idx][:token_len])
             
-            if pred_labels is not None:
-                pred_labels.extend(self.outputs["label"][idx][:token_len])
+    #         if pred_labels is not None:
+    #             pred_labels.extend(self.outputs["label"][idx][:token_len])
 
-            pred_span_lengths.extend(self.pred_spans["lengths_tok"][idx])
-            pred_span_mask.extend(self.pred_spans["none_span_mask"][idx])
+    #         pred_span_lengths.extend(self.pred_spans["lengths_tok"][idx])
+    #         pred_span_mask.extend(self.pred_spans["none_span_mask"][idx])
 
-        # if "link" in self.outputs:
+    #     # if "link" in self.outputs:
 
-        #     link_labels = self.outputs.get("link_label", None)
-        #     if link_labels is not None:
-        #         link_labels = link_labels[idx]
+    #     #     link_labels = self.outputs.get("link_label", None)
+    #     #     if link_labels is not None:
+    #     #         link_labels = link_labels[idx]
 
 
-        #     links = self.label_encoders["link"].encode_token_links(
-        #                                                                     self.outputs["link"][idx],
-        #                                                                     span_token_lengths=self.pred_spans["lengths_tok"][idx],
-        #                                                                     none_spans=self.pred_spans["none_span_mask"][idx]
-        #                                                                     )
+    #     #     links = self.label_encoders["link"].encode_token_links(
+    #     #                                                                     self.outputs["link"][idx],
+    #     #                                                                     span_token_lengths=self.pred_spans["lengths_tok"][idx],
+    #     #                                                                     none_spans=self.pred_spans["none_span_mask"][idx]
+    #     #                                                                     )
 
-        #     arrays_to_tree(
-        #                     self.pred_spans["lengths"][idx], 
-        #                     self.pred_spans["lengths_tok"][idx],
-        #                     self.pred_spans["none_span_mask"][idx],
-        #                     links=links,
-        #                     labels=self.outputs["label"][idx],
-        #                     tokens=self.batch[self.prediction_level]["text"][idx],
-        #                     label_colors=get_dataset("pe").label_colors(),
-        #                     link_labels=link_labels,
-        #                     )
+    #     #     arrays_to_tree(
+    #     #                     self.pred_spans["lengths"][idx], 
+    #     #                     self.pred_spans["lengths_tok"][idx],
+    #     #                     self.pred_spans["none_span_mask"][idx],
+    #     #                     links=links,
+    #     #                     labels=self.outputs["label"][idx],
+    #     #                     tokens=self.batch[self.prediction_level]["text"][idx],
+    #     #                     label_colors=get_dataset("pe").label_colors(),
+    #     #                     link_labels=link_labels,
+    #     #                     )
         
-        return highlight_text(
-                        tokens=tokens,
-                        labels=["Premise", "Claim", "MajorClaim"], 
-                        pred_labels=pred_labels,
-                        pred_span_lengths=pred_span_lengths,
-                        pred_none_spans=pred_span_mask,
-                        gold_labels=None,
-                        gold_span_lengths=None,
-                        gold_none_spans=None,
-                        save_path=None, 
-                        return_html=True, 
-                        prefix=prefix,
-                        # show_spans:bool=True, 
-                        show_scores=True if pred_labels is not None else False, 
-                        # show_legend:bool=True,
-                        # font:str="Verdana", 
-                        # width:int=1000, 
-                        # height:int=800
-                        )
+    #     return highlight_text(
+    #                     tokens=tokens,
+    #                     labels=["Premise", "Claim", "MajorClaim"], 
+    #                     pred_labels=pred_labels,
+    #                     pred_span_lengths=pred_span_lengths,
+    #                     pred_none_spans=pred_span_mask,
+    #                     gold_labels=None,
+    #                     gold_span_lengths=None,
+    #                     gold_none_spans=None,
+    #                     save_path=None, 
+    #                     return_html=True, 
+    #                     prefix=prefix,
+    #                     # show_spans:bool=True, 
+    #                     show_scores=True if pred_labels is not None else False, 
+    #                     # show_legend:bool=True,
+    #                     # font:str="Verdana", 
+    #                     # width:int=1000, 
+    #                     # height:int=800
+    #                     )
 
     
