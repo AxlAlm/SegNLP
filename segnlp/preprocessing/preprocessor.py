@@ -86,7 +86,6 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
 
     def __call__(self, doc:dict) -> ModelInput: #docs:List[str],token_labels:List[List[dict]] = None, span_labels:List[dict] = None):
-
         Input = ModelInput()
 
         span_labels = doc.get("span_labels", None)
@@ -181,7 +180,6 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
         return Input.to_numpy()
   
-
 
     def __get_text(self, Input:ModelInput, sample:pd.DataFrame):
 

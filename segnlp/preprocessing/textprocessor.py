@@ -71,7 +71,8 @@ class TextProcesser:
         # storing the current row for each level, used to fetch ids etc for lower lever data
         self._level_row_cache = {}
         self.nlp = spacy.load("en_core_web_sm", disable=["ner"])
-             
+    
+
 
     def __paragraph_tokenize(self, doc:str) -> List[str]:
         """ Tokenizes document into paragraphs by splitting by new line ("\n"). 
@@ -315,7 +316,12 @@ class TextProcesser:
         # we create a mapping of all tokens indexes. Then when we encounter a token that we need to remove
         # we update the portion after the token we removed so the indexes after fill in the cap of the removed token
         # e.g. we change indexes so the final version of normalized_indexes contain a range between two number if we ignore 
-        # the indexes of ignored tokens. example = [1,2,2,3,4,5,6,6,7,8,9] 
+        # the indexes of ignored tokens. 
+        # We need this for depheads for example.
+        #                                example = [1,2,2,3,4,5,6,6,7,8,9] 
+        #                                           1,2,3,4,5,6,7,8,9,10,11 # original
+        #                                           1   2,3,4,5,6,  7,8,9   # selected
+        #
         normalized_indexes = np.arange(len(spacy_sentence))
 
         #i = 0
@@ -422,7 +428,12 @@ class TextProcesser:
 
         spacy_doc = self.nlp(paragraph)
         
+        removed_sents = 0
         for i, sentence in enumerate(spacy_doc.sents):
+
+            if len(str(sentence).strip()) == 0:
+                removed_sents += 1
+                continue
 
             if current_sent_idx == 0:
                 start_idx = 0
@@ -432,7 +443,7 @@ class TextProcesser:
             end_idx = start_idx + len(str(sentence)) #sentence[-1].idx + len(sentence[-1])
             row =  {
                     "id": self.__get_global_id("sentence"),
-                    "paragraph_sentence_id": i,
+                    "paragraph_sentence_id": i - removed_sents,
                     "text":str(sentence),
                     "char_start": start_idx,
                     "char_end": end_idx,

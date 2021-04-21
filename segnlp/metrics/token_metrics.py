@@ -73,8 +73,8 @@ def token_metrics(targets:np.ndarray, preds:np.ndarray, task:str, labels:list):
                         {"name":f"{task}-f1", "metric": "f1", "value": task_f1},
                     ]
 
-    if task != "link":
-        task_metrics.append({"name":f"{task}-confusion_matrix", "metric": "confusion_matrix", "value": confusion_matrix(targets, preds, labels=labels)})
+    # if task != "link":
+    #     task_metrics.append({"name":f"{task}-confusion_matrix", "metric": "confusion_matrix", "value": confusion_matrix(targets, preds, labels=labels)})
 
 
     #this is added so that the task is taken into account when calculating the mean accross all tasks

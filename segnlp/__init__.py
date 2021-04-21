@@ -13,11 +13,10 @@ from sklearn.exceptions import UndefinedMetricWarning
 
 warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning)
-#warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
 
 settings = {
             "dl_n_workers": multiprocessing.cpu_count()
-    
             }
 
 set_random_seed(42)

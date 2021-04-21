@@ -77,12 +77,7 @@ class FlairEmbeddings(FlairEmbWrapper):
 class BertEmbeddings(FlairEmbWrapper):
 
     def __init__(self, gpu:int=None, group:str="word_embs"):
-        flair_embedding = TransformerWordEmbeddings(
-                                                "bert-base-cased", 
-                                                layers="-1,-2,-3,-4", 
-                                                use_scalar_mix=False,
-                                                pooling_operation="mean"
-                                                )
+        flair_embedding = TransformerWordEmbeddings('bert-base-uncased', layers='all', layer_mean=True)
         super().__init__(flair_embedding, emb_name="bert", gpu=gpu, group=group)
 
 

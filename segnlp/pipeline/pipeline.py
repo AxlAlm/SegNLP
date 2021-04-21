@@ -12,11 +12,15 @@ import pwd
 from copy import deepcopy
 from glob import glob
 import pandas as pd
+from scipy import stats
 
 #pytorch Lightning
 from pytorch_lightning.loggers import LightningLoggerBase
 from pytorch_lightning.loggers import CometLogger
 
+
+#deepsig
+from deepsig import aso
 
 #pytorch
 import torch
@@ -32,11 +36,12 @@ from segnlp.utils import set_random_seed
 from segnlp.utils import get_time
 from segnlp.utils import create_uid
 from segnlp.utils import random_ints
+from segnlp.utils import ensure_numpy
 from segnlp.evaluation_methods import get_evaluation_method
 from segnlp.nn.models import get_model
 from segnlp.features import get_feature
 from segnlp.nn.utils import ModelOutput
-
+from segnlp.visuals.hp_tune_progress import HpProgress
 
 logger = get_logger("PIPELINE")
 user_dir = pwd.getpwuid(os.getuid()).pw_dir
@@ -85,6 +90,8 @@ class Pipeline:
         self._path_to_top_models = os.path.join(self._path_to_models, "top")
         self._path_to_tmp_models = os.path.join(self._path_to_models, "tmp")
         self._path_to_model_info = os.path.join(self._path_to_models, "model_info.json")
+        self._path_to_hp_hist = os.path.join(self._path_to_models, "hp_hist.json")
+
 
         self.preprocessor = Preprocessor(                
                                         prediction_level=dataset.prediction_level,
@@ -94,8 +101,7 @@ class Pipeline:
                                         encodings=encodings,
                                         other_levels=other_levels
                                         )
-
-        self.dataset  = self.process_dataset(dataset)
+        self.dataset = self.process_dataset(dataset)
 
         #create and save config
         self.config = dict(
@@ -110,6 +116,12 @@ class Pipeline:
                             )
         self.config.update(self.preprocessor.config)
         self.__dump_config()
+
+        # small hack to perserve
+        self.__pp_feature_params = {f.name:f.params for f in features}
+        self.__pp_encoders = self.preprocessor.encoders
+        del self.preprocessor
+        self.__pp_status = "inactive"
 
         self.__hp_tuning = False
         self.__eval_set = False
@@ -215,12 +227,12 @@ class Pipeline:
         model_args = dict(
                         model=model, 
                         hyperparamaters=hyperparamaters,
-                        tasks=self.preprocessor.tasks,
-                        all_tasks=self.preprocessor.all_tasks,
-                        label_encoders=self.preprocessor.encoders,
-                        prediction_level=self.preprocessor.prediction_level,
-                        task_dims={t:len(l) for t,l in self.preprocessor.task2labels.items() if t in self.preprocessor.tasks},
-                        feature_dims=self.preprocessor.feature2dim,
+                        tasks=self.config["tasks"],
+                        all_tasks=self.config["all_tasks"],
+                        label_encoders=self.__pp_encoders,
+                        prediction_level=self.config["prediction_level"],
+                        task_dims={t:len(l) for t,l in self.config["task2labels"].items() if t in self.config["tasks"]},
+                        feature_dims=self.config["feature2dim"],
                         )
         return model_args
 
@@ -292,6 +304,7 @@ class Pipeline:
         1) is prefered
 
         """
+        
         is_sig = False
         if ss_test == "aso":
             v = aso(a_dist, b_dist)
@@ -320,20 +333,23 @@ class Pipeline:
         https://www.aclweb.org/anthology/P19-1266.pdf
         https://export.arxiv.org/pdf/1803.09578
 
-
         """
+
+        a_dist = ensure_numpy(a_dist)
+        b_dist = ensure_numpy(b_dist)
+
+        if all(np.sort(a_dist) == np.sort(b_dist)):
+            return False, 0.0, 1.0
+
         larger_than = a_dist >= b_dist
         x = larger_than == True
-        print("HEEELOO", x.shape)
-        print(sum(larger_than == True))
-
         prob = sum(larger_than == True) / larger_than.shape[0]
 
         a_better_than_b = None
         v = None
         if prob > 0.5:
             
-            is_sig, v = self.__stat_sig(a_dist, b_dist, test=ss_test)
+            is_sig, v = self.__stat_sig(a_dist, b_dist, ss_test=ss_test)
 
             if is_sig:
                 a_better_than_b = True
@@ -347,12 +363,11 @@ class Pipeline:
                     n_random_seeds:int=6,
                     save_choice:str="last",
                     monitor_metric:str = "val_f1",
-                    ss_test:str="aso"
+                    ss_test:str="aso",
+                    override:bool=False
                     ):
 
         self.__hp_tuning = True
-
-        random_seeds = random_ints(n_random_seeds)
         set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
 
         # if we have done previous tuning we will start from where we ended, i.e. 
@@ -367,39 +382,60 @@ class Pipeline:
             best_scores = None
             best_model_info = None
 
-
-        logger.info(f"----- Tuning {len(set_hyperparamaters)} hyperparamaters -----")
-        #for hp in set_hyperparamaters:
+        
+        if os.path.exists(self._path_to_hp_hist):
             
+            with open(self._path_to_hp_hist, "r") as f:
+                hp_hist = json.load(f)
+        else:
+            hp_hist = {}
 
 
-        for hp_id, hyperparamaters in enumerate(set_hyperparamaters):
+
+        hpp = HpProgress(
+                        hyperparamaters=set_hyperparamaters,
+                        n_seeds = n_random_seeds,
+                        show_n=3
+                        )
+
+        for hp_i, hyperparamaters in enumerate(set_hyperparamaters):    
+
+            hp_uid = create_uid("".join(list(map(str, hyperparamaters.keys()))+ list(map(str, hyperparamaters.values()))))
+            
+            if hp_uid in hp_hist and not override:
+                logger.info(f"Following hyperparamaters {hp_uid} has already been tested over n seed. Will skip this set.")
+                continue
+
             
             best_model_score = 99999999 if "loss" in monitor_metric else -1
             best_model = None
             model_scores = []
             model_outputs = []
-            for random_seed in random_seeds:
+
+            random_seeds = random_ints(n_random_seeds)
+            for ri, random_seed in enumerate(random_seeds, start=1):
+                
+                print("HELLO WTF IS THIS", ri)
+                hpp.refresh(hp_i, progress=ri)
+
                 output = self.fit(
                                     hyperparamaters=hyperparamaters,
                                     ptl_trn_args = ptl_trn_args,
                                     save_choice=save_choice,
                                     random_seed=random_seed,
-                                    monitor_metric=monitor_metric
+                                    monitor_metric=monitor_metric,
+                                    model_id=hp_uid,
                                     )
-                sys.stdout.flush()
 
                 score = output["score"]
 
                 if score > best_model_score:
                     best_model_score = score
                     best_model = output
-
+                    
                 model_outputs.append(output)
                 model_scores.append(score)
 
-
-            print("SCORES", model_scores)
 
             model_info = {}
             model_info["scores"] = model_scores
@@ -416,30 +452,51 @@ class Pipeline:
             model_info["best_model"] = best_model
             model_info["best_model_score"] = best_model_score
 
-            print(model_info)
 
             if best_scores is not None:
                 is_better, p, v = self.__model_comparison(model_scores, best_scores, ss_test=ss_test)
                 model_info["p"] = p
                 model_info["v"] = v
 
-
             if best_scores is None or is_better:
                 best_scores = model_scores
+
+                model_info["best_model"]["path"] = model_info["best_model"]["path"].replace("tmp","top")
+                model_info["best_model"]["config_path"] = model_info["best_model"]["config_path"].replace("tmp","top")
+
+                updated_outputs = []
+                for d in model_info["outputs"]:
+                    d["path"] = d["path"].replace("tmp","top")
+                    d["config_path"] = d["config_path"].replace("tmp","top")
+                    updated_outputs.append(d)
+                
+                model_info["outputs"] = updated_outputs
+
                 best_model_info = model_info
 
-                if os.path.exist(self._path_to_top_models):
+                if os.path.exists(self._path_to_top_models):
                     shutil.rmtree(self._path_to_top_models)
                     
                 shutil.move(self._path_to_tmp_models, self._path_to_top_models)
+
+
+                hpp.set_top(hp_i)
+
                 
             if os.path.exists(self._path_to_tmp_models):
                 shutil.rmtree(self._path_to_tmp_models)
 
-        with open(self._path_to_model_info, "w") as f:
-            json.dump(best_model_info.to_dict(), f, indent=4)
+            hp_hist[hp_uid] = {
+                                "hyperparamaters": hyperparamaters,
+                                "model_info": model_info
+                                }
+            
+        with open(self._path_to_hp_hist, "w") as f:
+            json.dump(hp_hist, f, indent=4)
 
-        print(best_model_info)
+        with open(self._path_to_model_info, "w") as f:
+            json.dump(best_model_info, f, indent=4)
+
         return best_model_info
 
 
@@ -449,7 +506,11 @@ class Pipeline:
                 save_choice:str = "last",  
                 random_seed:int = 42,
                 monitor_metric:str = "val_f1",
+                model_id:str=None
                 ):
+
+        if model_id is None:
+            model_id = create_uid("".join(list(map(str, hyperparamaters.keys()))+ list(map(str, hyperparamaters.values()))))
 
         set_random_seed(random_seed)
 
@@ -463,16 +524,9 @@ class Pipeline:
             ptl_trn_args["logger"] = self.exp_logger
         else:
             ptl_trn_args["logger"] = None
-
-        model_unique_str = "".join(
-                                        [model.name()]
-                                        + list(map(str, hyperparamaters.keys()))
-                                        + list(map(str, hyperparamaters.values()))
-                                    )
-        model_id = create_uid(model_unique_str)
         
         mid_folder = "top" if not self.__hp_tuning else "tmp"
-        exp_model_path = os.path.join(self._path_to_models, "tmp", str(random_seed), model_id)
+        exp_model_path = os.path.join(self._path_to_models, "tmp", model_id, str(random_seed))
         
         if os.path.exists(exp_model_path):
             shutil.rmtree(exp_model_path)
@@ -568,7 +622,7 @@ class Pipeline:
 
 
             model_config["args"]["model"] = get_model(model_config["args"]["model"])
-            model_config["args"]["label_encoders"] = self.preprocessor.encoders
+            model_config["args"]["label_encoders"] = self.__pp_encoders
             model = PTLBase.load_from_checkpoint(ckpt_fp, **model_config["args"])
             scores = trainer.test(
                                     model=model, 
