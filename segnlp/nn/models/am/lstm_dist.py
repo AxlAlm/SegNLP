@@ -11,7 +11,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 #segnlp
-from segnlp.nn.layers.lstm import LSTM
+from segnlp.nn.layers.rep_layers import LSTM
 from segnlp.nn.layers.link_layers import PairingLayer
 import segnlp.utils as u
 

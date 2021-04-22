@@ -29,7 +29,7 @@ exp = Pipeline(
 
 exp.dataset.info
 
-segnlp.settings["dl_n_workers"] = 8
+segnlp.settings["dl_n_workers"] = 0
 hps = get_default_hps(LSTM_CRF.name())
 hps["max_epochs"] = 2
 hps["lr"] = [0.01,0.001]
@@ -43,7 +43,7 @@ best_hp = exp.hp_tune(
                                         )
                         )
 
-pprint(best_hp)
+exp.test()
 
 
 

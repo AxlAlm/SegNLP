@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import torch
 
 #segnlp
-from segnlp.nn.layers.content_based_attention import CBAttentionLayer
+from segnlp.nn.layers.attention import CBAttentionLayer
 
 
 class Pointer(nn.Module):

@@ -112,7 +112,6 @@ class PTLBase(ptl.LightningModule):
         return output.loss.get("total", 0), output
       
     
-
     def training_step(self, batch, batch_idx):
         loss, output = self._step(batch, "train")
         self.log('train_loss', loss, prog_bar=True)
