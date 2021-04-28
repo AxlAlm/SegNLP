@@ -58,6 +58,9 @@ class DataSet:
         if sample_level not in self._supported_sample_levels:
             raise RuntimeError(f"'{sample_level}' is not in supported sample levels: {self._supported_sample_levels}")
 
+        if prediction_level == "unit":
+            if "label" in supported_task_labels:
+                supported_task_labels["label"].remove("None")
 
         self._task_labels = self.__get_task_labels(tasks, supported_task_labels)
 

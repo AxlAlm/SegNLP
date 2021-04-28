@@ -119,7 +119,6 @@ class LSTM_CNN_CRF(nn.Module):
 
     def forward(self, batch, output):
 
-        print(batch)
         lengths = batch["token"]["lengths"]
         mask = batch["token"]["mask"]
 
@@ -147,7 +146,7 @@ class LSTM_CNN_CRF(nn.Module):
 
                 # crf doesnt work if padding is not a possible class, so we put padding as 0 which
                 # will be default to "O" in BIO or "None" (see label encoders)
-                batch.change_pad_value(level=task, task="token", new_value=0)
+                batch.change_pad_value(level="token", task=task, new_value=0)
 
                 target_tags = batch["token"][task]
                 loss = -crf( 

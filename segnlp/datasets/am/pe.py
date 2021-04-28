@@ -90,7 +90,7 @@ class PE(DataSet):
                 ):
         task_labels = {
                             "seg": ["O","B","I"],
-                            "label":["MajorClaim", "Claim", "Premise"],
+                            "label":["None", "MajorClaim", "Claim", "Premise"],
                             # Originally stance labels are For and Against for Claims and MajorClaims
                             # and for premsies supports or attacks. 
                             # However, Against and attacks are functional equivalent so will use CON for both
