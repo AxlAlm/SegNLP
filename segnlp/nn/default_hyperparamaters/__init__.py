@@ -28,20 +28,20 @@ lstm_cnn_crf_hps = {
 }
 
 joint_pointer_nn_hps = {
-                        "optimizer": "adam",
-                        "lr": 0.0001,
-                        "encoder_input_dim": 256,
-                        "encoder_hidden_dim": 256,
-                        "encoder_num_layers":2,
-                        "encoder_bidir":True,
-                        "decoder_hidden_dim": 512,
-                        "feature_dropout": 0.9,
-                        "encoder_dropout": 0.9,
-                        "decoder_dropout": 0.9,
-                        "task_weight":0.5,
-                        "batch_size": 16,
-                        "max_epochs":1000,
-                        }
+    "optimizer": "adam",
+    "lr": 0.0001,
+    "encoder_input_dim": 256,
+    "encoder_hidden_dim": 256,
+    "encoder_num_layers": 2,
+    "encoder_bidir": True,
+    "decoder_hidden_dim": 512,
+    "feature_dropout": 0.9,
+    "encoder_dropout": 0.9,
+    "decoder_dropout": 0.9,
+    "task_weight": 0.5,
+    "batch_size": 16,
+    "max_epochs": 1000,
+}
 
 lstm_dist_hps = {
     "optimizer": "sgd",
@@ -71,6 +71,11 @@ lstm_er = {
     "lr": 0.001,
     "max_epochs": 300,
     "batch_size": 32,
+<<<<<<< HEAD:segnlp/nn/default_hyperparamaters/__init__.py
+=======
+    "gpus": 1,
+    "loss_fn": "mse_loss"
+>>>>>>> origin:hotam/nn/default_hyperparamaters/__init__.py
 }
 
 dummy_hps = {
