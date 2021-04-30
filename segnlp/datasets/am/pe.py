@@ -150,9 +150,7 @@ class PE(DataSet):
             u.download(url=self.download_url, save_path=zip_dump_path, desc=desc)
 
         
-        print("HELLO", zip_dump_path)
         u.unzip(zip_dump_path, self.dump_path)
-        print("WTF")
         u.unzip(data_folder + ".zip", parent_folder)
 
         return data_folder
@@ -423,7 +421,6 @@ class PE(DataSet):
 
         return split_idx, shuffled_data
   
-
 
     def _process_data(self, path_to_data):
         """loads the Pursuasive Essay data and parse it into a DataSet. Also dumps the dataset 

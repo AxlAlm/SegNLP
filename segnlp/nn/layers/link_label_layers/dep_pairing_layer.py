@@ -1,10 +1,6 @@
 
 #basics
-<<<<<<< HEAD:segnlp/nn/layers/link_label_layers/dep_pairing_layer.py
-from typing import List, Tuple
-=======
 from typing import List, Tuple, DefaultDict
->>>>>>> origin:hotam/nn/layers/link_label_layers/dep_pairing_layer.py
 import functools
 import itertools
 import numpy as np 
@@ -15,11 +11,7 @@ from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
 
-<<<<<<< HEAD:segnlp/nn/layers/link_label_layers/dep_pairing_layer.py
-#networkx
-=======
 # networkx
->>>>>>> origin:hotam/nn/layers/link_label_layers/dep_pairing_layer.py
 import networkx as nx
 from networkx import Graph as nxGraph
 
@@ -28,21 +20,16 @@ import dgl
 from dgl import DGLGraph
 from dgl.traversal import topological_nodes_generator as traverse_topo
 
-<<<<<<< HEAD:segnlp/nn/layers/link_label_layers/dep_pairing_layer.py
-#segnlp
-from segnlp.nn.layers.rep_layers import TypeTreeLSTM
-
-=======
 # hotam
-from hotam.nn.model_input import ModelInput
-from hotam.nn.layers.type_treelstm import TypeTreeLSTM
-from hotam.nn.utils import scatter_repeat
-from hotam.nn.utils import get_all_possible_pairs
-from hotam.nn.utils import pair_matrix
-from hotam.nn.utils import agg_emb
-from hotam.nn.utils import create_mask
-from hotam.nn.utils import index_select_array
-from hotam.nn.utils import cumsum_zero
+from segnlp.nn.utils import ModelInput
+#from segnlp.nn.layers.type_treelstm import TypeTreeLSTM
+from segnlp.nn.utils import scatter_repeat
+from segnlp.nn.utils import get_all_possible_pairs
+from segnlp.nn.utils import pair_matrix
+from segnlp.nn.utils import agg_emb
+from segnlp.nn.utils import create_mask
+from segnlp.nn.utils import index_select_array
+from segnlp.nn.utils import cumsum_zero
 
 
 
@@ -62,7 +49,6 @@ class DepGraph:
         assert mode in set(["shortest_path"]), f"{mode} is not a supported mode for DepPairingLayer"
         self.device = device
         batch_size = deplinks.size(0)
->>>>>>> origin:hotam/nn/layers/link_label_layers/dep_pairing_layer.py
 
         # creat sample graphs G(U, V) tensor on CPU
         U, V, M = self.get_sample_graph(deplinks=deplinks,

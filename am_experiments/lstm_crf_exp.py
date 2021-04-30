@@ -1,5 +1,7 @@
 
-import segnlp
+import sys
+sys.path.insert(1, '../')
+
 from segnlp import Pipeline
 from segnlp.datasets.am import PE
 from segnlp.nn.models.general import LSTM_CRF

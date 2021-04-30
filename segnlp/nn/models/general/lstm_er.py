@@ -7,7 +7,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-<<<<<<< HEAD:segnlp/nn/models/general/lstm_er.py
 #segnlp
 from segnlp.nn.layers.seg_layers.bigram_seg import BigramSegLayer
 from segnlp.nn.layers.link_label_layers import DepPairingLayer
@@ -22,28 +21,6 @@ class LSTM_ER(nn.Module):
     def __init__(self, hyperparamaters:dict, task_dims:dict, feature_dims:dict, inference:bool):
         super().__init__()
         self.inference = inference
-=======
-from hotam.nn.layers.seg_layers.bigram_seg import BigramSegLayer
-from hotam.nn.layers.link_label_layers.dep_pairing_layer import DepPairingLayer
-from hotam.nn.layers.lstm import LSTM_LAYER
-#from hotam.nn.utils import get_all_possible_pairs, range_3d_tensor_index
-from hotam.nn.utils import util_one_hot
-from hotam.nn.schedule_sample import ScheduleSampling
-from hotam.nn.bio_decoder import bio_decode
-
-
-class LSTM_ER(nn.Module):
-    """
-
-    https://www.aclweb.org/anthology/P16-1105.pdf
-
-    """
-
-
-    def __init__(self, hyperparamaters: dict, task_dims: dict,
-                 feature_dims: dict, train_mode: bool):
-        super(LSTM_ER, self).__init__()
->>>>>>> origin:hotam/nn/models/lstm_er.py
 
         # number of arguemnt components
         self.num_seg_labels = task_dims["seg+label"]

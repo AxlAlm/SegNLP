@@ -126,7 +126,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 
             units = sample.groupby("unit_id")
 
-            if self.sample_level == "unit" and len(units):
+            if self.prediction_level == "unit" and len(units):
                 #if we are prediction on Units but sample doesnt have any, we can skip it
                 self._removed += 1
                 continue

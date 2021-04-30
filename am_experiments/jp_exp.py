@@ -1,5 +1,6 @@
 
-import segnlp
+sys.path.insert(1, '../')
+
 from segnlp import Pipeline
 from segnlp.datasets.am import PE
 from segnlp.nn.models.am import JointPN

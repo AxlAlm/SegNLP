@@ -71,11 +71,6 @@ lstm_er = {
     "lr": 0.001,
     "max_epochs": 300,
     "batch_size": 32,
-<<<<<<< HEAD:segnlp/nn/default_hyperparamaters/__init__.py
-=======
-    "gpus": 1,
-    "loss_fn": "mse_loss"
->>>>>>> origin:hotam/nn/default_hyperparamaters/__init__.py
 }
 
 dummy_hps = {

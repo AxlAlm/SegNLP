@@ -1,8 +1,3 @@
-<<<<<<< HEAD:segnlp/nn/utils/bio_decoder.py
-
-=======
-from hotam.utils import ensure_numpy, ensure_flat
->>>>>>> origin:hotam/nn/bio_decoder.py
 
 import re 
 import torch
