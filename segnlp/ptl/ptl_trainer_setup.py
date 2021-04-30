@@ -119,7 +119,6 @@ def setup_ptl_trainer(
                                                                 verbose=0,
                                                                 ))
 
-
     #overwrite the Pytroch Lightning Training arguments that are writen in Hyperparamaters 
     if "max_epochs" in ptl_trn_args or "max_epochs" in hyperparamaters:
         ptl_trn_args["max_epochs"] = hyperparamaters["max_epochs"]

@@ -9,9 +9,9 @@ from segnlp.nn.default_hyperparamaters import get_default_hps
 
 
 exp = Pipeline(
-                project="joint_np",
+                project="LSTM_DIST",
                 dataset=PE( 
-                            tasks=["label", "link"],
+                            tasks=["label", "link", "link_label"],
                             prediction_level="unit",
                             sample_level="paragraph",
                             ),
@@ -20,7 +20,8 @@ exp = Pipeline(
                             UnitPos(),
                             BOW()
                             ],
-                model = JointPN
+                model = LSTM_DIST,
+                other_levels = ["am"]
             )
 
 exp.dataset.info

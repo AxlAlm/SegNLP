@@ -1,5 +1,3 @@
-
-#basics
 import numpy as np
 import os
 import pandas as pd
@@ -28,6 +26,7 @@ logger = get_logger("PTLBase (ptl.LightningModule)")
 
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
+from segnlp.utils import timer
 
 
 class MetricContainer(dict):
@@ -92,7 +91,6 @@ class PTLBase(ptl.LightningModule):
     def forward(self, batch:ModelInput):
         return self._step(batch, split="test")
 
-
     def _step(self, batch:ModelInput, split):
         batch.current_epoch = self.current_epoch
         output = self.model.forward(
@@ -134,7 +132,6 @@ class PTLBase(ptl.LightningModule):
         _, output = self._step(batch, "test")
         self.outputs["test"].extend(output.to_record())
         return output
-
 
     def _end_of_epoch(self, split):
         #if self.logger is not None:
@@ -205,11 +202,3 @@ class PTLBase(ptl.LightningModule):
         else:
             return opt
      
-
-
-
-
-
-
-
-

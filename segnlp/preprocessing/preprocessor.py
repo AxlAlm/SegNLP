@@ -132,16 +132,18 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 continue
             
             #tokens
-            Input.add("idxs", i, None)
+            Input.add("ids", i, None)
             Input.add("lengths", sample.shape[0], "token")
             Input.add("mask", np.ones(sample.shape[0], dtype=np.uint8), "token")
             
             #units
             unit_length = len(units)
+
             unit_token_lengths = np.array([g.shape[0] for i, g in units])
             Input.add("lengths", unit_length, "unit")
             Input.add("lengths_tok", unit_token_lengths, "unit")
             Input.add("mask", np.ones(unit_length, dtype=np.uint8), "unit")
+            self.__get_unit_idxs(Input, sample)
 
 
             #spans

@@ -127,6 +127,7 @@ class PE(DataSet):
     def name(self):
         return "PE"
 
+
     def _download_data(self, force=False) -> str:
         """downloads the data from sourse website
 
@@ -376,7 +377,7 @@ class PE(DataSet):
         return span2label
 
 
-    def _splits(self) -> Dict[int, Dict[str, np.ndarray]]:
+    def _shuffle_split_data(self, data:list) -> Dict[int, Dict[str, np.ndarray]]:
         """creates a dict of split ids from the premade splits
 
         Returns
@@ -384,27 +385,8 @@ class PE(DataSet):
         Dict[int, Dict[str, np.ndarray]]
             a dict of split ids. First level is for CV splits, if one want to split multiple times.
         """
-
     	# NOTE! we are provided with a test and train split but not a dev split
-    	# approach after the original paper:
-    	# https://arxiv.org/pdf/1612.08994.pdf (section 4) - join pointer model
-    	# https://www.aclweb.org/anthology/P19-1464.pdf (section 4.1 -Dataset) - LSTM-Dist
-    	# report that they randomly select 10% from the train set as validation set
-    	# there is no reference a dev or validation split in 
-    	# https://arxiv.org/pdf/1704.06104.pdf - (LSTM-ER, LSTM-CNN-CRF)
-    	# 
-    	# For only segmentation:
-    	# https://www.aclweb.org/anthology/W19-4501.pdf (LSTM-CRF + flair, bert etc),
-    	# report that they use the following samples for dev set:
-    	#
-    	# 13, 38, 41, 115, 140, 152, 156, 159, 162, 164, 201, 257,291, 324, 343, 361, 369, 371, 387, 389, 400 
-    	# 
-    	# however 21/322 = 6%, thus using smaller dev set
-    	#
-    	# We will randomly select a 10% as dev set
-
-       	train_set = []
-       	test_set = []
+    	# approach after the original paper.
 
         try:
             split_path = str(list(Path(self.dump_path).rglob("train-test-split.csv"))[0])
@@ -412,7 +394,8 @@ class PE(DataSet):
             self._dataset_path = self._download_data(force=True)
             split_path = str(list(Path(self.dump_path).rglob("train-test-split.csv"))[0])
 
-
+        train = []
+        test = []
        	with open(split_path, "r") as f:
        		for i,line in enumerate(f):
 
@@ -423,37 +406,20 @@ class PE(DataSet):
        			essay_id = int(re.findall(r"(?!0)\d+", essay)[0])
 
        			if split == "TRAIN":
-       				train_set.append(essay_id)
+       				train.append(essay_id)
        			else:
-       				test_set.append(essay_id)
+       				test.append(essay_id)
+        
+        #shuffle or not?
+        random.shuffle(train)
+        random.shuffle(test)
 
-        #dev_set = [13, 38, 41, 115, 140, 152, 156, 159, 162, 164, 201, 257,291, 324, 343, 361, 369, 371, 387, 389, 400]
-        dev_set = []
+        ids = train + test
+        split_idx = len(train)
+        shuffled_data = [data[i-1] for i in ids]
 
-        if dev_set:
-            for i in dev_set:
-                train_set.remove(i)
-        else:
-            dev_size = int(len(train_set)*0.1)
-            dev_set = []
-            while len(dev_set) != dev_size:
-                i = random.choice(train_set)
-                train_set.remove(i)
-                dev_set.append(i)
-
-        random.shuffle(train_set)
-        random.shuffle(dev_set)
-        random.shuffle(test_set)
-
-        # as pe start on 1 we shift all ids so it start at 0
-        splits = {
-                    0:{
-                        "train":np.array(train_set)-1, 
-                        "val":  np.array(dev_set)-1,
-                        "test": np.array(test_set)-1
-                    }
-                }
-       	return splits
+        return split_idx, shuffled_data
+  
 
 
     def _process_data(self, path_to_data):
@@ -492,8 +458,8 @@ class PE(DataSet):
                             "text_type":"document",
                             "span_labels": span2label
                             })
- 
-        return pd.DataFrame(data)
+
+        return data
         
     
     @classmethod

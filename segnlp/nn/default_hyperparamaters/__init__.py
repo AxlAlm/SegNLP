@@ -11,7 +11,8 @@ lstm_crf_hps = {
     "bidir": True,
     "fine_tune_embs": False,
     "batch_size": 32,
-    "max_epochs": 100,
+    "max_epochs": 150,
+    "patience": 7,
 }
 
 lstm_cnn_crf_hps = {
@@ -70,7 +71,6 @@ lstm_er = {
     "lr": 0.001,
     "max_epochs": 300,
     "batch_size": 32,
-    "gpus": 1
 }
 
 dummy_hps = {

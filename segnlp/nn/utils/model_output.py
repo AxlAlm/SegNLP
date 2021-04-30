@@ -45,7 +45,7 @@ class ModelOutput:
         self.loss = {}
         self.metrics = {}
         self.outputs = {
-                        "sample_idx":np.concatenate([np.full(int(l),int(i)) for l,i in zip(self.batch["token"]["lengths"],self.batch.idxs)]),
+                        "sample_idx":np.concatenate([np.full(int(l),int(i)) for l,i in zip(self.batch["token"]["lengths"],self.batch.ids)]),
                         "text": ensure_flat(ensure_numpy(self.batch["token"]["text"]), mask=ensure_numpy(self.batch["token"]["mask"]))
                         }
         self.pred_spans = {}
@@ -365,6 +365,7 @@ class ModelOutput:
                                             labels=self.label_encoders[task].labels,
                                             )
                                 )
+
 
     def add_probs(self, task:str, level:str, data:torch.tensor):
         raise NotImplementedError

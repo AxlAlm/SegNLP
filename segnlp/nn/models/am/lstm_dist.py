@@ -235,6 +235,8 @@ class LSTM_DIST(nn.Module):
         # this will not really matter as these representations will be 0s anyway.
         #
         # we also need to sort AMS so they can be passed to the lstm
+
+        print("HELLO", batch["am"]["lengths"].shape)
         sorted_am_lengths, sorted_am_indices = torch.sort(batch["am"]["lengths"], descending=True)
         _ , original_am_indices = torch.sort(sorted_indices, descending=False)
         am_lstm_out, _ = self.am_lstm(am_minus_embs[sorted_indices], sorted_am_lengths)

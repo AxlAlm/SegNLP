@@ -64,9 +64,9 @@ class DataSet:
 
         self._task_labels = self.__get_task_labels(tasks, supported_task_labels)
 
-        path_to_data = self._download_data()
-        self.data = self._process_data(path_to_data)
-        self._splits = self._splits()
+        data = self._process_data(self._download_data())
+        self.split_idx, data  = self._shuffle_split_data(data)
+        self.data = pd.DataFrame(data)
 
         assert isinstance(self.data, pd.DataFrame)
         
@@ -77,9 +77,11 @@ class DataSet:
         else:
             return self.data.loc[key].to_dict("record")
 
+
     def __len__(self):
         return self.data.shape[0]
         
+
     @property
     def level(self):
         return self._level
@@ -131,12 +133,11 @@ class DataSet:
 
     def _process_data(self):
         raise NotImplementedError
- 
 
-    def _splits(self):
+
+    def _shuffle_split_data(self):
         raise NotImplementedError
- 
- 
+
     # @classmethod
     # def load_CoNLL(self):
     #     raise NotImplementedError
@@ -222,3 +223,5 @@ class DataSet:
             {self.url}
             """
         print(doc)
+
+

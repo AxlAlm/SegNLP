@@ -21,6 +21,8 @@ exp = Pipeline(
                 model = LSTM_CNN_CRF
             )
 
+exp.dataset.info
+
 segnlp.settings["dl_n_workers"] = 0
 hps = get_default_hps(LSTM_CNN_CRF.name())
 best_hp = exp.hp_tune(

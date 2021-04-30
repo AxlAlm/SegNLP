@@ -155,6 +155,7 @@ class LSTM_CNN_CRF(nn.Module):
                             mask=mask,
                             reduction='mean'
                             )
+                                
                 output.add_loss(task=task,   data=loss)
 
             #7

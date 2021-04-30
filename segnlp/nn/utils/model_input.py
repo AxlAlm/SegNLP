@@ -25,17 +25,17 @@ class ModelInput(dict):
         self.current_epoch = None
         self.label_pad_value = -1
         self._size = 0
-        self._idxs = []
+        self._ids = []
         self.oo = []
 
 
     def __len__(self):
-        return len(self._idxs)
+        return len(self._ids)
 
 
     @property
-    def idxs(self):
-        return self._idxs
+    def ids(self):
+        return self._ids
 
     @property
     def levels(self):
@@ -66,7 +66,7 @@ class ModelInput(dict):
 
     def to_numpy(self):
 
-        self._idxs = np.array(self._idxs)
+        self._ids = np.array(self._ids)
         for level in self:
 
             for k,v in self[level].items():
@@ -100,8 +100,8 @@ class ModelInput(dict):
         #         self[k].append(v)
 
 
-        if k == "idxs":
-            self._idxs.append(v)
+        if k == "ids":
+            self._ids.append(v)
             return
         
         if level not in self:

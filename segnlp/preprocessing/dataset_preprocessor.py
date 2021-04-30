@@ -44,7 +44,7 @@ class PreProcessedDataset(ptl.LightningDataModule):
         self._fp = os.path.join(dir_path, f"{name}_data.hdf5")
 
         with h5py.File(self._fp, "r") as f:
-            self._size = f["idxs"].shape[0]
+            self._size = f["ids"].shape[0]
 
         self.prediction_level = prediction_level
 
@@ -61,24 +61,22 @@ class PreProcessedDataset(ptl.LightningDataModule):
                            #label_colors=self.label_colors
                             )
 
-
         with h5py.File(self._fp, "r") as data:
             sorted_key = np.sort(key)
             lengths = data[self.prediction_level]["lengths"][sorted_key]
             lengths_decending = np.argsort(lengths)[::-1]
-            Input._idxs = data["idxs"][sorted_key][lengths_decending]
+            Input._ids = data["ids"][key][lengths_decending]
             
             for group in data:
 
-                if group == "idxs":
+                if group == "ids":
                     continue
 
                 max_len = max(data[group]["lengths"][sorted_key])
 
                 Input[group] = {}
                 for k, v in data[group].items():
-                    
-                    a = v[sorted_key]
+                    a = v[key]
                 
                     if len(a.shape) > 1:
                         a = a[:, :max_len]
@@ -105,8 +103,8 @@ class PreProcessedDataset(ptl.LightningDataModule):
         with h5py.File(self._fp, "r") as data:
             for group in data.keys():
 
-                if group == "idxs":
-                    structure["idxs"] = f'dtype={str(data["idxs"].dtype)}, shape={data["idxs"].shape}'
+                if group == "ids":
+                    structure["ids"] = f'dtype={str(data["ids"].dtype)}, shape={data["ids"].shape}'
                     continue
 
                 structure[group] = {}
@@ -171,7 +169,7 @@ class DataPreprocessor:
 
     def __init_store(self, Input:ModelInput):
         
-        self.h5py_f.create_dataset("idxs", data=Input.idxs, dtype=np.int16, chunks=True, maxshape=(None,))
+        self.h5py_f.create_dataset("ids", data=Input.ids, dtype=np.int16, chunks=True, maxshape=(None,))
 
         for level in Input.levels:
             
@@ -197,9 +195,9 @@ class DataPreprocessor:
 
     def __append_store(self, Input:ModelInput):
 
-        last_sample_i = self.h5py_f["idxs"].shape[0]
-        self.h5py_f["idxs"].resize((self.h5py_f["idxs"].shape[0] + Input.idxs.shape[0],))
-        self.h5py_f["idxs"][last_sample_i:] = Input.idxs
+        last_sample_i = self.h5py_f["ids"].shape[0]
+        self.h5py_f["ids"].resize((self.h5py_f["ids"].shape[0] + Input.ids.shape[0],))
+        self.h5py_f["ids"][last_sample_i:] = Input.ids
 
         for level in Input.levels:
             for k,v in Input[level].items():
@@ -227,12 +225,26 @@ class DataPreprocessor:
                     self.h5py_f[k][last_sample_i:] = v
 
 
-    def __set_splits(self, dump_dir:str, dataset:DataSet):
 
+    def __set_splits(self, dump_dir:str, dataset:DataSet, size:int):
 
-        def create_new_splits(idxs):
-            train, test  = train_test_split(idxs,test_size=0.3)
-            train, val  = train_test_split(train,test_size=0.1)
+        
+        def split(size, split_idx):
+            ids = np.arange(size)
+            train = ids[:split_idx]
+            test = ids[split_idx:]
+            train, val  = train_test_split(train,test_size=0.1, shuffle=False)
+            return {0:{
+                        "train": train,
+                        "val": val,
+                        "test":test
+                        }
+                    }    
+
+        def split_new(size):
+            ids = np.arange(size)
+            train, test  = train_test_split(ids, test_size=0.3, shuffle=False)
+            train, val  = train_test_split(train, test_size=0.1, shuffle=False)
             return {0:{
                         "train": train,
                         "val": val,
@@ -240,11 +252,22 @@ class DataPreprocessor:
                         }
                     }
 
+        def cv_split(size):
+            ### MTC normaly uses Cross Validation
+            kf = KFold(n_splits=10, shuffle=False, random_state=42)
+            ids = np.arange(size)
+            splits = {i:{"train": train_index,  "val":test_index} for i, (train_index, test_index) in enumerate(kf.split(ids))}
+            return splits
 
-        splits = dataset.splits
 
-        if self.sample_level != dataset.level:
-            splits = create_new_splits(self.h5py_f["idxs"][:])
+        if dataset.split_idx == "cv":
+            splits = cv_split(size)
+
+        elif self.sample_level != dataset.level:
+            splits = split_new(size)
+
+        else:
+            splits = split(size, dataset.split_idx)
 
         file_path = os.path.join(dump_dir, f"{dataset.name()}_splits.pkl")
         with open(file_path, "wb") as f:
@@ -262,7 +285,7 @@ class DataPreprocessor:
         lengths_span = self.h5py_f["span"]["lengths"][:]
         non_spans_mask = self.h5py_f["span"]["none_span_mask"][:]
 
-        idxs  = self.h5py_f["idxs"]
+        idxs  = self.h5py_f["ids"]
 
         for task in self.all_tasks:
             encoded_labels = self.h5py_f[self.prediction_level][task][:]
@@ -321,6 +344,7 @@ class DataPreprocessor:
         file_path = os.path.join(dump_dir, f"{dataset.name()}_data.hdf5")
         self.__setup_h5py(file_path=file_path) 
 
+        size = 0
         for i in tqdm(range(len(dataset)), desc="Processing and Storing Dataset"):
             Input = self(dataset[i])
 
@@ -329,7 +353,9 @@ class DataPreprocessor:
             else:
                 self.__append_store(Input)
 
-        splits = self.__set_splits(dump_dir, dataset=dataset)
+            size += len(Input)
+
+        splits = self.__set_splits(dump_dir, dataset=dataset, size=size)
         self.__calc_stats(dump_dir, splits, dataset.name())
 
         self.h5py_f.close()
