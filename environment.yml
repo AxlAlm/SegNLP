@@ -1,4 +1,4 @@
-name: hotam
+name: segnlp
 channels:
   - defaults
 dependencies:

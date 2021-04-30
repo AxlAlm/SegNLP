@@ -2,8 +2,8 @@
 
 import unittest
 import pandas as pd
-from hotam.datasets import PE, MTC
-from hotam.datasets import DataSet
+from segnlp.datasets import PE, MTC
+from segnlp.datasets import DataSet
 import itertools
 
 

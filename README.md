@@ -11,7 +11,7 @@
 ##### Pick a dataset
 
 ```python
-from hotam.datasets import PE
+from segnlp.datasets import PE
 pe = PE(
         tasks=["label", "link","link_label"],
         prediction_level="unit",
@@ -22,8 +22,8 @@ pe = PE(
 ##### Prepare dataset for experiment
 
 ```python
-from hotam import Pipeline
-from hotam.features import GloveEmbeddings, BOW
+from segnlp import Pipeline
+from segnlp.features import GloveEmbeddings, BOW
 
 exp = Pipeline(
                 project="my_project",
@@ -38,15 +38,15 @@ exp = Pipeline(
 ##### pick a model
 
 ```python
-from hotam.nn.models import LSTM_DIST
-from hotam.nn.default_hyperparamaters import get_default_hps
+from segnlp.nn.models import LSTM_DIST
+from segnlp.nn.default_hyperparamaters import get_default_hps
 hps = get_default_hps(LSTM_DIST.name())
 ```
 
 ##### Run an experiment
 
 ```python
-from hotam.nn.default_hyperparamaters import get_default_hps
+from segnlp.nn.default_hyperparamaters import get_default_hps
 
 exp1.fit(
         model=LSTM_DIST,
@@ -57,9 +57,9 @@ exp1.fit(
 
 ### Information
 
-- [Datasets](https://github.com/AxlAlm/HotAM/blob/main/docs/datasets.md)
-- [Features](https://github.com/AxlAlm/HotAM/blob/main/docs/features.md)
-- [Models](https://github.com/AxlAlm/HotAM/blob/main/docs/models.md)
+- [Datasets](https://github.com/AxlAlm/segnlp/blob/main/docs/datasets.md)
+- [Features](https://github.com/AxlAlm/segnlp/blob/main/docs/features.md)
+- [Models](https://github.com/AxlAlm/segnlp/blob/main/docs/models.md)
 - [Training with ExperimentManager]()
 - [Logging]()
 - [Database]()
@@ -68,7 +68,7 @@ exp1.fit(
 
 ### Mentions / References
 
-This framework is built upon the following python libs and HotAM would not be what it is without these:
+This framework is built upon the following python libs and segnlp would not be what it is without these:
 
 - Pytroch
 - Pytroch Lightning
