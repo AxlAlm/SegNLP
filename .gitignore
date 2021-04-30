@@ -2,6 +2,7 @@
 test_*.ipynb
 .vscode/*
 start.py
+.DS_Store
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

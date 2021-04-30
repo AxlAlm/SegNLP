@@ -183,7 +183,7 @@ class PTLBase(ptl.LightningModule):
             if self.hyperparamaters["scheduler"].lower() == "rop":
                 scheduler = {
                                 'scheduler': ReduceLROnPlateau(opt),
-                                'monitor': "val_checkpoint_on",
+                                'monitor': self.monitor_metric,
                                 'interval': 'epoch',
                                 'frequency': 1
                             }

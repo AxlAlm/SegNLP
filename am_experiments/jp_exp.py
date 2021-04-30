@@ -24,8 +24,6 @@ exp = Pipeline(
             )
 
 exp.dataset.info
-
-segnlp.settings["dl_n_workers"] = 0
 hps = get_default_hps(JointPN.name())
 best_hp = exp.hp_tune(
                         hyperparamaters = hps,

@@ -16,7 +16,7 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 settings = {
-            "dl_n_workers": multiprocessing.cpu_count()
+            "dl_n_workers": 0 #multiprocessing.cpu_count()
             }
 
 set_random_seed(42)

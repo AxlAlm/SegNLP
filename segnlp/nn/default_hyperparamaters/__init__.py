@@ -5,14 +5,14 @@
 
 lstm_crf_hps = {
     "optimizer": "sgd",
-    "lr": 0.001,
+    "lr": 0.1,
     "hidden_dim": 256,
     "num_layers": 2,
     "bidir": True,
     "fine_tune_embs": False,
     "batch_size": 32,
     "max_epochs": 150,
-    "patience": 7,
+    "scheduler": "rop",
 }
 
 lstm_cnn_crf_hps = {
@@ -29,10 +29,10 @@ lstm_cnn_crf_hps = {
 
 joint_pointer_nn_hps = {
     "optimizer": "adam",
-    "lr": 0.0001,
+    "lr": 0.001,
     "encoder_input_dim": 256,
     "encoder_hidden_dim": 256,
-    "encoder_num_layers": 2,
+    "encoder_num_layers": 1,
     "encoder_bidir": True,
     "decoder_hidden_dim": 512,
     "feature_dropout": 0.9,
@@ -40,7 +40,7 @@ joint_pointer_nn_hps = {
     "decoder_dropout": 0.9,
     "task_weight": 0.5,
     "batch_size": 16,
-    "max_epochs": 1000,
+    "max_epochs": 4000,
 }
 
 lstm_dist_hps = {

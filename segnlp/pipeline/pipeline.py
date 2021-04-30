@@ -605,7 +605,6 @@ class Pipeline:
         # top_model_hp_path = os.path.join(self._path_to_top_models, model_info["uid"])
         # full_path  = lambda x: os.path.join(top_model_hp_path, x)
         # seed_model_paths = map(full_path, os.listdir(top_model_hp_path))
-
         #best_seed_model_info = model_info["best_model"]
 
         best_model_scores = None
@@ -653,7 +652,6 @@ class Pipeline:
         final_df["std"] = std
         final_df["best"] = best_model_df.T
         
-        print(final_df)
         with open(self._path_to_test_score, "w") as f:
             json.dump(seed_scores, f, indent=4)
         

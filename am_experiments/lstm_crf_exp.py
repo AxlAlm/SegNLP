@@ -27,20 +27,15 @@ exp = Pipeline(
                 model = LSTM_CRF
             )
 
-
-#exp.dataset[np.random.randint(6000, size=(32,))]
-#exp.dataset[np.arange(500,532,1)]
-#print(exp.dataset.splits)
-
-segnlp.settings["dl_n_workers"] = 0
 hps = get_default_hps(LSTM_CRF.name())
-best_hp = exp.hp_tune(
+best_hp = exp.fit(
                         hyperparamaters = hps,
-                        n_random_seeds=6,
+                        random_seed=2019,
                         ptl_trn_args=dict(
                                             gpus=[0]
                                         )
                         )
 
-# exp.test()
+scores, output_df = exp.test()
+output_df.to_csv("/tmp/pred_segs.csv")
 

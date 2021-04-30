@@ -39,11 +39,11 @@ class Encoder(nn.Module):
 
     def forward(self, X, lengths):
 
-        dense_out = torch.sigmoid(self.input_layer(X))
-        out, hidden = self.lstm(dense_out, lengths)
-
         if self.use_dropout:
             out = self.dropout(out)
+
+        dense_out = torch.sigmoid(self.input_layer(X))
+        out, hidden = self.lstm(dense_out, lengths)
 
         return out, hidden
 
@@ -138,7 +138,6 @@ class JointPN(nn.Module):
         self.ENCODER_NUM_LAYERS = hyperparamaters["encoder_num_layers"]
         self.ENCODER_BIDIR = hyperparamaters["encoder_bidir"]
             
-        self.F_DROPOUT = hyperparamaters.get("feature_dropout", None)
         self.ENC_DROPOUT = hyperparamaters["encoder_dropout"]
         self.DEC_DROPOUT = hyperparamaters["decoder_dropout"]
 
@@ -151,10 +150,6 @@ class JointPN(nn.Module):
         if self.DECODER_HIDDEN_DIM != self.ENCODER_HIDDEN_DIM*(2 if self.ENCODER_BIDIR else 1):
             raise RuntimeError("Encoder - Decoder dimension missmatch. As the decoder is initialized by the encoder states the decoder dimenstion has to be encoder_dim * nr_directions")
         
-        self.use_feature_dropout = False
-        if self.F_DROPOUT:
-            self.use_feature_dropout = True
-            self.feature_dropout = nn.Dropout(self.F_DROPOUT)
 
         self.encoder = Encoder(
                                 input_size=self.FEATURE_DIM,
@@ -189,9 +184,6 @@ class JointPN(nn.Module):
                             )
         
         X = torch.cat((unit_embs, batch["unit"]["doc_embs"]), dim=-1)
-        
-        if self.use_feature_dropout:
-            X = self.feature_dropout(X)
     
         # 1-2 | Encoder
         # encoder_output = (BATCH_SIZE, SEQ_LEN, HIDDEN_DIM*LAYER*DIRECTION)
