@@ -40,7 +40,7 @@ class Encoder(nn.Module):
     def forward(self, X, lengths):
 
         if self.use_dropout:
-            out = self.dropout(out)
+            X = self.dropout(X)
 
         dense_out = torch.sigmoid(self.input_layer(X))
         out, hidden = self.lstm(dense_out, lengths)
@@ -167,7 +167,7 @@ class JointPN(nn.Module):
 
 
         self.label_clf = nn.Linear(self.ENCODER_HIDDEN_DIM*(2 if self.ENCODER_BIDIR else 1), task_dims["label"])
-        self.loss = nn.CrossEntropyLoss(reduction="sum", ignore_index=-1)
+        self.loss = nn.CrossEntropyLoss(reduction="mean", ignore_index=-1)
 
 
     @classmethod
@@ -176,7 +176,7 @@ class JointPN(nn.Module):
 
 
     def forward(self, batch, output):
-        
+
         unit_embs = agg_emb(batch["token"]["word_embs"], 
                             lengths = batch["unit"]["lengths"],
                             span_indexes = batch["unit"]["span_idxs"], 
@@ -192,9 +192,9 @@ class JointPN(nn.Module):
         # 3-7 | Decoder
         # We get the last hidden cell states and timesteps and concatenate them for each directions
         # from (NUM_LAYER*DIRECTIONS, BATCH_SIZE, HIDDEN_SIZE) -> (BATCH_SIZE, HIDDEN_SIZE*NR_DIRECTIONS)
-        layer_dir_idx = list(range(0,encoder_h_s.shape[0],2))
-        encoder_h_s = torch.cat([*encoder_h_s[layer_dir_idx]],dim=1)
-        encoder_c_s = torch.cat([*encoder_c_s[layer_dir_idx]],dim=1)
+        # -2 gets the last layer thats forward and -1 get the lasy layer backwards
+        encoder_h_s = torch.cat((encoder_h_s[-2], encoder_h_s[-1]), dim=1)
+        encoder_c_s = torch.cat((encoder_c_s[-2], encoder_c_s[-1]), dim=1)
 
         # OUTPUT: (BATCH_SIZE, SEQ_LEN, SEQ_LEN)
         link_logits = self.decoder(

@@ -70,14 +70,13 @@ class LSTM_DIST(nn.Module):
         self.WORD_FEATURE_DIM = feature_dims["word_embs"]
         self.DOC_FEATURE_DIM = feature_dims["doc_embs"]
 
-        # if this is true we will make a distinction between ams and acs
-        #self.DISTICTION = hyperparamaters["distinction"]
 
         self.word_lstm = LSTM(  
                                 input_size = self.WORD_FEATURE_DIM,
                                 hidden_size=self.HIDDEN_DIM,
                                 num_layers= self.NUM_LAYERS,
                                 bidirectional=self.BI_DIR,
+                                dropout= hyperparamaters["input_dropout"]
                                 )
 
 
@@ -86,6 +85,7 @@ class LSTM_DIST(nn.Module):
                                 hidden_size=self.HIDDEN_DIM,
                                 num_layers= self.NUM_LAYERS,
                                 bidirectional=self.BI_DIR,
+                                dropout=hyperparamaters["lstm_dropout"]
                                 )
 
         self.ac_lstm = LSTM(  
@@ -93,24 +93,21 @@ class LSTM_DIST(nn.Module):
                                 hidden_size=self.HIDDEN_DIM,
                                 num_layers= self.NUM_LAYERS,
                                 bidirectional=self.BI_DIR,
+                                dropout=hyperparamaters["lstm_dropout"]
                                 )
 
-        # input to adu_lstm is the am + ac + doc features 
-        adu_shape = ((self.HIDDEN_DIM*(2 if self.BI_DIR else 1)) * 2 ) + self.DOC_FEATURE_DIM
-
-        # self.adu_lstm = LSTM_LAYER(  
-        #                             input_size = adu_shape,
-        #                             hidden_size=self.HIDDEN_DIM,
-        #                             num_layers= self.NUM_LAYERS,
-        #                             bidirectional=self.BI_DIR,
-        #                             )
+        self.output_dropout = nn.Dropout(hyperparamaters["output_dropout"])
 
         input_size = (self.HIDDEN_DIM*(2 if self.BI_DIR else 1) * 2) + self.DOC_FEATURE_DIM
         self.link_label_clf = nn.Linear(input_size, task_dims["link_label"])
         self.label_clf = nn.Linear(input_size, task_dims["label"])
-        self.link_clf = PairingLayer(input_dim=input_size, max_units=task_dims["link"])
+        self.link_clf = PairingLayer(
+                                    input_dim=input_size, 
+                                    max_units=task_dims["link"],
+                                    dropout=hyperparamaters["output_dropout"]
+                                    )
 
-        self.loss = nn.CrossEntropyLoss(reduction="sum", ignore_index=-1)
+        self.loss = nn.CrossEntropyLoss(reduction="mean", ignore_index=-1)
 
 
     @classmethod
@@ -204,7 +201,7 @@ class LSTM_DIST(nn.Module):
     def forward(self, batch, output):
         
         self.device = batch.device
-        word_embs = batch["token"]["word_embs"] 
+        word_embs = batch["token"]["word_embs"]
 
         # Wi:j 
         W = batch["unit"]["doc_embs"]
@@ -236,7 +233,6 @@ class LSTM_DIST(nn.Module):
         #
         # we also need to sort AMS so they can be passed to the lstm
 
-        print("HELLO", batch["am"]["lengths"].shape)
         sorted_am_lengths, sorted_am_indices = torch.sort(batch["am"]["lengths"], descending=True)
         _ , original_am_indices = torch.sort(sorted_indices, descending=False)
         am_lstm_out, _ = self.am_lstm(am_minus_embs[sorted_indices], sorted_am_lengths)
@@ -248,11 +244,10 @@ class LSTM_DIST(nn.Module):
         # concatenate the output from Argument Component BiLSTM and Argument Marker BiLSTM with BOW embeddigns W
         contex_emb = torch.cat((am_lstm_out, ac_lstm_out, W), dim=-1)
 
-
         # 5
         # Classification of AC and link labels is pretty straight forward
-        link_label_out = self.link_label_clf(contex_emb)
-        label_out = self.label_clf(contex_emb)
+        link_label_out = self.link_label_clf(self.output_dropout(contex_emb))
+        label_out = self.label_clf(self.output_dropout(contex_emb))
         link_out = self.link_clf(contex_emb, unit_mask=batch["unit"]["mask"])
 
         #link_label_probs = F.softmax(link_label_out, dim=-1)

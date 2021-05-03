@@ -1,4 +1,5 @@
 
+import sys
 sys.path.insert(1, '../')
 
 from segnlp import Pipeline
@@ -23,11 +24,13 @@ exp = Pipeline(
             )
 
 hps = get_default_hps(LSTM_CNN_CRF.name())
-best_hp = exp.hp_tune(
+best_hp = exp.train(
                         hyperparamaters = hps,
                         n_random_seeds=6,
                         ptl_trn_args=dict(
-                                            gpus=[1]
+                                            gpus=[0]
                                         )
                         )
 
+exp1_scores, exp1_outputs = exp.test()
+exp2_scores, exp2_outputs = exp.test(seg_preds="/tmp/seg_preds.csv")

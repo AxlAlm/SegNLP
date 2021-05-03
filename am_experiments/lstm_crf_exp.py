@@ -13,6 +13,9 @@ import numpy as np
 
 from pprint import pprint
 
+import flair, torch
+flair.device = torch.device('cpu') 
+
 
 exp = Pipeline(
                 project="LSTM_CRF",
@@ -29,15 +32,16 @@ exp = Pipeline(
                 model = LSTM_CRF
             )
 
-hps = get_default_hps(LSTM_CRF.name())
-best_hp = exp.fit(
-                        hyperparamaters = hps,
-                        random_seed=2019,
-                        ptl_trn_args=dict(
-                                            gpus=[0]
-                                        )
-                        )
+#hps = get_default_hps(LSTM_CRF.name())
+# best_hp = exp.train(
+#                         hyperparamaters = hps,
+#                         n_random_seeds=6,
+#                         ptl_trn_args=dict(
+#                                             gpus=[3],
+#                                             gradient_clip_val=5.0
+#                                         ),
+#                         )
 
-scores, output_df = exp.test()
-output_df.to_csv("/tmp/pred_segs.csv")
+score, output = exp.test()
+output.to_csv("/tmp/pred_segs.csv")
 

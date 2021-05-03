@@ -1,7 +1,7 @@
 
 
 from .bow import BOW
-from .embeddings import GloveEmbeddings, FlairEmbeddings, BertEmbeddings
+from .embeddings import GloveEmbeddings, FlairEmbeddings, BertEmbeddings, ELMoEmbeddings
 from .unit_position import UnitPos
 from .dummy import DummyFeature
 from .one_hot import OneHots
@@ -32,6 +32,7 @@ __all__ = [
             "GloveEmbeddings",
             "FlairEmbeddings",
             "BertEmbeddings",
+            "ELMoEmbeddings",
             "UnitPos",
             "BOW",
             "DummyFeature",

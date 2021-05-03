@@ -182,10 +182,13 @@ class PTLBase(ptl.LightningModule):
         if "scheduler" in self.hyperparamaters:
             if self.hyperparamaters["scheduler"].lower() == "rop":
                 scheduler = {
-                                'scheduler': ReduceLROnPlateau(opt),
-                                'monitor': self.monitor_metric,
+                                'scheduler': ReduceLROnPlateau(
+                                                                opt,
+                                                                patience=5,
+                                                                factor=0.001
+                                                                ),
+                                'monitor': "val_loss",
                                 'interval': 'epoch',
-                                'frequency': 1
                             }
             elif self.hyperparamaters["scheduler"].lower() == "constant_warmup":
                 scheduler = get_constant_schedule_with_warmup(

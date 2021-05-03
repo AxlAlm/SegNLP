@@ -1,3 +1,6 @@
+#basics
+import re
+
 #segnlp
 from segnlp.preprocessing.dataset_preprocessor import PreProcessedDataset
 from segnlp.ptl import PTLBase
@@ -34,12 +37,17 @@ def default(
 
     for callback in trainer.callbacks:
         if isinstance(callback, ModelCheckpoint):
-            if save_choice == "last":
-                model_fp = callback.last_model_path
-                checkpoint_dict = torch.load(model_fp)
-                model_score = float(checkpoint_dict["callbacks"][ModelCheckpoint]["current_score"])
-            else:
-                model_fp = callback.best_model_path
-                model_score = float(checkpoint_cb.best_model_score)
-            
+            # if save_choice == "last":
+            #     model_fp = callback.last_model_path
+            #     checkpoint_dict = torch.load(model_fp)
+
+            #     print(checkpoint_dict["callbacks"][ModelCheckpoint])
+            #     print(lol)
+
+            #     model_score = float(checkpoint_dict["callbacks"][ModelCheckpoint]["current_score"])
+            # else:
+            model_fp = callback.best_model_path
+            #re.findall(r"(?<=val_f1=)\d+.\d+(?=.ckpt)", model_fp)
+            model_score = float(callback.best_model_score)
+        
     return model_fp, model_score

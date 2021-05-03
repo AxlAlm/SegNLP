@@ -70,7 +70,7 @@ class TextProcesser:
 
         # storing the current row for each level, used to fetch ids etc for lower lever data
         self._level_row_cache = {}
-        self.nlp = spacy.load("en_core_web_sm", disable=["ner"])
+        self.nlp = spacy.load("en_core_web_lg", disable=["ner"])
     
 
 

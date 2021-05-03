@@ -57,6 +57,9 @@ class Pointer(nn.Module):
         batch_size = encoder_outputs.shape[0]
         device = encoder_outputs.device
 
+        # if self.use_dropout:
+        #     encoder_outputs = self.dropout(encoder_outputs)
+
         h_s = encoder_h_s
         c_s = encoder_c_s
 
@@ -66,8 +69,8 @@ class Pointer(nn.Module):
             
             decoder_input = torch.sigmoid(self.input_layer(decoder_input))
 
-            if self.use_dropout:
-                decoder_input = self.dropout(decoder_input)
+            # if self.use_dropout:
+            #     decoder_input = self.dropout(decoder_input)
 
             h_s, c_s = self.lstm_cell(decoder_input, (h_s, c_s))
 

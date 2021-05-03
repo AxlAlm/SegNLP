@@ -33,9 +33,9 @@ class Encoder:
                 links = self.task2labels[task]
                 max_spans = max(abs(min(links)),abs(max(links))) * 2
                 self.encoders[task] = LinkEncoder(name=task,  max_spans=max_spans)
-            else:
+            else: 
                 self.encoders[task] = LabelEncoder(name=task, labels=self.task2labels[task])
-
+            
 
     def _encode_labels(self, df):
 

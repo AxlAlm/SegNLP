@@ -41,6 +41,7 @@ from segnlp.evaluation_methods import get_evaluation_method
 from segnlp.features import get_feature
 from segnlp.nn.utils import ModelOutput
 from segnlp.visuals.hp_tune_progress import HpProgress
+from segnlp.metrics import token_metrics
 
 logger = get_logger("PIPELINE")
 user_dir = pwd.getpwuid(os.getuid()).pw_dir
@@ -359,16 +360,20 @@ class Pipeline:
         return a_better_than_b, prob, v
 
     
-    def hp_tune(self,
+    def train(self,
                     hyperparamaters:dict,
                     ptl_trn_args:dict={},
                     n_random_seeds:int=6,
-                    save_choice:str="last",
+                    random_seed:int=None,
+                    save_choice:str="best",
                     monitor_metric:str = "val_f1",
                     ss_test:str="aso",
                     debug:bool=False,
                     override:bool=False
                     ):
+
+        # if ptl_trn_args.get("gradient_clip_val", 0.0) != 0.0:
+        #     hyperparamaters["gradient_clip_val"] = ptl_trn_args["gradient_clip_val"]
         
         self.__hp_tuning = True
         keys = list(hyperparamaters.keys())
@@ -417,7 +422,11 @@ class Pipeline:
             model_scores = []
             model_outputs = []
 
-            random_seeds = random_ints(n_random_seeds)
+            if random_seed is not None and isinstance(random_seed, int):
+                random_seeds = [random_seed]
+            else:
+                random_seeds = random_ints(n_random_seeds)
+
             for ri, random_seed in enumerate(random_seeds, start=1):
                 hpp.refresh(hp_uid, 
                             progress = ri, 
@@ -425,7 +434,7 @@ class Pipeline:
                             mean_score = np.mean(model_scores) if model_scores else "-"
                             )
 
-                output = self.fit(
+                output = self._fit(
                                     hyperparamaters=hp_dict["hyperparamaters"],
                                     ptl_trn_args = ptl_trn_args,
                                     save_choice=save_choice,
@@ -499,7 +508,6 @@ class Pipeline:
         
         hpp.close()
             
-
         with open(self._path_to_hp_hist, "w") as f:
             json.dump(hp_dicts, f, indent=4)
 
@@ -509,23 +517,25 @@ class Pipeline:
         return best_model_info
 
 
-    def fit(    self,
+    def _fit(    self,
                 hyperparamaters:dict,
                 ptl_trn_args:dict={},
-                save_choice:str = "last",  
+                save_choice:str = "best",  
                 random_seed:int = 42,
                 monitor_metric:str = "val_f1",
                 model_id:str=None
                 ):
 
+
         if model_id is None:
-            model_id = create_uid("".join(list(map(str, hyperparamaters.keys()))+ list(map(str, hyperparamaters.values()))))
+            model_id = create_uid("".join(list(map(str, hyperparamaters.keys())) + list(map(str, hyperparamaters.values()))))
 
         set_random_seed(random_seed)
 
         hyperparamaters["random_seed"] = random_seed
-        hyperparamaters["monitor_metric"] = monitor_metric
         self.dataset.batch_size = hyperparamaters["batch_size"]
+        hyperparamaters["monitor_metric"] = monitor_metric
+
 
         model = deepcopy(self.model)
     
@@ -590,30 +600,31 @@ class Pipeline:
  
 
     def test(   self, 
-                path_to_ckpt:str=None,
-                model_id:str=None,
+                model_folder:str=None,
                 ptl_trn_args:dict={},
                 monitor_metric:str = "val_f1",
+                seg_preds:str=None,
                 ):
 
-
         self.dataset.split_id = 0
+
 
         with open(self._path_to_model_info, "r") as f:
             model_info = json.load(f)
 
-        # top_model_hp_path = os.path.join(self._path_to_top_models, model_info["uid"])
-        # full_path  = lambda x: os.path.join(top_model_hp_path, x)
-        # seed_model_paths = map(full_path, os.listdir(top_model_hp_path))
-        #best_seed_model_info = model_info["best_model"]
+        models_to_test =  model_info["outputs"]
+        best_seed = model_info["best_model"]["random_seed"]
+        
 
         best_model_scores = None
-        output_df = None
+        best_model_outputs = None
         seed_scores = []
         seeds = []
 
-        for seed_model in model_info["outputs"]:
+        for seed_model in models_to_test:
+
             seeds.append(seed_model["random_seed"])
+
             with open(seed_model["config_path"], "r") as f:
                 model_config = json.load(f)
 
@@ -635,11 +646,35 @@ class Pipeline:
                                     test_dataloaders=self.dataset.test_dataloader(),
                                     verbose=0
                                     )
-            if seed_model["random_seed"] == model_info["best_model"]["random_seed"]:
-                #     output_df = pd.DataFrame(model.outputs["test"])
-                #     output_df["text"] = output_df["text"].apply(np.vectorize(lambda x:x.decode("utf-8")))
-                        # scores = metrics(output_df)
-                best_model_df = pd.DataFrame(scores)
+
+            test_output = pd.DataFrame(model.outputs["test"])
+            print(test_output.columns)
+
+
+            if seg_preds is not None:
+                print(seg_preds.shape)
+                print(test_output.shape)
+                test_output["seg"] = seg_preds
+                seg_mask = test_output["seg"] == "O"
+
+                task_scores = []
+
+                for task in self.config["subtasks"]:
+                    test_output[seg_mask][task] = "None" if task != "link" else "0"
+                    task_scores.append(token_metrics(
+                                                    targets=test_output[f"T-{task}"].to_numpy(), 
+                                                    preds=test_output[task].to_numpy(), 
+                                                    task=task, 
+                                                    labels=self.config["task_labels"][task]
+                                                    ))
+
+                scores = [pd.DataFrame(task_scores).mean().to_dict()]
+              
+
+
+            if seed_model["random_seed"] == best_seed:
+                best_model_scores = pd.DataFrame(scores)
+                best_model_outputs = pd.DataFrame(test_output)
 
             seed_scores.append(scores[0])
     
@@ -650,12 +685,12 @@ class Pipeline:
         final_df = df.T
         final_df["mean"] = mean
         final_df["std"] = std
-        final_df["best"] = best_model_df.T
+        final_df["best"] = best_model_scores.T
         
         with open(self._path_to_test_score, "w") as f:
             json.dump(seed_scores, f, indent=4)
         
-        return final_df, output_df
+        return final_df, best_model_outputs
 
 
     def predict(self, doc:str):

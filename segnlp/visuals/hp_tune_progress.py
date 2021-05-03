@@ -83,7 +83,7 @@ class HpProgress:
             if progress == self._n_seeds:
                 p = u'\u2713' #check
             else:
-                p = f"{progress}/4"
+                p = f"{progress}/{self._n_seeds}"
 
             best_model_score = hp.get("best_model_score","-")
             best_model_score = "{:.2%}".format(best_model_score) if best_model_score != "-" else "-"
@@ -122,7 +122,7 @@ class HpProgress:
         self.hyperparamaters[uid]["mean_score"] =  mean_score
         hp = self.hyperparamaters[uid]
 
-        p = f"{hp['progress']}/4"
+        p = f"{hp['progress']}/{self._n_seeds}"
 
         best_model_score = "{:.2%}".format(best_score) if best_score != "-" else "-"
         mean_score = "{:.2%}".format(mean_score) if mean_score != "-" else "-"

@@ -1,4 +1,5 @@
 
+import sys
 sys.path.insert(1, '../')
 
 from segnlp import Pipeline
@@ -24,13 +25,14 @@ exp = Pipeline(
                 model = JointPN
             )
 
-exp.dataset.info
 hps = get_default_hps(JointPN.name())
-best_hp = exp.hp_tune(
+best_hp = exp.train(
                         hyperparamaters = hps,
                         n_random_seeds=6,
                         ptl_trn_args=dict(
-                                            gpus=[0]
+                                            gpus=[2]
                                         )
                         )
 
+exp1_scores, exp1_outputs = exp.test()
+exp2_scores, exp2_outputs = exp.test(seg_preds="/tmp/seg_preds.csv")

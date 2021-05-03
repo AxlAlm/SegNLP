@@ -1,10 +1,13 @@
 
-
-
 import numpy as np
 
+#pytorch
 import torch
 import torch.nn.functional as F
+import torch.nn as nn
+
+#segnlp
+from segnlp.nn.utils import pair_matrix
 
 
 class PairingLayer(torch.nn.Module):
@@ -82,38 +85,61 @@ class PairingLayer(torch.nn.Module):
 
     """
 
-    def __init__(self, input_dim:int, max_units:int):
+    def __init__(self, 
+                input_dim:int, 
+                max_units:int, 
+                pair_rep_mode:list=["cat", "multi"], 
+                rel_pos:bool=True,
+                dropout:float=0.0
+                ):
         super().__init__()
+
+        self.pair_rep_mode = pair_rep_mode
+        self.rel_pos = rel_pos
         self.max_units = max_units
-        self.one_hot_dim = (max_units*2)-1
-        input_dim = (input_dim * 3) + self.one_hot_dim
-        self.link_clf = torch.nn.Linear(input_dim, 1)
+
+        self._input_dim = 0
+
+        if rel_pos:
+            self._input_dim += (max_units*2)-1
+
+        if "cat" in pair_rep_mode:
+            self._input_dim += input_dim*2
+
+        if "multi" in pair_rep_mode:
+            self._input_dim += input_dim
+
+        if "sum" in pair_rep_mode:
+            self._input_dim += input_dim
+
+        if "mean" in pair_rep_mode:
+            self._input_dim += input_dim
+
+
+        self.dropout = nn.Dropout(dropout)
+        self.link_clf = torch.nn.Linear(self._input_dim, 1)
 
 
     def forward(self, 
                 x:torch.tensor, 
                 unit_mask:torch.tensor, 
-                pair_rep_mode:list=["cat", "mean"], 
-                rel_pos:bool=True
                 ):
 
-        pair_matrix = pair_matrix(
-                                    x,
-                                    modes=pair_rep_mode, 
-                                    rel_pos=rel_pos,
-                                    )
+        pm = pair_matrix(
+                            x,
+                            modes=self.pair_rep_mode,  # we concatenate pairs with the multiplication of members of the pair
+                            rel_pos=self.rel_pos,
+                            max_units=self.max_units,
+                            )
+
+        pm =  self.dropout(pm)
 
         #step 6
-        pair_scores = self.link_clf(pair_matrix)
+        pair_scores = self.link_clf(pm)
 
         # step 7
         unit_mask = unit_mask.type(torch.bool)
 
         pair_scores[~unit_mask]  =  float("inf")
             
-        # pair_probs = F.softmax(pair_scores)
-
-        # # step 8
-        # pair_preds = torch.argmax(pair_probs)
-    
         return pair_scores.squeeze(-1)

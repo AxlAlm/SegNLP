@@ -43,7 +43,7 @@ class ModelOutput:
         self._total_loss_added = False
 
         self.loss = {}
-        self.metrics = {}
+        self.task_metrics = []
         self.outputs = {
                         "sample_idx":np.concatenate([np.full(int(l),int(i)) for l,i in zip(self.batch["token"]["lengths"],self.batch.ids)]),
                         "text": ensure_flat(ensure_numpy(self.batch["token"]["text"]), mask=ensure_numpy(self.batch["token"]["mask"]))
@@ -51,7 +51,11 @@ class ModelOutput:
         self.pred_spans = {}
         self._pred_span_set = False
         self.mask = []
-        
+
+    @property
+    def metrics(self):
+        return pd.DataFrame(self.task_metrics).mean().to_dict()
+
 
     def __add_subtask_preds(self, decoded_labels:np.ndarray, lengths:np.ndarray, level:str,  task:str):
         """
@@ -220,7 +224,7 @@ class ModelOutput:
                 else:
                     self.loss["total"] += data
     
-        self.metrics.update({f"{task}-loss":int(data) if not torch.isnan(data) else 0})
+        self.task_metrics.append({f"{task}-loss":int(data) if not torch.isnan(data) else 0})
 
 
     def add_preds(self, task:str, level:str, data:torch.tensor, decoded:bool=False, sample_ids="same"):
@@ -359,7 +363,7 @@ class ModelOutput:
 
         if not self.inference:
             self.outputs[f"T-{task}"] = targets
-            self.metrics.update(token_metrics(
+            self.task_metrics.append(token_metrics(
                                             targets=preds,
                                             preds=targets,
                                             task=task,

@@ -10,7 +10,7 @@ class LSTM(nn.Module):
                     hidden_size:int, 
                     num_layers:int, 
                     bidirectional:bool, 
-                    dropout:float=None,
+                    dropout:float=0.0,
                     ):
         super().__init__()
 
@@ -22,11 +22,12 @@ class LSTM(nn.Module):
                                 batch_first=True
                             )
 
-        if dropout:
-            self.dropout = nn.Dropout(self.DROPOUT)
+        self.dropout = nn.Dropout(dropout)
 
 
     def forward(self, X, lengths, padding=0.0):
+
+        X = self.dropout(X)
         
         pass_states = False
         if isinstance(X, tuple):

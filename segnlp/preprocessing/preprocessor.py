@@ -125,8 +125,9 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 self._encode_data(sample)
                 
             units = sample.groupby("unit_id")
-
-            if self.prediction_level == "unit" and len(units):
+            unit_length = len(units)
+            
+            if self.prediction_level == "unit" and unit_length == 0:
                 #if we are prediction on Units but sample doesnt have any, we can skip it
                 self._removed += 1
                 continue
@@ -136,9 +137,6 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             Input.add("lengths", sample.shape[0], "token")
             Input.add("mask", np.ones(sample.shape[0], dtype=np.uint8), "token")
             
-            #units
-            unit_length = len(units)
-
             unit_token_lengths = np.array([g.shape[0] for i, g in units])
             Input.add("lengths", unit_length, "unit")
             Input.add("lengths_tok", unit_token_lengths, "unit")
@@ -167,6 +165,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 # representations for such AMs will remain 0
                 Input.add("lengths", unit_length, "am")
                 Input.add("lengths", unit_length, "adu")
+                self.__get_am_unit_idxs(Input, sample)
 
 
             self.__get_text(Input, sample)
@@ -175,9 +174,6 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
             if self.__labeling:
                 self.__get_labels(Input, sample)
-
-            if self.prediction_level == "unit":
-                self.__get_am_unit_idxs(Input, sample)
 
 
         return Input.to_numpy()

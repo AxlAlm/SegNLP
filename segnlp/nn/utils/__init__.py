@@ -179,7 +179,7 @@ def get_all_possible_pairs(
     return all_possible_pairs
 
 
-def pair_matrix(input_emb, modes=["cat", "mean"], rel_pos=False, pair_mask:torch.Tensor=None):
+def pair_matrix(input_emb, max_units:int, modes=["cat", "mean"], rel_pos=False, pair_mask:torch.Tensor=None):
     
     device = input_emb.device
     batch_size = input_emb.shape[0]
@@ -209,7 +209,7 @@ def pair_matrix(input_emb, modes=["cat", "mean"], rel_pos=False, pair_mask:torch
         one_hot_dim = (max_units*2)-1
         one_hots = torch.tensor(
                                     [
-                                    np.diag(np.ones(one_hot_dim),i)[:max_units,:one_hot_dim] 
+                                    np.diag(np.ones(one_hot_dim),i)[:dim1,:one_hot_dim] 
                                     for i in range(dim1-1, -1, -1)
                                     ], 
                                     dtype=torch.uint8,
