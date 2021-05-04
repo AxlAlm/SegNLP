@@ -18,7 +18,7 @@ from segnlp.nn.default_hyperparamaters import get_default_hps
 import flair, torch
 flair.device = torch.device('cpu') 
 
-
+import numpy as np
 exp = Pipeline(
                 project="LSTM_DIST",
                 dataset=PE( 
@@ -35,15 +35,16 @@ exp = Pipeline(
                 other_levels = ["am"]
             )
 
-
 hps = get_default_hps(LSTM_DIST.name())
-# best_hp = exp.train(
-#                         hyperparamaters = hps,
-#                         n_random_seeds=6,
-#                         ptl_trn_args=dict(
-#                                             gpus=[2]
-#                                         )
-#                         )
+
+hps["max_epochs"] = 2
+best_hp = exp.train(
+                        hyperparamaters = hps,
+                        n_random_seeds=1,
+                        ptl_trn_args=dict(
+                                            gpus=[2]
+                                        )
+                        )
 
 
 #exp1_scores, exp1_outputs = exp.test()
@@ -51,4 +52,4 @@ hps = get_default_hps(LSTM_DIST.name())
 seg_pred = pd.read_csv("/tmp/pred_segs.csv")
 
 # print(exp1_scores)
-exp2_scores, exp2_outputs = exp.test(seg_preds=seg_pred["seg"].to_numpy())
+exp2_scores, exp2_outputs = exp.test(seg_preds=seg_pred)

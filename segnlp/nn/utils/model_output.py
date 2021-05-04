@@ -44,8 +44,15 @@ class ModelOutput:
 
         self.loss = {}
         self.task_metrics = []
+
+
+        token_ids = self.batch["token"]["token_ids"].view(-1)
+        padding = token_ids != 0
+        padding[0] = True
+
         self.outputs = {
-                        "sample_idx":np.concatenate([np.full(int(l),int(i)) for l,i in zip(self.batch["token"]["lengths"],self.batch.ids)]),
+                        "sample_id": np.concatenate([np.full(int(l),int(i)) for l,i in zip(self.batch["token"]["lengths"],self.batch.ids)]),
+                        "token_id": ensure_numpy(token_ids[padding]),
                         "text": ensure_flat(ensure_numpy(self.batch["token"]["text"]), mask=ensure_numpy(self.batch["token"]["mask"]))
                         }
         self.pred_spans = {}

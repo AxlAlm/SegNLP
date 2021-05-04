@@ -131,9 +131,11 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 #if we are prediction on Units but sample doesnt have any, we can skip it
                 self._removed += 1
                 continue
+
             
             #tokens
             Input.add("ids", i, None)
+            Input.add("token_ids", sample.loc[:,"id"].to_numpy(), "token")
             Input.add("lengths", sample.shape[0], "token")
             Input.add("mask", np.ones(sample.shape[0], dtype=np.uint8), "token")
             

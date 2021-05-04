@@ -648,24 +648,33 @@ class Pipeline:
                                     )
 
             test_output = pd.DataFrame(model.outputs["test"])
-            print(test_output.columns)
 
 
             if seg_preds is not None:
-                print(seg_preds.shape)
-                print(test_output.shape)
-                test_output["seg"] = seg_preds
+                test_output["seg"] = "O"
+
+                #first we get all the token rows
+                seg_preds = seg_preds[seg_preds["token_id"].isin(test_output["token_id"])]
+
+                # then we sort the seg_preds
+                seg_preds.index = seg_preds["token_id"]
+                seg_preds = seg_preds.reindex(test_output["token_id"])
+
+                assert np.array_equal(seg_preds.index.to_numpy(), test_output["token_id"].to_numpy())
+                
+                #print(seg_preds["seg"])
+                test_output["seg"] = seg_preds["seg"].to_numpy()
                 seg_mask = test_output["seg"] == "O"
 
                 task_scores = []
-
                 for task in self.config["subtasks"]:
-                    test_output[seg_mask][task] = "None" if task != "link" else "0"
+                    default_none =  "None" if task != "link" else 0
+                    test_output.loc[seg_mask, task] = default_none
                     task_scores.append(token_metrics(
                                                     targets=test_output[f"T-{task}"].to_numpy(), 
                                                     preds=test_output[task].to_numpy(), 
                                                     task=task, 
-                                                    labels=self.config["task_labels"][task]
+                                                    labels=self.config["task2labels"][task]
                                                     ))
 
                 scores = [pd.DataFrame(task_scores).mean().to_dict()]
@@ -690,6 +699,7 @@ class Pipeline:
         with open(self._path_to_test_score, "w") as f:
             json.dump(seed_scores, f, indent=4)
         
+        print(final_df)
         return final_df, best_model_outputs
 
 
