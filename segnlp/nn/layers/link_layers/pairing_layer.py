@@ -121,25 +121,30 @@ class PairingLayer(torch.nn.Module):
 
 
     def forward(self, 
-                x:torch.tensor, 
+                input_tensor:torch.tensor, 
                 unit_mask:torch.tensor, 
                 ):
 
         pm = pair_matrix(
-                            x,
+                            input_tensor,
                             modes=self.pair_rep_mode,  # we concatenate pairs with the multiplication of members of the pair
                             rel_pos=self.rel_pos,
                             max_units=self.max_units,
                             )
 
-        pm =  self.dropout(pm)
+        #pm =  self.dropout(pm)
 
         #step 6
-        pair_scores = self.link_clf(pm)
+        pair_scores = self.link_clf(pm).squeeze(-1)
 
-        # step 7
+
+        # step 7, for all samples we set the probs for non existing units to inf and the prob for all
+        # units pointing to an non existing unit to -inf.
         unit_mask = unit_mask.type(torch.bool)
+        pair_scores[~unit_mask]  =  float("-inf")
+        pf = torch.flatten(pair_scores, end_dim=-2)
+        mf = torch.repeat_interleave(unit_mask, unit_mask.shape[1], dim=0)
+        pf[~mf] = float("-inf")
+        pair_scores = pf.view(pair_scores.shape)
 
-        pair_scores[~unit_mask]  =  float("inf")
-            
-        return pair_scores.squeeze(-1)
+        return pair_scores

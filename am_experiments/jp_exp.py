@@ -30,8 +30,9 @@ best_hp = exp.train(
                         hyperparamaters = hps,
                         n_random_seeds=6,
                         ptl_trn_args=dict(
-                                            gpus=[2]
-                                        )
+                                            gpus=[1]
+                                        ),
+                        monitor_metric="val_label-f1"
                         )
 
 exp1_scores, exp1_outputs = exp.test()

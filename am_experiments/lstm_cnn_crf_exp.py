@@ -9,6 +9,19 @@ from segnlp.nn.models.general import LSTM_CNN_CRF
 from segnlp.features import GloveEmbeddings
 from segnlp.nn.default_hyperparamaters import get_default_hps
 
+
+# import pickle as pkl
+
+# with open("/home/axlalm/.segnlp/49777234/data/PE_splits.pkl", "rb") as f:
+#     data = pkl.load(f)
+
+
+# print(data[0]["test"])
+
+
+import flair, torch
+flair.device = torch.device('cpu') 
+
 exp = Pipeline(
                 project="lstm_cnn_crf",
                 dataset=PE( 
@@ -33,4 +46,3 @@ best_hp = exp.train(
                         )
 
 exp1_scores, exp1_outputs = exp.test()
-exp2_scores, exp2_outputs = exp.test(seg_preds="/tmp/seg_preds.csv")

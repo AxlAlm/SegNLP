@@ -45,6 +45,8 @@ class MetricContainer(dict):
 
         
     def get_epoch_score(self, split:str):
+        #print(pd.DataFrame(self[split]))
+        #print(pd.DataFrame(self[split]).mean())
         epoch_metrics = pd.DataFrame(self[split]).mean()
         
         if epoch_metrics.shape[0] == 0:
@@ -85,7 +87,7 @@ class PTLBase(ptl.LightningModule):
                             inference=inference
                             )
         self.metrics = MetricContainer()
-        self.outputs = {"val":[], "test":[]}
+        self.outputs = {"val":[], "test":[], "train":[]}
 
 
     def forward(self, batch:ModelInput):
@@ -114,6 +116,7 @@ class PTLBase(ptl.LightningModule):
         loss, output = self._step(batch, "train")
         self.log('train_loss', loss, prog_bar=True)
 
+        self.outputs["train"].extend(output.to_record())
         return loss
 
 
@@ -136,6 +139,9 @@ class PTLBase(ptl.LightningModule):
     def _end_of_epoch(self, split):
         #if self.logger is not None:
         epoch_metrics = self.metrics.get_epoch_score(split)
+
+        # if split == "train":
+        #     print(pd.DataFrame([epoch_metrics]).T)
 
         # if isinstance(self.logger, CometLogger):
         #     for m in epoch_metrics:

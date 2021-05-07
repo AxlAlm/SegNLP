@@ -167,7 +167,7 @@ class JointPN(nn.Module):
 
 
         self.label_clf = nn.Linear(self.ENCODER_HIDDEN_DIM*(2 if self.ENCODER_BIDIR else 1), task_dims["label"])
-        self.loss = nn.CrossEntropyLoss(reduction="mean", ignore_index=-1)
+        self.loss = nn.CrossEntropyLoss(reduction="sum", ignore_index=-1)
 
 
     @classmethod
@@ -184,7 +184,7 @@ class JointPN(nn.Module):
                             )
         
         X = torch.cat((unit_embs, batch["unit"]["doc_embs"]), dim=-1)
-    
+
         # 1-2 | Encoder
         # encoder_output = (BATCH_SIZE, SEQ_LEN, HIDDEN_DIM*LAYER*DIRECTION)
         encoder_out, (encoder_h_s, encoder_c_s) = self.encoder(X, batch["unit"]["lengths"])
@@ -209,6 +209,7 @@ class JointPN(nn.Module):
         label_logits =  self.label_clf(encoder_out)
 
         if not self.inference:
+
             link_loss = self.loss(torch.flatten(link_logits, end_dim=-2), batch["unit"]["link"].view(-1))
             label_loss = self.loss(torch.flatten(label_logits, end_dim=-2), batch["unit"]["label"].view(-1))
             
@@ -219,8 +220,8 @@ class JointPN(nn.Module):
             output.add_loss(task="label",       data=label_loss)
 
 
-        label_preds = torch.argmax(link_logits,  dim=-1)
-        link_preds = torch.argmax(label_logits, dim=-1)
+        label_preds = torch.argmax(label_logits,  dim=-1)
+        link_preds = torch.argmax(link_logits, dim=-1)
 
         output.add_preds(task="label",          level="unit", data=label_preds)
         output.add_preds(task="link",           level="unit", data=link_preds)

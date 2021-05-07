@@ -33,10 +33,9 @@ exp = Pipeline(
             )
 
 hps = get_default_hps(LSTM_CRF.name())
-hps["max_epochs"] = 2
 best_hp = exp.train(
                         hyperparamaters = hps,
-                        n_random_seeds=1,
+                        n_random_seeds=6,
                         ptl_trn_args=dict(
                                             gpus=[3],
                                             gradient_clip_val=5.0

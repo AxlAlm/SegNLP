@@ -54,7 +54,7 @@ class CBAttentionLayer(nn.Module):
 
     def forward(self, query, key, mask=None, return_softmax=False):
 
-        # contex_out = (BATCH_SIZE, SEQ_LEN, INPUT_DIM )
+        # key (also seens as context) (BATCH_SIZE, SEQ_LEN, INPUT_DIM )
         key_out = self.W1(key)
     
         # query = (BATCH_SIZE, 1, INPUT_DIM )
@@ -69,10 +69,10 @@ class CBAttentionLayer(nn.Module):
         # apply it like this :
         # http://juditacs.github.io/2018/12/27/masked-attention.html
         
-        if mask.dtype != torch.bool:
-            mask = mask.type(torch.bool)
-        
-        ui[~mask] = float('-inf')
+        #for all samples we set the probs for non existing units to inf and the prob for all
+        # units pointing to an non existing unit to -inf.
+        mask = mask.type(torch.bool)
+        ui[~mask]  =  float("-inf") #set full units vectors to -inf
     
         if return_softmax:
             return  F.softmax(ui, dim=-1)

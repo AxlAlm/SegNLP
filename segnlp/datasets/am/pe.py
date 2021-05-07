@@ -354,7 +354,6 @@ class PE(DataSet):
             relation = ac_id2relation.get(ac_id, 0)
             #self.__task_labels["link"].add(relation)
 
-
             ac = ac_id2ac.get(ac_id,"None")
             stance = self._stance2new_stance.get(ac_id2stance.get(ac_id,"None"), "None")
 

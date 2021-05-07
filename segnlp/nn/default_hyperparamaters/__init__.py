@@ -43,10 +43,11 @@ joint_pointer_nn_hps = {
     "task_weight": 0.5,
     "batch_size": 16,
     "max_epochs": 4000,
+
 }
 
 lstm_dist_hps = {
-    "optimizer": "sgd",
+    "optimizer": "adam",
     "lr": 0.001,
     "hidden_dim": 256,
     "num_layers": 1,
@@ -58,7 +59,7 @@ lstm_dist_hps = {
     "input_dropout": 0.1,
     "lstm_dropout" : 0.1,
     "output_dropout": 0.5,
-    "patience": 10
+    #"patience": 10
 
 }
 

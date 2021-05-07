@@ -107,7 +107,7 @@ class LSTM_DIST(nn.Module):
                                     dropout=hyperparamaters["output_dropout"]
                                     )
 
-        self.loss = nn.CrossEntropyLoss(reduction="mean", ignore_index=-1)
+        self.loss = nn.CrossEntropyLoss(reduction="sum", ignore_index=-1)
 
 
     @classmethod
@@ -181,7 +181,7 @@ class LSTM_DIST(nn.Module):
                     f_pre = forward[idx][i-1]
 
 
-                if j+1 > backward.shape[1]:
+                if j+1 >= backward.shape[1]:
                     b_post = torch.zeros(hidden_dim,  device=self.device)
                 else:
                     b_post = backward[idx][j+1]
@@ -225,14 +225,12 @@ class LSTM_DIST(nn.Module):
 
         # 3
         # pass each of the spans to a seperate BiLSTM. 
-
         # NOTE! as Argumentative Markers are not allways present the length will sometimes be 0, 
         # which will cause an error when useing pack_padded_sequence etc.
-        # to fix this all AM's that are non existing are set to a defualt lenght of 1.
+        # to fix this all AM's that are non existing are set to a default lenght of 1.
         # this will not really matter as these representations will be 0s anyway.
         #
         # we also need to sort AMS so they can be passed to the lstm
-
         sorted_am_lengths, sorted_am_indices = torch.sort(batch["am"]["lengths"], descending=True)
         _ , original_am_indices = torch.sort(sorted_indices, descending=False)
         am_lstm_out, _ = self.am_lstm(am_minus_embs[sorted_indices], sorted_am_lengths)
@@ -244,10 +242,12 @@ class LSTM_DIST(nn.Module):
         # concatenate the output from Argument Component BiLSTM and Argument Marker BiLSTM with BOW embeddigns W
         contex_emb = torch.cat((am_lstm_out, ac_lstm_out, W), dim=-1)
 
-        # 5
+        #5
+        contex_emb = self.output_dropout(contex_emb)
+
         # Classification of AC and link labels is pretty straight forward
-        link_label_out = self.link_label_clf(self.output_dropout(contex_emb))
-        label_out = self.label_clf(self.output_dropout(contex_emb))
+        link_label_out = self.link_label_clf(contex_emb)
+        label_out = self.label_clf(contex_emb)
         link_out = self.link_clf(contex_emb, unit_mask=batch["unit"]["mask"])
 
         #link_label_probs = F.softmax(link_label_out, dim=-1)
@@ -257,45 +257,25 @@ class LSTM_DIST(nn.Module):
         link_label_preds = torch.argmax(link_label_out, dim=-1)
         label_preds = torch.argmax(label_out, dim=-1)
 
-
-        
+     
         if not self.inference:   
             link_loss = self.loss(torch.flatten(link_out, end_dim=-2), batch["unit"]["link"].view(-1))
             link_label_loss = self.loss(torch.flatten(link_label_out, end_dim=-2), batch["unit"]["link_label"].view(-1))
             label_loss = self.loss(torch.flatten(label_out, end_dim=-2), batch["unit"]["label"].view(-1))
-            total_loss = (self.ALPHA * link_loss) + (self.BETA * label_loss) + ( (1 - self.ALPHA- self.BETA) * link_label_loss) 
+
+            total_loss = -((self.ALPHA * link_loss) + (self.BETA * label_loss) + ( (1 - self.ALPHA - self.BETA) * link_label_loss))
 
             output.add_loss(task="total",       data=total_loss)
             output.add_loss(task="link",        data=link_loss)
             output.add_loss(task="link_label",  data=link_label_loss)
             output.add_loss(task="label",       data=label_loss)
 
-
         output.add_preds(task="label",          level="unit", data=label_preds)
         output.add_preds(task="link",           level="unit", data=link_preds)
         output.add_preds(task="link_label",     level="unit", data=link_label_preds)
 
-        # output.add_probs(task="relation", level="unit", data=relation_probs)
-        # output.add_probs(task="ac",       level="unit", data=ac_probs)
-        # output.add_probs(task="s",       level="unit", data=stance_probs)
+        # output.add_preds(task="label",          level="unit", data=batch["unit"]["label"])
+        # output.add_preds(task="link",           level="unit", data=batch["unit"]["link"])
+        # output.add_preds(task="link_label",     level="unit", data=batch["unit"]["link_label"])
+
         return output
-
-       
-
-    
-
-        # return {    
-        #             "loss": {   
-        #                         "total": total_loss,
-        #                         }, 
-        #             "preds": {
-        #                         "ac": ac_preds, 
-        #                         "relation": stance_preds,
-        #                         "stance": stance_preds
-        #                     },
-        #             "probs": {
-        #                         "ac": ac_probs, 
-        #                         "relation": relation_probs,
-        #                         "stance": stance_probs
-        #                     },
-        #         }

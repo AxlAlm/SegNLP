@@ -11,8 +11,6 @@ from copy import deepcopy
 from collections import Counter
 
 
-
-
 #pytroch
 import torch
 
@@ -33,7 +31,7 @@ from segnlp import get_logger
 
 
 
-def token_metrics(targets:np.ndarray, preds:np.ndarray, task:str, labels:list):
+def base_metric(targets:np.ndarray, preds:np.ndarray, task:str, labels:list):
 
     assert targets.shape == preds.shape, f"shape missmatch for {task}: Targets:{targets.shape} | Preds: {preds.shape}"
 

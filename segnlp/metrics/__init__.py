@@ -1,6 +1,6 @@
 
-from .token_metrics import token_metrics
+from .base_metric import base_metric
 
 __all__ = [
-            "token_metrics"
+            "base_metric"
         ]

@@ -151,6 +151,8 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 spans_grouped = sample.groupby("span_id")
                 length = len(spans_grouped)
                 lengths = np.array([g.shape[0] for i, g in spans_grouped])
+                #print(lengths, sum(lengths))
+                #assert sum(lengths) == sample.shape[0]
 
                 Input.add("lengths", length, "span")
                 Input.add("lengths_tok", lengths, "span")
@@ -355,7 +357,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         for unit_id, gdf in units:
     
             unit_start = min(gdf[f"{self.sample_level}_token_id"])
-            unit_end = max(gdf[f"{self.sample_level}_token_id"])
+            unit_end = max(gdf[f"{self.sample_level}_token_id"])+1
             unit_span = (unit_start, unit_end)
 
             unit_spans.append(unit_span)
@@ -363,6 +365,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         if not unit_spans:
             unit_spans = [(0,0)]
 
+        #print(unit_spans)
         Input.add("span_idxs", np.array(unit_spans), "unit")
 
 
@@ -392,11 +395,11 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 has_am = False
             else:
                 am_start = min(am[f"{self.sample_level}_token_id"])
-                am_end = max(am[f"{self.sample_level}_token_id"])
+                am_end = max(am[f"{self.sample_level}_token_id"])+1
                 am_span = (am_start, am_end)
 
             unit_start = min(gdf[f"{self.sample_level}_token_id"])
-            unit_end = max(gdf[f"{self.sample_level}_token_id"])
+            unit_end = max(gdf[f"{self.sample_level}_token_id"])+1
             unit_span = (unit_start, unit_end)
 
             if has_am:

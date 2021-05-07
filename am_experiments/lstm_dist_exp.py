@@ -37,19 +37,18 @@ exp = Pipeline(
 
 hps = get_default_hps(LSTM_DIST.name())
 
-hps["max_epochs"] = 2
 best_hp = exp.train(
                         hyperparamaters = hps,
-                        n_random_seeds=1,
+                        n_random_seeds=6,
                         ptl_trn_args=dict(
-                                            gpus=[2]
-                                        )
+                                           # gpus=[1]
+                                        ),
                         )
 
 
-#exp1_scores, exp1_outputs = exp.test()
+exp1_scores, exp1_outputs = exp.test()
 
-seg_pred = pd.read_csv("/tmp/pred_segs.csv")
+#seg_pred = pd.read_csv("/tmp/pred_segs.csv")
 
 # print(exp1_scores)
-exp2_scores, exp2_outputs = exp.test(seg_preds=seg_pred)
+#exp2_scores, exp2_outputs = exp.test(seg_preds=seg_pred)
