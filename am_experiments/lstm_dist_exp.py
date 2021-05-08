@@ -36,15 +36,13 @@ exp = Pipeline(
             )
 
 hps = get_default_hps(LSTM_DIST.name())
-
 best_hp = exp.train(
                         hyperparamaters = hps,
                         n_random_seeds=6,
                         ptl_trn_args=dict(
-                                           # gpus=[1]
+                                           gpus=[1]
                                         ),
                         )
-
 
 exp1_scores, exp1_outputs = exp.test()
 

@@ -32,8 +32,8 @@ best_hp = exp.train(
                         ptl_trn_args=dict(
                                             gpus=[1]
                                         ),
-                        monitor_metric="val_label-f1"
+                        monitor_metric="val_link-f1"
                         )
 
-exp1_scores, exp1_outputs = exp.test()
-exp2_scores, exp2_outputs = exp.test(seg_preds="/tmp/seg_preds.csv")
+# exp1_scores, exp1_outputs = exp.test()
+# exp2_scores, exp2_outputs = exp.test(seg_preds="/tmp/seg_preds.csv")
