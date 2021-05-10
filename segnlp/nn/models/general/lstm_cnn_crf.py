@@ -1,7 +1,6 @@
 
 #basics
 import numpy as np
-import string
 
 #pytroch
 import torch
@@ -82,23 +81,24 @@ class LSTM_CNN_CRF(nn.Module):
         self.KERNEL_SIZE = hyperparamaters["kernel_size"]
         self.NUM_LAYERS = hyperparamaters["num_layers"]
         self.BI_DIR = hyperparamaters["bidir"]
-
+        self.N_FILTERS = hyperparamaters["n_filters"]
         self.WORD_EMB_DIM = feature_dims["word_embs"]
 
         self.lstm = LSTM(  
-                                input_size=self.WORD_EMB_DIM+self.CHAR_DIM,
+                                input_size=self.WORD_EMB_DIM + self.N_FILTERS,
                                 hidden_size=self.HIDDEN_DIM,
                                 num_layers= self.NUM_LAYERS,
                                 bidirectional=self.BI_DIR,
+                                dropout=hyperparamaters["dropout"]
                                 )
         
         #char_vocab = len(self.dataset.encoders["chars"])
-        nr_chars = len(string.printable)+1
         self.char_cnn  = CharEmb(  
-                                        vocab = nr_chars, 
-                                        emb_size = self.CHAR_DIM,
-                                        kernel_size = self.KERNEL_SIZE
-                                        )
+                                emb_size = self.CHAR_DIM,
+                                n_filters = self.N_FILTERS,
+                                kernel_size = self.KERNEL_SIZE,
+                                dropout=hyperparamaters["dropout"]
+                                )
 
         #output layers. One for each task
         self.output_layers = nn.ModuleDict()
@@ -148,7 +148,9 @@ class LSTM_CNN_CRF(nn.Module):
                 # will be default to "O" in BIO or "None" (see label encoders)
                 batch.change_pad_value(level="token", task=task, new_value=0)
 
-                target_tags = batch["token"][task]
+                target_tags = batch["token"][task]                
+
+
                 loss = -crf( 
                             emissions=dense_out,
                             tags=target_tags,
@@ -163,7 +165,13 @@ class LSTM_CNN_CRF(nn.Module):
                                 emissions=dense_out, 
                                 mask=mask
                                 )
-
+            
+            #print(torch.tensor(zero_pad(preds), dtype=torch.long)[0],target_tags[0])
+            # print(
+            #         batch["token"][task], 
+            #         torch.tensor(zero_pad(preds))
+            #         )
+            #output.add_preds(task=task, level="token", data= batch["token"][task])
             output.add_preds(task=task, level="token", data=torch.tensor(zero_pad(preds), dtype=torch.long))
             
         return output

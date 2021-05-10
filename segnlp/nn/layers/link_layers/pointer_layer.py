@@ -40,7 +40,7 @@ class Pointer(nn.Module):
     def __init__(self, input_size:int, hidden_size:int, dropout=None):
         super().__init__()
         self.input_layer = nn.Linear(input_size, hidden_size)
-        self.lstm_cell =  nn.LSTMCell(input_size, hidden_size)
+        self.lstm_cell =  nn.LSTMCell(hidden_size, hidden_size)
         self.attention = CBAttentionLayer(
                                         input_dim=hidden_size,
                                         )
@@ -51,27 +51,30 @@ class Pointer(nn.Module):
             self.use_dropout = True
 
 
-    def forward(self, encoder_outputs, encoder_h_s, encoder_c_s, mask, return_softmax=False):
+    def forward(self, inputs, encoder_outputs, encoder_h_s, encoder_c_s, mask, return_softmax=False):
 
         seq_len = encoder_outputs.shape[1]
         batch_size = encoder_outputs.shape[0]
         device = encoder_outputs.device
 
-        if self.use_dropout:
-            encoder_outputs = self.dropout(encoder_outputs)
+        # if self.use_dropout:
+        #     encoder_outputs = self.dropout(encoder_outputs)
 
         h_s = encoder_h_s
         c_s = encoder_c_s
 
-        decoder_input = torch.zeros(encoder_h_s.shape, device=device)
         output = torch.zeros(batch_size, seq_len, seq_len, device=device)
         for i in range(seq_len):
-            
-            decoder_input = torch.sigmoid(self.input_layer(decoder_input))
+
+            if i == 0:
+                decoder_input = torch.zeros(inputs[:,i].shape, device=device)
+            else:
+                decoder_input = inputs[:,i-1]
 
             if self.use_dropout:
                 decoder_input = self.dropout(decoder_input)
-
+            
+            decoder_input = torch.sigmoid(self.input_layer(decoder_input))
             h_s, c_s = self.lstm_cell(decoder_input, (h_s, c_s))
 
             output[:, i] = self.attention(h_s, encoder_outputs, mask, return_softmax=return_softmax)

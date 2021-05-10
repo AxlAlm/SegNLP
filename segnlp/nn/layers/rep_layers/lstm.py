@@ -21,7 +21,6 @@ class LSTM(nn.Module):
                                 bidirectional=bidirectional,  
                                 batch_first=True
                             )
-
         self.dropout = nn.Dropout(dropout)
 
 

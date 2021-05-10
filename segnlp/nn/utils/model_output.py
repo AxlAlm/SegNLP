@@ -4,6 +4,7 @@
 from typing import Union, List
 import numpy as np
 import pandas as pd
+from collections import Counter
 
 
 #segnlp
@@ -81,6 +82,8 @@ class ModelOutput:
         subtasks_predictions = {}
         subtasks = task.split("+")
         for subtask in subtasks:
+            #print("__________________________________________")
+            #print(subtask)
 
             subtask_position = subtasks.index(subtask)
 
@@ -94,7 +97,10 @@ class ModelOutput:
 
             subtask_preds = np.zeros((size, max_len), dtype=dtype)
             for i in range(size):
-                subtask_preds[i][:lengths[i]] = [decoder(x) for x in decoded_labels[i][:lengths[i]] ]
+                
+                #print(decoded_labels[i][:lengths[i]])
+                #print([decoder(x) for x in decoded_labels[i][:lengths[i]]])
+                subtask_preds[i][:lengths[i]] = [decoder(x) for x in decoded_labels[i][:lengths[i]]]
 
 
             self.add_preds(
@@ -120,7 +126,6 @@ class ModelOutput:
         size = preds.shape[0]
         decoded_preds = np.zeros((size, max(lengths)), dtype="<U30")
         for i in range(size):
-
             decoded_preds[i][:lengths[i]] = self.label_encoders[task].decode_list(preds[i][:lengths[i]])
         
         return decoded_preds
@@ -179,15 +184,16 @@ class ModelOutput:
         
     
     def __correct_and_decode_token_links(self, 
-                                links:np.ndarray, 
-                                lengths_units:np.ndarray,
-                                span_token_lengths:np.ndarray, 
-                                none_spans:np.ndarray, 
-                                decoded:bool,
-                                ):
+                                        links:np.ndarray, 
+                                        lengths_units:np.ndarray,
+                                        span_token_lengths:np.ndarray, 
+                                        none_spans:np.ndarray, 
+                                        decoded:bool,
+                                        ):
         """
+        This function perform correction 3 mentioned in https://arxiv.org/pdf/1704.06104.pdf  (Appendix)
+
         Any link that is outside of the actuall text, e.g. when predicted link > max_idx, is set to predicted_link== max_idx
-        https://arxiv.org/pdf/1704.06104.pdf
 
         """
 
@@ -253,6 +259,27 @@ class ModelOutput:
         return np.array(new_links)
 
 
+    def __make_homogeneous(self,
+                            data:np.ndarray,
+                            span_token_lengths:np.ndarray,
+                            none_spans:np.ndarray,
+                            ):
+
+        for i in range(data.shape[0]):
+            
+            s = 0
+            for j,l in enumerate(span_token_lengths[i]):
+
+                if none_spans[i][j] == 0:
+                    pass
+                else:
+                    majority_label = Counter(data[i][s:s+l]).most_common(1)[0][0]
+                    data[i][s:s+l] = majority_label
+                s += l
+        
+        return data
+
+
     def add_loss(self, task:str, data=torch.tensor):
 
         assert torch.is_tensor(data), f"{task} loss need to be a tensor"
@@ -290,6 +317,16 @@ class ModelOutput:
                                         task=task
                                         )
             return
+
+        if level == "token" and task != "seg":
+            # correct all the labels within a segments so that they are all the same using majority rule
+            # e.g. if the labels within a segment differ we take the majoriy label and use it as 
+            # a label for all tokens in the segment
+            data = self.__make_homogeneous(
+                                            data,
+                                            span_token_lengths=ensure_numpy(self.pred_spans["lengths_tok"]),
+                                            none_spans=ensure_numpy(self.pred_spans["none_span_mask"]),
+                                            )
 
 
         if self.prediction_level == "token" and level == "unit":
@@ -411,7 +448,6 @@ class ModelOutput:
 
         self.outputs[task] = preds
         self.outputs[f"T-{task}"] = targets
-
 
 
     def add_probs(self, task:str, level:str, data:torch.tensor):

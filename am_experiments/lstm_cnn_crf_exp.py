@@ -22,6 +22,8 @@ from segnlp.nn.default_hyperparamaters import get_default_hps
 import flair, torch
 flair.device = torch.device('cpu') 
 
+
+
 exp = Pipeline(
                 project="lstm_cnn_crf",
                 dataset=PE( 
@@ -35,6 +37,7 @@ exp = Pipeline(
                 encodings=["chars"],
                 model = LSTM_CNN_CRF
             )
+
 
 hps = get_default_hps(LSTM_CNN_CRF.name())
 best_hp = exp.train(

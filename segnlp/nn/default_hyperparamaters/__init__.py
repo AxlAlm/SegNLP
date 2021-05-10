@@ -18,14 +18,17 @@ lstm_crf_hps = {
 
 lstm_cnn_crf_hps = {
     "optimizer": "sgd",
-    "lr": 0.001,
-    "hidden_dim": 256,
-    "char_dim": 100,
+    "lr": 0.1,
+    "hidden_dim": 125, #[125, 150, 200,250],
+    "char_dim": 30,
+    "n_filters": 20,
     "kernel_size": 3,
     "num_layers": 1,
     "bidir": True,
-    "batch_size": 32,
+    "batch_size": 10,
     "max_epochs": 200,
+    "weight_decay": 0.1,
+    "dropout": 0.5,
     "patience": 5,
     
 }

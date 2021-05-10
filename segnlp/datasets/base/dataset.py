@@ -62,11 +62,14 @@ class DataSet:
             if "label" in supported_task_labels:
                 supported_task_labels["label"].remove("None")
 
-        self._task_labels = self.__get_task_labels(tasks, supported_task_labels)
 
         data = self._process_data(self._download_data())
         self.split_idx, data  = self._shuffle_split_data(data)
         self.data = pd.DataFrame(data)
+        self._stats = self.__calc_label_stats()
+        
+        self._task_labels = self.__get_task_labels(tasks, supported_task_labels)
+
 
         assert isinstance(self.data, pd.DataFrame)
         
@@ -126,6 +129,10 @@ class DataSet:
     def splits(self):
         return self._splits
 
+    @property
+    def stats(self):
+        return self._stats
+
 
     def _download_data(self):
         raise NotImplementedError
@@ -137,15 +144,6 @@ class DataSet:
 
     def _shuffle_split_data(self):
         raise NotImplementedError
-
-    # @classmethod
-    # def load_CoNLL(self):
-    #     raise NotImplementedError
-
-
-    # @classmethod
-    # def load_DAT(self):
-    #     raise NotImplementedError
 
 
     def __get_subtasks(self, tasks):
@@ -166,31 +164,23 @@ class DataSet:
                 task_labels[task] = supported_task_labels[task]
                 continue
 
-            label_groups = []
-            has_seg = False
             for st in subtasks:
                 task_labels[st] = supported_task_labels[st]
 
-                if st == "seg":
-                    BIO = task_labels["seg"].copy()
-                    BIO.remove("O")
-                    label_groups.append(BIO)
-                    has_seg = True
-                else:
-                    label_groups.append(task_labels[st])
+            labels = [k for k,v in self.stats[task].items()]
+            
+            if "seg+" in task:
+                none_label = "_".join(["O"] + ["None" if s != "link" else "0" for s in task.split("+") if s != "seg"])
+                seg_labels = supported_task_labels["seg"].copy()
+                seg_labels.remove("O")
+                labels = [none_label] + ["_".join(x) for x in itertools.product(seg_labels, labels)]
 
-            combs = list(itertools.product(*label_groups))
-
-            if has_seg:
-                none_label = ["O"] + ["None" if s != "link" else "0" for s in task_labels if s != "seg"]
-                combs.insert(0,none_label)
-
-            task_labels[task] = ["_".join([str(c) for c in comb]) for comb in combs]
-        
+            task_labels[task] = labels
+            
         return task_labels
 
-
-    def stats(self):
+    
+    def __calc_label_stats(self):
 
         collected_counts = {task:Counter() for task in self.tasks}
 
@@ -201,6 +191,13 @@ class DataSet:
                 sdf = sdf[~sdf["unit_id"].isna()]
 
                 for task in self.tasks:
+                    
+                    if task == "seg":
+                        continue
+
+                    if task != sdf.columns.tolist():
+                        sdf[task] = ["_".join(map(str,x)) for x in zip(*[sdf[t].tolist() for t in task.split("+") if t != "seg"])]
+
                     counts = sdf[task].value_counts().to_dict()
                     collected_counts[task] += counts
         

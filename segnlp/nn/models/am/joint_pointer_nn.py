@@ -160,7 +160,7 @@ class JointPN(nn.Module):
                                 )
 
         self.decoder = Pointer(
-                                input_size=self.DECODER_HIDDEN_DIM,
+                                input_size=self.FEATURE_DIM,
                                 hidden_size=self.DECODER_HIDDEN_DIM,
                                 dropout = self.DEC_DROPOUT
                                 )
@@ -198,6 +198,7 @@ class JointPN(nn.Module):
 
         # OUTPUT: (BATCH_SIZE, SEQ_LEN, SEQ_LEN)
         link_logits = self.decoder(
+                                    X,
                                     encoder_out, 
                                     encoder_h_s, 
                                     encoder_c_s, 
@@ -222,6 +223,8 @@ class JointPN(nn.Module):
 
         label_preds = torch.argmax(label_logits,  dim=-1)
         link_preds = torch.argmax(link_logits, dim=-1)
+
+        #print(link_preds[3], batch["unit"]["link"][3])
 
         output.add_preds(task="label",          level="unit", data=label_preds)
         output.add_preds(task="link",           level="unit", data=link_preds)
