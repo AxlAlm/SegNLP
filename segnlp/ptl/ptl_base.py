@@ -175,7 +175,7 @@ class PTLBase(ptl.LightningModule):
         if self.model.OPT.lower() == "adadelta":
             opt = torch.optim.Adadelta(self.parameters(), lr=self.model.LR)
         elif self.model.OPT.lower() == "sgd":
-            opt = torch.optim.SGD(self.parameters(), lr=self.model.LR, weight_decay=self.hyperparamaters.get("wweight_decay", 0))
+            opt = torch.optim.SGD(self.parameters(), lr=self.model.LR)
         elif self.model.OPT.lower() == "adam":
             opt = torch.optim.Adam(self.parameters(), lr=self.model.LR)
         elif self.model.OPT.lower() == "rmsprop":
