@@ -15,8 +15,8 @@ from segnlp.nn.layers.rep_layers import LSTM
 from segnlp.utils import zero_pad
 
 # use a torch implementation of CRF
-from torchcrf import CRF
-#from allennlp.modules.conditional_random_field import ConditionalRandomField as CRF
+#from torchcrf import CRF
+from allennlp.modules.conditional_random_field import ConditionalRandomField as CRF
 
 
 class LSTM_CNN_CRF(nn.Module):

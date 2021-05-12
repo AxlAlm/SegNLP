@@ -96,13 +96,29 @@ class LSTM_DIST(nn.Module):
                                 dropout=hyperparamaters["lstm_dropout"]
                                 )
 
-        self.output_dropout = nn.Dropout(hyperparamaters["output_dropout"])
+        am_ac_bow_size = (self.HIDDEN_DIM*(2 if self.BI_DIR else 1) * 2) + self.DOC_FEATURE_DIM
+        self.am_ac_lstm = LSTM(  
+                                input_size = am_ac_bow_size,
+                                hidden_size=self.HIDDEN_DIM,
+                                num_layers= self.NUM_LAYERS,
+                                bidirectional=self.BI_DIR,
+                                dropout=hyperparamaters["lstm_dropout"]
+                                )
 
-        input_size = (self.HIDDEN_DIM*(2 if self.BI_DIR else 1) * 2) + self.DOC_FEATURE_DIM
-        self.link_label_clf = nn.Linear(input_size, task_dims["link_label"])
-        self.label_clf = nn.Linear(input_size, task_dims["label"])
+        self.last_lstm = LSTM(  
+                                input_size = self.HIDDEN_DIM*2,
+                                hidden_size=self.HIDDEN_DIM,
+                                num_layers= self.NUM_LAYERS,
+                                bidirectional=self.BI_DIR,
+                                dropout=hyperparamaters["lstm_dropout"]
+                                )
+
+        self.output_dropout = nn.Dropout(hyperparamaters["output_dropout"])
+        
+        self.link_label_clf = nn.Linear(self.HIDDEN_DIM*2, task_dims["link_label"])
+        self.label_clf = nn.Linear(self.HIDDEN_DIM*2, task_dims["label"])
         self.link_clf = PairingLayer(
-                                    input_dim=input_size, 
+                                    input_dim=self.HIDDEN_DIM*2, 
                                     max_units=task_dims["link"],
                                     dropout=hyperparamaters["output_dropout"]
                                     )
@@ -240,18 +256,21 @@ class LSTM_DIST(nn.Module):
 
         # 4
         # concatenate the output from Argument Component BiLSTM and Argument Marker BiLSTM with BOW embeddigns W
-        contex_emb = torch.cat((am_lstm_out, ac_lstm_out, W), dim=-1)
+        cat_emb = torch.cat((am_lstm_out, ac_lstm_out, W), dim=-1)
+        adu_emb, _= self.am_ac_lstm(cat_emb, batch["unit"]["lengths"])
 
         #5
-        contex_emb = self.output_dropout(contex_emb)
+        adu_emb = self.output_dropout(adu_emb)
 
         # Classification of AC and link labels is pretty straight forward
-        link_label_out = self.link_label_clf(contex_emb)
-        label_out = self.label_clf(contex_emb)
-        link_out = self.link_clf(contex_emb, unit_mask=batch["unit"]["mask"])
+        link_label_out = self.link_label_clf(adu_emb)
+        label_out = self.label_clf(adu_emb)
 
-        #link_label_probs = F.softmax(link_label_out, dim=-1)
-        #label_probs = F.softmax(label_out, dim=-1)
+        
+        adu_emb, _ = self.last_lstm(adu_emb, batch["unit"]["lengths"])
+        adu_emb = self.output_dropout(adu_emb)
+
+        link_out = self.link_clf(adu_emb, unit_mask=batch["unit"]["mask"])
 
         link_preds = torch.argmax(link_out, dim=-1)
         link_label_preds = torch.argmax(link_label_out, dim=-1)
@@ -263,7 +282,7 @@ class LSTM_DIST(nn.Module):
             link_label_loss = self.loss(torch.flatten(link_label_out, end_dim=-2), batch["unit"]["link_label"].view(-1))
             label_loss = self.loss(torch.flatten(label_out, end_dim=-2), batch["unit"]["label"].view(-1))
 
-            total_loss = -((self.ALPHA * link_loss) + (self.BETA * label_loss) + ( (1 - self.ALPHA - self.BETA) * link_label_loss))
+            total_loss = ((self.ALPHA * link_loss) + (self.BETA * label_loss) + ( (1 - self.ALPHA - self.BETA) * link_label_loss))
 
             output.add_loss(task="total",       data=total_loss)
             output.add_loss(task="link",        data=link_loss)

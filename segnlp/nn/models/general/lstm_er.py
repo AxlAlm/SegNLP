@@ -136,7 +136,7 @@ class LSTM_ER(nn.Module):
                                             self.num_seg_labels)
             else:
                 preds_used = seg_label_output["preds"]
-                one_hot_embs = seg_label_output["one_hot"]
+                one_hot_embs = seg_label_output["one_hots"]
 
         bio_data = bio_decode(
             batch_encoded_bios=preds_used,
@@ -170,9 +170,9 @@ class LSTM_ER(nn.Module):
             link_label_probs = link_label_outputs["link_label_probs"]
 
             label_loss = self.loss(
-                torch.log_softmax(seg_label_probs,
-                                  dim=-1).view(-1, self.num_seg_labels),
-                batch["token"]["seg+label"].view(-1))
+                                    torch.log_softmax(seg_label_probs,dim=-1).view(-1, self.num_seg_labels),
+                                    batch["token"]["seg+label"].view(-1)
+                                    )
 
             link_label_loss = self.loss(
                 torch.log(link_label_probs),

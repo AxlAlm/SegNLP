@@ -18,14 +18,14 @@ lstm_crf_hps = {
 
 lstm_cnn_crf_hps = {
     "optimizer": "sgd",
-    "lr": 0.1,
-    "hidden_dim": 200, #[125, 150, 200,250],
+    "lr": [0.001, 0.1],
+    "hidden_dim": [125, 150, 200,250],
     "char_dim": 30,
     "n_filters": 20,
     "kernel_size": 3,
     "num_layers": 1,
     "bidir": True,
-    "batch_size": 32,
+    "batch_size": [10,32],
     "max_epochs": 200,
     "dropout": 0.5,
     "patience": 5,
@@ -45,7 +45,6 @@ joint_pointer_nn_hps = {
     "batch_size": 16,
     "max_epochs": 4000,
     "patience": 15,
-
 }
 
 lstm_dist_hps = {
@@ -61,7 +60,7 @@ lstm_dist_hps = {
     "input_dropout": 0.1,
     "lstm_dropout" : 0.1,
     "output_dropout": 0.5,
-    #"patience": 10
+    "patience": 10
 
 }
 
@@ -81,6 +80,7 @@ lstm_er = {
     "lr": 0.001,
     "max_epochs": 300,
     "batch_size": 32,
+    "patience":10,
 }
 
 dummy_hps = {
