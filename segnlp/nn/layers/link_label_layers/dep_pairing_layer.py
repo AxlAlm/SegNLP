@@ -1,52 +1,46 @@
-
-#basics
-from typing import List, Tuple, DefaultDict
+# basics
+from typing import List, Tuple, DefaultDict, Dict
 import functools
-import itertools
-import numpy as np 
+from itertools import chain, repeat
 
-#pytorch
+import numpy as np
+import pandas as pd
+
+# pytorch
 import torch
 from torch import Tensor
 import torch.nn as nn
-import torch.nn.functional as F
+# import torch.nn.functional as F
 
 # networkx
 import networkx as nx
 from networkx import Graph as nxGraph
 
-#DGL
+# DGL
 import dgl
 from dgl import DGLGraph
 from dgl.traversal import topological_nodes_generator as traverse_topo
 
 # hotam
-from segnlp.nn.utils import ModelInput
-#from segnlp.nn.layers.type_treelstm import TypeTreeLSTM
-from segnlp.nn.utils import scatter_repeat
+from segnlp.nn.layers.rep_layers import TypeTreeLSTM
 from segnlp.nn.utils import get_all_possible_pairs
-from segnlp.nn.utils import pair_matrix
-from segnlp.nn.utils import agg_emb
-from segnlp.nn.utils import create_mask
-from segnlp.nn.utils import index_select_array
-from segnlp.nn.utils import cumsum_zero
-
+from segnlp.nn.utils import range_3d_tensor_index
 
 
 class DepGraph:
-    
-    def __init__(self, 
-                token_embs: Tensor, 
-                deplinks: Tensor,
-                roots: Tensor, 
-                token_mask: Tensor, 
-                subgraphs: List[List[Tuple]],
-                mode: str,
-                device=None,
-                assertion:bool=False
-                ) -> List[DGLGraph]:
+    def __init__(self,
+                 token_embs: Tensor,
+                 deplinks: Tensor,
+                 roots: Tensor,
+                 token_mask: Tensor,
+                 subgraphs: List[Tensor],
+                 mode: str,
+                 device=None,
+                 assertion: bool = False) -> List[DGLGraph]:
 
-        assert mode in set(["shortest_path"]), f"{mode} is not a supported mode for DepPairingLayer"
+        assert mode in set([
+            "shortest_path"
+        ]), f"{mode} is not a supported mode for DepPairingLayer"
         self.device = device
         batch_size = deplinks.size(0)
 
@@ -59,6 +53,8 @@ class DepGraph:
         dep_graphs = []
         nodes_emb = []
         for b_i in range(batch_size):
+            if not subgraphs[b_i]:  # no candidate pair
+                continue
             mask = M[b_i]
             u = U[b_i][mask]
             v = V[b_i][mask]
@@ -69,9 +65,6 @@ class DepGraph:
             graph_unidir = graph.to_networkx().to_undirected()
             start, end = list(zip(*subgraphs[b_i]))
 
-            if start == []:  # no candidate pair
-                continue
-
             subgraph_func = functools.partial(self.get_subgraph,
                                               g=graph,
                                               g_nx=graph_unidir,
@@ -81,14 +74,13 @@ class DepGraph:
             dep_graphs.append(dgl.batch(list(map(subgraph_func, start, end))))
 
             # get nodes' token embedding
-            nodes_emb.append(token_embs[b_i, dep_graphs[b_i].ndata["_ID"]])
+            nodes_emb.append(token_embs[b_i, dep_graphs[-1].ndata["_ID"]])
 
         # batch graphs, move to model device, update nodes data by tokens
         # embedding
         nodes_emb = torch.cat(nodes_emb, dim=0)
         self.graphs = dgl.batch(dep_graphs).to(self.device)
         self.graphs.ndata["emb"] = nodes_emb
-
 
     def assert_graph(self, u: Tensor, v: Tensor, roots: Tensor,
                      self_loop: Tensor) -> None:
@@ -104,10 +96,8 @@ class DepGraph:
             error_msg_1 = f"Self loop found in sample(s): {problem_id}, "
             error_msg_2 = f"Node(s) {self_loop_id}. Root(s): {theroot}."
             raise Exception(error_msg_1 + error_msg_2)
-            # remove the sample that has the problem
 
-
-    def get_sample_graph(self, deplinks: Tensor, roots: Tensor, 
+    def get_sample_graph(self, deplinks: Tensor, roots: Tensor,
                          token_mask: Tensor, assertion: bool) -> List[Tensor]:
 
         batch_size = deplinks.size(0)
@@ -128,7 +118,6 @@ class DepGraph:
         M = M[~self_loop].view(batch_size, -1).to(device)
 
         return [U, V, M]
-
 
     def get_subgraph(self,
                      start: int,
@@ -174,9 +163,7 @@ class DepGraph:
         return sub_g
 
 
-
 class DepPairingLayer(nn.Module):
-
     def __init__(self,
                  tree_input_size: int,
                  tree_lstm_h_size: int,
@@ -193,62 +180,84 @@ class DepPairingLayer(nn.Module):
         self.tree_lstm = TypeTreeLSTM(embedding_dim=tree_input_size,
                                       h_size=tree_lstm_h_size,
                                       dropout=dropout,
-                                      bidirectional=tree_bidirectional)
+                                      bidirectional=True)
 
-        pre_clf_layer =  nn.Sequential(
-                                            nn.Linear(decoder_input_size, decoder_h_size), 
-                                            nn.Tanh(),
-                                            nn.Dropout(dropout), 
-                                            )
-        self.left2right = nn.Sequential(    
-                                        pre_clf_layer,
-                                        nn.Linear(decoder_h_size, decoder_output_size),
-                                        nn.Softmax(dim=-1)
-                                        )
-        self.right2left = nn.Sequential(
-                                        pre_clf_layer,
-                                        nn.Linear(decoder_h_size, decoder_output_size),
-                                        nn.Softmax(dim=-1)
-                                        )                                 
+        self.link_label_clf_layer = nn.Sequential(
+                                    nn.Linear(decoder_input_size, decoder_h_size), 
+                                    nn.Tanh(),
+                                    nn.Dropout(dropout),
+                                    nn.Linear(decoder_h_size, decoder_output_size), 
+                                    #nn.Softmax(dim=-1)
+                                    )
+        # number of link labels including None
+        self.ll_num = (decoder_output_size + 1) // 2
 
+    def split_nested_list(self,
+                          nested_list: List[list],
+                          device=torch.device) -> Tuple[Tensor]:
+
+        list_1, list_2 = list(zip(*chain.from_iterable(nested_list)))
+        list_1 = torch.tensor(list_1, dtype=torch.long, device=device)
+        list_2 = torch.tensor(list_2, dtype=torch.long, device=device)
+        return list_1, list_2
+
+    def swap_elements(self, vector_1: Tensor, vector_2: Tensor,
+                      idx: Tensor) -> Tuple[Tensor]:
+        vector_1_copy = vector_1.clone()
+        vector_2_copy = vector_2.clone()  # avoid changing original tensor
+
+        vector_1_copy[idx] = vector_2[idx]
+        vector_2_copy[idx] = vector_1[idx]
+
+        return vector_1_copy, vector_2_copy
+
+    def split_2dtensor_start_end(self, matrix: Tensor, start_idx: np.array,
+                                 end_idx: np.array, idx0: np.array):
+        idx_0 = idx0.clone()
+        span_length = end_idx - start_idx
+        idx_0 = torch.repeat_interleave(idx_0, span_length)
+        idx_1 = torch.cat(
+            list(
+                map(lambda x, y, d: torch.arange(x, y, device=d), start_idx,
+                    end_idx, repeat(idx_0.device))))
+
+        matrix_split = torch.split(matrix[idx_0, idx_1],
+                                   split_size_or_sections=span_length.tolist())
+
+        return matrix_split
 
     def build_pair_embs(self,
                         token_embs: Tensor,
-                        dep_embs : Tensor,
-                        one_hot_embs : Tensor,
+                        dep_embs: Tensor,
+                        one_hot_embs: Tensor,
                         roots: Tensor,
                         token_mask: Tensor,
                         deplinks: Tensor,
                         bio_data: dict,
                         mode: str = "shortest_path",
-                        assertion: bool = False
-                        ):
+                        assertion: bool = False):
 
         # get all possible pairs
-        pair_data = get_all_possible_pairs(
-                                            start=bio_data["unit"]["start"],
-                                            end=bio_data["unit"]["end"],
-                                            )
-                            
+        pair_data = get_all_possible_pairs(start=bio_data["unit"]["start"],
+                                           end=bio_data["unit"]["end"],
+                                           device=self.device,
+                                           bidir=False)
+
         # 1) Build graph from dependecy data
         node_embs = torch.cat((token_embs, one_hot_embs, dep_embs), dim=-1)
-        G = DepGraph(
-                        token_embs=node_embs,
-                        deplinks=deplinks,
-                        roots=roots,
-                        token_mask=token_mask,
-                        subgraphs=pair_data["end"],
-                        mode=mode,
-                        device=self.device,
-                        assertion=assertion
-                    )
+        G = DepGraph(token_embs=node_embs,
+                     deplinks=deplinks,
+                     roots=roots,
+                     token_mask=token_mask,
+                     subgraphs=pair_data["end"],
+                     mode=mode,
+                     device=self.device,
+                     assertion=assertion)
 
         # 2) Pass graph to a TreeLSTM to create hidden representations
-        h0 = torch.zeros(
-                        G.graphs.num_nodes(),
-                        self.tree_lstm_h_size,
-                        device=self.device
-                        )
+        h0 = torch.zeros(G.graphs.num_nodes(),
+                         self.tree_lstm_h_size,
+                         device=self.device)
         c0 = torch.zeros_like(h0)
         tree_lstm_out = self.tree_lstm(G.graphs, h0, c0)
 
@@ -257,277 +266,232 @@ class DepPairingLayer(nn.Module):
         # ↓hp1: hidden state of the first token in the candidate pair
         # ↓hp2: hidden state of the second token in the candidate pair
         # get ids of roots and tokens in relation
-        root_id = (G.graphs.ndata["root"] == 1)
+        root_id = G.graphs.ndata["root"] == 1
         start_id = G.graphs.ndata["start"] == 1
         end_id = G.graphs.ndata["end"] == 1
 
         tree_lstm_out = tree_lstm_out.view(-1, 2, self.tree_lstm_h_size)
-        tree_pair_embs = torch.cat((
-                                    tree_lstm_out[root_id, 0, :],  # ↑hpA
-                                    tree_lstm_out[start_id, 1, :], # ↓hp1
-                                    tree_lstm_out[end_id, 1, :]    # ↓hp2
-                                    ), 
-                                    dim=-1)
+        tree_pair_embs = torch.cat(
+            (
+                tree_lstm_out[root_id, 0, :],  # ↑hpA
+                tree_lstm_out[start_id, 1, :],  # ↓hp1
+                tree_lstm_out[end_id, 1, :]  # ↓hp2
+            ),
+            dim=-1)
 
-        # 3) create unit embeddings
-        unit_embs_flat = agg_emb(
-                            token_embs, 
-                            bio_data["unit"]["lengths"], 
-                            bio_data["unit"]["span_idxs"],
-                            mode="average",
-                            flat=True, #flat will returned all unit embs with padding removed in a 2D tensor
-                            ) 
-        # p1 and p2 are the unit indexs of each pair.
-        # .e.g   p1[k] = token_at_idx_i_in_sample_k,  p2[k] = unit_at_idx_j_in_sample_k
-        p1 = torch.hstack(pair_data["p1"])
-        p2 = torch.hstack(pair_data["p2"])
-
-        # p1 and p2 are indexes of each pair, but we want to create a flat tensor with all the pairs
-        # by selecting them using indexing for a flat tensor of unit_embeddings.
-        # hence we need to update the indexes so that each unit index in p1/p2, is relative
-        # to the global index of all units
-        cum_lens = cumsum_zero(torch.LongTensor(bio_data["unit"]["lengths"]))
-        global_index = torch.repeat_interleave(cum_lens, pair_data["lengths"])
-
-        p1g = p1 + global_index
-        p2g = p2 + global_index
-
-        unit_pair_embs = torch.cat((unit_embs_flat[p1g], unit_embs_flat[p2g]), dim=-1)
-
+        # Indexing sequential lstm hidden state using two lists of
+        # start and end ids of each unit
+        # from list(tuple(start_p1, start_p2)) to two separate lists
+        # NOTE We have used the function to split the list of list of tuples
+        # `split_nested_list` four times.
+        p1_st, p2_st = self.split_nested_list(pair_data["start"], self.device)
+        p1_end, p2_end = self.split_nested_list(pair_data["end"], self.device)
+        p1_s = range_3d_tensor_index(token_embs,
+                                     start=p1_st,
+                                     end=p1_end,
+                                     pair_batch_num=pair_data['lengths'],
+                                     reduce_="mean")
+        p2_s = range_3d_tensor_index(token_embs,
+                                     start=p2_st,
+                                     end=p2_end,
+                                     pair_batch_num=pair_data['lengths'],
+                                     reduce_="mean")
 
         # combine embeddings from lstm and from unit embeddings
-        # dp´ = [dp; s1,s2] 
-        pair_embs = torch.cat((tree_pair_embs, unit_pair_embs), dim=-1)
+        # dp´ = [dp; s1,s2]
+        pair_embs = torch.cat((tree_pair_embs, p1_s, p2_s), dim=-1)
 
+        return pair_embs, pair_data
 
-        return pair_embs, p1g, p2g
+    def get_pair_preds(
+            self, pair_data: DefaultDict,
+            probs_all: Tensor) -> Tuple[Tensor, Dict[str, Dict[str, Tensor]]]:
 
+        # Get the maximum probability amoung the forward and rev direction
+        ll_preds_prob, ll_preds_id = torch.max(probs_all, dim=-1)
 
-    def choose_direction(self, left2right_probs:Tensor, rigth2left_probs:Tensor):
+        # Get link prediction:
+        # Link prediction = the id of the second unit in the pair (u2) if
+        # link_label prediction:
+        #    1- is not None, otherwise Link prediction = selfloop
+        #    2- is not in rev, otherwise swap (u1) and (u2)
+        p1 = torch.cat(pair_data["p1"])
+        p2 = torch.cat(pair_data["p2"])  # 2nd item in the pair (the
+        # possible link prediction)
+        # Also start and end indices of pairs' tokens are affected
+        p1_st, p2_st = self.split_nested_list(pair_data["start"], p1.device)
+        p1_end, p2_end = self.split_nested_list(pair_data["end"], p1.device)
 
-        # we take the max prob from both directions
-        # maxs = [
-        #          [score_L2R, score_RTL]
-        #           ...
-        #        ]
-        maxs = torch.cat((
-                                torch.max(left2right_probs,dim=-1)[0].unsqueeze(-1), 
-                                torch.max(rigth2left_probs,dim=-1)[0].unsqueeze(-1)
-                                ),
-                                dim=-1
-                                )
+        # NOTE It is better to have abstarction for link label none
+        ll_preds_none = ll_preds_id == 0  # Link label prediction = none
+        p2[ll_preds_none] = p1[ll_preds_none]
+        p2_st[ll_preds_none] = p1_st[ll_preds_none]
+        p2_end[ll_preds_none] = p1_end[ll_preds_none]
 
-        # we max the max of the direction probs to get the dominant direction
-        directions = torch.argmax(maxs, dim=-1)
+        # swap pairs if link label predection is rev
+        ll_preds_rev = ll_preds_id > (self.ll_num - 1)
+        p2, p1 = self.swap_elements(p2, p1, ll_preds_rev)
+        p2_st, p1_st = self.swap_elements(p2_st, p1_st, ll_preds_rev)
+        p2_end, p1_end = self.swap_elements(p2_end, p1_end, ll_preds_rev)
 
-        # we create a global idx over all pairs
-        glob_dir_idx = directions + cumsum_zero(torch.full((maxs.shape[0],), 2))
+        # I assume that you only have the forward direction f\labels or the
+        # link label ids. So, for the pairs that have reverse direction, as we
+        # have swaped the p1 and p2, the prediction label will be
+        # pred_label_rev - (k - 1), where k is number of label link labels
+        # including None. No change in the logits as those will be feeded to
+        # the loss function. Prediction may be used in intermediant status
+        # visualization or metrics calc.
+        ll_preds_id[ll_preds_rev] -= (self.ll_num - 1)
 
-        # essentially perform flatten and zip() to get the probabilities for all paris and 
-        # directions so we can index them.
-        # e.g. [
-        #       pair0_left_to_fight_probs,
-        #       pair0_right_to_left_probs,
-        #       ...
-        #
-        #       ]
-        #
-        cat_dir_probs = torch.cat(( 
-                                left2right_probs,
-                                rigth2left_probs
-                                ),
-                                dim=-1
-                                ).view(left2right_probs.shape[0],2,3)
-        flat_dir_probs = torch.flatten(cat_dir_probs, end_dim=-2)
+        pair_link_preds_data = {
+            "p1": {
+                "id": p1,
+                "start": p1_st,
+                "end": p1_end
+            },
+            "p2": {
+                "id": p2,
+                "start": p2_st,
+                "end": p2_end
+            },
+            "num_pairs": pair_data['lengths']
+        }
 
-        #select the probabilties for the best direction
-        pair_probs = flat_dir_probs[glob_dir_idx]
+        return ll_preds_prob, ll_preds_id, pair_link_preds_data
 
-        return pair_probs, directions
+    def get_ll_targets(self, token_label: Dict[str, Tensor],
+                       pair_data: DefaultDict) -> Tuple[Tensor]:
 
+        ll_target = token_label['link_label_targets']
+        batch_size = ll_target.size(0)
 
-    def get_outputs(self, 
-                    pair_probs:torch.tensor, 
-                    p1g:torch.tensor,
-                    p2g:torch.tensor,
-                    directions:torch.tensor,
-                    bio_data:dict,
-                    max_units:int, 
-                    batch_size:int, 
-                    max_tokens:int,
-                    token_label:dict=None,
-                    ) -> dict:
-     
-        nr_link_labels = pair_probs.shape[-1]
-        max_units = bio_data["max_units"]
-        device = pair_probs.device
-  
-        outputs = {
-                    "link_preds": torch.zeros(
-                                                (batch_size, max_tokens), 
-                                                dtype=torch.long, 
-                                                device=device,
-                                                ),
-                    "link_label_preds": torch.zeros(
-                                                    (batch_size, max_tokens), 
-                                                    dtype=torch.long, 
-                                                    device=device,
-                                                    ),
-                    # "link_probs": torch.zeros(
-                    #                             (batch_size, max_tokens, max_units), 
-                    #                             dtype=torch.float,
-                    #                             device=device,
-                    #                             ),
-                    "link_label_probs": torch.zeros(
-                                                    (batch_size, max_tokens, nr_link_labels), 
-                                                    dtype=torch.float, 
-                                                    device=device,
-                                                    ),
-                    }
+        # Form the ground truth based on units combinatory
+        p1_end, p2_end = self.split_nested_list(pair_data["end"], self.device)
 
-        #we set the default prob for all tokens to be link_label "None"
-        # value set so not to produce any -inf
-        outputs["link_label_probs"][:,:] = torch.FloatTensor([0.999,0.0005,0.0005], device=device)
+        num_pair = pair_data['lengths']
+        idx_0 = torch.repeat_interleave(
+            torch.arange(batch_size, device=self.device), num_pair)
+        ll_target = ll_target[idx_0, p1_end - 1]
 
-        # first we figure out which of the members of the pairs 
-        # are the roots. Is root at idx 1 or index 0. We can figure this 
-        # out with the help of the directions
-        where_0_is_root = (directions==0).type(torch.LongTensor)
-        where_1_is_root = (directions==1).type(torch.LongTensor)
-        roots = (p1g*where_0_is_root) + (p2g*where_1_is_root)
+        return ll_target
 
-        # COLUMNS: 
-        #       index, 
-        #       global index of unit 1 in pair, 
-        #       global index of unit 2 in pair,
-        #       global index of unit 1 OR 2 in pair (e.g. the root)
-        pair_info = torch.cat((
-                                torch.arange(p1g.shape[0]).unsqueeze(-1), 
-                                p1g.unsqueeze(-1), 
-                                p2g.unsqueeze(-1), 
-                                roots.unsqueeze(-1)
-                                ),
-                                dim=1
-                                )
+    def get_negative_relations(self, token_label: Dict[str, Tensor],
+                               pair_data: DefaultDict) -> Tensor:
+        # Negative relations
+        seg_preds = token_label['preds']
+        seg_targets = token_label['targets']
+        batch_size = seg_preds.size(0)
+        seg_targets_pad = seg_targets == -1
+        seg_preds[seg_targets_pad] = -1  # set pad token to -1 in predections
+        seg_preds_wrong = seg_preds != seg_targets
 
-        # we group the pair info by where the link originates from.
-        # i.e. if we have a pair at i pair_info[i] = (i,0,1,0) where 
-        #           pair[1] = index of unit 1
-        #           pair[2] = index of unit 1
-        #           pair[3] = root (index of unit 1 OR 2)
-        # then the index of the unit that is at the root is at pair[-1]
-        # this means that (i,2,0,0) and (i,0,1,0) are in the same group 
-        pair_groups = itertools.groupby(pair_info, lambda x: x[-1])
-        
+        # Construct start and end indices for all tokens belongs to each pair
+        p1_st, p2_st = self.split_nested_list(pair_data["start"], self.device)
+        p1_end, p2_end = self.split_nested_list(pair_data["end"], self.device)
 
-        sample_idx = torch.repeat_interleave(
-                                            torch.arange(batch_size), 
-                                            repeats=torch.LongTensor(bio_data["unit"]["lengths"]), 
-                                            dim=0
-                                            )
+        num_pair = pair_data['lengths']
+        idx_0 = torch.repeat_interleave(
+            torch.arange(batch_size, device=p1_st.device), num_pair)
 
-        rel_unit_idxs = cumsum_zero(torch.LongTensor(bio_data["unit"]["lengths"]))   
-        start_token_idxs = torch.LongTensor(np.hstack(bio_data["unit"]["start"]))
-        end_token_idxs = torch.LongTensor(np.hstack(bio_data["unit"]["end"]))
-        
-        for root, group in pair_groups:
-            data = torch.stack(list(group))
-            idxs = data[:,1]
-            ps = data[:,1:3]
-            
-            #print(root)
-            #we get the probabilites for this group, i.e. the proabilites over which some unit is related
-            group_link_label_probs = pair_probs[idxs.squeeze(-1)]
+        # Get the prediction status (predection == target) for each token in
+        # each pair. All tokens need to be predicted correctly
+        seg_preds_wrong_p1 = self.split_2dtensor_start_end(
+            seg_preds_wrong, p1_st, p1_end, idx_0)
+        seg_preds_wrong_p2 = self.split_2dtensor_start_end(
+            seg_preds_wrong, p2_st, p2_end, idx_0)
 
-            # then we get the max link_label value across rows
-            max_link_label_probs = torch.max(group_link_label_probs)
+        seg_preds_wrong_p1 = torch.stack(
+            [torch.all(pair_seg) for pair_seg in seg_preds_wrong_p1])
+        seg_preds_wrong_p2 = torch.stack(
+            [torch.all(pair_seg) for pair_seg in seg_preds_wrong_p2])
 
-            # then we get the index of pair which is most probable
-            max_i = torch.argmax(max_link_label_probs)
+        negative_relation_pair = torch.logical_and(seg_preds_wrong_p1,
+                                                   seg_preds_wrong_p2)
 
-            #then we get the prob dist for the link labels (ll)
-            link_label_probs = group_link_label_probs[max_i]
+        return negative_relation_pair
 
-            # then we get the label
-            link_label = torch.argmax(link_label_probs)
+    def get_tokens_preds(self, ll_preds_id: Tensor, ll_preds_probs: Tensor,
+                         token_mask: Tensor,
+                         pair_link_preds_data: DefaultDict) -> Tuple[Tensor]:
+        # Get the maximum probability for each first unit in the pair
+        # For pair {(0, 1), (0, 2), ..., (0, p_n)} where n is the number of
+        # pairs candidiate that have unit_0 as first candidiate, the link_label
+        # prediction is one whil has the maximum probability. The second
+        # candidate in that pair (that has the max prob) is the link prediction.
 
-            # first we pick out the unit indexes in the pairs
-            # that are not the root
-            children = ps[ps != root]
+        # NOTE instead of using for loops, I think using dataframe is the most
+        # suitable chioce. This is the most convenient straight forward way and
+        # arguabily fastest way.
+        batch_size = token_mask.size(0)
+        num_pairs = pair_link_preds_data["num_pairs"]
+        batch_id = torch.repeat_interleave(
+            torch.arange(batch_size, device=self.device), num_pairs)
+        ll_dat_df = {
+            "batch_id": batch_id.tolist(),
+            "p1": pair_link_preds_data["p1"]["id"].tolist(),
+            "p2": pair_link_preds_data["p2"]["id"].tolist(),
+            "probs": ll_preds_probs.tolist(),
+            "ll_preds": ll_preds_id.tolist(),
+            "p1_start": pair_link_preds_data["p1"]["start"].tolist(),
+            "p1_end": pair_link_preds_data["p1"]["end"].tolist(),
+            "p2_start": pair_link_preds_data["p2"]["start"].tolist(),
+            "p2_end": pair_link_preds_data["p2"]["end"].tolist()
+        }
 
-            # pick sample id
-            k = sample_idx[root]
+        ll_df = pd.DataFrame(ll_dat_df)
+        ll_df.index.name = "serial"
+        # get the heighest prob for each p1 in each batch
+        ll_df = ll_df.sort_values("probs").drop_duplicates(["batch_id", "p1"],
+                                                           keep='last')
+        ll_df.sort_index(inplace=True)  # get the order of pairs back
 
-            #normalize the linked unit indexes to the sample (global idx -> sample idx)
-            linked_unit_idxs = children - rel_unit_idxs[k]
+        # fill link prediction tensor
+        idx_0 = ll_df.batch_id.values
+        span_len = (ll_df.p1_end - ll_df.p1_start).values
+        idx_0 = np.repeat(idx_0, span_len)
+        idx_1 = np.hstack(list(map(np.arange, ll_df.p1_start, ll_df.p1_end)))
 
-            #pick the predicted linked unit idx
-            link = linked_unit_idxs[max_i]
+        l_preds = torch.zeros_like(token_mask, dtype=torch.long)
+        l_preds_values = np.repeat(ll_df.p2.values, span_len)
+        l_preds[idx_0, idx_1] = torch.tensor(l_preds_values,
+                                             device=self.device,
+                                             dtype=torch.long)
+        l_preds[~token_mask] = -1
 
-            # normalize the root indx
-            root_unit_idx = root - rel_unit_idxs[k]
-        
+        ll_preds = torch.zeros_like(token_mask, dtype=torch.long)
+        ll_preds_values = np.repeat(ll_df.ll_preds.values, span_len)
+        ll_preds[idx_0, idx_1] = torch.tensor(ll_preds_values,
+                                              device=self.device,
+                                              dtype=torch.long)
+        ll_preds[~token_mask] = -1
 
-            i = start_token_idxs[root_unit_idx]
-            j = end_token_idxs[root_unit_idx]
+        return l_preds, ll_preds
 
-            n = end_token_idxs[link]
-
-            # if we are given the labels of the units (i.e. "label")
-            # We assume that the label of the last token of each unit represent the 
-            # label of the whole unit as end tokens represent units throughout the paper
-            # and there is not explicit information about voting or some label aggregation method
-            # for units
-            if token_label is not None:
-
-                p1_not_correct = token_label["preds"][k][j] != token_label["targets"][k][j]
-                p2_not_correct = token_label["preds"][k][n] != token_label["targets"][k][n]
-
-                if p1_not_correct and p2_not_correct:
-                    link_label_probs = torch.FloatTensor([0.999,0.0005,0.0005], device=device) # value set so not to produce any -inf
-                    link_label = 0
-                    link = 0
-                    #link_probs = ???
-
-
-            outputs["link_preds"][k][i:j] = link
-            outputs["link_label_preds"][k][i:j] = link_label
-            outputs["link_label_probs"][k][i:j] = link_label_probs
-            #output["link_probs"][k][i:j] = link_label_probs
-
-        return outputs
-
-
-    def forward(self,
-                token_embs: Tensor,
-                dep_embs : Tensor,
-                one_hot_embs : Tensor,
-                roots: Tensor,
-                token_mask: Tensor,
-                deplinks: Tensor,
-                bio_data: dict,
-                mode: str = "shortest_path",
-                token_label: dict = None,
-                assertion: bool = False,
-                ):
+    def forward(
+        self,
+        token_embs: Tensor,
+        dep_embs: Tensor,
+        one_hot_embs: Tensor,
+        roots: Tensor,
+        token_mask: Tensor,
+        deplinks: Tensor,
+        bio_data: dict,
+        mode: str = "shortest_path",
+        token_label: Dict[str, Tensor] = None,
+        assertion: bool = False,
+    ):
 
         self.device = token_embs.device
-        batch_size = token_embs.shape[0]
-        max_tokens = token_mask.shape[-1]
-        max_units = bio_data["max_units"]
 
-        # first want to create the "candidate vector" dp´ for each possible pair
-        # dp = [↑hpA; ↓hp1; ↓hp2]
-        # dp´= [dp; s1, s2] where s is an unit embedding constructed form average token embs 
-        #
+        # max_units = bio_data["max_units"]
+
         # essentially, we do 3 things:
         # 1) build a graph
         # 2) pass the graph to lstm to get the dp
         # 3) average token embs to create unit representations
         #
         # we return dp´and the global unit indexes for unit1 and unit2 in pairs
-        pair_embs, p1g, p2g = self.build_pair_embs(
-                                                    token_embs=token_embs,
+        pair_embs, pair_data = self.build_pair_embs(token_embs=token_embs,
                                                     dep_embs=dep_embs,
                                                     one_hot_embs=one_hot_embs,
                                                     roots=roots,
@@ -535,33 +499,49 @@ class DepPairingLayer(nn.Module):
                                                     deplinks=deplinks,
                                                     bio_data=bio_data,
                                                     mode=mode,
-                                                    assertion=assertion
-                                                )        
+                                                    assertion=assertion)
 
-        # We predict link labels for both directions
-        l2r_probs = self.left2right(pair_embs)
-        r2l_probs = self.right2left(pair_embs)
+        # We predict link labels for both directions. Get the dominant pair dir
+        # plus roots' probabilities
+        ll_logits_all = self.link_label_clf_layer(pair_embs)
 
-        # We get two predictions/"labels" for each pair and then we chose the direction
-        # based on the highest link_label value
-        # we return the probability distributions of link_labels of dominant directions
-        # along with a tensor will directions, e.g. 0 means its left to right  1 the opposite.
-        pair_probs, directions = self.choose_direction(
-                                                        left2right_probs = l2r_probs,
-                                                        rigth2left_probs = r2l_probs,
-                                                        )
+        # Get predictions
+        ll_preds_prob, ll_preds_id, pair_link_preds_data = self.get_pair_preds(pair_data, ll_logits_all)
+        # Get negative relations, then set probabilties of ll_prediction to
+        # None. Also set prediciton of link label to self loop.
+        neg_rel_bool = self.get_negative_relations(token_label, pair_data)
 
-        outputs = self.get_outputs(
-                                    pair_probs=pair_probs, 
-                                    p1g = p1g,
-                                    p2g = p2g,
-                                    directions = directions,
-                                    bio_data = bio_data,
-                                    max_units = max_tokens, 
-                                    batch_size = batch_size, 
-                                    max_tokens = max_tokens,
-                                    token_label = token_label,
-                                    )
+        # NOTE it is better to acess the none link_label from init
+        # NOTE should not put the resprctive p1 to be high!
+        ll_preds_id[neg_rel_bool] = 0.0
+        ll_logits_all[neg_rel_bool] = torch.FloatTensor([0.99, 0.0025, 0.0025, 0.0025, 0.0025]).to(self.device)
+        ll_probs_all = torch.softmax(ll_logits_all, dim=-1)
 
-                    
-        return outputs
+
+        #ll_probs_all.new_tensor([0.99, 0.0025, 0.0025, 0.0025, 0.0025])
+
+        # Set link label prediction to self loop
+        p1 = pair_link_preds_data["p1"]["id"]
+        p2 = pair_link_preds_data["p2"]["id"]
+        p1_st = pair_link_preds_data["p1"]["start"]
+        p2_st = pair_link_preds_data["p2"]["start"]
+        p1_end = pair_link_preds_data["p1"]["end"]
+        p2_end = pair_link_preds_data["p2"]["end"]
+        p2[neg_rel_bool] = p1[neg_rel_bool]
+        p2_st[neg_rel_bool] = p1_st[neg_rel_bool]
+        p2_end[neg_rel_bool] = p1_end[neg_rel_bool]
+        pair_link_preds_data["p2"] = {"id": p2, "start": p2_st, "end": p2_end}
+
+        # Get link label target, based on the predicted pairs
+        ll_target = self.get_ll_targets(token_label, pair_data)
+
+        # Formate predections tensor
+        l_preds_token, ll_pred_tokens = self.get_tokens_preds(
+            ll_preds_id, ll_preds_prob, token_mask, pair_link_preds_data)
+
+        return {
+            "link_preds": l_preds_token,
+            "link_label_preds": ll_pred_tokens,
+            "link_label_probs": ll_probs_all,
+            "link_label_target": ll_target
+        }

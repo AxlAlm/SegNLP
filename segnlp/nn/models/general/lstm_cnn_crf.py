@@ -16,7 +16,7 @@ from segnlp.utils import zero_pad
 
 # use a torch implementation of CRF
 from torchcrf import CRF
-
+#from allennlp.modules.conditional_random_field import ConditionalRandomField as CRF
 
 
 class LSTM_CNN_CRF(nn.Module):
@@ -84,6 +84,9 @@ class LSTM_CNN_CRF(nn.Module):
         self.N_FILTERS = hyperparamaters["n_filters"]
         self.WORD_EMB_DIM = feature_dims["word_embs"]
 
+
+        self.finetune = nn.Linear(self.WORD_EMB_DIM, self.WORD_EMB_DIM)
+
         self.lstm = LSTM(  
                                 input_size=self.WORD_EMB_DIM + self.N_FILTERS,
                                 hidden_size=self.HIDDEN_DIM,
@@ -99,6 +102,7 @@ class LSTM_CNN_CRF(nn.Module):
                                 kernel_size = self.KERNEL_SIZE,
                                 dropout=hyperparamaters["dropout"]
                                 )
+        self.dropout = nn.Dropout(hyperparamaters["dropout"])
 
         #output layers. One for each task
         self.output_layers = nn.ModuleDict()
@@ -106,10 +110,10 @@ class LSTM_CNN_CRF(nn.Module):
         #Crf layers, one for each task
         self.crf_layers = nn.ModuleDict()
 
-
         for task, output_dim in task_dims.items():
             self.output_layers[task] = nn.Linear(self.HIDDEN_DIM*(2 if self.BI_DIR else 1), output_dim)
-            self.crf_layers[task] = CRF(num_tags=output_dim, batch_first=True)
+            self.crf_layers[task] = CRF(num_tags=output_dim)
+            #self.crf_layers[task] = CRF(num_tags=output_dim, batch_first=True)
 
 
     @classmethod
@@ -123,7 +127,7 @@ class LSTM_CNN_CRF(nn.Module):
         mask = batch["token"]["mask"]
 
         #1
-        word_embs = batch["token"]["word_embs"]
+        word_embs = self.finetune(batch["token"]["word_embs"])
 
         #2
         char_embs = self.char_cnn(batch["token"]["chars"])
@@ -133,6 +137,10 @@ class LSTM_CNN_CRF(nn.Module):
 
         #4 feed packed to lstm
         lstm_out, _ = self.lstm(cat_emb, lengths)
+
+
+        lstm_out = self.dropout(lstm_out)
+
 
         for task, output_layer in self.output_layers.items():
 
@@ -152,19 +160,32 @@ class LSTM_CNN_CRF(nn.Module):
 
 
                 loss = -crf( 
-                            emissions=dense_out,
+                            inputs=dense_out,
                             tags=target_tags,
                             mask=mask,
-                            reduction='mean'
                             )
+
+                # loss = -crf( 
+                #             emissions=dense_out,
+                #             tags=target_tags,
+                #             mask=mask,
+                #             reduction='mean'
+                #             )
                                 
                 output.add_loss(task=task,   data=loss)
 
             #7
-            preds = crf.decode( 
-                                emissions=dense_out, 
-                                mask=mask
-                                )
+            preds = crf.viterbi_tags(
+                                    logits=dense_out,
+                                    mask=mask
+                                    )
+            preds = [p[0] for p in preds]
+            #print(preds)
+
+            # preds = crf.decode( 
+            #                     emissions=dense_out, 
+            #                     mask=mask
+            #                     )
             
             #print(torch.tensor(zero_pad(preds), dtype=torch.long)[0],target_tags[0])
             # print(

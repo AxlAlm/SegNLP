@@ -23,7 +23,6 @@ import flair, torch
 flair.device = torch.device('cpu') 
 
 
-
 exp = Pipeline(
                 project="lstm_cnn_crf",
                 dataset=PE( 
@@ -44,8 +43,8 @@ best_hp = exp.train(
                         hyperparamaters = hps,
                         n_random_seeds=6,
                         ptl_trn_args=dict(
-                                            gpus=[0],
-                                            gradient_clip_val=5
+                                            gpus=[1],
+                                            #gradient_clip_val=5
                                         )
                         )
 

@@ -149,32 +149,46 @@ def create_mask(lengths, as_bool=True, flat=False):
 def get_all_possible_pairs(
                             start: List[List[int]],
                             end: List[List[int]],
+                            device=torch.device,
                             bidir=False,
-                            ) -> DefaultDict[str, List[List[Tuple[int]]]]:
+                        ) -> DefaultDict[str, List[List[Tuple[int]]]]:
 
-    all_possible_pairs = defaultdict(lambda:[])
+    if bidir:
+        get_pairs = lambda x, r: list(product(x, repeat=r))  # noqa
+    else:
+        get_pairs = lambda x, r: sorted(  # noqa
+            list(combinations(x, r=r)) + [(e, e) for e in x],
+            key=lambda u: (u[0], u[1]))
+
+    all_possible_pairs = defaultdict(lambda: [])
     for idx_start, idx_end in zip(start, end):
+        idxs = list(get_pairs(range(len(idx_start)), 2))
+        if idxs:
+            p1, p2 = zip(*idxs)  # pairs' unit id
+            p1 = torch.tensor(p1, dtype=torch.long, device=device)
+            p2 = torch.tensor(p2, dtype=torch.long, device=device)
+            # pairs start and end token id.
+            start = get_pairs(idx_start, 2)  # type: List[Tuple[int]]
+            end = get_pairs(idx_end, 2)  # type: List[Tuple[int]]
+            lens = len(start)  # number of pairs' units len  # type: int
 
-        if bidir:
-            idxs = list(product(range(len(idx_start)), repeat=2))
-            p1, p2 = zip(*idxs)
-            all_possible_pairs["idx"].append(idxs)
-            all_possible_pairs["p1"].append(torch.tensor(p1))
-            all_possible_pairs["p2"].append(torch.tensor(p2))
-            all_possible_pairs["start"].append(list(product(idx_start, repeat=2)))
-            all_possible_pairs["end"].append(list(product(idx_end, repeat=2)))
-            all_possible_pairs["lengths"].append(len(all_possible_pairs["start"][-1]))
         else:
-            idxs = list(combinations(range(len(idx_start)), r=2))
-            p1, p2 = zip(*idxs)
-            all_possible_pairs["idx"].append(idxs)
-            all_possible_pairs["p1"].append(torch.tensor(p1))
-            all_possible_pairs["p2"].append(torch.tensor(p2))           
-            all_possible_pairs["start"].append(list(combinations(idx_start, r=2)))
-            all_possible_pairs["end"].append(list(combinations(idx_end, r=2)))
-            all_possible_pairs["lengths"].append(len(all_possible_pairs["start"][-1])) 
+            p1 = torch.empty(0, dtype=torch.long, device=device)
+            p2 = torch.empty(0, dtype=torch.long, device=device)
+            start = []
+            end = []
+            lens = 0
 
-    all_possible_pairs["lengths"] = torch.LongTensor(all_possible_pairs["lengths"])
+        all_possible_pairs["idx"].append(idxs)
+        all_possible_pairs["p1"].append(p1)
+        all_possible_pairs["p2"].append(p2)
+        all_possible_pairs["start"].append(start)
+        all_possible_pairs["end"].append(end)
+        all_possible_pairs["lengths"].append(lens)
+
+    all_possible_pairs["lengths"] = torch.tensor(all_possible_pairs["lengths"],
+                                                 dtype=torch.long,
+                                                 device=device)
     all_possible_pairs["total_pairs"] = sum(all_possible_pairs["lengths"])
     return all_possible_pairs
 
@@ -239,6 +253,7 @@ def util_one_hot(matrix: Tensor, mask: Tensor, num_classes: int):
         thematrix += pad_emb
 
     return F.one_hot(thematrix, num_classes=num_classes)
+
 
 def scatter_repeat(
                     src:torch.tensor,
@@ -322,6 +337,53 @@ def index_select_array(input:torch.tensor, index:torch.tensor):
     flat_input = torch.flatten(input,end_dim=-2)
     return flat_input[flat_idx]
 
+
+def range_3d_tensor_index(matrix: Tensor,
+                          start: Tensor,
+                          end: Tensor,
+                          pair_batch_num: Tensor,
+                          reduce_: str = "none") -> Tensor:
+
+    # to avoid bugs, if there is a sample that does not have a unit the
+    # corresponding len should be zero in batch_lens.
+    batch_size = matrix.size(0)
+    dim_1_size = matrix.size(1)
+    new_size = (batch_size, dim_1_size)
+    shape_ = len(matrix.size())
+
+    reduce_fn = reduce_ in ["none", "mean", "sum"]
+    # assertion messages:
+    reduce_msg = f"Function \"{reduce_}\" is not a supported."
+    num_msg = "Wrong number of pairs per sample is provided. "
+    num_msg += f"Provided {len(pair_batch_num)}, expected {batch_size}."
+    assert reduce_fn, reduce_msg
+    assert batch_size == len(pair_batch_num), num_msg
+    assert shape_ == 3, f"Wrong matrix shape, provided {shape_}, expected 3."
+
+    # change matrix to be 2d matrix (dim0*dim1, dim2)
+    mat = matrix.clone().contiguous().view(-1, matrix.size(-1))
+
+    # construct array of indices for dimesion 0, repeating batch_id
+    span_len = end - start
+    idx_0 = torch.repeat_interleave(torch.arange(batch_size),
+                                    pair_batch_num.cpu())
+    idx_0 = torch.repeat_interleave(idx_0, span_len.cpu())
+
+    # construct array of indices for dimesion 1
+    idx_1 = torch.cat(list(map(torch.arange, start, end)))
+
+    # Converts idx_0 and idx_1 into an array of indices suitable for the
+    # converted 2d tensor
+    idx_0_2d = np.ravel_multi_index([idx_0, idx_1], new_size)
+
+    # index 2d tensor using idx_0_2d
+    mat = torch.split(mat[idx_0_2d, :], span_len.tolist())
+    if reduce_ == "mean":
+        mat = torch.stack(list(map(torch.mean, mat, repeat(0))))
+    elif reduce_ == "sum":
+        mat = torch.stack(list(map(torch.sum, mat, repeat(0))))
+
+    return mat
 
 
 

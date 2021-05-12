@@ -67,12 +67,12 @@ class Pointer(nn.Module):
         for i in range(seq_len):
 
             if i == 0:
-                decoder_input = torch.zeros(inputs[:,i].shape, device=device)
+                decoder_input = torch.zeros(inputs[:,0].shape, device=device)
             else:
                 decoder_input = inputs[:,i-1]
 
-            if self.use_dropout:
-                decoder_input = self.dropout(decoder_input)
+            # if self.use_dropout:
+            #     decoder_input = self.dropout(decoder_input)
             
             decoder_input = torch.sigmoid(self.input_layer(decoder_input))
             h_s, c_s = self.lstm_cell(decoder_input, (h_s, c_s))

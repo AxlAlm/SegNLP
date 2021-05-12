@@ -132,7 +132,6 @@ class JointPN(nn.Module):
         self.inference = inference
         self.OPT = hyperparamaters["optimizer"]
         self.LR = hyperparamaters["lr"]
-        self.ENCODER_INPUT_DIM = hyperparamaters["encoder_input_dim"]
         self.ENCODER_HIDDEN_DIM = hyperparamaters["encoder_hidden_dim"]
         self.DECODER_HIDDEN_DIM = hyperparamaters["decoder_hidden_dim"]
         self.ENCODER_NUM_LAYERS = hyperparamaters["encoder_num_layers"]
