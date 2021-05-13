@@ -41,7 +41,7 @@ from segnlp.evaluation_methods import get_evaluation_method
 from segnlp.features import get_feature
 from segnlp.nn.utils import ModelOutput
 from segnlp.visuals.hp_tune_progress import HpProgress
-from segnlp.metrics import token_metrics
+from segnlp.metrics import base_metric
 
 logger = get_logger("PIPELINE")
 user_dir = pwd.getpwuid(os.getuid()).pw_dir
@@ -670,7 +670,7 @@ class Pipeline:
                 for task in self.config["subtasks"]:
                     default_none =  "None" if task != "link" else 0
                     test_output.loc[seg_mask, task] = default_none
-                    task_scores.append(token_metrics(
+                    task_scores.append(base_metric(
                                                     targets=test_output[f"T-{task}"].to_numpy(), 
                                                     preds=test_output[task].to_numpy(), 
                                                     task=task, 
