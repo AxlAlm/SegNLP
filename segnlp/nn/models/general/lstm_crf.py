@@ -14,7 +14,9 @@ from segnlp.nn.layers.rep_layers import LSTM
 from segnlp.utils import zero_pad
 
 # use a torch implementation of CRF
-from torchcrf import CRF
+#from torchcrf import CRF
+from allennlp.modules.conditional_random_field import ConditionalRandomField as CRF
+
 
 from segnlp.utils import timer
 
@@ -36,12 +38,7 @@ class LSTM_CRF(nn.Module):
         self.FINETUNE_EMBS = hyperparamaters["fine_tune_embs"]
         self.WORD_EMB_DIM = feature_dims["word_embs"]
 
-
-        #dropout
-        self.use_dropout = False
-        if "dropout" in hyperparamaters:
-            self.dropout = nn.Dropout(hyperparamaters["dropout"])
-            self.use_dropout = True
+        self.word_dropout = nn.Dropout(hyperparamaters["word_dropout"])
 
         # model is a reimplementation of Flairs.SequenceTagger (LINK).
         # Model is implemented to replicate the scores from ().
@@ -74,7 +71,7 @@ class LSTM_CRF(nn.Module):
                                                 output_dim)
             self.crf_layers[task] = CRF(    
                                             num_tags=output_dim,
-                                            batch_first=True
+                                            #batch_first=True
                                         )
 
 
@@ -87,10 +84,8 @@ class LSTM_CRF(nn.Module):
 
         lengths = batch["token"]["lengths"]
         mask = batch["token"]["mask"]
-        word_embs = batch["token"]["word_embs"]
 
-        if self.use_dropout:
-            word_embs = self.dropout(word_embs)
+        word_embs = self.word_dropout(batch["token"]["word_embs"])
 
         if self.FINETUNE_EMBS:
             word_embs = self.emb2emb(word_embs)
@@ -109,20 +104,30 @@ class LSTM_CRF(nn.Module):
                 batch.change_pad_value(level="token", task=task, new_value=0)
                 
                 target_tags = batch["token"][task]
-                loss = -crf(    
-                                emissions=dense_out, #score for each tag, (batch_size, seq_length, num_tags) as we have batch first
-                                tags=target_tags,
-                                mask=mask,
-                                reduction='mean'
-                                )
+                # loss = -crf(    
+                #                 emissions=dense_out, #score for each tag, (batch_size, seq_length, num_tags) as we have batch first
+                #                 tags=target_tags,
+                #                 mask=mask,
+                #                 reduction='mean'
+                #                 )
+                loss = -crf( 
+                            inputs=dense_out,
+                            tags=target_tags,
+                            mask=mask,
+                            )
                 output.add_loss(task=task,   data=loss)
 
 
             #returns preds with no padding (padding values removed)
-            preds = crf.decode( 
-                                emissions=dense_out, 
-                                mask=mask
-                                )
+            # preds = crf.decode( 
+            #                     emissions=dense_out, 
+            #                     mask=mask
+            #                     )
+            preds = crf.viterbi_tags(
+                                    logits=dense_out,
+                                    mask=mask
+                                    )
+            preds = [p[0] for p in preds]
             
             output.add_preds(task=task, level="token", data=torch.tensor(zero_pad(preds), dtype=torch.long))
         

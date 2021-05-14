@@ -64,8 +64,8 @@ class LSTM_DIST(nn.Module):
         self.HIDDEN_DIM = hyperparamaters["hidden_dim"]
         self.NUM_LAYERS = hyperparamaters["num_layers"]
         self.BI_DIR = hyperparamaters["bidir"]
-        self.ALPHA = hyperparamaters["alpha"]
-        self.BETA = hyperparamaters["beta"]
+
+        self.loss_weight = hyperparamaters["loss_weight"]
         
         self.WORD_FEATURE_DIM = feature_dims["word_embs"]
         self.DOC_FEATURE_DIM = feature_dims["doc_embs"]
@@ -76,24 +76,29 @@ class LSTM_DIST(nn.Module):
                                 hidden_size=self.HIDDEN_DIM,
                                 num_layers= self.NUM_LAYERS,
                                 bidirectional=self.BI_DIR,
-                                dropout= hyperparamaters["input_dropout"]
+                                dropout= hyperparamaters["input_dropout"],
+                                w_init="orthogonal"
+
                                 )
 
 
         self.am_lstm = LSTM(  
-                                input_size = self.HIDDEN_DIM*3,
+                                input_size = self.HIDDEN_DIM*4,
                                 hidden_size=self.HIDDEN_DIM,
                                 num_layers= self.NUM_LAYERS,
                                 bidirectional=self.BI_DIR,
-                                dropout=hyperparamaters["lstm_dropout"]
+                                dropout=hyperparamaters["lstm_dropout"],
+                                w_init="orthogonal"
                                 )
 
         self.ac_lstm = LSTM(  
-                                input_size = self.HIDDEN_DIM*3,
+                                input_size = self.HIDDEN_DIM*4,
                                 hidden_size=self.HIDDEN_DIM,
                                 num_layers= self.NUM_LAYERS,
                                 bidirectional=self.BI_DIR,
-                                dropout=hyperparamaters["lstm_dropout"]
+                                dropout=hyperparamaters["lstm_dropout"],
+                                w_init="orthogonal"
+
                                 )
 
         am_ac_bow_size = (self.HIDDEN_DIM*(2 if self.BI_DIR else 1) * 2) + self.DOC_FEATURE_DIM
@@ -102,7 +107,9 @@ class LSTM_DIST(nn.Module):
                                 hidden_size=self.HIDDEN_DIM,
                                 num_layers= self.NUM_LAYERS,
                                 bidirectional=self.BI_DIR,
-                                dropout=hyperparamaters["lstm_dropout"]
+                                dropout=hyperparamaters["lstm_dropout"],
+                                w_init="orthogonal"
+
                                 )
 
         self.last_lstm = LSTM(  
@@ -110,20 +117,29 @@ class LSTM_DIST(nn.Module):
                                 hidden_size=self.HIDDEN_DIM,
                                 num_layers= self.NUM_LAYERS,
                                 bidirectional=self.BI_DIR,
-                                dropout=hyperparamaters["lstm_dropout"]
+                                dropout=hyperparamaters["lstm_dropout"],
+                                w_init="orthogonal"
+
                                 )
 
         self.output_dropout = nn.Dropout(hyperparamaters["output_dropout"])
         
         self.link_label_clf = nn.Linear(self.HIDDEN_DIM*2, task_dims["link_label"])
+        torch.nn.init.uniform_(self.link_label_clf.weight.data,  a=-0.05, b=0.05)
+        torch.nn.init.uniform_(self.link_label_clf.bias.data,  a=-0.05, b=0.05)
+
         self.label_clf = nn.Linear(self.HIDDEN_DIM*2, task_dims["label"])
+        torch.nn.init.uniform_(self.label_clf.weight.data,  a=-0.05, b=0.05)
+        torch.nn.init.uniform_(self.link_label_clf.bias.data,  a=-0.05, b=0.05)
+
+
         self.link_clf = PairingLayer(
                                     input_dim=self.HIDDEN_DIM*2, 
                                     max_units=task_dims["link"],
                                     dropout=hyperparamaters["output_dropout"]
                                     )
 
-        self.loss = nn.CrossEntropyLoss(reduction="sum", ignore_index=-1)
+        self.loss = nn.CrossEntropyLoss(reduction="mean", ignore_index=-1)
 
 
     @classmethod
@@ -158,14 +174,16 @@ class LSTM_DIST(nn.Module):
         NOTE! we assume that ←h is aligned with →h, i.e.  ←h[i] == →h[i] (the same word)
         
         So, if we have the following hidden outputs; 
-
-            fh (forward_hidden)   = [word0, word1, word2, word3, word4]
-            bh (backwards hidden) = [word0, word1, word2, word3, word4] 
+                                                   _______span________
+            fh (forward_hidden)   = [word0, word1, word2, word3, word4, word5]
+            bh (backwards hidden) = [word0, word1, word2, word3, word4, word5] 
+                                                   _______span________
         
         h(2,4) = [
                     word4 - word1;
                     word2 - word5;
-                    word1 - word5
+                    word1,
+                    word5 #zeros
                     ]
 
         NOTE! word5 will be all zeros
@@ -177,10 +195,10 @@ class LSTM_DIST(nn.Module):
 
         batch_size, nr_seq, bidir_hidden_dim = bidir_lstm_output.shape
         hidden_dim = int(bidir_hidden_dim/2)
-        feature_dim = hidden_dim*3
+        feature_dim = hidden_dim*4
 
-        forward = bidir_lstm_output[:,:,:hidden_dim]
-        backward = bidir_lstm_output[:,:,hidden_dim:]
+        forward = bidir_lstm_output[: , :, :hidden_dim]
+        backward = bidir_lstm_output[: , :, hidden_dim:]
 
         minus_reps = torch.zeros((batch_size, nr_seq, feature_dim), device=self.device)
         
@@ -208,7 +226,8 @@ class LSTM_DIST(nn.Module):
                 minus_reps[idx][sidx] = torch.cat((
                                                     f_end - f_pre,
                                                     b_start - b_post,
-                                                    f_pre - b_post
+                                                    f_pre, 
+                                                    b_post
                                                     ))
 
         return minus_reps
@@ -282,13 +301,21 @@ class LSTM_DIST(nn.Module):
             link_label_loss = self.loss(torch.flatten(link_label_out, end_dim=-2), batch["unit"]["link_label"].view(-1))
             label_loss = self.loss(torch.flatten(label_out, end_dim=-2), batch["unit"]["label"].view(-1))
 
-            total_loss = ((self.ALPHA * link_loss) + (self.BETA * label_loss) + ( (1 - self.ALPHA - self.BETA) * link_label_loss))
+            ## this is the reported loss aggregation in the paper, but...
+            #total_loss = -((self.loss_weight * link_loss) + (self.loss_weight * label_loss) + ( (1 - self.loss_weight- self.loss_weight) * link_label_loss))
+            ## in the code the loss is different
+            ## https://github.com/kuribayashi4/span_based_argumentation_parser/blob/614343b18e7d98293a2b020f9ab05b86355e18df/src/classifier/parsing_loss.py#L88-L91
+            total_loss = ((1 - self.loss_weight - self.loss_weight) * link_loss) - (self.loss_weight * label_loss) + (self.loss_weight * link_label_loss)
+
+
 
             output.add_loss(task="total",       data=total_loss)
             output.add_loss(task="link",        data=link_loss)
             output.add_loss(task="link_label",  data=link_label_loss)
             output.add_loss(task="label",       data=label_loss)
 
+
+        #print(link_preds[3] ,batch["unit"]["link"][3])
         output.add_preds(task="label",          level="unit", data=label_preds)
         output.add_preds(task="link",           level="unit", data=link_preds)
         output.add_preds(task="link_label",     level="unit", data=link_label_preds)

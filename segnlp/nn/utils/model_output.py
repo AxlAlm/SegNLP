@@ -9,6 +9,7 @@ from collections import Counter
 
 #segnlp
 from segnlp.metrics import base_metric
+from segnlp.metrics import link_metric
 from . import ModelInput
 from segnlp.utils import ensure_flat, ensure_numpy
 from segnlp.nn.utils import bio_decode
@@ -18,8 +19,6 @@ from segnlp.nn.utils import bio_decode
 
 #pytorch
 import torch
-
-
 
 
 
@@ -111,7 +110,6 @@ class ModelOutput:
                             )
     
 
-
     def __decode_links(self, preds:np.ndarray, lengths:np.ndarray):
         size = preds.shape[0]
         decoded_preds = np.zeros((size, max(lengths)))
@@ -183,7 +181,7 @@ class ModelOutput:
         return tok_labels
         
     
-    def __correct_and_decode_token_links(self, 
+    def __correct_token_links(self, 
                                         links:np.ndarray, 
                                         lengths_units:np.ndarray,
                                         span_token_lengths:np.ndarray, 
@@ -217,18 +215,18 @@ class ModelOutput:
             links_above_allowed = sample_links < 0
             sample_links[links_above_allowed] = last_unit_idx
 
-            sample_links = self.label_encoders["link"].decode_token_links(
-                                                                            sample_links,
-                                                                            span_token_lengths=span_token_lengths[i],
-                                                                            none_spans=none_spans[i]
-                                                                            )
+            # sample_links = self.label_encoders["link"].decode_token_links(
+            #                                                                 sample_links,
+            #                                                                 span_token_lengths=span_token_lengths[i],
+            #                                                                 none_spans=none_spans[i]
+            #                                                                 )
 
             new_links.append(sample_links)
         
         return np.array(new_links)
 
 
-    def __correct_and_decode_links(self, 
+    def __correct_links(self, 
                                 links:np.ndarray, 
                                 lengths_units:np.ndarray,
                                 decoded:bool,
@@ -253,7 +251,7 @@ class ModelOutput:
             links_above_allowed = sample_links < 0
             sample_links[links_above_allowed] = last_unit_idx
 
-            sample_links = self.label_encoders["link"].decode_list(sample_links)  
+            #sample_links = self.label_encoders["link"].decode_list(sample_links)  
             new_links.append(sample_links)
         
         return np.array(new_links)
@@ -352,24 +350,24 @@ class ModelOutput:
         if task == "link":
 
             if level == "token":
-                decoded_preds = self.__correct_and_decode_token_links(
-                                                                        data,
-                                                                        lengths_units=ensure_numpy(self.pred_spans["unit_lengths"]),
-                                                                        span_token_lengths=ensure_numpy(self.pred_spans["lengths_tok"]),
-                                                                        none_spans=ensure_numpy(self.pred_spans["none_span_mask"]),
-                                                                        decoded=decoded,
-                                                                        )
+                preds = self.__correct_token_links(
+                                                            data,
+                                                            lengths_units=ensure_numpy(self.pred_spans["unit_lengths"]),
+                                                            span_token_lengths=ensure_numpy(self.pred_spans["lengths_tok"]),
+                                                            none_spans=ensure_numpy(self.pred_spans["none_span_mask"]),
+                                                            decoded=decoded,
+                                                            )
             else:
-                decoded_preds = self.__correct_and_decode_links(
-                                                                    data,
-                                                                    lengths_units=ensure_numpy(self.batch["unit"]["lengths"]),
-                                                                    decoded=decoded,
-                                                                    )
+                preds = self.__correct_links(
+                                                    data,
+                                                    lengths_units=ensure_numpy(self.batch["unit"]["lengths"]),
+                                                    decoded=decoded,
+                                                    )
         else:
             if decoded:
-                decoded_preds = data
+                preds = data
             else:
-                decoded_preds = self.__decode_labels(
+                preds = self.__decode_labels(
                                                     preds=data, 
                                                     lengths=ensure_numpy(self.batch[level]["lengths"]),
                                                     task=task
@@ -378,28 +376,30 @@ class ModelOutput:
         if not self.inference:
 
             if task == "link":
-                if level == "token":
-                    decoded_targets = self.__decode_token_link_labels(
-                                                                preds=ensure_numpy(self.batch[level][task]), 
-                                                                lengths=ensure_numpy(self.batch[level]["lengths"]),
-                                                                span_lengths=ensure_numpy(self.batch["span"]["lengths_tok"]),
-                                                                none_spans=ensure_numpy(self.batch["span"]["none_span_mask"])
-                                                                )
-                else:
-                    decoded_targets = self.__decode_links(
-                                                            preds=ensure_numpy(self.batch[level][task]), 
-                                                            lengths=ensure_numpy(self.batch[level]["lengths"]),
-                                                            )
+                targets = ensure_numpy(self.batch[level][task])
+                #if level == "token":
+                #     targets = 
+                #     # decoded_targets = self.__decode_token_link_labels(
+                #     #                                                     preds=ensure_numpy(self.batch[level][task]), 
+                #     #                                                     lengths=ensure_numpy(self.batch[level]["lengths"]),
+                #     #                                                     span_lengths=ensure_numpy(self.batch["span"]["lengths_tok"]),
+                #     #                                                     none_spans=ensure_numpy(self.batch["span"]["none_span_mask"])
+                #     #                                                     )
+                # else:
+                #     decoded_targets = self.__decode_links(
+                #                                             preds=ensure_numpy(self.batch[level][task]), 
+                #                                             lengths=ensure_numpy(self.batch[level]["lengths"]),
+                #                                             )
             else:
-                decoded_targets = self.__decode_labels(
-                                                        preds=ensure_numpy(self.batch[level][task]), 
-                                                        lengths=ensure_numpy(self.batch[level]["lengths"]),
-                                                        task=task
-                                                        )
+                targets = self.__decode_labels(
+                                                preds=ensure_numpy(self.batch[level][task]), 
+                                                lengths=ensure_numpy(self.batch[level]["lengths"]),
+                                                task=task
+                                                )
                                                         
         if task == "seg":
             bio_data = bio_decode(
-                                    batch_encoded_bios=decoded_preds,
+                                    batch_encoded_bios=preds,
                                     lengths=ensure_numpy(self.batch[level]["lengths"]),
                                 )
             self.pred_spans["lengths_tok"] = bio_data["span"]["lengths_tok"]
@@ -407,28 +407,44 @@ class ModelOutput:
             self.pred_spans["unit_lengths"]  = bio_data["unit"]["lengths"]
         
 
-        mask = ensure_numpy(self.batch[level]["mask"])
-        preds = ensure_flat(ensure_numpy(decoded_preds), mask=mask)
-        targets = ensure_flat(ensure_numpy(decoded_targets), mask=mask)
-
-        # print("PREDS", preds)
-        # print("TARGETS", targets)
-        #print(preds.shape, targets.shape)
 
         if not self.inference:
-            self.task_metrics.append(base_metric(
-                                                targets=preds,
-                                                preds=targets,
-                                                task=task,
-                                                labels=self.label_encoders[task].labels,
-                                                )
-                                )
+
+            if task == "link":
+                self.task_metrics.append(link_metric(
+                                                        targets=targets,
+                                                        preds=preds,
+                                                        lengths=self.batch["unit"]["lengths"]
+                                                        )
+                                                    )
         
+            else:
+                mask = ensure_numpy(self.batch[level]["mask"])
+                preds_flat = ensure_flat(ensure_numpy(preds), mask=mask)
+                targets_flat = ensure_flat(ensure_numpy(targets), mask=mask)
+                self.task_metrics.append(base_metric(
+                                                    targets=targets_flat,
+                                                    preds=preds_flat,
+                                                    task=task,
+                                                    labels=self.label_encoders[task].labels,
+                                                    )
+                                            )
+                pred_outputs = ensure_flat(ensure_numpy(preds), mask=mask)
+                target_outputs = ensure_flat(ensure_numpy(targets), mask=mask)
+            
 
         token_mask = ensure_numpy(self.batch["token"]["mask"])
-
         if level == "unit":
             span_indexes = ensure_numpy(self.batch["unit"]["span_idxs"])
+
+
+            if task == "link":
+                data = self.__decode_links(
+                                            preds=ensure_numpy(self.batch[level][task]), 
+                                            lengths=ensure_numpy(self.batch[level]["lengths"]),
+                                            )
+
+
             preds  = self.__unfold_span_labels(
                                                 span_labels=data,
                                                 span_indexes=span_indexes,
@@ -440,14 +456,11 @@ class ModelOutput:
                                             lengths=ensure_numpy(self.batch["token"]["lengths"]),
                                             task=task
                                             )
-            preds = ensure_flat(ensure_numpy(preds), mask=token_mask)
-            targets = ensure_flat(ensure_numpy(targets), mask=token_mask)
-            
-            # print("OUTPUTS")
-            # print(preds.shape, targets.shape)
+            pred_outputs = ensure_flat(ensure_numpy(preds), mask=token_mask)
+            target_outputs = ensure_flat(ensure_numpy(targets), mask=token_mask)
 
-        self.outputs[task] = preds
-        self.outputs[f"T-{task}"] = targets
+        self.outputs[task] = pred_outputs
+        self.outputs[f"T-{task}"] = target_outputs
 
 
     def add_probs(self, task:str, level:str, data:torch.tensor):

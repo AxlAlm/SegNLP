@@ -304,6 +304,14 @@ def random_ints(n):
     return rs.randint(10**6,size=(n,)).tolist()
 
 
+def one_hots(a):
+    m = np.zeros((a.shape[0], a.shape[0]))
+    m[np.arange(a.shape[0]),a] = 1
+    return m
+
+
+
+
 # def list_pipelines():
 #     pass
 

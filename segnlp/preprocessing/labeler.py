@@ -11,9 +11,9 @@ from tqdm import tqdm
 from segnlp.utils import RangeDict
 from segnlp.utils import timer
 from segnlp import get_logger
+from segnlp.resources.am import find_am
 
 logger = get_logger("LABELER")
-
 
 class Labeler:
 
@@ -39,8 +39,17 @@ class Labeler:
         return df
 
 
-    def _label_ams(self, df):
-        df = self.__ams_as_pre(df)
+    def _label_ams(self, df, mode="pre"):
+
+        if mode == "pre":
+            df = self.__ams_as_pre(df)
+
+        elif mode == "list_in":
+            df = self.__ams_in_from_list(df)
+
+        elif mode == "list_pre":
+            raise NotImplementedError()
+
         return df
 
 
@@ -61,8 +70,36 @@ class Labeler:
                 cond1 = sent_df["char_start"] >= prev_ac_end 
                 cond2 = sent_df["char_start"] < ac_start
                 idxs = sent_df[cond1 & cond2].index
-                # self.level_dfs["token"]["am_id"].iloc[idxs] = ac_id
+
+                #set the id to ac_id
                 df.loc[idxs,"am_id"] = ac_id
+
+                # text = " ".join(df.loc[idxs, "text"].to_numpy())
+                # if text:
+                #     with open("/tmp/pe_ams.txt","a") as f:
+                #         f.write(text+"\n")
+
                 prev_ac_end = ac_end
 
         return df
+
+
+    def __ams_in_from_list(self, df):
+
+        df["am_id"] = np.nan
+        groups = df.groupby("sentence_id")
+
+        for sent_id, sent_df in groups:
+            
+            acs = sent_df.groupby("unit_id")
+
+            for ac_id, ac_df in acs:
+
+                tokens = ac_df["text"].to_list()
+                am, am_indexes = find_am(tokens)
+
+                ac_df.iloc[am_indexes, "am_id"] = ac_id
+                ac_df.iloc[am_indexes, "ac_id"] = None
+
+        return df
+

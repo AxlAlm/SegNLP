@@ -116,8 +116,10 @@ class PairingLayer(torch.nn.Module):
             self._input_dim += input_dim
 
 
-        self.dropout = nn.Dropout(dropout)
         self.link_clf = torch.nn.Linear(self._input_dim, 1)
+        torch.nn.init.uniform_(self.link_clf.weight.data,  a=-0.05, b=0.05)
+        torch.nn.init.uniform_(self.link_clf.bias.data,  a=-0.05, b=0.05)
+
 
 
     def forward(self, 
@@ -132,11 +134,8 @@ class PairingLayer(torch.nn.Module):
                             max_units=self.max_units,
                             )
 
-        #pm =  self.dropout(pm)
-
         #step 6
         pair_scores = self.link_clf(pm).squeeze(-1)
-
 
         # step 7, for all samples we set the probs for non existing units to inf and the prob for all
         # units pointing to an non existing unit to -inf.

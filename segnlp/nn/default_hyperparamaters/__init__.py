@@ -13,6 +13,7 @@ lstm_crf_hps = {
     "batch_size": 32,
     "max_epochs": 150,
     "scheduler": "rop",
+    "word_dropout": 0.05,
     "patience": 10
 }
 
@@ -55,8 +56,7 @@ lstm_dist_hps = {
     "bidir": True,
     "batch_size": 16,
     "max_epochs": 500,
-    "alpha": 0.5,
-    "beta": 0.25,
+    "loss_weight": 0.25,
     "input_dropout": 0.1,
     "lstm_dropout" : 0.1,
     "output_dropout": 0.5,

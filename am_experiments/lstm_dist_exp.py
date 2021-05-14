@@ -24,12 +24,12 @@ exp = Pipeline(
                 dataset=PE( 
                             tasks=["label", "link", "link_label"],
                             prediction_level="unit",
-                            sample_level="paragraph",
+                            sample_level="document",
                             ),
                 features =[
-                            ELMoEmbeddings(),
-                            UnitPos(),
-                            BOW()
+                            #ELMoEmbeddings(),
+                            #UnitPos(),
+                            #BOW()
                             ],
                 model = LSTM_DIST,
                 other_levels = ["am"]
@@ -42,6 +42,7 @@ best_hp = exp.train(
                         ptl_trn_args=dict(
                                            gpus=[1]
                                         ),
+                        #monitor_metric="val-f1"
                         )
 
 exp1_scores, exp1_outputs = exp.test()

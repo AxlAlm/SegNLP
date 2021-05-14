@@ -1,6 +1,3 @@
 
 from .base_metric import base_metric
-
-__all__ = [
-            "base_metric"
-        ]
+from .link_metric import link_metric

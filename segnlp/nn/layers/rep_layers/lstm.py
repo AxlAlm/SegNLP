@@ -11,6 +11,7 @@ class LSTM(nn.Module):
                     num_layers:int, 
                     bidirectional:bool, 
                     dropout:float=0.0,
+                    w_init:str="xavier_uniform"
                     ):
         super().__init__()
 
@@ -22,6 +23,28 @@ class LSTM(nn.Module):
                                 batch_first=True
                             )
         self.dropout = nn.Dropout(dropout)
+        self.__initialize_weights(w_init)
+
+    
+
+    def __initialize_weights(self, w_init):
+        for name, param in self.lstm.named_parameters():
+            
+            if 'bias' in name:
+                nn.init.constant(param, 0.0)
+
+            elif 'weight' in name:
+
+                if w_init == "orthogonal":
+                    nn.init.orthogonal_(param)
+
+                elif w_init == "xavier_uniform":
+                    nn.init.xavier_uniform_(param)
+
+                else:
+                    raise RuntimeError()
+
+
 
 
     def forward(self, X, lengths, padding=0.0):

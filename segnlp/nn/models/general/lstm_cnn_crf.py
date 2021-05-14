@@ -92,7 +92,8 @@ class LSTM_CNN_CRF(nn.Module):
                                 hidden_size=self.HIDDEN_DIM,
                                 num_layers= self.NUM_LAYERS,
                                 bidirectional=self.BI_DIR,
-                                dropout=hyperparamaters["dropout"]
+                                dropout=hyperparamaters["dropout"],
+                                w_init="xavior_unifrom"
                                 )
         
         #char_vocab = len(self.dataset.encoders["chars"])
@@ -100,7 +101,7 @@ class LSTM_CNN_CRF(nn.Module):
                                 emb_size = self.CHAR_DIM,
                                 n_filters = self.N_FILTERS,
                                 kernel_size = self.KERNEL_SIZE,
-                                dropout=hyperparamaters["dropout"]
+                                dropout=hyperparamaters["dropout"],
                                 )
         self.dropout = nn.Dropout(hyperparamaters["dropout"])
 
@@ -138,7 +139,7 @@ class LSTM_CNN_CRF(nn.Module):
         #4 feed packed to lstm
         lstm_out, _ = self.lstm(cat_emb, lengths)
 
-
+        #we apply dropout both before lstm and after
         lstm_out = self.dropout(lstm_out)
 
 
