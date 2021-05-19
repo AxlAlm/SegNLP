@@ -7,9 +7,6 @@ import numpy as np
 import sys
 import random
 import os
-from urllib.request import urlopen
-from zipfile import ZipFile
-from zipfile import BadZipFile
 
 import time
 from pathlib import Path

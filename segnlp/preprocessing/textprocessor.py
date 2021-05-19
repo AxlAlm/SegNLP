@@ -73,7 +73,6 @@ class TextProcesser:
         self.nlp = spacy.load("en_core_web_lg", disable=["ner"])
     
 
-
     def __paragraph_tokenize(self, doc:str) -> List[str]:
         """ Tokenizes document into paragraphs by splitting by new line ("\n"). 
     
@@ -94,7 +93,6 @@ class TextProcesser:
     
         paras = []
         stack = ""
-        chars_added = 0
         for i, para in enumerate(doc.split("\n")):
             #print([para])
             #para =  para.strip()
@@ -118,6 +116,9 @@ class TextProcesser:
                 stack = ""
 
             paras.append(para)
+
+        if stack:
+            paras.append(stack)
 
         return paras
 
@@ -458,46 +459,6 @@ class TextProcesser:
             current_sent_idx = end_idx
             self.__build_tokens(sentence)
 
-        # sd = [s for s in spacy_doc.sents]
-        # print(len(str(sd[0])), sd[0][-1].idx, sd[0][-1].text, sd[1][0].idx, sd[1][0].text, len(sentences[0]))
-        # spacy_sentences = [str(s) for s in spacy_doc.sents]
-        # if sentences != spacy_sentences:
-        #     print(sentences)
-        #     print(spacy_sentences)
-        #     print(lol)
-        
-        # sentences = nltk.sent_tokenize(paragraph)
-        # for i, sent in enumerate(sentences):
-        #     sent_len = len(sent)
-            
-        #     if current_sent_idx == 0:
-        #         start = 0
-        #     else:
-        #         start = doc.find(sent, current_sent_idx) #, current_sent_idx)
-
-        #     end = start + sent_len
-      
-        #     row =  {
-        #             "id": self.__get_global_id("sentence"),
-        #             "paragraph_sentence_id": i,
-        #             "text":sent,
-        #             "char_start": start,
-        #             "char_end": end,
-        #             }
-
-        #     for parent in self.level2parents["sentence"][1:]:
-        #         parent_info[f"{parent}_sentence_id"] += 1
-
-        #     row.update(parent_info)
-
-        #     self._level_row_cache["sentence"] = row
-            
-        #     #self.stack_level_data["sentence"].append(row)
-
-        #     current_sent_idx = end #sent_len + 1
-
-        #     self.__build_tokens()
-
 
     def __build_paragraphs(self):
         """
@@ -512,7 +473,6 @@ class TextProcesser:
         parent_info = self.__get_structure_info("paragraph")
         doc, _ = self.__get_parent_text("paragraph")
         current_para_idx = self.__get_char_idx("paragraph")
-
 
         paras = self.__paragraph_tokenize(doc)
 

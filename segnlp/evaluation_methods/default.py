@@ -3,9 +3,8 @@ import re
 
 #segnlp
 from segnlp.preprocessing.dataset_preprocessor import PreProcessedDataset
+from segnlp.ptl import get_ptl_trainer_args
 from segnlp.ptl import PTLBase
-from segnlp.ptl import setup_ptl_trainer
-
 #pytorch
 from pytorch_lightning.callbacks import ModelCheckpoint
 
@@ -20,7 +19,7 @@ from pytorch_lightning import Trainer
 
 def default(
             model_args:dict,
-            trainer:Trainer,
+            ptl_trn_args:dict,
             dataset:PreProcessedDataset,
             save_choice:str,
             ):
@@ -28,6 +27,7 @@ def default(
 
     dataset.split_id = 0
 
+    trainer = Trainer(**ptl_trn_args)
     ptl_model = PTLBase(**model_args)
     trainer.fit(    
                     model=ptl_model, 

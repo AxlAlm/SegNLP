@@ -65,7 +65,7 @@ default_ptl_trn_args = dict(
                             )
 
 
-def setup_ptl_trainer(
+def get_ptl_trainer_args(
                         ptl_trn_args:dict, 
                         hyperparamaters:dict, 
                         save_choice:str,
@@ -128,11 +128,11 @@ def setup_ptl_trainer(
                     
 
     ptl_trn_args["default_root_dir"] = exp_model_path
-    trainer = Trainer(**ptl_trn_args)
+    #trainer = Trainer(**ptl_trn_args)
 
-    if ptl_trn_args["callbacks"]:
-        ptl_trn_args["callbacks"] = [str(c) for c in ptl_trn_args["callbacks"]]
+    # if ptl_trn_args["callbacks"]:
+    #     ptl_trn_args["callbacks"] = [str(c) for c in ptl_trn_args["callbacks"]]
 
-    return trainer
+    return ptl_trn_args
 
 

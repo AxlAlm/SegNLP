@@ -44,8 +44,8 @@ class Labeler:
         if mode == "pre":
             df = self.__ams_as_pre(df)
 
-        elif mode == "list_in":
-            df = self.__ams_in_from_list(df)
+        elif mode == "from_list":
+            df = self.__ams_from_list(df)
 
         elif mode == "list_pre":
             raise NotImplementedError()
@@ -84,7 +84,7 @@ class Labeler:
         return df
 
 
-    def __ams_in_from_list(self, df):
+    def __ams_from_list(self, df):
 
         df["am_id"] = np.nan
         groups = df.groupby("sentence_id")
@@ -98,8 +98,12 @@ class Labeler:
                 tokens = ac_df["text"].to_list()
                 am, am_indexes = find_am(tokens)
 
-                ac_df.iloc[am_indexes, "am_id"] = ac_id
-                ac_df.iloc[am_indexes, "ac_id"] = None
+                if not am:
+                    continue
+
+                idx = ac_df.iloc[am_indexes].index
+                df.loc[idx, "am_id"] = ac_id
+                df.loc[idx, "ac_id"] = None
 
         return df
 

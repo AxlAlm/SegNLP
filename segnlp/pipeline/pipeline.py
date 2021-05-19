@@ -29,8 +29,8 @@ import torch
 from segnlp.datasets.base import DataSet
 from segnlp.preprocessing import Preprocessor
 from segnlp.preprocessing.dataset_preprocessor import PreProcessedDataset
-from segnlp.ptl.ptl_trainer_setup import setup_ptl_trainer
-from segnlp.ptl.ptl_base import PTLBase
+from segnlp.ptl import get_ptl_trainer_args
+from segnlp.ptl import PTLBase
 from segnlp import get_logger
 from segnlp.utils import set_random_seed
 from segnlp.utils import get_time
@@ -175,7 +175,7 @@ class Pipeline:
 
 
             try:
-                return self.preprocessor.process_dataset(dataset, dump_dir=self._path_to_data)
+                return self.preprocessor.process_dataset(dataset, evaluation_method=self.evaluation_method, dump_dir=self._path_to_data)
             except BaseException as e:
                 shutil.rmtree(self._path_to_data)
                 raise e
@@ -574,17 +574,17 @@ class Pipeline:
                 self.exp_logger.experiment.log_others(exp_config)
 
 
-        trainer = setup_ptl_trainer( 
-                                                    ptl_trn_args=ptl_trn_args,
-                                                    hyperparamaters=hyperparamaters, 
-                                                    exp_model_path=exp_model_path,
-                                                    save_choice=save_choice, 
-                                                    #prefix=model_id,
-                                                    )
+        ptl_trn_args = get_ptl_trainer_args( 
+                                        ptl_trn_args=ptl_trn_args,
+                                        hyperparamaters=hyperparamaters, 
+                                        exp_model_path=exp_model_path,
+                                        save_choice=save_choice, 
+                                        #prefix=model_id,
+                                        )
 
         model_fp, model_score = get_evaluation_method(self.evaluation_method)(
                                                                                 model_args = model_args,
-                                                                                trainer = trainer,
+                                                                                ptl_trn_args = ptl_trn_args,
                                                                                 dataset = self.dataset,
                                                                                 save_choice=save_choice,
                                                                                 )

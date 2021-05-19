@@ -45,6 +45,8 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         self.argumentative_markers = False 
         if "am" in other_levels:
             self.argumentative_markers = True
+            self.am_extraction = "pre"
+        
 
         self.encodings = encodings
 
@@ -93,7 +95,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         doc = doc["text"]
 
         doc_df = self._process_doc(doc)
-        doc_id = int(doc_df["document_id"].to_numpy()[0])
+        doc_id = int(doc_df[f"document_id"].to_numpy()[0])
 
         if self.input_level != self.sample_level:
             samples = doc_df.groupby(f"{self.sample_level}_id")
@@ -119,7 +121,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             
 
             if self.argumentative_markers:
-                sample = self._label_ams(sample)
+                sample = self._label_ams(sample, mode=self.am_extraction)
             
             if self.encodings:
                 self._encode_data(sample)
@@ -357,7 +359,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         for unit_id, gdf in units:
     
             unit_start = min(gdf[f"{self.sample_level}_token_id"])
-            unit_end = max(gdf[f"{self.sample_level}_token_id"])+1
+            unit_end = max(gdf[f"{self.sample_level}_token_id"])
             unit_span = (unit_start, unit_end)
 
             unit_spans.append(unit_span)
@@ -395,11 +397,11 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 has_am = False
             else:
                 am_start = min(am[f"{self.sample_level}_token_id"])
-                am_end = max(am[f"{self.sample_level}_token_id"])+1
+                am_end = max(am[f"{self.sample_level}_token_id"])
                 am_span = (am_start, am_end)
 
             unit_start = min(gdf[f"{self.sample_level}_token_id"])
-            unit_end = max(gdf[f"{self.sample_level}_token_id"])+1
+            unit_end = max(gdf[f"{self.sample_level}_token_id"])
             unit_span = (unit_start, unit_end)
 
             if has_am:
@@ -415,7 +417,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
         if not adu_spans:
             adu_spans = [(0,0)]
-
+        
         Input.add("span_idxs", np.array(am_spans), "am")
         Input.add("span_idxs", np.array(adu_spans), "adu")
 

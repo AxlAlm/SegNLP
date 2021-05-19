@@ -52,8 +52,14 @@ class ModelOutput:
         self.outputs = {
                         "sample_id": np.concatenate([np.full(int(l),int(i)) for l,i in zip(self.batch["token"]["lengths"],self.batch.ids)]),
                         "token_id": ensure_numpy(token_ids),
-                        "text": ensure_flat(ensure_numpy(self.batch["token"]["text"]), mask=ensure_numpy(self.batch["token"]["mask"]))
+                        "text": ensure_flat(ensure_numpy(self.batch["token"]["text"]), mask=ensure_numpy(self.batch["token"]["mask"])),
                         }
+
+        if not self.inference:
+            self.batch["unit"][]
+
+
+
         self.pred_spans = {}
         self._pred_span_set = False
         self.mask = []
@@ -177,7 +183,7 @@ class ModelOutput:
         tok_labels = np.full((batch_size, max_nr_token), fill_value=fill_value)
         for i in range(batch_size):
             for j,(start,end) in enumerate(span_indexes[i]):
-                tok_labels[i][start:end] = span_labels[i][j]
+                tok_labels[i][start:end+1] = span_labels[i][j]
         return tok_labels
         
     
@@ -407,60 +413,61 @@ class ModelOutput:
             self.pred_spans["unit_lengths"]  = bio_data["unit"]["lengths"]
         
 
-
-        if not self.inference:
-
-            if task == "link":
-                self.task_metrics.append(link_metric(
-                                                        targets=targets,
-                                                        preds=preds,
-                                                        lengths=self.batch["unit"]["lengths"]
-                                                        )
-                                                    )
-        
-            else:
-                mask = ensure_numpy(self.batch[level]["mask"])
-                preds_flat = ensure_flat(ensure_numpy(preds), mask=mask)
-                targets_flat = ensure_flat(ensure_numpy(targets), mask=mask)
-                self.task_metrics.append(base_metric(
-                                                    targets=targets_flat,
-                                                    preds=preds_flat,
-                                                    task=task,
-                                                    labels=self.label_encoders[task].labels,
-                                                    )
-                                            )
-                pred_outputs = ensure_flat(ensure_numpy(preds), mask=mask)
-                target_outputs = ensure_flat(ensure_numpy(targets), mask=mask)
-            
-
-        token_mask = ensure_numpy(self.batch["token"]["mask"])
-        if level == "unit":
-            span_indexes = ensure_numpy(self.batch["unit"]["span_idxs"])
-
-
-            if task == "link":
-                data = self.__decode_links(
-                                            preds=ensure_numpy(self.batch[level][task]), 
-                                            lengths=ensure_numpy(self.batch[level]["lengths"]),
-                                            )
-
-
-            preds  = self.__unfold_span_labels(
-                                                span_labels=data,
-                                                span_indexes=span_indexes,
-                                                max_nr_token=max(ensure_numpy(self.batch["token"]["lengths"])),
-                                                fill_value= 0 if task == "link" else -1
-                                                )
-            targets  = self.__decode_labels(
-                                            preds=ensure_numpy(self.batch["token"][task]), 
-                                            lengths=ensure_numpy(self.batch["token"]["lengths"]),
-                                            task=task
-                                            )
-            pred_outputs = ensure_flat(ensure_numpy(preds), mask=token_mask)
-            target_outputs = ensure_flat(ensure_numpy(targets), mask=token_mask)
-
         self.outputs[task] = pred_outputs
         self.outputs[f"T-{task}"] = target_outputs
+
+
+        # if not self.inference:
+
+        #     if task == "link":
+        #         self.task_metrics.append(link_metric(
+        #                                                 targets=targets,
+        #                                                 preds=preds,
+        #                                                 lengths=self.batch["unit"]["lengths"]
+        #                                                 )
+        #                                             )
+        
+        #     else:
+        #         mask = ensure_numpy(self.batch[level]["mask"])
+        #         preds_flat = ensure_flat(ensure_numpy(preds), mask=mask)
+        #         targets_flat = ensure_flat(ensure_numpy(targets), mask=mask)
+        #         self.task_metrics.append(base_metric(
+        #                                             targets=targets_flat,
+        #                                             preds=preds_flat,
+        #                                             task=task,
+        #                                             labels=self.label_encoders[task].labels,
+        #                                             )
+        #                                     )
+        #         pred_outputs = ensure_flat(ensure_numpy(preds), mask=mask)
+        #         target_outputs = ensure_flat(ensure_numpy(targets), mask=mask)
+            
+
+        # token_mask = ensure_numpy(self.batch["token"]["mask"])
+        # if level == "unit":
+        #     span_indexes = ensure_numpy(self.batch["unit"]["span_idxs"])
+
+
+        #     if task == "link":
+        #         data = self.__decode_links(
+        #                                     preds=ensure_numpy(self.batch[level][task]), 
+        #                                     lengths=ensure_numpy(self.batch[level]["lengths"]),
+        #                                     )
+
+
+        #     preds  = self.__unfold_span_labels(
+        #                                         span_labels=data,
+        #                                         span_indexes=span_indexes,
+        #                                         max_nr_token=max(ensure_numpy(self.batch["token"]["lengths"])),
+        #                                         fill_value= 0 if task == "link" else -1
+        #                                         )
+        #     targets  = self.__decode_labels(
+        #                                     preds=ensure_numpy(self.batch["token"][task]), 
+        #                                     lengths=ensure_numpy(self.batch["token"]["lengths"]),
+        #                                     task=task
+        #                                     )
+        #     pred_outputs = ensure_flat(ensure_numpy(preds), mask=token_mask)
+        #     target_outputs = ensure_flat(ensure_numpy(targets), mask=token_mask)
+
 
 
     def add_probs(self, task:str, level:str, data:torch.tensor):

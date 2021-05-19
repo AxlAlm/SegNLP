@@ -205,7 +205,6 @@ class LSTM_DIST(nn.Module):
         for idx in range(batch_size):
             for sidx,(i,j) in enumerate(spans[idx]):
 
-
                 if i==0 and j == 0:
                     continue
 

@@ -49,7 +49,7 @@ class Encoder:
                 units = df.groupby("unit_id")
                 links = [unit_df["link"].unique()[0] for unit_id, unit_df in units]
                 enc_links = self.encode_list(links, task)
-                
+
                 for i, (unit_id, unit_df) in enumerate(units):
                     df.loc[unit_df.index,"_link"] = enc_links[i]
 

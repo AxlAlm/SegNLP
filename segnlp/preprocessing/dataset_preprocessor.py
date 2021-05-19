@@ -32,6 +32,7 @@ from segnlp.utils import ensure_numpy
 
 #sklearn
 from sklearn.model_selection import train_test_split
+from sklearn.model_selection import KFold
 
 from segnlp.utils import timer
 
@@ -132,21 +133,14 @@ class PreProcessedDataset(ptl.LightningDataModule):
         return self._splits
 
 
-    def overwrite_test(self, outputs):
-        
-        for split_id in splits:
-            keys = self.splits[split_id]["test"]
-            test_data = self[keys]
-
-
     def train_dataloader(self):
-        # ids are given as a nested list (e.g [[42, 43]]) hence using lambda x:x[0] to select the inner list.
+        # ids are given as a nested list from sampler (e.g [[42, 43]]) hence using lambda x:x[0] to select the inner list.
         sampler = BatchSampler(self.splits[self.split_id]["train"], batch_size=self.batch_size, drop_last=False)
         return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=segnlp.settings["dl_n_workers"])
 
 
     def val_dataloader(self):
-        # ids are given as a nested list (e.g [[42, 43]]) hence using lambda x:x[0] to select the inner list.
+        # ids are given as a nested list from sampler (e.g [[42, 43]]) hence using lambda x:x[0] to select the inner list.
         sampler = BatchSampler(self.splits[self.split_id]["val"], batch_size=self.batch_size, drop_last=False)
         return DataLoader(self, sampler=sampler, collate_fn=lambda x:x[0], num_workers=segnlp.settings["dl_n_workers"]) #, shuffle=True)
 
@@ -225,7 +219,7 @@ class DataPreprocessor:
                     self.h5py_f[k][last_sample_i:] = v
 
 
-    def __set_splits(self, dump_dir:str, dataset:DataSet, size:int):
+    def __set_splits(self, dump_dir:str, dataset:DataSet, size:int, evaluation_method:str):
 
         
         def split(size, split_idx):
@@ -259,7 +253,7 @@ class DataPreprocessor:
             return splits
 
 
-        if dataset.split_idx == "cv":
+        if evaluation_method == "cross_validation":
             splits = cv_split(size)
 
         elif self.sample_level != dataset.level:
@@ -338,8 +332,12 @@ class DataPreprocessor:
         #     pickle.dump(stats, f)
 
 
-    def process_dataset(self, dataset:DataSet, dump_dir:str = None) -> PreProcessedDataset:
+    def process_dataset(self, dataset:DataSet, evaluation_method:str, dump_dir:str = None) -> PreProcessedDataset:
         
+        if dataset.name() == "MTC":
+            self.am_extraction = "from_list"
+
+
         file_path = os.path.join(dump_dir, f"{dataset.name()}_data.hdf5")
         self.__setup_h5py(file_path=file_path) 
 
@@ -354,7 +352,7 @@ class DataPreprocessor:
 
             size += len(Input)
 
-        splits = self.__set_splits(dump_dir, dataset=dataset, size=size)
+        splits = self.__set_splits(dump_dir, dataset=dataset, size=size, evaluation_method=evaluation_method)
         self.__calc_stats(dump_dir, splits, dataset.name())
 
         self.h5py_f.close()

@@ -6,13 +6,12 @@ import os
 import pandas as pd
 import numpy as np
 import shutil
+import random
+
 
 #segnlp
 from segnlp.utils import RangeDict
 from segnlp.datasets.base import DataSet
-
-#sklearn
-from sklearn.model_selection import KFold
 
 #git
 from git import Repo
@@ -53,9 +52,9 @@ class MTC(DataSet):
                 ):
         task_labels = {     
                             "seg":  ["O","B","I"],
-                            "label":["pro", "opp"],
+                            "label":["None", "pro", "opp"],
                             "link_label": ["None", "sup", "exa", "add", "reb", "und"],
-                            "link": list(range(-6,6,1))
+                            "link": list(range(-8,8,1))
                             }
 
         super().__init__(
@@ -64,10 +63,10 @@ class MTC(DataSet):
                         prediction_level = prediction_level,
                         sample_level = sample_level,
                         supported_task_labels = task_labels,
-                        level = "paragraph",
+                        level = "document",
                         supported_tasks = [ "seg", "label", "link", "link_label"],
                         supported_prediction_levels = ["unit", "token"],
-                        supported_sample_levels = ["paragraph", "sentence"],
+                        supported_sample_levels = ["document", "sentence"],
                         about = """The arg-microtexts corpus features 112 short argumentative texts. All texts were originally written in German and have been professionally translated to English. """,
                         url = "https://github.com/peldszus/arg-microtexts",                        
                         download_url = "https://github.com/peldszus/arg-microtexts",
@@ -92,13 +91,9 @@ class MTC(DataSet):
         return os.path.join(self.dump_path,"corpus", "en")
 
 
-    def _splits(self):
-        ### MTC normaly uses Cross Validation
-        kf = KFold(n_splits=10, shuffle=True, random_state=42)
-        ids = np.arange(len(self))
-        splits = {i:{"train": train_index,  "test":test_index} for i, (train_index, test_index) in enumerate(kf.split(ids))}
-        return splits
-
+    def _shuffle_split_data(self, data:list):
+        random.shuffle(data)
+        return None, data
 
     def _process_data(self, path_to_data):
         
@@ -144,7 +139,7 @@ class MTC(DataSet):
                     text_len = len(c.text)
                     edus[ID] = {
                                         "label": None, 
-                                        "link":int(ID)-1, 
+                                        "link":0, 
                                         "link_label":None,
                                         "span_id": int(ID)-1,
                                         "unit_id": None,
@@ -173,7 +168,6 @@ class MTC(DataSet):
                     link = (int(c.attrib["trg"][1:])-1) - (int(ID)-1)
                     edus[ID]["link"] = link
 
-            
             assert len(text) == start-1, f"text={len(text)},  start={start}"
             
             span_labels = RangeDict({e.pop("span"):e for _,e in edus.items()})
@@ -185,4 +179,4 @@ class MTC(DataSet):
                         "span_labels": span_labels
                         })
 
-        return pd.DataFrame(data)
+        return data
