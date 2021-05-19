@@ -133,7 +133,6 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 #if we are prediction on Units but sample doesnt have any, we can skip it
                 self._removed += 1
                 continue
-
             
             #tokens
             Input.add("ids", i, None)
@@ -153,14 +152,12 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 spans_grouped = sample.groupby("span_id")
                 length = len(spans_grouped)
                 lengths = np.array([g.shape[0] for i, g in spans_grouped])
-                #print(lengths, sum(lengths))
-                #assert sum(lengths) == sample.shape[0]
 
                 Input.add("lengths", length, "span")
                 Input.add("lengths_tok", lengths, "span")
 
-                non_span_mask = (~np.isnan(spans_grouped.first()["unit_id"].to_numpy())).astype(np.uint8)
-                Input.add("none_span_mask", non_span_mask, "span")
+                none_span_mask = (~np.isnan(spans_grouped.first()["unit_id"].to_numpy())).astype(np.uint8)
+                Input.add("none_span_mask", none_span_mask, "span")
 
 
             #ams

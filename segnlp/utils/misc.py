@@ -17,7 +17,6 @@ import zipfile
 import hashlib
 from glob import glob
 from pathlib import Path
-from pprint import pprint
 import re
 import pandas as pd
 from numpy.random import MT19937
@@ -27,7 +26,6 @@ from numpy.random import RandomState, SeedSequence
 from segnlp import get_logger
 
 #torch
-from torch import is_tensor
 import torch
 
 #pytroch lightning 
@@ -35,59 +33,6 @@ from pytorch_lightning import seed_everything
 
 
 logger = get_logger(__name__)
-
-
-def ensure_flat(item, mask=None):
-
-    if not isinstance(item[0], np.int):
-        item = item.flatten()
-
-        # Ugly fix for 2d arrays with differnet lengths
-        if not isinstance(item[0], np.int):
-            item = np.hstack(item)
-    
-    if mask is not None:
-        mask = ensure_flat(ensure_numpy(mask)).astype(bool)
-        if mask.shape == item.shape:
-            item = item[mask]
-    
-
-    return item
-
-
-def zero_pad(a):
-    b = np.zeros([len(a),len(max(a,key = lambda x: len(x)))])
-    for i,j in enumerate(a):
-        b[i][0:len(j)] = j
-    return b
-
-
-def string_pad(a, dtype="<U30"):
-    b = np.zeros([len(a),len(max(a,key = lambda x: len(x)))]).astype(dtype)
-    b[:] = ""
-    for i,j in enumerate(a):
-        b[i][0:len(j)] = j
-    return b
-
-
-def ensure_numpy(item):
-
-    if torch.is_tensor(item):
-        item = item.cpu().detach().numpy()
-
-    if type(item) is not np.ndarray:
-        item = np.array(item)
-
-    return item
-
-
-def to_tensor(item, dtype=torch.float):
-    try:
-        return torch.tensor(item, dtype=dtype)
-    except ValueError as e:
-        return item
-    except TypeError as e:
-        return item
 
 
 def check_gpu(self, gpu:int, verbose=1) -> Tuple[bool, torch.device]:
@@ -275,26 +220,9 @@ def set_random_seed(nr, using_gpu:bool=False):
         torch.backends.cudnn.benchmark = False
 
 
-def tensor_dtype(numpy_dtype):
-
-    if numpy_dtype == np.uint8:
-        return torch.uint8
-
-    if numpy_dtype == np.float or numpy_dtype == np.float32:
-        return torch.float
-
-    if numpy_dtype == np.int:
-        return torch.long
-
-    if numpy_dtype == np.bool:
-        return torch.bool
-
-
-
 def create_uid(string):
     uid = str(int(hashlib.sha256(string.encode('utf-8')).hexdigest(), 16) % 10**8)
     return uid
-
 
 
 def random_ints(n):
@@ -302,62 +230,4 @@ def random_ints(n):
     ts = int(get_time().timestamp())
     rs = RandomState(MT19937(SeedSequence(ts)))
     return rs.randint(10**6,size=(n,)).tolist()
-
-
-def one_hots(a):
-    m = np.zeros((a.shape[0], a.shape[0]))
-    m[np.arange(a.shape[0]),a] = 1
-    return m
-
-
-
-
-# def list_pipelines():
-#     pass
-
-
-# def list_experiments():    
-#     home_path =  str(Path.home())
-#     root_exp_path =  f"{home_path}/.segnlp/"
-#     exps = os.listdir(root_exp_path)
-
-#     print("__________ EXPERIMENTS _________")
-#     for exp in exps:
-#         exp_path = os.path.join(root_exp_path, exp)
-#         exp_id = exp
-
-#         exp_config_file = os.path.join(exp_path, "config.json")
-#         with open(exp_config_file, "r") as f:
-#             exp_config = json.load(f)
-
-#         print(f'ID = {exp_id}\nModel = {exp_config["model"]}\ndataset = {exp_config["dataset"]}\ntasks = {exp_config["tasks"]}\nsample_level = {exp_config["sample_level"]}\nfor more info look in:\n   {exp_config_file} \n--------')
-
-
-# def exp_summery(exp_id, rank:str="val_loss"):
-#     home_path =  str(Path.home())
-#     path_to_models = f"{home_path}/.segnlp/{exp_id}/models/"
-#     model_rankings_fp =  os.path.join(path_to_models, "model_rankings.json")
-
-#     with open(model_rankings_fp, "r") as f:
-#         model_rankings = json.load(f)
-
-#     model_rankings = pd.DataFrame(model_rankings)
-
-#     pd.set_option('display.max_rows', None)
-#     pd.set_option('display.max_columns', None)
-#     pd.set_option('display.width', None)
-#     pd.set_option('display.max_colwidth', None)
-    
-#     print(f"__________ Experiment {exp_id} model rankings ({rank}) _________")
-#     print()
-#     print(model_rankings)
-#     print()
-#     print("________ best model config _________")
-#     best_model = model_rankings.iloc[0].to_dict()
-#     with open(best_model["config_path"], "r") as f:
-#         model_config = json.load(f)
-#     print()
-#     pprint(model_config)
-#     print()
-#     print("__________________________________________________________________")
 

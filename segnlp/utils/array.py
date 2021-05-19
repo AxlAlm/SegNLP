@@ -13,11 +13,106 @@ import torch
 from torch import Tensor
 from torch.nn import functional as F
 
+def ensure_flat(item, mask=None):
 
-from .bio_decoder import bio_decode
-from .model_input import ModelInput
-from .model_output import ModelOutput
-from .schedule_sample import ScheduleSampling
+    if not isinstance(item[0], np.int):
+        item = item.flatten()
+
+        # Ugly fix for 2d arrays with differnet lengths
+        if not isinstance(item[0], np.int):
+            item = np.hstack(item)
+    
+    if mask is not None:
+        mask = ensure_flat(ensure_numpy(mask)).astype(bool)
+        if mask.shape == item.shape:
+            item = item[mask]
+    
+
+    return item
+
+
+def zero_pad(a):
+    b = np.zeros([len(a),len(max(a,key = lambda x: len(x)))])
+    for i,j in enumerate(a):
+        b[i][0:len(j)] = j
+    return b
+
+
+def string_pad(a, dtype="<U30"):
+    b = np.zeros([len(a),len(max(a,key = lambda x: len(x)))]).astype(dtype)
+    b[:] = ""
+    for i,j in enumerate(a):
+        b[i][0:len(j)] = j
+    return b
+
+
+def ensure_numpy(item):
+
+    if torch.is_tensor(item):
+        item = item.cpu().detach().numpy()
+
+    if type(item) is not np.ndarray:
+        item = np.array(item)
+
+    return item
+
+
+def to_tensor(item, dtype=torch.float):
+    try:
+        return torch.tensor(item, dtype=dtype)
+    except ValueError as e:
+        return item
+    except TypeError as e:
+        return item
+
+
+def one_hots(a):
+    m = np.zeros((a.shape[0], a.shape[0]))
+    m[np.arange(a.shape[0]),a] = 1
+    return m
+
+
+
+def tensor_dtype(numpy_dtype):
+
+    if numpy_dtype == np.uint8:
+        return torch.uint8
+
+    if numpy_dtype == np.float or numpy_dtype == np.float32:
+        return torch.float
+
+    if numpy_dtype == np.int:
+        return torch.long
+
+    if numpy_dtype == np.bool:
+        return torch.bool
+
+
+
+def flatten(a):
+    if isinstance(a, list):
+        return [e for sublist in a for e in sublist]
+    else:
+        return a.flatten()
+
+def dynamic_update(src, v, pad_value=0): 
+
+    a = np.array(list(src.shape[1:]))
+    b = np.array(list(v.shape))
+    new_shape = np.maximum(a, b)
+    new_src = np.full((src.shape[0]+1, *new_shape), pad_value, dtype=src.dtype)
+
+    if len(v.shape) > 2:
+        new_src[:src.shape[0],:src.shape[1], :src.shape[2]] = src
+        new_src[src.shape[0],:v.shape[0], :v.shape[1]] = v
+    #if len(v.shape) == 2:
+    #    new_src[:src.shape[0],:src.shape[1], :] = src
+    #    new_src[src.shape[0],:v.shape[0], :] = v
+    else:
+        new_src[:src.shape[0],:src.shape[1]] = src
+        new_src[src.shape[0],:v.shape[0]] = v
+
+    return new_src
 
 
 def masked_mean(m, mask):
@@ -67,50 +162,6 @@ def multiply_mask_matrix(matrix, mask):
     masked_matrix = matrix_f_masked.view(og_shape)
 
     return masked_matrix
-
-
-def agg_emb(m, lengths, span_indexes, mode:str="average", flat:bool=False):
-
-    if mode == "mix":
-        feature_dim = m.shape[-1]*3
-    else:
-        feature_dim = m.shape[-1]
-
-    batch_size = m.shape[0]
-    device = m.device
-    agg_m = torch.zeros(batch_size, max(lengths), feature_dim, device=device)
-
-    for i in range(batch_size):
-        for j in range(lengths[i]):
-            ii, jj = span_indexes[i][j]
-
-            if mode == "average":
-                agg_m[i][j] = torch.mean(m[i][ii:jj], dim=0)
-
-            elif mode == "max":
-                v, _ = torch.max(m[i][ii:jj])
-                agg_m[i][j] = v
-
-            elif mode == "min":
-                v, _ = torch.max(m[i][ii:jj])
-                agg_m[i][j] = v
-
-            elif mode == "mix":
-                _min, _ = torch.min(m[i][ii:jj],dim=0)
-                _max, _ = torch.max(m[i][ii:jj], dim=0)
-                _mean = torch.mean(m[i][ii:jj], dim=0)
-
-                agg_m[i][j] = torch.cat((_min, _max, _mean), dim=0)
-
-            else:
-                raise RuntimeError(f"'{mode}' is not a supported mode, chose 'min', 'max','mean' or 'mix'")
-
-    if flat:
-        mask = create_mask(lengths).view(-1)
-        agg_m_f = torch.flatten(agg_m, end_dim=-2)
-        return agg_m_f[mask]
-
-    return agg_m
 
 
 def create_mask(lengths, as_bool=True, flat=False):
@@ -193,55 +244,6 @@ def get_all_possible_pairs(
     return all_possible_pairs
 
 
-def pair_matrix(input_emb, max_units:int, modes=["cat", "mean"], rel_pos=False, pair_mask:torch.Tensor=None):
-    
-    device = input_emb.device
-    batch_size = input_emb.shape[0]
-    dim1 = input_emb.shape[1]
-
-    shape = (batch_size, dim1, dim1, input_emb.shape[-1])
-    m = torch.reshape(torch.repeat_interleave(input_emb, dim1, dim=1), shape)
-    mT = m.transpose(2, 1)
-
-    to_cat = []
-    if "cat" in modes:
-        to_cat.append(m)
-        to_cat.append(mT)
-    
-    if "multi" in modes:
-        to_cat.append(m*mT)
-
-    if "mean" in modes:
-        to_cat.append((m+mT /2))
-
-    if "sum" in modes:
-        to_cat.append(m+mT)
-    
-
-    #adding one_hot encoding for the relative position
-    if rel_pos:
-        one_hot_dim = (max_units*2)-1
-        one_hots = torch.tensor(
-                                    [
-                                    np.diag(np.ones(one_hot_dim),i)[:dim1,:one_hot_dim] 
-                                    for i in range(dim1-1, -1, -1)
-                                    ], 
-                                    dtype=torch.uint8,
-                                    device=device
-                                    )
-        one_hots = one_hots.repeat_interleave(batch_size, dim=0)
-        one_hots = one_hots.view((batch_size, dim1, dim1, one_hot_dim))
-        
-        to_cat.append(one_hots)
-
-    pair_matrix = torch.cat(to_cat, axis=-1)
-
-    if pair_mask is not None:
-        pairs_flat = torch.flatten(pair_matrix, end_dim=-2)
-        return pairs_flat[pair_mask]
-    else:
-        return pair_matrix
-    
 
 def util_one_hot(matrix: Tensor, mask: Tensor, num_classes: int):
     # check padding = -1

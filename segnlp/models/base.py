@@ -23,43 +23,9 @@ from segnlp.nn.utils import ModelInput
 from segnlp.nn.utils import ModelOutput
 
 logger = get_logger("PTLBase (ptl.LightningModule)")
-
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 from segnlp.utils import timer
-
-
-class MetricContainer(dict):
-
-    def __init__(self, metric_fn=Callable):
-
-        self._metric_fn = metric_fn
-       
-        for k in ["train", "val", "test"]:
-            self[k] = []
-
-
-    def calc_add(self, output:pd.DataFrame, split:str):
-        """
-        metrics = {"metic1": 0.3, "metric2": 0.5, ...., "metricn": 0.9 }
-        """
-        metrics = self._metric_fn(output)
-        self[split].append(metrics)
-
-        
-    def calc_epoch_metrics(self, split:str):
-        #print(pd.DataFrame(self[split]))
-        #print(pd.DataFrame(self[split]).mean())
-        epoch_metrics = pd.DataFrame(self[split]).mean()
-        
-        if epoch_metrics.shape[0] == 0:
-            return {}
-
-        epoch_metrics.index = split + "_" + epoch_metrics.index
-        return epoch_metrics.to_dict()
-   
-
-
 
 class PTLBase(ptl.LightningModule):
 
@@ -78,12 +44,7 @@ class PTLBase(ptl.LightningModule):
         super().__init__()
         self.hyperparamaters = hyperparamaters
         self.monitor_metric = hyperparamaters.get("monitor_metric", "loss")
-        self.prediction_level = prediction_level
-        self.tasks = tasks
-        self.all_tasks = all_tasks
-        self.label_encoders = label_encoders
-        self.inference = inference
-
+        
         self.model = model(
                             hyperparamaters=hyperparamaters,
                             task_dims=task_dims,
@@ -97,11 +58,11 @@ class PTLBase(ptl.LightningModule):
 
         self.formater = OutputFormater(
      
-                                    label_encoders=self.label_encoders, 
-                                    tasks=self.tasks,
-                                    all_tasks=self.all_tasks,
-                                    prediction_level=self.prediction_level,
-                                    inference = self.inference,
+                                    label_encoders=label_encoders, 
+                                    tasks=tasks,
+                                    all_tasks=all_tasks,
+                                    prediction_level=prediction_level,
+                                    inference = inference,
                                     )
 
         self.outputs = {"val":[], "test":[], "train":[]}
