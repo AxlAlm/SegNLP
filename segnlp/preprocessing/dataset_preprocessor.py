@@ -27,8 +27,9 @@ import h5py
 # segnlp
 import segnlp
 from segnlp.datasets.base import DataSet
-from segnlp.nn.utils import ModelInput
-from segnlp.utils import ensure_numpy
+from segnlp.utils import ModelInput
+from segnlp.utils import DataModule
+import segnlp.utils as utils
 
 #sklearn
 from sklearn.model_selection import train_test_split
@@ -217,7 +218,7 @@ class DataPreprocessor:
         #     pickle.dump(stats, f)
 
 
-    def process_dataset(self, dataset:DataSet, evaluation_method:str, dump_dir:str = None) -> PreProcessedDataset:
+    def __process_dataset(self, dataset:DataSet, evaluation_method:str, dump_dir:str = None) -> DataModule:
         
         if dataset.name() == "MTC":
             self.am_extraction = "from_list"
@@ -241,8 +242,41 @@ class DataPreprocessor:
 
         self.h5py_f.close()
 
-        return PreProcessedDataset(
-                                    name=dataset.name(), 
-                                    dir_path=dump_dir, 
-                                    prediction_level=self.prediction_level
-                                    )
+        return DataModule(
+                                name=dataset.name(), 
+                                dir_path=dump_dir, 
+                                prediction_level=self.prediction_level
+                                )
+
+
+    def process_dataset(self, dataset:DataSet, dump_dir:str, evaluation_method:str):
+
+        self.expect_labels(
+                            tasks=dataset.tasks, 
+                            subtasks=dataset.subtasks,
+                            task_labels=dataset.task_labels
+                            )
+        path_to_data = os.path.join(dump_dir, f"{dataset.name}_data.hdf5")
+
+        if os.path.exists(path_to_data):
+            try:
+                logger.info(f"Loading preprocessed data from {path_to_data}")
+                return DataModule(
+                                                    name=dataset.name(),
+                                                    dir_path=path_to_data,
+                                                    label_encoders=self.encoders,
+                                                    prediction_level=dataset.prediction_level
+                                                    )
+            except OSError as e:
+                logger.info(f"Loading failed. Will continue to preprocess data")
+                try:
+                    shutil.rmtree(self._path_to_data)
+                except FileNotFoundError as e:
+                    pass
+
+        try:
+            return self.__process_dataset(dataset, evaluation_method=evaluation_method, dump_dir=path_to_data)
+        except BaseException as e:
+            shutil.rmtree(self._path_to_data)
+            raise e
+

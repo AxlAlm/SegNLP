@@ -16,22 +16,17 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from transformers import get_constant_schedule_with_warmup
 
 #am 
-from segnlp.utils import ensure_numpy
-from segnlp.utils import ensure_flat
 from segnlp import get_logger
-from segnlp.nn.utils import ModelInput
-from segnlp.nn.utils import ModelOutput
+import segnlp.utils as utils
 
 logger = get_logger("PTLBase (ptl.LightningModule)")
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
-from segnlp.utils import timer
 
 class PTLBase(ptl.LightningModule):
 
 
     def __init__(   self,  
-                    model:torch.nn.Module, 
                     hyperparamaters:dict,
                     tasks:list,
                     all_tasks:list,
@@ -39,40 +34,33 @@ class PTLBase(ptl.LightningModule):
                     prediction_level:str,
                     task_dims:dict,
                     feature_dims:dict,
+                    metric_fn:Callable,
                     inference:bool=False
                     ):
         super().__init__()
-        self.hyperparamaters = hyperparamaters
+        self.hps = hyperparamaters
         self.monitor_metric = hyperparamaters.get("monitor_metric", "loss")
-        
-        self.model = model(
-                            hyperparamaters=hyperparamaters,
-                            task_dims=task_dims,
-                            feature_dims=feature_dims,
-                            inference=inference
-                            )
 
-        self.metrics = MetricContainer(
-                                        metric_fn = metric_fn
+        self.metrics = utils.MetricContainer(
+                                            metric_fn = metric_fn
+                                            )
+
+        self.formater = utils.OutputFormater(
+                                        label_encoders=label_encoders, 
+                                        tasks=tasks,
+                                        all_tasks=all_tasks,
+                                        prediction_level=prediction_level,
+                                        inference = inference,
                                         )
-
-        self.formater = OutputFormater(
-     
-                                    label_encoders=label_encoders, 
-                                    tasks=tasks,
-                                    all_tasks=all_tasks,
-                                    prediction_level=prediction_level,
-                                    inference = inference,
-                                    )
 
         self.outputs = {"val":[], "test":[], "train":[]}
 
 
-    def forward(self, batch:ModelInput):
+    def forward(self, batch:utils.ModelInput):
         return self._step(batch, split="test")
 
 
-    def _step(self, batch:ModelInput, split):
+    def _step(self, batch:utils.ModelInput, split):
         batch.current_epoch = self.current_epoch
         loss, preds = self.model.forward(batch)
         df = self.formater.format(
@@ -144,8 +132,8 @@ class PTLBase(ptl.LightningModule):
         else:
             raise KeyError(f'"{self.OPT}" is not a supported optimizer')
 
-        if "scheduler" in self.hyperparamaters:
-            if self.hyperparamaters["scheduler"].lower() == "rop":
+        if "scheduler" in self.hps:
+            if self.hps["scheduler"].lower() == "rop":
                 scheduler = {
                                 'scheduler': ReduceLROnPlateau(
                                                                 opt,
@@ -155,17 +143,17 @@ class PTLBase(ptl.LightningModule):
                                 'monitor': "val_loss",
                                 'interval': 'epoch',
                             }
-            elif self.hyperparamaters["scheduler"].lower() == "constant_warmup":
+            elif self.hps["scheduler"].lower() == "constant_warmup":
                 scheduler = get_constant_schedule_with_warmup(
                                                                 optimizer=opt,
-                                                                num_warmup_steps=self.hyperparamaters["num_warmup_steps"],
-                                                                last_epoch=self.hyperparamaters.get("schedular_last_epoch", -1)
+                                                                num_warmup_steps=self.hps["num_warmup_steps"],
+                                                                last_epoch=self.hps.get("schedular_last_epoch", -1)
 
                                                                 )
             else:
-                raise KeyError(f'"{self.hyperparamaters["scheduler"]} is not a supported learning shedular')
+                raise KeyError(f'"{self.hps["scheduler"]} is not a supported learning shedular')
 
-        if "scheduler" in self.hyperparamaters:
+        if "scheduler" in self.hps:
             return [opt], [scheduler]
         else:
             return opt

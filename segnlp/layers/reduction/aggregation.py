@@ -1,23 +1,26 @@
 
 
-class Aggregate(nn.Module):
+class Agg(nn.Module):
 
 
-    def __init__(self, input_shape, mode:str="average", fine_tune=False):
+    def __init__(self, input_size:int, mode:str="average", fine_tune=False):
+
+        raise RuntimeError(f"'{mode}' is not a supported mode, chose 'min', 'max','mean' or 'mix'")
+
         if mode == "mix":
-            self.feature_dim = input_shape*3
+            self.feature_dim = input_size*3
         else:
-            self.feature_dim = input_shape
+            self.feature_dim = input_size
         
         self.fine_tune = fine_tune
         if fine_tune:
-            self.ft = nn.Linear(input_shape, input_shape)
+            self.ft = nn.Linear(input_size, input_size)
 
 
-    def forward(m, lengths, span_indexes, flat:bool=False):
+    def forward(input:Tensor, lengths:Tensor, span_indexes:Tensor, flat:bool=False):
 
-        batch_size = m.shape[0]
-        device = m.device
+        batch_size = input.shape[0]
+        device = input.device
         agg_m = torch.zeros(batch_size, max(lengths), self.feature_dim, device=device)
 
         for i in range(batch_size):
@@ -25,26 +28,22 @@ class Aggregate(nn.Module):
                 ii, jj = span_indexes[i][j]
 
                 if self.mode == "average":
-                    agg_m[i][j] = torch.mean(m[i][ii:jj], dim=0)
+                    agg_m[i][j] = torch.mean(input[i][ii:jj], dim=0)
 
                 elif self.mode == "max":
-                    v, _ = torch.max(m[i][ii:jj])
+                    v, _ = torch.max(input[i][ii:jj])
                     agg_m[i][j] = v
 
                 elif self.mode == "min":
-                    v, _ = torch.max(m[i][ii:jj])
+                    v, _ = torch.max(input[i][ii:jj])
                     agg_m[i][j] = v
 
                 elif self.mode == "mix":
-                    _min, _ = torch.min(m[i][ii:jj],dim=0)
-                    _max, _ = torch.max(m[i][ii:jj], dim=0)
-                    _mean = torch.mean(m[i][ii:jj], dim=0)
+                    _min, _ = torch.min(input[i][ii:jj],dim=0)
+                    _max, _ = torch.max(input[i][ii:jj], dim=0)
+                    _mean = torch.mean(input[i][ii:jj], dim=0)
 
                     agg_m[i][j] = torch.cat((_min, _max, _mean), dim=0)
-
-                else:
-                    raise RuntimeError(f"'{mode}' is not a supported mode, chose 'min', 'max','mean' or 'mix'")
-
 
         if self.fine_tune:
             agg_m = self.ft(agg_m)

@@ -4,10 +4,9 @@ import torch
 import numpy as np
 
 #segnlp
-from segnlp.utils import ensure_numpy
-from segnlp.utils import ensure_flat
-from segnlp.nn.utils import create_mask
-
+from .array import ensure_numpy
+from .array import ensure_flat
+from .array import create_mask
 
 class BIODecoder:
 

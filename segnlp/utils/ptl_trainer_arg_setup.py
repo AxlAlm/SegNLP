@@ -7,7 +7,7 @@ from typing import Tuple, List, Dict
 
 #pytorch lightning 
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
-from pytorch_lightning import Trainer 
+
 
 default_ptl_trn_args = dict(
                             logger=None, 

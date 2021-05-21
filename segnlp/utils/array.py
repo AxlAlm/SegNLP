@@ -7,7 +7,6 @@ from random import random
 from itertools import product, repeat, combinations
 from collections import defaultdict
 
-
 #pytroch
 import torch
 from torch import Tensor

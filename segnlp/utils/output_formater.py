@@ -8,11 +8,9 @@ from collections import Counter
 
 
 #segnlp
-from segnlp.metrics import base_metric
-from segnlp.metrics import link_metric
-from . import ModelInput
-from segnlp.utils import ensure_flat, ensure_numpy, flatten
-from segnlp.nn.utils import bio_decode
+from .model_input import ModelInput
+from .array import ensure_flat, ensure_numpy, flatten
+from .bio_decoder import BIODecoder
 
 #pytorch
 import torch
@@ -34,7 +32,17 @@ class OutputFormater:
         self.tasks = tasks
         self.all_tasks = all_tasks
         self.prediction_level = prediction_level
-        self.batch = batch
+
+        
+        seg_task = [task for task in self.tasks if "seg" in task]
+        if seg_task:
+            id2label = label_encoders[seg_task[0]].id2label
+            self.seg_decoder = BIODecoder(
+                                        B = [i for i,l in id2label.items() if "B-" in l],
+                                        I = [i for i,l in id2label.items() if "I-" in l],
+                                        O = [i for i,l in id2label.items() if "O-" in l],
+                                        )
+
 
 
     def __get_token_unit_ids(self,
@@ -318,14 +326,14 @@ class OutputFormater:
 
 
         if task == "seg":
-            bio_data = bio_decode(
-                                    batch_encoded_bios=preds,
-                                    lengths=ensure_numpy(self.batch[level]["lengths"]),
-                                )
-            self.pred_seg_info["unit"]["lengths"] = bio_data["unit"]["lengths"]
-            self.pred_seg_info["span"]["lengths"] = bio_data["span"]["lengths"]
-            self.pred_seg_info["span"]["lengths_tok"] = bio_data["span"]["lengths_tok"]
-            self.pred_seg_info["span"]["none_span_mask"] = bio_data["span"]["none_span_mask"]
+            seg_data = self.seg_decoder(
+                                        batch_encoded_bios=preds,
+                                        lengths=ensure_numpy(self.batch[level]["lengths"]),
+                                        )
+            self.pred_seg_info["unit"]["lengths"] = seg_data["unit"]["lengths"]
+            self.pred_seg_info["span"]["lengths"] = seg_data["span"]["lengths"]
+            self.pred_seg_info["span"]["lengths_tok"] = seg_data["span"]["lengths_tok"]
+            self.pred_seg_info["span"]["none_span_mask"] = seg_data["span"]["none_span_mask"]
             
 
             token_unit_ids = self.__get_token_unit_ids(

@@ -1,7 +1,100 @@
     
+#basics
+from typing import List, Dict, Tuple, Union
+import itertools
+import numpy as np
+import json
+import os
+from copy import deepcopy
+import shutil
+import pandas as pd
+
+#pytorch
+import torch
+
+#segnlp
+import segnlp.utils as utils
+from segnlp.visuals.hp_tune_progress import HpProgress
 
 
-class CoreLoops:
+class ML:
+
+
+    def __create_hyperparam_sets(self, hyperparamaters:Dict[str,Union[str, int, float, list]]) -> Union[dict,List[dict]]:
+        """creates a set of hyperparamaters for hyperparamaters based on given hyperparamaters lists.
+        takes a hyperparamaters and create a set of new paramaters given that any
+        paramater values are list of values.
+
+        Parameters
+        ----------
+        hyperparamaters : Dict[str,Union[str, int, float, list]]
+            dict of hyperparamaters.
+
+        Returns
+        -------
+        Union[dict,List[dict]]
+            returns a list of hyperparamaters if any hyperparamater value is a list, else return 
+            original hyperparamater
+        """
+        hyperparamaters_reformat = {k:[v] if not isinstance(v,list) else v for k,v in hyperparamaters.items()}
+        hypam_values = list(itertools.product(*list(hyperparamaters_reformat.values())))
+        set_hyperparamaters = [dict(zip(list(hyperparamaters_reformat.keys()),h)) for h in hypam_values]
+
+        return set_hyperparamaters
+
+
+    def __get_model_args(self,
+                        hyperparamaters:dict,
+                        ):
+
+        model_args = dict(
+                        hyperparamaters=hyperparamaters,
+                        tasks=self.config["tasks"],
+                        all_tasks=self.config["all_tasks"],
+                        label_encoders=self.__pp_encoders,
+                        prediction_level=self.config["prediction_level"],
+                        task_dims={t:len(l) for t,l in self.config["task2labels"].items() if t in self.config["tasks"]},
+                        feature_dims=self.config["feature2dim"],
+                        )
+        return model_args
+
+
+    def __save_model_config(  self,
+                            model_args:str,
+                            save_choice:str, 
+                            monitor_metric:str,
+                            exp_model_path:str,
+                            ):
+
+        #dumping the arguments
+        model_args_c = deepcopy(model_args)
+        model_args_c.pop("label_encoders")
+        model_args_c["model"] = model_args_c["model"].name()
+
+        time = get_time()
+        config = {
+                    "time": str(time),
+                    "timestamp": str(time.timestamp()),
+                    "save_choice":save_choice,
+                    "monitor_metric":monitor_metric,
+                    "args":model_args_c,
+                    }
+
+        with open(os.path.join(exp_model_path, "model_config.json"), "w") as f:
+            json.dump(config, f, indent=4)
+
+
+    # def eval(self):
+
+    #     # if self._many_models:
+    #     #     for model in self._trained_model:
+    #     #         model.eval()
+    #     # else:
+    #     self._model.eval()
+    #     self._model.freeze()
+    #     self._model.inference = True
+    #     self.preprocessor.deactivate_labeling()
+    #     self.__eval_set = True
 
 
     def _fit(    self,
@@ -15,14 +108,13 @@ class CoreLoops:
 
 
         if model_id is None:
-            model_id = create_uid("".join(list(map(str, hyperparamaters.keys())) + list(map(str, hyperparamaters.values()))))
+            model_id = utils.create_uid("".join(list(map(str, hyperparamaters.keys())) + list(map(str, hyperparamaters.values()))))
 
         set_random_seed(random_seed)
 
         hyperparamaters["random_seed"] = random_seed
-        self.dataset.batch_size = hyperparamaters["batch_size"]
+        self.data_module.batch_size = hyperparamaters["batch_size"]
         hyperparamaters["monitor_metric"] = monitor_metric
-
 
         model = deepcopy(self.model)
     
@@ -40,7 +132,6 @@ class CoreLoops:
         os.makedirs(exp_model_path, exist_ok=True) 
 
         model_args = self.__get_model_args(
-                                            model=model, 
                                             hyperparamaters=hyperparamaters, 
                                             )
 
@@ -69,12 +160,13 @@ class CoreLoops:
                                         #prefix=model_id,
                                         )
 
-        model_fp, model_score = get_evaluation_method(self.evaluation_method)(
-                                                                                model_args = model_args,
-                                                                                ptl_trn_args = ptl_trn_args,
-                                                                                dataset = self.dataset,
-                                                                                save_choice=save_choice,
-                                                                                )
+
+        model_fp, model_score = self._eval(
+                                            model_args = model_args,
+                                            ptl_trn_args = ptl_trn_args,
+                                            data_module = self.data_module,
+                                            save_choice=save_choice,
+                                            )
 
         return {
                 "model_id":model_id, 
@@ -124,7 +216,7 @@ class CoreLoops:
         else:
             hp_hist = {}
     
-        create_hp_uid = lambda x: create_uid("".join(list(map(str, x.keys()))+ list(map(str, x.values()))))
+        create_hp_uid = lambda x: utils.create_uid("".join(list(map(str, x.keys()))+ list(map(str, x.values()))))
         hp_dicts = {create_hp_uid(hp):{"hyperparamaters":hp} for hp in set_hyperparamaters}
         hp_dicts.update(hp_hist)
 
@@ -201,7 +293,7 @@ class CoreLoops:
 
 
             if best_scores is not None:
-                is_better, p, v = self.__model_comparison(model_scores, best_scores, ss_test=ss_test)
+                is_better, p, v = self.model_comparison(model_scores, best_scores, ss_test=ss_test)
                 hp_dicts[hp_uid]["p"] = p
                 hp_dicts[hp_uid]["v"] = v
 
@@ -250,7 +342,7 @@ class CoreLoops:
                 seg_preds:str=None,
                 ):
 
-        self.dataset.split_id = 0
+        self.data_module.split_id = 0
 
 
         with open(self._path_to_model_info, "r") as f:
@@ -273,7 +365,7 @@ class CoreLoops:
                 model_config = json.load(f)
 
             hyperparamaters = model_config["args"]["hyperparamaters"]
-            self.dataset.batch_size = hyperparamaters["batch_size"]
+            self.data_module.batch_size = hyperparamaters["batch_size"]
 
             trainer = setup_ptl_trainer( 
                                         ptl_trn_args=ptl_trn_args,
@@ -287,7 +379,7 @@ class CoreLoops:
             model = PTLBase.load_from_checkpoint(seed_model["path"], **model_config["args"])
             scores = trainer.test(
                                     model=model, 
-                                    test_dataloaders=self.dataset.test_dataloader(),
+                                    test_dataloaders=self.data_module.test_dataloader(),
                                     verbose=0
                                     )
 

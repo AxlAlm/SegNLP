@@ -1,7 +1,27 @@
 
 
+#basics
+from typing import Union, List, Tuple
+import numpy as np
+import pickle
+import pandas as pd
+import os
 
-class PreProcessedDataset(ptl.LightningDataModule):
+# h5py
+import h5py
+
+# pytorch
+import torch
+
+# pytorch lightning
+import pytorch_lightning as ptl
+
+
+#segnlp
+from .model_input import ModelInput
+
+
+class DataModule(ptl.LightningDataModule):
 
     def __init__(self, name:str, dir_path:str, prediction_level:str):
         self._name = name

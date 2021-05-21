@@ -11,7 +11,7 @@ from .encoder import Encoder
 from .textprocessor import TextProcesser
 from .labeler import Labeler
 from .dataset_preprocessor import DataPreprocessor
-from segnlp.nn.utils import ModelInput
+from segnlp.utils import ModelInput
 
 #pytorch lightning
 import pytorch_lightning as ptl
@@ -46,7 +46,6 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         if "am" in other_levels:
             self.argumentative_markers = True
             self.am_extraction = "pre"
-        
 
         self.encodings = encodings
 
