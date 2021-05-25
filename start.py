@@ -3,24 +3,24 @@ from segnlp import Pipeline
 from segnlp.datasets.am import PE
 from segnlp.models import JointPN
 from segnlp.features import GloveEmbeddings
-from segnlp.features import UnitPos
+from segnlp.features import SegPos
 from segnlp.features import BOW
 
 exp = Pipeline(
-                project="jp_pe",
+                id="jp_pe",
                 dataset=PE( 
                             tasks=["label", "link"],
-                            prediction_level="unit",
+                            prediction_level="seg",
                             sample_level="paragraph",
                             ),
+                model = JointPN,
+                metric = "default_segment_metric",
                 features =[
                             GloveEmbeddings(),
-                            UnitPos(),
+                            SegPos(),
                             BOW()
                             ],
-                model = JointPN
             )
-
 
 hps = {
         "general":{

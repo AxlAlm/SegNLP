@@ -253,11 +253,6 @@ class DataPreprocessor:
 
     def process_dataset(self, dataset:DataSet, dump_dir:str, evaluation_method:str):
 
-        self.expect_labels(
-                            tasks=dataset.tasks, 
-                            subtasks=dataset.subtasks,
-                            task_labels=dataset.task_labels
-                            )
         path_to_data = os.path.join(dump_dir, f"{dataset.name()}_data.hdf5")
 
         if os.path.exists(path_to_data):
@@ -271,7 +266,7 @@ class DataPreprocessor:
             except OSError as e:
                 logger.info(f"Loading failed. Will continue to preprocess data")
                 try:
-                    shutil.rmtree(path_to_data)
+                    shutil.rmtree(dump_dir)
                 except FileNotFoundError as e:
                     pass
 
@@ -282,6 +277,6 @@ class DataPreprocessor:
                                             dump_dir=dump_dir
                                             )
         except BaseException as e:
-            shutil.rmtree(path_to_data)
+            shutil.rmtree(dump_dir)
             raise e
 

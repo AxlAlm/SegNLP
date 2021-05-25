@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 
 
-class UnitPos(FeatureModel):
+class SegPos(FeatureModel):
 
     """
     Creates a vector representing a sentences position in the text.
@@ -28,7 +28,7 @@ class UnitPos(FeatureModel):
         self._dtype = np.uint8
 
         self.__para_id = -1
-        self.__unit_id = 0
+        self.__seg_id = 0
 
     #@feature_memory
     def extract(self, df):
@@ -60,8 +60,8 @@ class UnitPos(FeatureModel):
         """
         vec = np.zeros(4)
 
-        # if the para_id of the unit  is different then the previous para_id seen,
-        # this means that we have changed paragraph, hence we are at the first unit in a new paragraph
+        # if the para_id of the seg  is different then the previous para_id seen,
+        # this means that we have changed paragraph, hence we are at the first seg in a new paragraph
         para_id = df[f"paragraph_id"].max()
         if para_id != self.__para_id:
             vec[0] = 1
@@ -70,11 +70,11 @@ class UnitPos(FeatureModel):
         doc_para_id = df[f"document_paragraph_id"].max()
         last_para = df[f"nr_paragraphs_doc"].max() - 1 
 
-        # if unit is in the first paragraph
+        # if seg is in the first paragraph
         if doc_para_id == 0:
             vec[1] = 1
 
-        # if unit is in the body
+        # if seg is in the body
         elif doc_para_id > 0 and doc_para_id < last_para:
             vec[2] = 1
 

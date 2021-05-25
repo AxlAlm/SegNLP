@@ -2,7 +2,7 @@
 
 #basics
 import pandas as pd
-from typing import Callable
+from typing import Callable, Union
 
 #segnlp
 from segnlp import metrics

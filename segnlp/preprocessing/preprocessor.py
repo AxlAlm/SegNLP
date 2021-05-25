@@ -32,17 +32,22 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 prediction_level:str,
                 sample_level:str,
                 input_level:str,
+                tasks:list,
+                subtasks:list,
+                task_labels:dict,
                 features:list = [],
                 encodings:list = [],
                 other_levels:list = [],
                 ):
         super().__init__()
+        self.tasks = tasks
+        self.subtasks = subtasks
+        self.all_tasks = sorted(set(tasks + self.subtasks))
+        self.task_labels = task_labels
 
         self.prediction_level = prediction_level
         self.sample_level = sample_level
         self.input_level = input_level
-
-        self.__labeling = False
 
         self.argumentative_markers = False 
         if "am" in other_levels:
@@ -65,21 +70,24 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         if "deprel" in encodings:
             self._need_deps = True
 
+        self.__need_bio = "seg" in subtasks
+        self.__labeling = True
 
         self._init_preprocessor()
         self._init_encoder()
         self._init_DataPreprocessor()
         self._create_data_encoders()
-        
+        self._create_label_encoders()
+
         self._removed = 0
     
     @property
     def config(self):
         return {
-                "tasks": None if not hasattr(self, "tasks") else self.tasks,
-                "subtasks": None if not hasattr(self, "subtasks") else self.subtasks,
-                "all_tasks": None if not hasattr(self, "all_tasks") else self.all_tasks,
-                "task2labels":None if not hasattr(self, "task2labels") else self.task2labels,
+                "tasks": self.tasks,
+                "subtasks": self.subtasks,
+                "all_tasks": self.all_tasks,
+                "task_labels": self.task_labels,
                 "prediction_level": self.prediction_level,
                 "sample_level": self.sample_level,
                 "input_level": self.input_level,
@@ -127,10 +135,10 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             if self.encodings:
                 self._encode_data(sample)
                 
-            units = sample.groupby("unit_id")
-            unit_length = len(units)
+            segs = sample.groupby("seg_id")
+            seg_length = len(segs)
             
-            if self.prediction_level == "unit" and unit_length == 0:
+            if self.prediction_level == "seg" and seg_length == 0:
                 #if we are prediction on Units but sample doesnt have any, we can skip it
                 self._removed += 1
                 continue
@@ -141,11 +149,11 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             Input.add("lengths", sample.shape[0], "token")
             Input.add("mask", np.ones(sample.shape[0], dtype=np.uint8), "token")
             
-            unit_token_lengths = np.array([g.shape[0] for i, g in units])
-            Input.add("lengths", unit_length, "unit")
-            Input.add("lengths_tok", unit_token_lengths, "unit")
-            Input.add("mask", np.ones(unit_length, dtype=np.uint8), "unit")
-            self.__get_unit_idxs(Input, sample)
+            seg_token_lengths = np.array([g.shape[0] for i, g in segs])
+            Input.add("lengths", seg_length, "seg")
+            Input.add("lengths_tok", seg_token_lengths, "seg")
+            Input.add("mask", np.ones(seg_length, dtype=np.uint8), "seg")
+            self.__get_seg_idxs(Input, sample)
 
 
             #spans
@@ -157,7 +165,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 Input.add("lengths", length, "span")
                 Input.add("lengths_tok", lengths, "span")
 
-                none_span_mask = (~np.isnan(spans_grouped.first()["unit_id"].to_numpy())).astype(np.uint8)
+                none_span_mask = (~np.isnan(spans_grouped.first()["seg_id"].to_numpy())).astype(np.uint8)
                 Input.add("none_span_mask", none_span_mask, "span")
 
 
@@ -167,9 +175,9 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 # as length of <= 1 is problematic later when working with NNs
                 # we set lenght to 1 as default, this should not change anything as 
                 # representations for such AMs will remain 0
-                Input.add("lengths", unit_length, "am")
-                Input.add("lengths", unit_length, "adu")
-                self.__get_am_unit_idxs(Input, sample)
+                Input.add("lengths", seg_length, "am")
+                Input.add("lengths", seg_length, "adu")
+                self.__get_am_seg_idxs(Input, sample)
 
 
             self.__get_text(Input, sample)
@@ -185,17 +193,17 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
     def __get_text(self, Input:ModelInput, sample:pd.DataFrame):
 
-        # if self.prediction_level == "unit":
-        #     units = sample.groupby(f"unit_id")
+        # if self.prediction_level == "seg":
+        #     segs = sample.groupby(f"seg_id")
 
         #     text = []
-        #     for _, unit in units:
-        #         text.append(unit["text"].to_numpy().tolist())
+        #     for _, seg in segs:
+        #         text.append(seg["text"].to_numpy().tolist())
             
         #     print(text)
         #     text = string_pad(text, dtype="U30")
         #     print(text.shape)
-        #     Input.add("text", text, "unit")
+        #     Input.add("text", text, "seg")
         #     #sample_text["text"] = np.array(text)
         # else:
             #Input.add("text", sample["text"].to_numpy().astype("S"))
@@ -210,17 +218,17 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         sample_labels = {}
         for task in self.all_tasks:
 
-            units = sample.groupby(f"unit_id")
-            unit_task_matrix = np.zeros(len(units))
-            for i, (unit_id, unit) in enumerate(units):
-                unit_task_matrix[i] = np.nanmax(unit[task].to_numpy())
+            segs = sample.groupby(f"seg_id")
+            seg_task_matrix = np.zeros(len(segs))
+            for i, (seg_id, seg) in enumerate(segs):
+                seg_task_matrix[i] = np.nanmax(seg[task].to_numpy())
 
             #if self.prediction_level == "token":
             #task_matrix = np.zeros(len(sample.index))
             #task_matrix[:sample.shape[0]] = sample[task].to_numpy()
 
             Input.add(task, sample[task].to_numpy().astype(np.int), "token", pad_value=-1)
-            Input.add(task, unit_task_matrix.astype(np.int), "unit", pad_value=-1)
+            Input.add(task, seg_task_matrix.astype(np.int), "seg", pad_value=-1)
         
         return sample_labels
     
@@ -267,15 +275,15 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                     self.__get_sample_dep_encs(Input=Input, sample=sample)
                     deps_done = True
             else:
-                # if self.prediction_level == "unit" and not self.tokens_per_sample:
+                # if self.prediction_level == "seg" and not self.tokens_per_sample:
 
-                #     units = sample.groupby("unit_id")
-                #     nr_tok_units = max([len(unit) for unit in units])
-                #     unit_matrix  = np.zeros(len(units), nr_tok_units, dtype=np.int)
-                #     for unit_i,(_, unit ) in enumerate(units):                        
-                #         sample_m[unit_i][:unit.shape[0]] = np.stack(unit[enc].to_numpy())
+                #     segs = sample.groupby("seg_id")
+                #     nr_tok_segs = max([len(seg) for seg in segs])
+                #     seg_matrix  = np.zeros(len(segs), nr_tok_segs, dtype=np.int)
+                #     for seg_i,(_, seg ) in enumerate(segs):                        
+                #         sample_m[seg_i][:seg.shape[0]] = np.stack(seg[enc].to_numpy())
 
-                #     Input.add(enc, unit_matrix, "unit")
+                #     Input.add(enc, seg_matrix, "seg")
                 # else:
                 Input.add(enc, np.stack(sample[enc].to_numpy()).astype(np.int), "token")
             
@@ -289,26 +297,26 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
         for feature, fm in self.feature2model.items():
     
-            if fm.level == "doc" and self.prediction_level == "unit":
+            if fm.level == "doc" and self.prediction_level == "seg":
                 
-                units = sample.groupby("unit_id")
-                feature_matrix = np.zeros((len(units), fm.feature_dim))
-                for i,(unit_id, unit_df) in enumerate(units):
+                segs = sample.groupby("seg_id")
+                feature_matrix = np.zeros((len(segs), fm.feature_dim))
+                for i,(seg_id, seg_df) in enumerate(segs):
                     # sent.index = sent["id"]
-                    data = sample[sample["unit_id"] == unit_id]
+                    data = sample[sample["seg_id"] == seg_id]
 
                     if self.argumentative_markers:
-                        am = sample[sample["am_id"] == unit_id]
+                        am = sample[sample["am_id"] == seg_id]
                         data = pd.concat((am,data))
 
-                    #adu.index = adu.pop("unit_id")
+                    #adu.index = adu.pop("seg_id")
                     feature_matrix[i] = fm.extract(data)
 
 
             elif fm.level == "word":
                 # context is for embeddings such as Bert and Flair where the word embeddings are dependent on the surrounding words
                 # so for these types we need to extract the embeddings per context. E.g. if we have a document and want Flair embeddings
-                # we first divide the document up in sentences, extract the embeddigns and the put them bunitk into the 
+                # we first divide the document up in sentences, extract the embeddigns and the put them bsegk into the 
                 # ducument shape.
                 # Have chosen to not extract flair embeddings with context larger than "sentence".
                 if fm.context and fm.context != self.sample_level:
@@ -331,7 +339,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
 
             if fm.group not in feature_dict:
                 feature_dict[fm.group] = {
-                                        "level": "unit" if fm.level == "doc" else "token",
+                                        "level": "seg" if fm.level == "doc" else "token",
                                         "data":[]
                                         }
             
@@ -346,34 +354,34 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 Input.add(group_name, group_dict["data"][0], group_dict["level"])
 
 
-    def __get_unit_idxs(self, Input:ModelInput, sample:pd.DataFrame):
+    def __get_seg_idxs(self, Input:ModelInput, sample:pd.DataFrame):
 
         am_spans = []
-        unit_spans = []
+        seg_spans = []
         adu_spans = []
 
-        units = sample.groupby("unit_id")
+        segs = sample.groupby("seg_id")
 
-        for unit_id, gdf in units:
+        for seg_id, gdf in segs:
     
-            unit_start = min(gdf[f"{self.sample_level}_token_id"])
-            unit_end = max(gdf[f"{self.sample_level}_token_id"])
-            unit_span = (unit_start, unit_end)
+            seg_start = min(gdf[f"{self.sample_level}_token_id"])
+            seg_end = max(gdf[f"{self.sample_level}_token_id"])
+            seg_span = (seg_start, seg_end)
 
-            unit_spans.append(unit_span)
+            seg_spans.append(seg_span)
         
-        if not unit_spans:
-            unit_spans = [(0,0)]
+        if not seg_spans:
+            seg_spans = [(0,0)]
 
-        #print(unit_spans)
-        Input.add("span_idxs", np.array(unit_spans), "unit")
+        #print(seg_spans)
+        Input.add("span_idxs", np.array(seg_spans), "seg")
 
 
-    def __get_am_unit_idxs(self, Input:ModelInput, sample:pd.DataFrame):
+    def __get_am_seg_idxs(self, Input:ModelInput, sample:pd.DataFrame):
         """
-        for each sample we get the units of am, unit and the whole adu.
-        if there is no am, we still add an am unit to keep the am and unit units
-        aligned. But we set the values to 0 and start the adu from the start of the unit instead
+        for each sample we get the segs of am, seg and the whole adu.
+        if there is no am, we still add an am seg to keep the am and seg segs
+        aligned. But we set the values to 0 and start the adu from the start of the seg instead
         of the am.
 
         """
@@ -381,11 +389,11 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
         am_spans = []
         adu_spans = []
 
-        units = sample.groupby("unit_id")
+        segs = sample.groupby("seg_id")
 
-        for unit_id, gdf in units:
+        for seg_id, gdf in segs:
             
-            am = sample[sample["am_id"]==unit_id]
+            am = sample[sample["am_id"]==seg_id]
             
             has_am = True
             if am.shape[0] == 0:
@@ -398,14 +406,14 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
                 am_end = max(am[f"{self.sample_level}_token_id"])
                 am_span = (am_start, am_end)
 
-            unit_start = min(gdf[f"{self.sample_level}_token_id"])
-            unit_end = max(gdf[f"{self.sample_level}_token_id"])
-            unit_span = (unit_start, unit_end)
+            seg_start = min(gdf[f"{self.sample_level}_token_id"])
+            seg_end = max(gdf[f"{self.sample_level}_token_id"])
+            seg_span = (seg_start, seg_end)
 
             if has_am:
-                adu_span = (am_start, unit_end)
+                adu_span = (am_start, seg_end)
             else:
-                adu_span = (unit_start, unit_end)
+                adu_span = (seg_start, seg_end)
 
             am_spans.append(am_span)
             adu_spans.append(adu_span)
@@ -431,16 +439,6 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             subtask_labels  = df[subtasks].apply(lambda row: '_'.join([str(x) for x in row]), axis=1)
             df[task] = subtask_labels
 
-
-    def expect_labels(self, tasks:list, subtasks:list, task_labels:dict):
-        self.activate_labeling()
-        self.__need_bio = "seg" in subtasks
-        self.tasks = tasks
-        self.subtasks = subtasks
-        self.all_tasks = sorted(set(tasks + self.subtasks))
-        self.task2labels = task_labels
-        self._create_label_encoders()
-    
 
     def deactivate_labeling(self):
         self.__labeling = False

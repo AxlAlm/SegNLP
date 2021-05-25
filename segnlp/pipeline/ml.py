@@ -47,8 +47,9 @@ class ML:
                         all_tasks=self.config["all_tasks"],
                         label_encoders=self._pp_encoders,
                         prediction_level=self.config["prediction_level"],
-                        task_dims={t:len(l) for t,l in self.config["task2labels"].items() if t in self.config["tasks"]},
+                        task_dims={t:len(l) for t,l in self.config["task_labels"].items() if t in self.config["tasks"]},
                         feature_dims=self.config["feature2dim"],
+                        metric=self.metric
                         )
         return model_args
 
@@ -404,7 +405,7 @@ class ML:
                                                     targets=test_output[f"T-{task}"].to_numpy(), 
                                                     preds=test_output[task].to_numpy(), 
                                                     task=task, 
-                                                    labels=self.config["task2labels"][task]
+                                                    labels=self.config["task_labels"][task]
                                                     ))
 
                 scores = [pd.DataFrame(task_scores).mean().to_dict()]

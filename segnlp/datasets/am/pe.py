@@ -111,7 +111,7 @@ class PE(DataSet):
                         supported_task_labels=task_labels,
                         level="document",
                         supported_tasks=["seg", "label", "link", "link_label"],
-                        supported_prediction_levels=["unit", "token"],
+                        supported_prediction_levels=["seg", "token"],
                         supported_sample_levels=["document", "paragraph", "sentence"],
                         about="""The corpus consists of argument annotated persuasive essays including annotations of argument components and argumentative relations.""",
                         url="https://www.informatik.tu-darmstadt.de/ukp/research_6/data/argumentation_mining_1/argument_annotated_essays_version_2/index.en.jsp",
@@ -208,7 +208,7 @@ class PE(DataSet):
 
 
     def __get_relation(self, annotation_line:str) -> Tuple[str, str, str]:
-        """extracts the relation label and the id for the argument units tied in the relation
+        """extracts the relation label and the id for the argument segs tied in the relation
 
 
         Parameters
@@ -219,7 +219,7 @@ class PE(DataSet):
         Returns
         -------
         Tuple[str, str, str]
-            difference in argument components/units back or forward( + or -), label, ID of argument component that
+            difference in argument components/segs back or forward( + or -), label, ID of argument component that
             supports/attacks/for/against 
         """
         #e.g. supports Arg1:T10 Arg2:T11 
@@ -238,7 +238,7 @@ class PE(DataSet):
     def __parse_ann_file(self, ann:str, text_len:int) -> Tuple[dict, dict, dict, dict]:
         """parses the annotation file for each Essay
 
-        creates a dicts for mapping character spans to Argument Component/unit ids
+        creates a dicts for mapping character spans to Argument Component/seg ids
         then dicts for mapping Argument Components to the different labels
 
         Parameters
@@ -345,7 +345,7 @@ class PE(DataSet):
         """
 
         span2label = RangeDict()
-        current_unit_id = 0
+        current_seg_id = 0
         for i, (ac_id, span) in enumerate(ac_id2span.items()):
 
             relation = ac_id2relation.get(ac_id, 0)
@@ -355,17 +355,17 @@ class PE(DataSet):
             stance = self._stance2new_stance.get(ac_id2stance.get(ac_id,"None"), "None")
 
             if "None" in ac_id:
-                unit_id = np.nan 
+                seg_id = np.nan 
             else:
-                unit_id = current_unit_id
-                current_unit_id += 1
+                seg_id = current_seg_id
+                current_seg_id += 1
 
             label = {   
                         "label": ac_id2ac.get(ac_id,"None"), 
                         "link_label": self._stance2new_stance.get(ac_id2stance.get(ac_id,"None"), "None"), 
                         "link": relation,
                         "span_id": i,
-                        "unit_id": unit_id,
+                        "seg_id": seg_id,
                     }
             
 

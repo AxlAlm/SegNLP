@@ -219,7 +219,7 @@ def set_random_seed(nr, using_gpu:bool=False):
 
 
 def create_uid(string):
-    uid = str(int(hashlib.sha256(string.encode('utf-8')).hexdigest(), 16) % 10**8)
+    uid = str(hashlib.sha256(string.encode('utf-8')).hexdigest())
     return uid
 
 

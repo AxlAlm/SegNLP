@@ -26,7 +26,6 @@ class OutputFormater:
                 inference:bool,
                 ):
 
-        self.return_output = return_output
         self.inference = inference
         self.label_encoders = label_encoders
         self.tasks = tasks
@@ -45,32 +44,32 @@ class OutputFormater:
 
 
 
-    def __get_token_unit_ids(self,
+    def __get_token_seg_ids(self,
                             span_token_lengths:np.ndarray, 
                             none_span_masks:np.ndarray,
-                            unit_lengths:np.ndarray,
+                            seg_lengths:np.ndarray,
                             span_lengths:np.ndarray
                             ) -> list:
 
-        batch_token_unit_ids = []
+        batch_token_seg_ids = []
         bz = len(span_token_lengths)
-        total_units = 0
+        total_segs = 0
         for i in range(bz):
-            nr_unit = unit_lengths[i]
+            nr_seg = seg_lengths[i]
             span_tok_lens = ensure_numpy(span_token_lengths[i][:span_lengths[i]])
-            unit_mask = ensure_numpy(none_span_masks[i][:span_lengths[i]])
-            unit_ids = np.arange(start=total_units, stop=total_units+nr_unit)
-            unit_mask[unit_mask.astype(bool)] += unit_ids
+            seg_mask = ensure_numpy(none_span_masks[i][:span_lengths[i]])
+            seg_ids = np.arange(start=total_segs, stop=total_segs+nr_seg)
+            seg_mask[seg_mask.astype(bool)] += seg_ids
 
-            ids = ensure_numpy(unit_mask).astype(float)
+            ids = ensure_numpy(seg_mask).astype(float)
             ids[ids == 0] = float("NaN")
             ids[ids != float("NaN")] -= 1
 
-            token_unit_ids = np.repeat(ids, span_tok_lens)
-            batch_token_unit_ids.extend(token_unit_ids.tolist())
-            total_units += nr_unit
+            token_seg_ids = np.repeat(ids, span_tok_lens)
+            batch_token_seg_ids.extend(token_seg_ids.tolist())
+            total_segs += nr_seg
 
-        return batch_token_unit_ids
+        return batch_token_seg_ids
 
 
     def __add_subtask_preds(self, decoded_labels:np.ndarray, lengths:np.ndarray, level:str,  task:str):
@@ -182,7 +181,7 @@ class OutputFormater:
     
     def __correct_token_links(self, 
                                         links:np.ndarray, 
-                                        lengths_units:np.ndarray,
+                                        lengths_segs:np.ndarray,
                                         span_token_lengths:np.ndarray, 
                                         none_spans:np.ndarray, 
                                         decoded:bool,
@@ -197,7 +196,7 @@ class OutputFormater:
         
         new_links = []
         for i in range(links.shape[0]):
-            last_unit_idx = max(0, lengths_units[i]-1)
+            last_seg_idx = max(0, lengths_segs[i]-1)
             sample_links = links[i]
 
             if decoded:
@@ -208,11 +207,11 @@ class OutputFormater:
                                                                                 none_spans=none_spans[i]
                                                                                 )
        
-            links_above_allowed = sample_links > last_unit_idx
-            sample_links[links_above_allowed] = last_unit_idx
+            links_above_allowed = sample_links > last_seg_idx
+            sample_links[links_above_allowed] = last_seg_idx
 
             links_above_allowed = sample_links < 0
-            sample_links[links_above_allowed] = last_unit_idx
+            sample_links[links_above_allowed] = last_seg_idx
 
             # sample_links = self.label_encoders["link"].decode_token_links(
             #                                                                 sample_links,
@@ -249,7 +248,7 @@ class OutputFormater:
     def __add_preds(self, task:str, level:str, data:torch.tensor, decoded:bool=False):
 
         #assert task in set(self.tasks), f"{task} is not a supported task. Supported tasks are: {self.tasks}"
-        assert level in set(["token", "unit"]), f"{level} is not a supported level. Only 'token' or 'unit' are supported levels"
+        assert level in set(["token", "seg"]), f"{level} is not a supported level. Only 'token' or 'seg' are supported levels"
         assert torch.is_tensor(data) or isinstance(data, np.ndarray), f"{task} preds need to be a tensor or numpy.ndarray"
         assert len(data.shape) == 2, f"{task} preds need to be a 2D tensor"
 
@@ -275,9 +274,9 @@ class OutputFormater:
                                             )
 
 
-        if level == "unit":
+        if level == "seg":
 
-            span_indexes = ensure_numpy(self.batch["unit"]["span_idxs"])
+            span_indexes = ensure_numpy(self.batch["seg"]["span_idxs"])
             data = self.__unfold_span_labels(
                                             span_labels=data,
                                             span_indexes=span_indexes,
@@ -286,7 +285,7 @@ class OutputFormater:
                                             )
 
             if not self._pred_span_set:
-                self.pred_seg_info["unit"]["lengths"] = self.batch["unit"]["lengths"]
+                self.pred_seg_info["seg"]["lengths"] = self.batch["seg"]["lengths"]
                 self.pred_seg_info["span"]["lengths"] = self.batch["span"]["lengths"]
                 self.pred_seg_info["span"]["lengths_tok"] = self.batch["span"]["lengths_tok"]
                 self.pred_seg_info["span"]["none_span_mask"] = self.batch["span"]["none_span_mask"]
@@ -298,7 +297,7 @@ class OutputFormater:
         if task == "link":
             preds = self.__correct_token_links(
                                                         data,
-                                                        lengths_units=ensure_numpy(self.pred_seg_info["unit"]["lengths"]),
+                                                        lengths_segs=ensure_numpy(self.pred_seg_info["seg"]["lengths"]),
                                                         span_token_lengths=ensure_numpy(self.pred_seg_info["span"]["lengths_tok"]),
                                                         none_spans=ensure_numpy(self.pred_seg_info["span"]["none_span_mask"]),
                                                         decoded=decoded,
@@ -330,19 +329,19 @@ class OutputFormater:
                                         batch_encoded_bios=preds,
                                         lengths=ensure_numpy(self.batch[level]["lengths"]),
                                         )
-            self.pred_seg_info["unit"]["lengths"] = seg_data["unit"]["lengths"]
+            self.pred_seg_info["seg"]["lengths"] = seg_data["seg"]["lengths"]
             self.pred_seg_info["span"]["lengths"] = seg_data["span"]["lengths"]
             self.pred_seg_info["span"]["lengths_tok"] = seg_data["span"]["lengths_tok"]
             self.pred_seg_info["span"]["none_span_mask"] = seg_data["span"]["none_span_mask"]
             
 
-            token_unit_ids = self.__get_token_unit_ids(
+            token_seg_ids = self.__get_token_seg_ids(
                                                         span_token_lengths = self.pred_seg_info["span"]["lengths_tok"],
                                                         none_span_masks = self.pred_seg_info["span"]["none_span_mask"],
-                                                        unit_lengths = self.pred_seg_info["unit"]["lengths"],
+                                                        seg_lengths = self.pred_seg_info["seg"]["lengths"],
                                                         span_lengths = self.pred_seg_info["span"]["lengths"],
                                                         )
-            self._outputs["unit_id"] = token_unit_ids
+            self._outputs["seg_id"] = token_seg_ids
 
         mask = ensure_numpy(self.batch[level]["mask"])
         preds_flat = ensure_flat(ensure_numpy(preds), mask=mask)
@@ -358,7 +357,7 @@ class OutputFormater:
         self.batch = input
         self._outputs = {}
         self.pred_seg_info = {
-                                "unit":{},
+                                "seg":{},
                                 "span":{},
                                 }
         self._pred_span_set = False
@@ -371,10 +370,10 @@ class OutputFormater:
         self._outputs["token_id"] = ensure_numpy([int(t) for sub in token_ids for t in sub])
 
         if not self.inference:  
-            self._outputs["T-unit_id"] = self.__get_token_unit_ids(
+            self._outputs["T-seg_id"] = self.__get_token_seg_ids(
                                                                 span_token_lengths = self.batch["span"]["lengths_tok"],
                                                                 none_span_masks = self.batch["span"]["none_span_mask"],
-                                                                unit_lengths = self.batch["unit"]["lengths"],
+                                                                seg_lengths = self.batch["seg"]["lengths"],
                                                                 span_lengths = self.batch["span"]["lengths"],
                                                             )
 

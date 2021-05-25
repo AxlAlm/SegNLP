@@ -48,7 +48,7 @@ class BIODecoder:
                             "start":[],
                             "end":[],
                             },
-                    "unit":{
+                    "seg":{
                             "lengths_tok":[],
                             "lengths":[],
                             "span_idxs": [],
@@ -56,7 +56,7 @@ class BIODecoder:
                             "start":[],
                             "end":[],
                             },
-                    "max_units":0
+                    "max_segs":0
                     }
 
 
@@ -68,8 +68,8 @@ class BIODecoder:
             span_ends = np.cumsum(span_lengths)
             span_starts = np.insert(span_ends,0,0)[:-1]
             span_indexes = np.stack((span_starts, span_ends), axis=-1)
-            unit_indexes = span_indexes[none_span_mask]
-            unit_lengths = span_lengths[none_span_mask]
+            seg_indexes = span_indexes[none_span_mask]
+            seg_lengths = span_lengths[none_span_mask]
 
             bio_data["span"]["lengths"].append(len(span_lengths))
             bio_data["span"]["lengths_tok"].append(span_lengths.tolist())
@@ -79,16 +79,16 @@ class BIODecoder:
             bio_data["span"]["start"].append(span_starts.tolist())
             bio_data["span"]["end"].append(span_ends.tolist())
             
-            unit_length = sum(none_span_mask)
-            bio_data["unit"]["lengths"].append(unit_length)
-            bio_data["unit"]["lengths_tok"].append(span_lengths[none_span_mask].tolist())
-            bio_data["unit"]["span_idxs"].append(span_indexes[none_span_mask].tolist())
-            bio_data["unit"]["start"].append(span_starts[none_span_mask].tolist())
-            bio_data["unit"]["end"].append(span_ends[none_span_mask].tolist())
+            seg_length = sum(none_span_mask)
+            bio_data["seg"]["lengths"].append(seg_length)
+            bio_data["seg"]["lengths_tok"].append(span_lengths[none_span_mask].tolist())
+            bio_data["seg"]["span_idxs"].append(span_indexes[none_span_mask].tolist())
+            bio_data["seg"]["start"].append(span_starts[none_span_mask].tolist())
+            bio_data["seg"]["end"].append(span_ends[none_span_mask].tolist())
 
-            bio_data["max_units"] = max(unit_length, bio_data["max_units"])
+            bio_data["max_segs"] = max(seg_length, bio_data["max_segs"])
 
-        bio_data["unit"]["mask"] = create_mask(bio_data["unit"]["lengths"])
+        bio_data["seg"]["mask"] = create_mask(bio_data["seg"]["lengths"])
   
         return bio_data
 

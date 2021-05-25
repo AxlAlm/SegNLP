@@ -22,8 +22,21 @@ the predicted label of i, n is the non-argumentative
 class, and i = j means i is a match for j.
 
 
-NOTE! As i = j needs to be true in all the cases it means that if we find segments which is not > 50% match
-this is no treated as anything. Its simply ignored
+
+For a label X we TP, FP and FN are defined as:
+
+        a TP is a i which overlaps with j and j and i has label X
+
+        a FP is :
+                1) a i which is not overlapping with j, 
+                or
+                2) a i which overlaps with j where i is labled X and j is Z
+
+        a FN is :
+                1) a j which has no i which overlap with it, 
+                or
+                2) a i which overlaps with j but i is labled Z and j is labeled X
+
 
 """
 
@@ -47,6 +60,9 @@ def setup(task_labels:dict):
 
 
 def create_confusion_matrixes(df:pd.DataFrame, task_labels:dict):
+
+
+
     
     samples = df.groupby()
     
@@ -57,12 +73,10 @@ def create_confusion_matrixes(df:pd.DataFrame, task_labels:dict):
     
     conf_ms, index_map = create_empty_conf_ms(task_labels)
 
-    for i,sample in samples:
+    for _,sample in samples:
 
         target_segments = sample.groupby()
         
-
-
         # this dict will contain a mapping between predicted segment ids and the ground truth segments id
         # that they represent, i.e. overlap with.
         j2i = {}
@@ -70,11 +84,13 @@ def create_confusion_matrixes(df:pd.DataFrame, task_labels:dict):
         # segment results
         seg_results = []
 
+        i = 0
+        for j, segment in target_segments:
+            
+            ti = index_map["label"][segment[f"T-label"].unique().tolist()[0]]
 
-        j = 0
-        for i, segment in target_segments:
 
-            app_match = False
+            approx_match = False
             exact_match = False
             link = None
             link_label = None
@@ -83,31 +99,41 @@ def create_confusion_matrixes(df:pd.DataFrame, task_labels:dict):
             # we first do this over the segment label, and save the overlap information for a second loop
             # for link_label f1
             for _, pred_segment in segment.groupby():
+                #match_found = False
                 
                 overlap_percent = pred_segment.shape[0] / segment.shape[0]
 
-                ti = index_map["label"][segment[f"T-label"].unique().tolist()[0]]
                 pi = index_map["label"][pred_segment["label"].unique().tolist()[0]]
 
                 if overlap_percent == 1:
                     conf_ms["label"]["exact"][ti, pi] += 1
                     exact_match = True
+                else:
+                    #FP
+                    conf_ms["label"]["exact"][-1, ti] += 1
     
 
                 if overlap_percent > 0.5:
                     conf_ms["label"]["approximate"][ti, pi] += 1
-                    app_match = True
+                    approx_match = True
 
                     link_label = index_map["link_label"][pred_segment["link_label"].unique().tolist()[0]]
                     link = index_map["link"][pred_segment["link"].unique().tolist()[0]]
                     
-                    j2i[j] = i
+                    i2j[i] = j
+       
+                else:
+                    #FP
+                    conf_ms["label"]["approximate"][-1, ti] += 1
 
-                    # if we find something that overlaps over 50% we can break
-                    # the loop, as there will be no other matches.
-                    #break
-                
-                j += 1
+                i += 1
+
+
+            if not exact_match:
+                conf_ms["label"]["exact"][t1, -1] += 1
+
+            if not approx_match:
+                conf_ms["label"]["approximate"][t1, -1] += 1
 
 
             seg_results.append({    
@@ -115,8 +141,8 @@ def create_confusion_matrixes(df:pd.DataFrame, task_labels:dict):
                                 "T-link": segment["T-link"].unique().tolist()[0],
                                 "link_label": link_label,
                                 "link": link,
-                                "50%": app_match,
-                                "100%": exact_match,
+                                "exact": exact_match,
+                                "approximate": approx_match,
                                 })
 
         # we do a second loop over the true segments as we relations can go forward or backwards, so we need to know
@@ -138,10 +164,10 @@ def create_confusion_matrixes(df:pd.DataFrame, task_labels:dict):
             pi = index_map["link_label"][dict_["link_label"]]
 
 
-            if dict_["100%"]:
+            if dict_["exact"]:
                 conf_ms["link_label"]["exact"][ti, pi] += 1
 
-            if dict_["50%"]:
+            if dict_["approximate"]:
                 conf_ms["link_label"]["approximate"][ti, pi] += 1
 
 
@@ -157,24 +183,28 @@ def calc_f1(cm:np.array, labels:list, prefix:str):
 
     For label A:
 
-    # T\P | A | B | C |
-    # -----------------
-    # A   | TP| FN| FN|
-    #------------------
-    # B   | FP|   |   |
-    #------------------
-    # C   | FP|   |   | 
+    # T\P | A | B | C | FN |
+    # ----------------------
+    # A   | TP| FN| FN| FN |
+    #-----------------------
+    # B   | FP|   |   |    |
+    #-----------------------
+    # C   | FP|   |   |    | 
+    #-----------------------
+    # FP  | FP|   |   |    | 
 
 
     For label B
 
-    # T\P | A | B | C |
-    # -----------------
-    # A   |   | FP|   |
-    #------------------
-    # B   | FN| TP| FN|  
-    #------------------
-    # C   |   | FP|   | 
+    # T\P | A | B | C |  FN|
+    # ----------------------
+    # A   |   | FP|   |    |
+    #-----------------------
+    # B   | FN| TP| FN| FN |
+    #-----------------------
+    # C   |   | FP|   |    | 
+    #-----------------------
+    # FP  |   | FP|   |    | 
 
 
     then we se the following formula fot the the f1
@@ -190,7 +220,7 @@ def calc_f1(cm:np.array, labels:list, prefix:str):
         TP = cm[i,i]
         
         #all predictions of label which where actually other labels (minus "miss")
-        FP = sum(cm[,i]) - TP
+        FP = sum(cm[:,i]) - TP
 
         # total miss + 
         FN = sum(cm[i]) - TP
@@ -208,16 +238,16 @@ def overlap_metric(
                     ):
 
     # We then create confusion matries which looks like this 
-    # where  A B and C are example labels and miss is when there is no 
-    # identifed segments
+    # where  A B and C are example labels and miss is when there is when
+    # we find a segment
 
-    # T\P | A | B | C |
-    # -----------------
-    # A   |   |   |   |
-    #------------------
-    # B   |   |   |   | 
-    #------------------
-    # C   |   |   |   | 
+    # T\P | A | B | C |miss|
+    # ----------------------
+    # A   |   |   |   |    |
+    #-----------------------
+    # B   |   |   |   |    |
+    #-----------------------
+    # C   |   |   |   |    | 
     conf_ms = create_confusion_matrixes(
                                         df=df, 
                                         task_labels=task_labels

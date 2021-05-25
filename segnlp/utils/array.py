@@ -214,13 +214,13 @@ def get_all_possible_pairs(
     for idx_start, idx_end in zip(start, end):
         idxs = list(get_pairs(range(len(idx_start)), 2))
         if idxs:
-            p1, p2 = zip(*idxs)  # pairs' unit id
+            p1, p2 = zip(*idxs)  # pairs' seg id
             p1 = torch.tensor(p1, dtype=torch.long, device=device)
             p2 = torch.tensor(p2, dtype=torch.long, device=device)
             # pairs start and end token id.
             start = get_pairs(idx_start, 2)  # type: List[Tuple[int]]
             end = get_pairs(idx_end, 2)  # type: List[Tuple[int]]
-            lens = len(start)  # number of pairs' units len  # type: int
+            lens = len(start)  # number of pairs' segs len  # type: int
 
         else:
             p1 = torch.empty(0, dtype=torch.long, device=device)
@@ -345,7 +345,7 @@ def range_3d_tensor_index(matrix: Tensor,
                           pair_batch_num: Tensor,
                           reduce_: str = "none") -> Tensor:
 
-    # to avoid bugs, if there is a sample that does not have a unit the
+    # to avoid bugs, if there is a sample that does not have a seg the
     # corresponding len should be zero in batch_lens.
     batch_size = matrix.size(0)
     dim_1_size = matrix.size(1)
@@ -440,7 +440,7 @@ def range_3d_tensor_index(matrix: Tensor,
 #                           pair_batch_num: List[int],
 #                           reduce_: str = "none") -> Tensor:
 
-#     # to avoid bugs, if there is a sample that does not have a unit the
+#     # to avoid bugs, if there is a sample that does not have a seg the
 #     # corresponding len should be zero in batch_lens.
 #     batch_size = matrix.size(0)
 #     dim_1_size = matrix.size(1)
@@ -496,9 +496,9 @@ def range_3d_tensor_index(matrix: Tensor,
 #     # construct array of indices for dimesion 1
 #     idx_1 = np.hstack(list(map(np.arange, start_idx, end_idx)))
 
-#     # Get unit id for each start, end token
-#     unit_id = np.hstack(list(map(np.arange, repeat(0), class_num_betch)))
-#     unit_id = np.repeat(unit_id, span_len)
+#     # Get seg id for each start, end token
+#     seg_id = np.hstack(list(map(np.arange, repeat(0), class_num_betch)))
+#     seg_id = np.repeat(seg_id, span_len)
 
 #     # construct the folded matrix
 #     if len(matrix_to_fold.size()) > 2:
@@ -510,7 +510,7 @@ def range_3d_tensor_index(matrix: Tensor,
 #     # fill matrix
 
 
-#     matrix[idx_0, idx_1] = matrix_to_fold[idx_0, unit_id]
+#     matrix[idx_0, idx_1] = matrix_to_fold[idx_0, seg_id]
 
 #     return matrix
 

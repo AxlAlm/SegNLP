@@ -33,9 +33,9 @@ class Labeler:
 
     def _label_bios(self, df):
         df["seg"] = "O"
-        units = df.groupby("unit_id")
-        for unit_id, unit_df in units:
-            df.loc[unit_df.index, "seg"] = ["B"] +  (["I"] * (unit_df.shape[0]-1))
+        segs = df.groupby("seg_id")
+        for seg_id, seg_df in segs:
+            df.loc[seg_df.index, "seg"] = ["B"] +  (["I"] * (seg_df.shape[0]-1))
         return df
 
 
@@ -59,7 +59,7 @@ class Labeler:
 
         for sent_id, sent_df in groups:
             
-            acs = sent_df.groupby("unit_id")
+            acs = sent_df.groupby("seg_id")
             prev_ac_end = 0
             for ac_id, ac_df in acs:
                 
@@ -91,7 +91,7 @@ class Labeler:
 
         for sent_id, sent_df in groups:
             
-            acs = sent_df.groupby("unit_id")
+            acs = sent_df.groupby("seg_id")
 
             for ac_id, ac_df in acs:
 

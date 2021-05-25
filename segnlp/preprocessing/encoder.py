@@ -30,11 +30,11 @@ class Encoder:
         for task in self.all_tasks:
             
             if task == "link":
-                links = self.task2labels[task]
+                links = self.task_labels[task]
                 max_spans = max(abs(min(links)),abs(max(links))) * 2
                 self.encoders[task] = LinkEncoder(name=task,  max_spans=max_spans)
             else: 
-                self.encoders[task] = LabelEncoder(name=task, labels=self.task2labels[task])
+                self.encoders[task] = LabelEncoder(name=task, labels=self.task_labels[task])
             
 
     def _encode_labels(self, df):
@@ -46,12 +46,12 @@ class Encoder:
                 
                 df["_link"] = df["link"].to_numpy()
                 
-                units = df.groupby("unit_id")
-                links = [unit_df["link"].unique()[0] for unit_id, unit_df in units]
+                segs = df.groupby("seg_id")
+                links = [seg_df["link"].unique()[0] for seg_id, seg_df in segs]
                 enc_links = self.encode_list(links, task)
 
-                for i, (unit_id, unit_df) in enumerate(units):
-                    df.loc[unit_df.index,"_link"] = enc_links[i]
+                for i, (seg_id, seg_df) in enumerate(segs):
+                    df.loc[seg_df.index,"_link"] = enc_links[i]
 
                 df["link"] = df.pop("_link")
 

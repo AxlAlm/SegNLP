@@ -460,6 +460,7 @@ class TextProcesser:
             self.__build_tokens(sentence)
 
 
+
     def __build_paragraphs(self):
         """
         Tokenize text int paragraphs (assumed to be a documents) and creates 

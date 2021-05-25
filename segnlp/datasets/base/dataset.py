@@ -58,7 +58,7 @@ class DataSet:
         if sample_level not in self._supported_sample_levels:
             raise RuntimeError(f"'{sample_level}' is not in supported sample levels: {self._supported_sample_levels}")
 
-        if prediction_level == "unit":
+        if prediction_level == "seg":
             if "label" in supported_task_labels:
                 supported_task_labels["label"].remove("None")
 
@@ -188,7 +188,7 @@ class DataSet:
             for i, row in self.data.iterrows():
                 span_labels = row["span_labels"]
                 sdf = pd.DataFrame(list(span_labels.values()))
-                sdf = sdf[~sdf["unit_id"].isna()]
+                sdf = sdf[~sdf["seg_id"].isna()]
 
                 for task in self.tasks:
                     

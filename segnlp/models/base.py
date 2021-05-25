@@ -41,6 +41,7 @@ class PTLBase(ptl.LightningModule):
         super().__init__()
         self.hps = hyperparamaters
         self.monitor_metric = hyperparamaters["general"].get("monitor_metric", "loss")
+        self.feature_dims = feature_dims
 
         self.metrics = utils.MetricContainer(
                                             metric = metric

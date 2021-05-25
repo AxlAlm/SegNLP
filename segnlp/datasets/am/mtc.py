@@ -65,7 +65,7 @@ class MTC(DataSet):
                         supported_task_labels = task_labels,
                         level = "document",
                         supported_tasks = [ "seg", "label", "link", "link_label"],
-                        supported_prediction_levels = ["unit", "token"],
+                        supported_prediction_levels = ["seg", "token"],
                         supported_sample_levels = ["document", "sentence"],
                         about = """The arg-microtexts corpus features 112 short argumentative texts. All texts were originally written in German and have been professionally translated to English. """,
                         url = "https://github.com/peldszus/arg-microtexts",                        
@@ -142,7 +142,7 @@ class MTC(DataSet):
                                         "link":0, 
                                         "link_label":None,
                                         "span_id": int(ID)-1,
-                                        "unit_id": None,
+                                        "seg_id": None,
                                         "span": (start, start+text_len)
                                         }
                     
@@ -151,7 +151,7 @@ class MTC(DataSet):
                 elif c.tag == "adu":
                     ID = c.attrib["id"][1:]
                     edus[ID]["label"] = c.attrib["type"]
-                    edus[ID]["unit_id"] = int(ID)-1
+                    edus[ID]["seg_id"] = int(ID)-1
                                         
                 elif c.tag == "edge":
                     link_label = c.attrib["type"]
