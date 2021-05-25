@@ -84,7 +84,7 @@ class Evaluation:
         return model_fp, model_score
 
 
-    def _eval(*args, **kwargs):
+    def _eval(self, *args, **kwargs):
 
         if self.evaluation_method == "cross_validation":
             self.__cross_validation(*args, **kwargs)

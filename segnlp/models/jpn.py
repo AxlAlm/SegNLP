@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 #segnlp
-from segnlp.ptl import PTLBase
+from .base import PTLBase
 import segnlp.layers.layer_wrappers as lw
 
 

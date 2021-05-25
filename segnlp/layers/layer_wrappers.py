@@ -8,11 +8,12 @@ import torch
 
 #segnlp
 from segnlp.utils import BIODecoder
-import .encoders as encoders
-import .embedders as embedders
-import .reducers as reducers
-import .segmenters as segmenters
-import .linkers as linkers
+import segnlp.layers.encoders as encoders
+import segnlp.layers.embedders as embedders
+import segnlp.layers.reduction as reducers
+import segnlp.layers.seg as segmenters
+import segnlp.layers.linkers as linkers
+import segnlp.layers.general as general
 
 
 
@@ -85,7 +86,7 @@ class EncodingLayer(Layer):
         super().__init__(layer=layer, hyperparams=hyperparams, input_size=input_size)
         
 
-class ReductionLayer(layer):
+class ReductionLayer(Layer):
     
     def __init__(self, layer:nn.Module, hyperparams:dict, input_size:int):
         
@@ -116,11 +117,32 @@ class CLFlayer(Layer):
 
     def loss(self, target:Tensor, logits:Tensor):
 
-        if self.prediction_level == "unit":
-            self.loss = nn.CrossEntropyLoss(reduction="mean", ignore_index=-1)
-            return self.loss(torch.flatten(logits, end_dim=-2), target.view(-1))
+        if hasattr(self.layer, "loss"):
+            loss = self.layer.loss(logits=logits, **kwargs)
         else:
-            raise NotADirectoryError
+
+            if self.prediction_level == "unit":
+                return F.cross_entropy(
+                                        torch.flatten(logits, end_dim=-2), 
+                                        target.view(-1), 
+                                        reduction="mean",
+                                        ignore_index=-1
+                                        )
+            else:
+                raise NotADirectoryError
+
+        return loss, output
+
+
+
+    def _call(self, *args, **kwargs):
+        logits, output =  self.layer(*args, **kwargs)
+
+        if not self.inference:
+            loss = self.loss(target="", logits=logits)
+            return loss, output
+
+        return output
 
 
 class SegmentationLayer(CLFlayer):
@@ -166,10 +188,35 @@ class SegmentationLayer(CLFlayer):
                                         ))
 
         if not self.inference:
-            loss = self.layer.loss(logits=logits, **kwargs)
+            loss = self.loss(target="", logits=logits)
             return loss, output
 
         return output
+
+
+class LabelLayer(CLFlayer):
+    """
+    Layer which works on segment level
+    """
+
+    def __init__(self, 
+                layer:nn.Module, 
+                hyperparams:dict, 
+                input_size:int,
+                output_size:int,
+                ):
+
+        if isinstance(layer, str):
+            #layer = getattr(linkers, layer)
+            layer = getattr(general, layer)
+
+
+        super().__init__(              
+                        layer=layer, 
+                        hyperparams=hyperparams,
+                        input_size=input_size,
+                        output_size=output_size
+                        )
 
 
 class LinkLayer(CLFlayer):
@@ -194,15 +241,6 @@ class LinkLayer(CLFlayer):
                         output_size=output_size
                         )
 
-
-    def _call(self, *args, **kwargs):
-        logits, output =  self.layer(*args, **kwargs)
-
-        if not self.inference:
-            loss = self.layer.loss(logits=logits, **kwargs)
-            return loss, output
-
-        return output
 
 
 

@@ -1,37 +1,15 @@
 
-
 #basics
 import numpy as np
-import warnings
-import os
 import pandas as pd
-from typing import List, Dict, Union, Tuple
-import re
-from copy import deepcopy
 from collections import Counter
 
-
-#pytroch
-import torch
-
-
 #sklearn
-# from sklearn.metrics import f1_score
 from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
-from sklearn.metrics import confusion_matrix
-
-#SegeVal
-#import segeval
-
-#am 
-#from segnlp.datasets.base.dataset import DataSet
-from segnlp.utils import ensure_flat, ensure_numpy
-from segnlp import get_logger
 
 
-
-def base_metric(targets:np.ndarray, preds:np.ndarray, task:str, labels:list):
+def f1_precison_recall(targets:np.ndarray, preds:np.ndarray, task:str, labels:list):
 
     assert targets.shape == preds.shape, f"shape missmatch for {task}: Targets:{targets.shape} | Preds: {preds.shape}"
 
@@ -70,9 +48,6 @@ def base_metric(targets:np.ndarray, preds:np.ndarray, task:str, labels:list):
                         {"name":f"{task}-recall", "metric": "recall", "value": task_re},
                         {"name":f"{task}-f1", "metric": "f1", "value": task_f1},
                     ]
-
-    # if task != "link":
-    #     task_metrics.append({"name":f"{task}-confusion_matrix", "metric": "confusion_matrix", "value": confusion_matrix(targets, preds, labels=labels)})
 
 
     #this is added so that the task is taken into account when calculating the mean accross all tasks

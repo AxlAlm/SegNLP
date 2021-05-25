@@ -28,6 +28,7 @@ from .stat_sig import StatSig
 from segnlp import get_logger
 from segnlp.datasets.base import DataSet
 from segnlp.preprocessing import Preprocessor
+import segnlp.utils as utils
 
 
 # from segnlp.preprocessing.dataset_preprocessor import PreProcessedDataset
@@ -68,20 +69,20 @@ class Pipeline(Evaluation, ML, StatSig):
         self.evaluation_method = evaluation_method
         self.model = model
         self.exp_logger = None
-        self.id = create_uid(
-                            "".join([
-                                    model.name(),
-                                    dataset.prediction_level,
-                                    dataset.name(),
-                                    dataset.sample_level, 
-                                    dataset.level,
-                                    evaluation_method
-                                    ]
-                                    +dataset.tasks
-                                    +encodings
-                                    +[f.name for f in features]
-                                    )
-                                )   
+        self.id = utils.create_uid(
+                                    "".join([
+                                            model.name(),
+                                            dataset.prediction_level,
+                                            dataset.name(),
+                                            dataset.sample_level, 
+                                            dataset.level,
+                                            evaluation_method
+                                            ]
+                                            +dataset.tasks
+                                            +encodings
+                                            +[f.name for f in features]
+                                            )
+                                    )   
 
         self._path = self.__create_folder(root_dir=root_dir, pipe_hash=self.id)
         self._path_to_models  = os.path.join(self._path, "models")
@@ -103,7 +104,11 @@ class Pipeline(Evaluation, ML, StatSig):
                                         encodings=encodings,
                                         other_levels=other_levels
                                         )
-        self.data_module = self.preprocessor.process_dataset(dataset)
+        self.data_module = self.preprocessor.process_dataset(
+                                                            dataset, 
+                                                            dump_dir=self._path_to_data,
+                                                            evaluation_method=self.evaluation_method
+                                                            )
 
         #create and save config
         self.config = dict(
@@ -121,13 +126,13 @@ class Pipeline(Evaluation, ML, StatSig):
         self.__dump_config()
 
         # small hack to perserve
-        self.__pp_feature_params = {f.name:f.params for f in features}
-        self.__pp_encoders = self.preprocessor.encoders
+        self._pp_feature_params = {f.name:f.params for f in features}
+        self._pp_encoders = self.preprocessor.encoders
         del self.preprocessor
-        self.__pp_status = "inactive"
+        self._pp_status = "inactive"
 
-        self.__hp_tuning = False
-        self.__eval_set = False
+        self._hp_tuning = False
+        self._eval_set = False
 
 
     @classmethod

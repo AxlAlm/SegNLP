@@ -70,7 +70,6 @@ def get_ptl_trainer_args(
                         hyperparamaters:dict, 
                         save_choice:str,
                         exp_model_path:str,
-                        #prefix:str,
                         ):
     
     ptl_trn_args = {**default_ptl_trn_args, **ptl_trn_args}
@@ -88,7 +87,7 @@ def get_ptl_trainer_args(
             if save_choice == "all":
                 save_top_k = -1
 
-            monitor_metric = hyperparamaters["monitor_metric"]
+            monitor_metric = hyperparamaters["general"]["monitor_metric"]
 
             os.makedirs(exp_model_path, exist_ok=True)
             mc  = ModelCheckpoint(
@@ -106,25 +105,25 @@ def get_ptl_trainer_args(
             ptl_trn_args["callbacks"].append(mc)
 
 
-    if "patience" in hyperparamaters:
+    if "patience" in hyperparamaters["general"]:
 
         if ptl_trn_args["callbacks"] == None:
             ptl_trn_args["callbacks"] = []
 
         if len([c for c in ptl_trn_args["callbacks"] if isinstance(c, EarlyStopping)]) == 0:
             ptl_trn_args["callbacks"].append(EarlyStopping(
-                                                                monitor=hyperparamaters["monitor_metric"], 
-                                                                patience=hyperparamaters["patience"],
-                                                                mode='min' if "loss" in hyperparamaters["monitor_metric"] else "max",
+                                                                monitor=hyperparamaters["general"]["monitor_metric"], 
+                                                                patience=hyperparamaters["general"]["patience"],
+                                                                mode='min' if "loss" in hyperparamaters["general"]["monitor_metric"] else "max",
                                                                 verbose=0,
                                                                 ))
 
     #overwrite the Pytroch Lightning Training arguments that are writen in Hyperparamaters 
-    if "max_epochs" in ptl_trn_args or "max_epochs" in hyperparamaters:
-        ptl_trn_args["max_epochs"] = hyperparamaters["max_epochs"]
+    if "max_epochs" in ptl_trn_args or "max_epochs" in hyperparamaters["general"]:
+        ptl_trn_args["max_epochs"] = hyperparamaters["general"]["max_epochs"]
     
-    if ("gradient_clip_val" in ptl_trn_args and  "gradient_clip_val" == None) or  "gradient_clip_val" in hyperparamaters:
-        ptl_trn_args["gradient_clip_val"] = hyperparamaters["gradient_clip_val"]
+    if ("gradient_clip_val" in ptl_trn_args and  "gradient_clip_val" == None) or  "gradient_clip_val" in hyperparamaters["general"]:
+        ptl_trn_args["gradient_clip_val"] = hyperparamaters["general"]["gradient_clip_val"]
                     
 
     ptl_trn_args["default_root_dir"] = exp_model_path

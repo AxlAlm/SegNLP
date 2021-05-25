@@ -119,7 +119,7 @@ class Pointer(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
 
-    def forward(self, inputs:Tensor, encoder_outputs:Tensor, mask:Tensor, states=None:Tensor):
+    def forward(self, inputs:Tensor, encoder_outputs:Tensor, mask:Tensor, states:Tensor=None):
 
         seq_len = encoder_outputs.shape[1]
         batch_size = encoder_outputs.shape[0]

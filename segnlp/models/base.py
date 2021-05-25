@@ -18,6 +18,7 @@ from transformers import get_constant_schedule_with_warmup
 #am 
 from segnlp import get_logger
 import segnlp.utils as utils
+import segnlp.metrics as metrics
 
 logger = get_logger("PTLBase (ptl.LightningModule)")
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
@@ -34,15 +35,15 @@ class PTLBase(ptl.LightningModule):
                     prediction_level:str,
                     task_dims:dict,
                     feature_dims:dict,
-                    metric_fn:Callable,
+                    metric:Union[Callable,str],
                     inference:bool=False
                     ):
         super().__init__()
         self.hps = hyperparamaters
-        self.monitor_metric = hyperparamaters.get("monitor_metric", "loss")
+        self.monitor_metric = hyperparamaters["general"].get("monitor_metric", "loss")
 
         self.metrics = utils.MetricContainer(
-                                            metric_fn = metric_fn
+                                            metric = metric
                                             )
 
         self.formater = utils.OutputFormater(
@@ -119,21 +120,12 @@ class PTLBase(ptl.LightningModule):
 
     def configure_optimizers(self):
 
-        if self.model.OPT.lower() == "adadelta":
-            opt = torch.optim.Adadelta(self.parameters(), lr=self.model.LR)
-        elif self.model.OPT.lower() == "sgd":
-            opt = torch.optim.SGD(self.parameters(), lr=self.model.LR)
-        elif self.model.OPT.lower() == "adam":
-            opt = torch.optim.Adam(self.parameters(), lr=self.model.LR)
-        elif self.model.OPT.lower() == "rmsprop":
-            opt = torch.optim.RMSprop(self.parameters(), lr=self.model.LR)
-        elif self.model.OPT.lower() == "adamw":
-            opt = torch.optim.AdamW(self.parameters(), lr=self.model.LR)
-        else:
-            raise KeyError(f'"{self.OPT}" is not a supported optimizer')
+        opt_class = getattr(torch.optim, self.hps["general"]["optimizer"])
+        opt = opt_class(self.parameters(), lr = self.hps["general"]["lr"])
 
-        if "scheduler" in self.hps:
-            if self.hps["scheduler"].lower() == "rop":
+
+        if "scheduler" in self.hps["general"]:
+            if self.hps["general"]["scheduler"].lower() == "rop":
                 scheduler = {
                                 'scheduler': ReduceLROnPlateau(
                                                                 opt,
@@ -143,17 +135,17 @@ class PTLBase(ptl.LightningModule):
                                 'monitor': "val_loss",
                                 'interval': 'epoch',
                             }
-            elif self.hps["scheduler"].lower() == "constant_warmup":
+            elif self.hps["general"]["scheduler"].lower() == "constant_warmup":
                 scheduler = get_constant_schedule_with_warmup(
                                                                 optimizer=opt,
-                                                                num_warmup_steps=self.hps["num_warmup_steps"],
-                                                                last_epoch=self.hps.get("schedular_last_epoch", -1)
+                                                                num_warmup_steps=self.hps["general"]["num_warmup_steps"],
+                                                                last_epoch=self.hps["general"].get("schedular_last_epoch", -1)
 
                                                                 )
             else:
-                raise KeyError(f'"{self.hps["scheduler"]} is not a supported learning shedular')
+                raise KeyError(f'"{self.hps["general"]["scheduler"]} is not a supported learning shedular')
 
-        if "scheduler" in self.hps:
+        if "scheduler" in self.hps["general"]:
             return [opt], [scheduler]
         else:
             return opt

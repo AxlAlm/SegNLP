@@ -4,13 +4,17 @@
 import pandas as pd
 from typing import Callable
 
-
+#segnlp
+from segnlp import metrics
 
 class MetricContainer(dict):
 
-    def __init__(self, metric_fn=Callable):
+    def __init__(self, metric=Union[Callable,str]):
 
-        self._metric_fn = metric_fn
+        if isinstance(metric, str):
+            metric = getattr(metrics, metric)
+
+        self._metric_fn = metric
        
         for k in ["train", "val", "test"]:
             self[k] = []

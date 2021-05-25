@@ -21,14 +21,39 @@ exp = Pipeline(
                 model = JointPN
             )
 
-# best_hp = exp.train(
-#                         hyperparamaters = hps,
-#                         n_random_seeds=6,
-#                         ptl_trn_args=dict(
-#                                             gpus=[2]
-#                                         ),
-#                         monitor_metric="val_link-f1"
-#                         )
+
+hps = {
+        "general":{
+                "optimizer": "adam",
+                "lr": 0.001,
+                "batch_size": 16,
+                "max_epochs": 4000,
+                "patience": 15,
+                "task_weight": 0.5,
+                },
+        "agg":{
+                "mode":"mix",
+                },
+        "llstm": {  
+                    "dropout":0.9,
+                    "hidden_size": 256,
+                    "num_layers":1,
+                    "bidr":True,
+                    },
+        "pointer": {
+                    "dropout":0.9,
+                    "hidden_size":512,
+                    }
+        }
+
+best_hp = exp.train(
+                        hyperparamaters = hps,
+                        n_random_seeds=6,
+                        ptl_trn_args=dict(
+                                            #gpus=[2]
+                                        ),
+                        monitor_metric="val_link-f1"
+                        )
 
 # exp1_scores, exp1_outputs = exp.test()
 # exp2_scores, exp2_outputs = exp.test(seg_preds="/tmp/seg_preds.csv")

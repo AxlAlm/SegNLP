@@ -15,32 +15,26 @@ import torch
 #segnlp
 import segnlp.utils as utils
 from segnlp.visuals.hp_tune_progress import HpProgress
+from segnlp.utils import get_ptl_trainer_args
 
 
 class ML:
 
 
-    def __create_hyperparam_sets(self, hyperparamaters:Dict[str,Union[str, int, float, list]]) -> Union[dict,List[dict]]:
+    def __create_hyperparam_sets(self, hyperparamaters:dict) -> List:
         """creates a set of hyperparamaters for hyperparamaters based on given hyperparamaters lists.
         takes a hyperparamaters and create a set of new paramaters given that any
         paramater values are list of values.
-
-        Parameters
-        ----------
-        hyperparamaters : Dict[str,Union[str, int, float, list]]
-            dict of hyperparamaters.
-
-        Returns
-        -------
-        Union[dict,List[dict]]
-            returns a list of hyperparamaters if any hyperparamater value is a list, else return 
-            original hyperparamater
         """
-        hyperparamaters_reformat = {k:[v] if not isinstance(v,list) else v for k,v in hyperparamaters.items()}
-        hypam_values = list(itertools.product(*list(hyperparamaters_reformat.values())))
-        set_hyperparamaters = [dict(zip(list(hyperparamaters_reformat.keys()),h)) for h in hypam_values]
+        group_variations = []
+        for group, gdict in hyperparamaters.items():
+            vs = [[v] if not isinstance(v, list) else v for v in gdict.values()]
+            group_sets = [dict(zip(gdict.keys(),v)) for v in itertools.product(*vs)]
+            group_variations.append(group_sets)
 
-        return set_hyperparamaters
+        
+        hp_sets = [dict(zip(hyperparamaters.keys(),v)) for v in itertools.product(*group_variations)]
+        return hp_sets
 
 
     def __get_model_args(self,
@@ -51,7 +45,7 @@ class ML:
                         hyperparamaters=hyperparamaters,
                         tasks=self.config["tasks"],
                         all_tasks=self.config["all_tasks"],
-                        label_encoders=self.__pp_encoders,
+                        label_encoders=self._pp_encoders,
                         prediction_level=self.config["prediction_level"],
                         task_dims={t:len(l) for t,l in self.config["task2labels"].items() if t in self.config["tasks"]},
                         feature_dims=self.config["feature2dim"],
@@ -69,9 +63,9 @@ class ML:
         #dumping the arguments
         model_args_c = deepcopy(model_args)
         model_args_c.pop("label_encoders")
-        model_args_c["model"] = model_args_c["model"].name()
+        model_args_c["model"] = self.model.name()
 
-        time = get_time()
+        time = utils.get_time()
         config = {
                     "time": str(time),
                     "timestamp": str(time.timestamp()),
@@ -110,11 +104,11 @@ class ML:
         if model_id is None:
             model_id = utils.create_uid("".join(list(map(str, hyperparamaters.keys())) + list(map(str, hyperparamaters.values()))))
 
-        set_random_seed(random_seed)
+        utils.set_random_seed(random_seed)
 
-        hyperparamaters["random_seed"] = random_seed
-        self.data_module.batch_size = hyperparamaters["batch_size"]
-        hyperparamaters["monitor_metric"] = monitor_metric
+        hyperparamaters["general"]["random_seed"] = random_seed
+        self.data_module.batch_size = hyperparamaters["general"]["batch_size"]
+        hyperparamaters["general"]["monitor_metric"] = monitor_metric
 
         model = deepcopy(self.model)
     
@@ -123,7 +117,7 @@ class ML:
         else:
             ptl_trn_args["logger"] = None
         
-        mid_folder = "top" if not self.__hp_tuning else "tmp"
+        mid_folder = "top" if not self._hp_tuning else "tmp"
         exp_model_path = os.path.join(self._path_to_models, "tmp", model_id, str(random_seed))
         
         if os.path.exists(exp_model_path):
@@ -193,7 +187,7 @@ class ML:
         # if ptl_trn_args.get("gradient_clip_val", 0.0) != 0.0:
         #     hyperparamaters["gradient_clip_val"] = ptl_trn_args["gradient_clip_val"]
         
-        self.__hp_tuning = True
+        self._hp_tuning = True
         keys = list(hyperparamaters.keys())
         set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
 
@@ -243,7 +237,7 @@ class ML:
             if random_seed is not None and isinstance(random_seed, int):
                 random_seeds = [random_seed]
             else:
-                random_seeds = random_ints(n_random_seeds)
+                random_seeds = utils.random_ints(n_random_seeds)
 
             for ri, random_seed in enumerate(random_seeds, start=1):
                 hpp.refresh(hp_uid, 
@@ -365,7 +359,7 @@ class ML:
                 model_config = json.load(f)
 
             hyperparamaters = model_config["args"]["hyperparamaters"]
-            self.data_module.batch_size = hyperparamaters["batch_size"]
+            self.data_module.batch_size = hyperparamaters["general"]["batch_size"]
 
             trainer = setup_ptl_trainer( 
                                         ptl_trn_args=ptl_trn_args,
@@ -375,7 +369,7 @@ class ML:
                                         )
 
             model_config["args"]["model"] = deepcopy(self.model)
-            model_config["args"]["label_encoders"] = self.__pp_encoders
+            model_config["args"]["label_encoders"] = self._pp_encoders
             model = PTLBase.load_from_checkpoint(seed_model["path"], **model_config["args"])
             scores = trainer.test(
                                     model=model, 

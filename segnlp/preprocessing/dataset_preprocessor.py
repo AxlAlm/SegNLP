@@ -12,6 +12,7 @@ from collections import Counter
 import pandas as pd
 from IPython.display import display
 import multiprocessing
+import shutil
 
 #pytroch lighnting
 import pytorch_lightning as ptl
@@ -25,16 +26,17 @@ import torch
 import h5py
 
 # segnlp
-import segnlp
 from segnlp.datasets.base import DataSet
 from segnlp.utils import ModelInput
 from segnlp.utils import DataModule
 import segnlp.utils as utils
+from segnlp import get_logger
 
 #sklearn
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import KFold
 
+logger = get_logger("DATA-PREPROCESSING")
 
 
 class DataPreprocessor:
@@ -54,7 +56,7 @@ class DataPreprocessor:
         for level in Input.levels:
             
             for k,v in Input[level].items():
-                v = ensure_numpy(v)
+                v = utils.ensure_numpy(v)
                 #dynamic_shape = tuple([None for v in enumerate(v.shape)])
                 #self.h5py_f.create_dataset(k, dynamic_shape, dtype=v.dtype)
                 max_shape = tuple([None for v in enumerate(v.shape)])
@@ -81,7 +83,7 @@ class DataPreprocessor:
 
         for level in Input.levels:
             for k,v in Input[level].items():
-                v = ensure_numpy(v)
+                v = utils.ensure_numpy(v)
                 k = f"/{level}/{k}"
 
                 last_sample_i = self.h5py_f[k].shape[0]
@@ -223,8 +225,8 @@ class DataPreprocessor:
         if dataset.name() == "MTC":
             self.am_extraction = "from_list"
 
-        file_path = os.path.join(dump_dir, f"{dataset.name()}_data.hdf5")
-        self.__setup_h5py(file_path=file_path) 
+        path_to_data = os.path.join(dump_dir, f"{dataset.name()}_data.hdf5")
+        self.__setup_h5py(file_path=path_to_data) 
 
         size = 0
         for i in tqdm(range(len(dataset)), desc="Processing and Storing Dataset"):
@@ -256,27 +258,30 @@ class DataPreprocessor:
                             subtasks=dataset.subtasks,
                             task_labels=dataset.task_labels
                             )
-        path_to_data = os.path.join(dump_dir, f"{dataset.name}_data.hdf5")
+        path_to_data = os.path.join(dump_dir, f"{dataset.name()}_data.hdf5")
 
         if os.path.exists(path_to_data):
             try:
                 logger.info(f"Loading preprocessed data from {path_to_data}")
                 return DataModule(
                                                     name=dataset.name(),
-                                                    dir_path=path_to_data,
-                                                    label_encoders=self.encoders,
+                                                    dir_path=dump_dir,
                                                     prediction_level=dataset.prediction_level
                                                     )
             except OSError as e:
                 logger.info(f"Loading failed. Will continue to preprocess data")
                 try:
-                    shutil.rmtree(self._path_to_data)
+                    shutil.rmtree(path_to_data)
                 except FileNotFoundError as e:
                     pass
 
         try:
-            return self.__process_dataset(dataset, evaluation_method=evaluation_method, dump_dir=path_to_data)
+            return self.__process_dataset(
+                                            dataset, 
+                                            evaluation_method=evaluation_method, 
+                                            dump_dir=dump_dir
+                                            )
         except BaseException as e:
-            shutil.rmtree(self._path_to_data)
+            shutil.rmtree(path_to_data)
             raise e
 

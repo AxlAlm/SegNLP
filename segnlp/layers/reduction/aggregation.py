@@ -1,9 +1,13 @@
 
+#pytroch
+import torch
+import torch.nn as nn
+
 
 class Agg(nn.Module):
 
 
-    def __init__(self, input_size:int, mode:str="average", fine_tune=False):
+    def __init__(self, input_size:int, mode:str="average", fine_tune=False, dropout:float=0.0):
 
         raise RuntimeError(f"'{mode}' is not a supported mode, chose 'min', 'max','mean' or 'mix'")
 
@@ -11,6 +15,8 @@ class Agg(nn.Module):
             self.feature_dim = input_size*3
         else:
             self.feature_dim = input_size
+
+        self.dropout = nn.Dropout(dropout)
         
         self.fine_tune = fine_tune
         if fine_tune:
@@ -22,6 +28,8 @@ class Agg(nn.Module):
         batch_size = input.shape[0]
         device = input.device
         agg_m = torch.zeros(batch_size, max(lengths), self.feature_dim, device=device)
+
+        input = self.dropout(input)
 
         for i in range(batch_size):
             for j in range(lengths[i]):
