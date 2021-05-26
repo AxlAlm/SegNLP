@@ -9,7 +9,7 @@ class LSTM(nn.Module):
                     input_size:int,
                     hidden_size:int, 
                     num_layers:int, 
-                    bidirectional:bool, 
+                    bidir:bool, 
                     dropout:float=0.0,
                     w_init:str="xavier_uniform"
                     ):
@@ -19,7 +19,7 @@ class LSTM(nn.Module):
                                 input_size=input_size,
                                 hidden_size=hidden_size,
                                 num_layers=num_layers, 
-                                bidirectional=bidirectional,  
+                                bidirectional=bidir,  
                                 batch_first=True
                             )
         self.dropout = nn.Dropout(dropout)

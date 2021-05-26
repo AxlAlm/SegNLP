@@ -2,32 +2,37 @@
 #pytroch
 import torch
 import torch.nn as nn
-
+from torch import Tensor
 
 class Agg(nn.Module):
 
 
-    def __init__(self, input_size:int, mode:str="average", fine_tune=False, dropout:float=0.0):
+    def __init__(self, input_size:int, mode:str="mean", fine_tune=False, dropout:float=0.0):
+        super().__init__()
 
-        raise RuntimeError(f"'{mode}' is not a supported mode, chose 'min', 'max','mean' or 'mix'")
+        supported_modes = set(['min', 'max','mean', 'mix'])
+
+        if mode not in supported_modes:
+            raise RuntimeError(f"'{mode}' is not a supported mode, chose 'min', 'max','mean' or 'mix'")
 
         if mode == "mix":
-            self.feature_dim = input_size*3
+            self.output_size = input_size*3
         else:
-            self.feature_dim = input_size
+            self.output_size = input_size
 
         self.dropout = nn.Dropout(dropout)
         
         self.fine_tune = fine_tune
         if fine_tune:
             self.ft = nn.Linear(input_size, input_size)
+        
 
 
     def forward(input:Tensor, lengths:Tensor, span_indexes:Tensor, flat:bool=False):
 
         batch_size = input.shape[0]
         device = input.device
-        agg_m = torch.zeros(batch_size, max(lengths), self.feature_dim, device=device)
+        agg_m = torch.zeros(batch_size, max(lengths), self.output_size, device=device)
 
         input = self.dropout(input)
 

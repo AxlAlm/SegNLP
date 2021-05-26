@@ -24,23 +24,23 @@ exp = Pipeline(
 
 hps = {
         "general":{
-                "optimizer": "adam",
+                "optimizer": "Adam",
                 "lr": 0.001,
                 "batch_size": 16,
                 "max_epochs": 4000,
                 "patience": 15,
                 "task_weight": 0.5,
                 },
-        "agg":{
+        "Agg":{
                 "mode":"mix",
                 },
-        "llstm": {  
+        "LLSTM": {  
                     "dropout":0.9,
                     "hidden_size": 256,
                     "num_layers":1,
-                    "bidr":True,
+                    "bidir":True,
                     },
-        "pointer": {
+        "Pointer": {
                     "dropout":0.9,
                     "hidden_size":512,
                     }

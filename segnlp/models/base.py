@@ -42,6 +42,7 @@ class PTLBase(ptl.LightningModule):
         self.hps = hyperparamaters
         self.monitor_metric = hyperparamaters["general"].get("monitor_metric", "loss")
         self.feature_dims = feature_dims
+        self.task_dims = task_dims
 
         self.metrics = utils.MetricContainer(
                                             metric = metric
@@ -64,7 +65,7 @@ class PTLBase(ptl.LightningModule):
 
     def _step(self, batch:utils.ModelInput, split):
         batch.current_epoch = self.current_epoch
-        loss, preds = self.model.forward(batch)
+        loss, preds = self.forward(batch)
         df = self.formater.format(
                                     input=batch,
                                     output=preds,

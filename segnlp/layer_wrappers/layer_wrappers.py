@@ -8,13 +8,12 @@ import torch
 
 #segnlp
 from segnlp.utils import BIODecoder
-import segnlp.layers.encoders as encoders
-import segnlp.layers.embedders as embedders
-import segnlp.layers.reduction as reducers
-import segnlp.layers.seg as segmenters
-import segnlp.layers.linkers as linkers
-import segnlp.layers.general as general
-
+from segnlp.layers import encoders 
+from segnlp.layers import embedders
+from segnlp.layers import reducers
+from segnlp.layers import linkers
+from segnlp.layers import segmenters
+from segnlp.layers import general
 
 
 class Layer(nn.Module):
@@ -27,30 +26,32 @@ class Layer(nn.Module):
                 ):
         super().__init__()
         input_size = input_size
-        output_size = output_size
+        #output_size = output_size
 
         params = hyperparams
         params["input_size"] = input_size
-       
-        if output_size is not None:
-            params["output_size"] = output_size
+        params["output_size"] = output_size
 
-        if isinstance(layer, str):
-            pass
-        else:
-            self.layer = layer(**params)
+        print(params)
+        params = self.__filter_paramaters(layer, params)
+        print(params)
 
-        self.output_size = self.layer.output_size
+        self.layer = layer(**params)
+
+        if hasattr(self.layer, "output_size"):
+            self.output_size = self.layer.output_size
     
 
-    # def __filter_paramaters(self,**kwargs):
-    #     sig = inspect.signature(self.layer.forward)
+    def __filter_paramaters(self, layer, params):
+        sig = inspect.signature(layer)
+
+        filtered_params = {}
+        for para in sig.parameters:
+
+            if para in params:
+                filtered_params[para] = params[para]
         
-    #     filtered_kwargs = {}
-    #     for para in sig.parameters:
-    #         filtered_kwargs[para.name] = kwargs[para.name]
-        
-    #     return filtered_kwargs
+        return filtered_params
 
 
     def _call(self, *args, **kwargs):
@@ -66,7 +67,7 @@ class Layer(nn.Module):
         return  out  
 
 
-class EmbeddingLayer(Layer):
+class Embedder(Layer):
 
     def __init__(self, layer:nn.Module, hyperparams:dict, input_size:int):
         
@@ -76,7 +77,7 @@ class EmbeddingLayer(Layer):
         super().__init__(layer=layer, hyperparams=hyperparams, input_size=input_size)
         
 
-class EncodingLayer(Layer):
+class Encoder(Layer):
 
     def __init__(self, layer:nn.Module, hyperparams:dict, input_size:int):
         
@@ -86,7 +87,7 @@ class EncodingLayer(Layer):
         super().__init__(layer=layer, hyperparams=hyperparams, input_size=input_size)
         
 
-class ReductionLayer(Layer):
+class Reducer(Layer):
     
     def __init__(self, layer:nn.Module, hyperparams:dict, input_size:int):
         
@@ -145,7 +146,7 @@ class CLFlayer(Layer):
         return output
 
 
-class SegmentationLayer(CLFlayer):
+class Segmenter(CLFlayer):
     """
     Layer which works on token level
     """
@@ -194,7 +195,7 @@ class SegmentationLayer(CLFlayer):
         return output
 
 
-class LabelLayer(CLFlayer):
+class Labeler(CLFlayer):
     """
     Layer which works on segment level
     """
@@ -219,7 +220,7 @@ class LabelLayer(CLFlayer):
                         )
 
 
-class LinkLayer(CLFlayer):
+class Linker(CLFlayer):
     """
     Layer which works on segment level
     """

@@ -5,7 +5,11 @@ import torch.nn.functional as F
 
 #segnlp
 from .base import PTLBase
-import segnlp.layers.layer_wrappers as lw
+
+from segnlp.layer_wrappers import Reducer
+from segnlp.layer_wrappers import Encoder
+from segnlp.layer_wrappers import Linker
+from segnlp.layer_wrappers import Labeler
 
 
 class JointPN(PTLBase):
@@ -26,33 +30,31 @@ class JointPN(PTLBase):
     def __init__(self,  *args, **kwargs):   
         super().__init__(*args, **kwargs)
 
-        self.agg = lw.ReductionLayer(
-                                    layer = "Agg", 
-                                    hyperparams = self.hps.get("Agg", {}),
-                                    input_size = (self.feature_dims["word_embs"] * 3) + self.feature_dims["doc_embs"]
-                                    )
+        self.agg = Reducer(
+                            layer = "Agg", 
+                            hyperparams = self.hps.get("Agg", {}),
+                            input_size = (self.feature_dims["word_embs"] * 3) + self.feature_dims["doc_embs"]
+                            )
 
-        self.encoder = lw.EncodingLayer(    
-                                        layer = "LLSTM", 
-                                        hyperparams = self.hps.get("LLSTM", {}),
-                                        input_size = self.feature_dims["word_embs"] * 3
-                                        )
+        self.encoder = Encoder(    
+                                layer = "LLSTM", 
+                                hyperparams = self.hps.get("LLSTM", {}),
+                                input_size = self.feature_dims["word_embs"] * 3
+                                )
 
-        self.pointer = lw.LinkLayer(
-                                    layer = "Pointer",
-                                    task = "link",
-                                    hyperparams = self.hps.get("Pointer", {}),
-                                    input_size = self.encoder.output_size,
-                                    output_size = self.task_dims["link"]
-                                    )
+        self.pointer = Linker(
+                                layer = "Pointer",
+                                hyperparams = self.hps.get("Pointer", {}),
+                                input_size = self.encoder.output_size,
+                                output_size = self.task_dims["link"]
+                                )
 
-        self.label_clf =  lw.CLFlayer(
-                                    layer = "Linear",
-                                    task = "label",
-                                    hyperparams = self.hps.get("SimpleCLF", {}),
-                                    input_size = self.encoder.output_size,
-                                    output_size = self.task_dims["label"]
-                                    )
+        self.labeler =  Labeler(
+                                layer = "LinearCLF",
+                                hyperparams = self.hps.get("LinearCLF", {}),
+                                input_size = self.encoder.output_size,
+                                output_size = self.task_dims["label"]
+                                )
 
 
     @classmethod
@@ -62,20 +64,20 @@ class JointPN(PTLBase):
 
     def forward(self, batch):
 
-        unit_embs = self.agg(
+        seg_embs = self.agg(
                             input = batch["token"]["word_embs"], 
-                            lengths = batch["unit"]["lengths"],
-                            span_idxs = batch["unit"]["span_idxs"], 
+                            lengths = batch["seg"]["lengths"],
+                            span_idxs = batch["seg"]["span_idxs"], 
                             )
 
         encoder_out = self.encoder(
-                                    input = unit_embs,
-                                    lengths = batch["unit"]["lengths"],
+                                    input = seg_embs,
+                                    lengths = batch["seg"]["lengths"],
                                     )
     
-        label_loss, label_preds =  self.label_clf(
-                                                    input = encoder_out[0],
-                                                    )
+        label_loss, label_preds =  self.labeler(
+                                                input = encoder_out[0],
+                                                )
 
         link_loss, link_preds = self.pointer(
                                         input = encoder_out,

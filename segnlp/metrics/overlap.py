@@ -201,7 +201,7 @@ def fill_missing_link_label(j, t, j2match_info:dict):
         if not link_info["exact"]:
             conf_ms["label"]["exact"][t, -1] += 1
 
-        if not link_info["approx"]::
+        if not link_info["approx"]:
             conf_ms["label"]["approx"][t, -1] += 1
 
 

@@ -8,6 +8,7 @@ from torch import Tensor
 class LinearCLF(nn.Module):
 
     def __init__(self, input_size, output_size, dropout:float=0.0):
+        super().__init__()
         self.dropout = nn.Dropout(dropout)
         self.clf = nn.Linear(input_size, output_size)
 

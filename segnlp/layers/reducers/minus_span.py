@@ -2,12 +2,15 @@
 #pytorch
 import torch
 import torch.nn as nn
+from torch import Tensor
 
 
 class MinusSpan(nn.Module):
 
 
     def __init__(self, input_size:int, dropout:float=0.0, fine_tune:bool=False):
+        super().__init__()
+
         self.input_size = input_size
         self.output_size = hidden_dim*4
 

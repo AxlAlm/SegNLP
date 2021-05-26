@@ -1,3 +1,3 @@
 
-from .llstm import LSTM
+from .llstm import LLSTM
 from .lstm import LSTM
