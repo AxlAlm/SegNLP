@@ -15,7 +15,9 @@ class Agg(nn.Module):
         if mode not in supported_modes:
             raise RuntimeError(f"'{mode}' is not a supported mode, chose 'min', 'max','mean' or 'mix'")
 
-        if mode == "mix":
+        self.mode = mode
+
+        if self.mode == "mix":
             self.output_size = input_size*3
         else:
             self.output_size = input_size
@@ -28,7 +30,7 @@ class Agg(nn.Module):
         
 
 
-    def forward(input:Tensor, lengths:Tensor, span_indexes:Tensor, flat:bool=False):
+    def forward(self, input:Tensor, lengths:Tensor, span_idxs:Tensor, flat:bool=False):
 
         batch_size = input.shape[0]
         device = input.device
@@ -38,7 +40,7 @@ class Agg(nn.Module):
 
         for i in range(batch_size):
             for j in range(lengths[i]):
-                ii, jj = span_indexes[i][j]
+                ii, jj = span_idxs[i][j]
 
                 if self.mode == "average":
                     agg_m[i][j] = torch.mean(input[i][ii:jj], dim=0)

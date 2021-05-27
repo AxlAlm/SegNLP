@@ -40,6 +40,7 @@ class Evaluation:
                     checkpoint_cb = callback
 
             model = self.model(**model_args)
+        
             trainer.fit(    
                         model=model, 
                         train_dataloader=data_module.train_dataloader(), 
@@ -70,6 +71,7 @@ class Evaluation:
 
         trainer = Trainer(**ptl_trn_args)
         model = self.model(**model_args)
+
         trainer.fit(    
                         model=model, 
                         train_dataloader=data_module.train_dataloader(), 

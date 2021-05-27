@@ -1,6 +1,10 @@
 
+
+#pytorch
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+from torch import Tensor
+
 
 class LSTM(nn.Module):
 
@@ -27,7 +31,7 @@ class LSTM(nn.Module):
 
     
 
-    def __initialize_weights(self, w_init):
+    def __initialize_weights(self, w_init:str):
         for name, param in self.lstm.named_parameters():
             
             if 'bias' in name:
@@ -45,17 +49,17 @@ class LSTM(nn.Module):
                     raise RuntimeError()
 
 
-    def forward(self, X, lengths, padding=0.0):
+    def forward(self, input:Tensor, lengths:Tensor, padding=0.0):
 
-        X = self.dropout(X)
+        input = self.dropout(input)
         
         pass_states = False
-        if isinstance(X, tuple):
+        if isinstance(input, tuple):
            #X, h_0, c_0 = X
-            X, *states = X
+            input, *states = input
             pass_states = True
 
-        packed_embs = nn.utils.rnn.pack_padded_sequence(X, lengths, batch_first=True)
+        packed_embs = nn.utils.rnn.pack_padded_sequence(input, lengths, batch_first=True)
 
         if pass_states:
             lstm_packed, hidden = self.lstm(packed_embs, states)

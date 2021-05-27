@@ -9,7 +9,7 @@ from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 
 
-def f1_precison_recall(targets:np.ndarray, preds:np.ndarray, task:str, labels:list):
+def f1_precision_recall(targets:np.ndarray, preds:np.ndarray, task:str, labels:list):
 
     assert targets.shape == preds.shape, f"shape missmatch for {task}: Targets:{targets.shape} | Preds: {preds.shape}"
 

@@ -4,10 +4,10 @@
 import pandas as pd
 
 #segnlp
-from .metrics import f1_precision_recall
+from .metric_utils import f1_precision_recall
 
 
-def default_token_metric(self, df:pd.DataFrame, tasks_labels:dict):
+def default_token_metric(df:pd.DataFrame, tasks_labels:dict):
 
     collected_scores = {}
     for task, labels in tasks_labels.items():

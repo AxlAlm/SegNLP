@@ -30,22 +30,24 @@ class JointPN(PTLBase):
     def __init__(self,  *args, **kwargs):   
         super().__init__(*args, **kwargs)
 
+        self.TASK_WEIGHT = self.hps["general"]["task_weight"]
+
         self.agg = Reducer(
                             layer = "Agg", 
                             hyperparams = self.hps.get("Agg", {}),
-                            input_size = (self.feature_dims["word_embs"] * 3) + self.feature_dims["doc_embs"]
+                            input_size = self.feature_dims["word_embs"]
                             )
 
         self.encoder = Encoder(    
                                 layer = "LLSTM", 
                                 hyperparams = self.hps.get("LLSTM", {}),
-                                input_size = self.feature_dims["word_embs"] * 3
+                                input_size = self.agg.output_size + self.feature_dims["doc_embs"]
                                 )
 
         self.pointer = Linker(
                                 layer = "Pointer",
                                 hyperparams = self.hps.get("Pointer", {}),
-                                input_size = self.encoder.output_size,
+                                input_size = self.agg.output_size + self.feature_dims["doc_embs"],
                                 output_size = self.task_dims["link"]
                                 )
 
@@ -67,30 +69,51 @@ class JointPN(PTLBase):
         seg_embs = self.agg(
                             input = batch["token"]["word_embs"], 
                             lengths = batch["seg"]["lengths"],
-                            span_idxs = batch["seg"]["span_idxs"], 
+                            span_idxs = batch["seg"]["span_idxs"],
                             )
 
-        encoder_out = self.encoder(
+        seg_embs = torch.cat((seg_embs, batch["seg"]["doc_embs"]), dim=-1)
+
+        encoder_out, states = self.encoder(
                                     input = seg_embs,
                                     lengths = batch["seg"]["lengths"],
                                     )
     
-        label_loss, label_preds =  self.labeler(
-                                                input = encoder_out[0],
+        label_logits, label_preds  = self.labeler(
+                                                input = encoder_out,
                                                 )
 
-        link_loss, link_preds = self.pointer(
-                                        input = encoder_out,
-                                        seg_data = seg_output,
-                                        batch = batch
-                                        )
+        link_logits, link_preds = self.pointer(
+                                            input = seg_embs,
+                                            encoder_outputs = encoder_out,
+                                            mask = batch["seg"]["mask"],
+                                            states = states,
+                                            )
+        return {
+                "logits":{
+                        "label": label_logits,
+                        "link": link_logits
+                        },
+                "preds": {
+                        "label": label_preds,
+                        "link": link_preds
+                        }
+                }
 
-                                    
-        total_loss = ((1-self.TASK_WEIGHT) * link_loss) + ((1-self.TASK_WEIGHT) * label_loss)
 
 
-        return total_loss, {"preds":{
-                                        "label":label_preds,
-                                        "link": link_preds
-                                    }
-                            }
+    def loss(self, batch, forward_output:dict):
+        
+        label_loss = self.labeler.loss(
+                                        logits = forward_output["logits"]["label"],
+                                        targets = batch["seg"]["label"]
+                                    )
+
+        link_loss = self.pointer.loss(
+                                        logits = forward_output["logits"]["link"],
+                                        targets = batch["seg"]["link"]
+                                    )
+                                        
+        loss = ((1-self.TASK_WEIGHT) * link_loss) + ((1-self.TASK_WEIGHT) * label_loss)
+
+        return loss

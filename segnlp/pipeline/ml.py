@@ -42,14 +42,15 @@ class ML:
                         ):
 
         model_args = dict(
-                        hyperparamaters=hyperparamaters,
-                        tasks=self.config["tasks"],
-                        all_tasks=self.config["all_tasks"],
-                        label_encoders=self._pp_encoders,
-                        prediction_level=self.config["prediction_level"],
-                        task_dims={t:len(l) for t,l in self.config["task_labels"].items() if t in self.config["tasks"]},
-                        feature_dims=self.config["feature2dim"],
-                        metric=self.metric
+                        hyperparamaters = hyperparamaters,
+                        tasks = self.config["tasks"],
+                        all_tasks = self.config["all_tasks"],
+                        label_encoders = self._pp_encoders,
+                        task_labels = self.config["task_labels"],
+                        prediction_level = self.config["prediction_level"],
+                        task_dims = {t:len(l) for t,l in self.config["task_labels"].items() if t in self.config["tasks"]},
+                        feature_dims = self.config["feature2dim"],
+                        metric= self.metric
                         )
         return model_args
 

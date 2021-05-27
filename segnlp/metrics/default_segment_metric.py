@@ -4,20 +4,20 @@
 import pandas as pd
 
 #segnlp
-from .metrics import f1_precision_recall
-from .metrics import link_f1
+from .metric_utils import f1_precision_recall
+from .metric_utils import link_f1
 
-def default_segment_metric(self, df:pd.DataFrame, tasks_labels:dict):
+def default_segment_metric(df:pd.DataFrame, tasks_labels:dict):
     
-    df = df.groupby("unit_id").first()
+    df = df.groupby("seg_id").first()
 
     collected_scores = {}
     for task, labels in tasks_labels.items():
 
         if task == "link":            
             scores = link_f1(
-                            targets = [s[f"T-{task}"].tolist() for s in df.groupby("sample_id")],
-                            preds = [s[task].tolist() for s in df.groupby("sample_id")],
+                            targets = [s[f"T-{task}"].tolist() for _, s in df.groupby("sample_id")],
+                            preds = [s[task].tolist() for _, s in df.groupby("sample_id")],
                             )
             collected_scores.update(scores)
 
@@ -32,5 +32,5 @@ def default_segment_metric(self, df:pd.DataFrame, tasks_labels:dict):
                                         labels = labels,
                                         )
             collected_scores.update(scores)
-        
-    return scores
+    
+    return collected_scores

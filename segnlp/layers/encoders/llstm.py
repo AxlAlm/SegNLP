@@ -33,10 +33,10 @@ class LLSTM(nn.Module):
         self.output_size = hidden_size * (2 if bidir else 1)
 
 
-    def forward(self, input:Tensor, batch:dict):
+    def forward(self, input:Tensor, lengths:Tensor):
 
-        X = self.dropout(input)
-        X = torch.sigmoid(self.input_layer(X))
-        out, hidden = self.lstm(X, batch["token"]["lengths"])
+        input = self.dropout(input)
+        input = torch.sigmoid(self.input_layer(input))
+        out, hidden = self.lstm(input, lengths)
 
         return out, hidden

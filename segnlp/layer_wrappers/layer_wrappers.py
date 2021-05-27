@@ -2,9 +2,10 @@
 import inspect
 
 #pytorch
-import torch.nn as nn
-from torch import Tensor
 import torch
+from torch import Tensor
+import torch.nn as nn
+import torch.nn.functional as F
 
 #segnlp
 from segnlp.utils import BIODecoder
@@ -32,9 +33,7 @@ class Layer(nn.Module):
         params["input_size"] = input_size
         params["output_size"] = output_size
 
-        print(params)
         params = self.__filter_paramaters(layer, params)
-        print(params)
 
         self.layer = layer(**params)
 
@@ -58,10 +57,10 @@ class Layer(nn.Module):
         return self.layer(*args, **kwargs)
 
 
-    def forward(self, **kwargs):
+    def forward(self, *args, **kwargs):
         #kwargs = self.__filter_paramaters(**kwargs)
-        out = self._call(**kwargs)
-
+        out = self._call(*args, **kwargs)
+  
         # assert isinstance(output, dict)
         # assert torch.is_tensor(loss)
         return  out  
@@ -116,34 +115,29 @@ class CLFlayer(Layer):
                         )
 
 
-    def loss(self, target:Tensor, logits:Tensor):
+    def loss(self, logits:Tensor, targets:Tensor):
 
         if hasattr(self.layer, "loss"):
-            loss = self.layer.loss(logits=logits, **kwargs)
+            loss = self.layer.loss(logits=logits, targets=targets)
         else:
 
-            if self.prediction_level == "unit":
-                return F.cross_entropy(
+            if isinstance(self, Segmenter):
+                raise NotImplementedError
+
+            else:
+                loss = F.cross_entropy(
                                         torch.flatten(logits, end_dim=-2), 
-                                        target.view(-1), 
+                                        targets.view(-1), 
                                         reduction="mean",
                                         ignore_index=-1
                                         )
-            else:
-                raise NotADirectoryError
+            
 
-        return loss, output
-
+        return loss
 
 
     def _call(self, *args, **kwargs):
-        logits, output =  self.layer(*args, **kwargs)
-
-        if not self.inference:
-            loss = self.loss(target="", logits=logits)
-            return loss, output
-
-        return output
+        return self.layer(*args, **kwargs)
 
 
 class Segmenter(CLFlayer):
@@ -182,17 +176,11 @@ class Segmenter(CLFlayer):
 
     def _call(self, *args, **kwargs):
         logits, output =  self.layer(*args, **kwargs)
-
         output.update(self.seg_decoder(
                                         batch_encoded_bios = output["preds"], 
                                         lengths = kwarg["lengths"],                  
                                         ))
-
-        if not self.inference:
-            loss = self.loss(target="", logits=logits)
-            return loss, output
-
-        return output
+        return logits, output
 
 
 class Labeler(CLFlayer):

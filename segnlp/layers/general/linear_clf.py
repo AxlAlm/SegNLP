@@ -13,4 +13,8 @@ class LinearCLF(nn.Module):
         self.clf = nn.Linear(input_size, output_size)
 
     def forward(self, input:Tensor):
-        return self.clf(self.dropout(input))
+
+        logits = self.clf(self.dropout(input))
+        preds = torch.argmax(logits, dim=-1)
+
+        return logits, preds

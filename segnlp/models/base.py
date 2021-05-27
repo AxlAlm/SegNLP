@@ -32,6 +32,7 @@ class PTLBase(ptl.LightningModule):
                     tasks:list,
                     all_tasks:list,
                     label_encoders:dict,
+                    task_labels:dict,
                     prediction_level:str,
                     task_dims:dict,
                     feature_dims:dict,
@@ -43,6 +44,8 @@ class PTLBase(ptl.LightningModule):
         self.monitor_metric = hyperparamaters["general"].get("monitor_metric", "loss")
         self.feature_dims = feature_dims
         self.task_dims = task_dims
+        self.inference = inference
+        self.task_labels = task_labels
 
         self.metrics = utils.MetricContainer(
                                             metric = metric
@@ -63,15 +66,25 @@ class PTLBase(ptl.LightningModule):
         return self._step(batch, split="test")
 
 
-    def _step(self, batch:utils.ModelInput, split):
+    def _step(self, batch:utils.ModelInput, split:str):
         batch.current_epoch = self.current_epoch
-        loss, preds = self.forward(batch)
+        output = self.forward(batch)
         df = self.formater.format(
-                                    input=batch,
-                                    output=preds,
+                                    batch=batch,
+                                    preds=output["preds"],
                                     )
-        
-        self.metrics.calc_add(df, split)
+        self.metrics.calc_add(
+                            df=df, 
+                            task_labels=self.task_labels,
+                            split=split
+                            )
+                                
+
+        if self.inference:
+            loss = 0
+        else:
+            loss = self.loss(batch, output)
+
         return loss, df
       
     
@@ -104,7 +117,6 @@ class PTLBase(ptl.LightningModule):
 
     def on_validation_epoch_end(self):
         self._end_of_epoch("val")
-        self.metrics = MetricContainer()
 
 
     def on_test_epoch_end(self):

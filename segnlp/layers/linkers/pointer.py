@@ -117,16 +117,16 @@ class Pointer(nn.Module):
                                         input_dim=hidden_size,
                                         )
         self.dropout = nn.Dropout(dropout)
+        self.hidden_size = hidden_size
 
 
-    def forward(self, inputs:Tensor, encoder_outputs:Tensor, mask:Tensor, states:Tensor=None):
+    def forward(self, input:Tensor, encoder_outputs:Tensor, mask:Tensor, states:Tensor=None):
 
         seq_len = encoder_outputs.shape[1]
         batch_size = encoder_outputs.shape[0]
         device = encoder_outputs.device
 
-        if isinstance(states, None):
-
+        if states is None:
             # if no states are given we will initate states
             seq_len = input.shape[1]
             batch_size = input.shape[0]
@@ -139,31 +139,33 @@ class Pointer(nn.Module):
             h_s, c_s = states
 
             # if states given are bidirectional
-            if h_s[-1] == (self.hidden_size/2):
+            if h_s.shape[-1] == (self.hidden_size/2):
                 # We get the last hidden cell states and timesteps and concatenate them for each directions
                 # from (NUM_LAYER*DIRECTIONS, BATCH_SIZE, HIDDEN_SIZE) -> (BATCH_SIZE, HIDDEN_SIZE*NR_DIRECTIONS)
                 # The cell state and last hidden state is used to start the decoder (first states and hidden of the decoder)
                 # -2 will pick the last layer forward and -1 will pick the last layer backwards
-                h_s = torch.cat((h_s[-2], h_s[-1]),dim=1)
-                c_s = torch.cat((h_s[-2], h_s[-1]),dim=1)
+                h_s = torch.cat((h_s[-2], h_s[-1]), dim=1)
+                c_s = torch.cat((c_s[-2], c_s[-1]), dim=1)
             else:
                 raise NotImplementedError()
             
  
         encoder_outputs = self.dropout(encoder_outputs)
-        inputs = self.dropout(inputs)
+        input = self.dropout(input)
 
-        output = torch.zeros(batch_size, seq_len, seq_len, device=device)
+        logits = torch.zeros(batch_size, seq_len, seq_len, device=device)
         for i in range(seq_len):
 
             if i == 0:
-                decoder_input = torch.zeros(inputs[:,0].shape, device=device)
+                decoder_input = torch.zeros(input[:,0].shape, device=device)
             else:
-                decoder_input = inputs[:,i-1]
+                decoder_input = input[:,i-1]
             
             decoder_input = torch.sigmoid(self.input_layer(decoder_input))
             h_s, c_s = self.lstm_cell(decoder_input, (h_s, c_s))
 
-            output[:, i] = self.attention(h_s, encoder_outputs, mask, return_softmax=return_softmax)
+            logits[:, i] = self.attention(h_s, encoder_outputs, mask)
         
-        return output
+        preds = torch.argmax(logits, dim=-1)
+
+        return logits, preds

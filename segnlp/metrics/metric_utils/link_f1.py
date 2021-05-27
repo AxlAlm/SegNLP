@@ -37,8 +37,8 @@ def link_f1(targets:list, preds:list):
     flat_targets = []
     flat_preds = []
     for st, sp in zip(targets, preds):
-        target_adj_m = one_hots(utils.ensure_numpy(st))
-        pred_adj_m = one_hots(utils.ensure_numpy(sp))
+        target_adj_m = utils.one_hots(utils.ensure_numpy(st))
+        pred_adj_m = utils.one_hots(utils.ensure_numpy(sp))
 
         flat_targets.extend(target_adj_m.flatten().tolist())
         flat_preds.extend(pred_adj_m.flatten().tolist())

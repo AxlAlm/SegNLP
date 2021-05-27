@@ -43,7 +43,6 @@ class OutputFormater:
                                         )
 
 
-
     def __get_token_seg_ids(self,
                             span_token_lengths:np.ndarray, 
                             none_span_masks:np.ndarray,
@@ -55,10 +54,11 @@ class OutputFormater:
         bz = len(span_token_lengths)
         total_segs = 0
         for i in range(bz):
-            nr_seg = seg_lengths[i]
+            nr_seg = int(seg_lengths[i])
+
             span_tok_lens = ensure_numpy(span_token_lengths[i][:span_lengths[i]])
             seg_mask = ensure_numpy(none_span_masks[i][:span_lengths[i]])
-            seg_ids = np.arange(start=total_segs, stop=total_segs+nr_seg)
+            seg_ids = np.arange(start=total_segs, stop=total_segs+nr_seg, dtype=seg_mask.dtype)
             seg_mask[seg_mask.astype(bool)] += seg_ids
 
             ids = ensure_numpy(seg_mask).astype(float)
@@ -88,8 +88,6 @@ class OutputFormater:
         subtasks_predictions = {}
         subtasks = task.split("+")
         for subtask in subtasks:
-            #print("__________________________________________")
-            #print(subtask)
 
             subtask_position = subtasks.index(subtask)
 
@@ -103,9 +101,6 @@ class OutputFormater:
 
             subtask_preds = np.zeros((size, max_len), dtype=dtype)
             for i in range(size):
-                
-                #print(decoded_labels[i][:lengths[i]])
-                #print([decoder(x) for x in decoded_labels[i][:lengths[i]]])
                 subtask_preds[i][:lengths[i]] = [decoder(x) for x in decoded_labels[i][:lengths[i]]]
 
 
@@ -342,31 +337,35 @@ class OutputFormater:
                                                         span_lengths = self.pred_seg_info["span"]["lengths"],
                                                         )
             self._outputs["seg_id"] = token_seg_ids
+        else:
+            self._outputs["seg_id"] = self._outputs["T-seg_id"]
 
         mask = ensure_numpy(self.batch[level]["mask"])
         preds_flat = ensure_flat(ensure_numpy(preds), mask=mask)
         targets_flat = ensure_flat(ensure_numpy(targets), mask=mask)
 
-        self._outputs[task] = pred_outputs
-        self._outputs[f"T-{task}"] = target_outputs
+        self._outputs[task] = preds_flat
+        self._outputs[f"T-{task}"] = targets_flat
 
 
-    def __init__output(self, input):
+    def __init__output(self, batch):
 
         # INIT
-        self.batch = input
+        self.batch = batch
         self._outputs = {}
         self.pred_seg_info = {
                                 "seg":{},
                                 "span":{},
                                 }
         self._pred_span_set = False
+        self.max_tok = int(torch.max(batch["token"]["lengths"], dim=-1).values)
+        self.max_seg = int(torch.max(batch["seg"]["lengths"], dim=-1).values)
 
 
         self._outputs["sample_id"] = np.concatenate([np.full(int(l),int(i)) for l,i in zip(self.batch["token"]["lengths"],self.batch.ids)])
-        self._outputs["text"] = ensure_flat(ensure_numpy(self.batch["token"]["text"]), mask=ensure_numpy(self.batch["token"]["mask"])),
+        self._outputs["text"] = ensure_flat(ensure_numpy(self.batch["token"]["text"]), mask=ensure_numpy(self.batch["token"]["mask"]))
 
-        token_ids = [self.batch["token"]["token_ids"][i,:self.batch["token"]["lengths"][i]] for i in range(len(batch))]
+        token_ids = [self.batch["token"]["token_ids"][i,:self.batch["token"]["lengths"][i]] for i in range(len(self.batch))]
         self._outputs["token_id"] = ensure_numpy([int(t) for sub in token_ids for t in sub])
 
         if not self.inference:  
@@ -378,19 +377,23 @@ class OutputFormater:
                                                             )
 
 
-    def format(self, input, output):
+    def format(self, batch:dict, preds:dict):
 
-        self.__init__output(input)
+        self.__init__output(batch)
 
-        for task, level, data, type_  in output.items():
+        for task, data in preds.items():
 
-            if type_ == "pred":
-                self.__add_preds(
-                                task=task, 
-                                level=level,
-                                data=data,
-                                )
+            if data.shape[-1] == self.max_seg:
+                level = "seg"
+            elif data.shape[-1] == self.max_tok:
+                level = "token"
             else:
-                raise NotImplementedError(f'"{type_}" is not suported')
+                raise RuntimeError(f"data was given in shape {data.shape[0]} but {self.max_seg} (segment level) or {self.max_tok} (token level) was expected")
 
-        return self._outputs
+            self.__add_preds(
+                            task=task, 
+                            level=level,
+                            data=data,
+                            )
+         
+        return pd.DataFrame(self._outputs)
