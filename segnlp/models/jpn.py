@@ -101,7 +101,6 @@ class JointPN(PTLBase):
                 }
 
 
-
     def loss(self, batch, forward_output:dict):
         
         label_loss = self.labeler.loss(

@@ -41,7 +41,7 @@ hps = {
                     "bidir":True,
                     },
         "Pointer": {
-                    "dropout":0.9,
+                    #"dropout":0.0,
                     "hidden_size":512,
                     }
         }
@@ -50,9 +50,9 @@ best_hp = exp.train(
                         hyperparamaters = hps,
                         n_random_seeds=6,
                         ptl_trn_args=dict(
-                                            #gpus=[2]
+                                            gpus=[1]
                                         ),
-                        monitor_metric="val_link-f1"
+                        monitor_metric="val_LINK-f1"
                         )
 
 # exp1_scores, exp1_outputs = exp.test()
