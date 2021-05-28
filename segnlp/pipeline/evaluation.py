@@ -89,7 +89,7 @@ class Evaluation:
     def _eval(self, *args, **kwargs):
 
         if self.evaluation_method == "cross_validation":
-            self.__cross_validation(*args, **kwargs)
+            return self.__cross_validation(*args, **kwargs)
         else:
-            self.__default(*args, **kwargs)
+            return self.__default(*args, **kwargs)
 

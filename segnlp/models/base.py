@@ -46,6 +46,7 @@ class PTLBase(ptl.LightningModule):
         self.task_dims = task_dims
         self.inference = inference
         self.task_labels = task_labels
+        self.tasks = tasks
 
         self.metrics = utils.MetricContainer(
                                             metric = metric
@@ -101,14 +102,14 @@ class PTLBase(ptl.LightningModule):
         if self.monitor_metric != "val_loss":
             self.log(f'val_{self.monitor_metric}', self.metrics["val"][-1][self.monitor_metric.replace("val_","")], prog_bar=True)
 
-        self.outputs["val"].extend(df.to_dict("records"))
+        #self.outputs["val"].extend(df.to_dict("records"))
         return {"val_loss": loss}
 
 
     def test_step(self, batch, batch_idx):
-        _, output = self._step(batch, "test")
+        loss, df = self._step(batch, "test")
         self.outputs["test"].extend(df.to_dict("records"))
-        return output
+        return loss
 
 
     def on_train_epoch_end(self, *args, **kwargs):

@@ -12,11 +12,17 @@ import pandas as pd
 #pytorch
 import torch
 
+#pytorch lightnig
+from pytorch_lightning import Trainer
+
 #segnlp
+from segnlp import get_logger
 import segnlp.utils as utils
 from segnlp.visuals.hp_tune_progress import HpProgress
 from segnlp.utils import get_ptl_trainer_args
 
+
+logger = get_logger("ML")
 
 class ML:
 
@@ -65,7 +71,6 @@ class ML:
         #dumping the arguments
         model_args_c = deepcopy(model_args)
         model_args_c.pop("label_encoders")
-        model_args_c["model"] = self.model.name()
 
         time = utils.get_time()
         config = {
@@ -363,16 +368,19 @@ class ML:
             hyperparamaters = model_config["args"]["hyperparamaters"]
             self.data_module.batch_size = hyperparamaters["general"]["batch_size"]
 
-            trainer = setup_ptl_trainer( 
+            ptl_trn_args = get_ptl_trainer_args( 
                                         ptl_trn_args=ptl_trn_args,
                                         hyperparamaters=hyperparamaters, 
                                         exp_model_path=None,
                                         save_choice=None, 
                                         )
 
-            model_config["args"]["model"] = deepcopy(self.model)
+            trainer = Trainer(**ptl_trn_args)
+
+            model = deepcopy(self.model)
+            print(model_config["args"])
             model_config["args"]["label_encoders"] = self._pp_encoders
-            model = PTLBase.load_from_checkpoint(seed_model["path"], **model_config["args"])
+            model = model.load_from_checkpoint(seed_model["path"], **model_config["args"])
             scores = trainer.test(
                                     model=model, 
                                     test_dataloaders=self.data_module.test_dataloader(),

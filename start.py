@@ -27,7 +27,7 @@ hps = {
                 "optimizer": "Adam",
                 "lr": 0.001,
                 "batch_size": 16,
-                "max_epochs": 4000,
+                "max_epochs": 1,
                 "patience": 15,
                 "task_weight": 0.5,
                 },
@@ -48,12 +48,12 @@ hps = {
 
 best_hp = exp.train(
                         hyperparamaters = hps,
-                        n_random_seeds=6,
+                        n_random_seeds=1,
                         ptl_trn_args=dict(
                                             gpus=[1]
                                         ),
                         monitor_metric="val_LINK-f1"
                         )
 
-# exp1_scores, exp1_outputs = exp.test()
+exp1_scores, exp1_outputs = exp.test()
 # exp2_scores, exp2_outputs = exp.test(seg_preds="/tmp/seg_preds.csv")

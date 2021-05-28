@@ -36,6 +36,8 @@ class JointPN(PTLBase):
     def __init__(self,  *args, **kwargs):   
         super().__init__(*args, **kwargs)
 
+        self.task = self.tasks[0]
+
         self.char_embedder = Embedder(
                                         layer = "CharEmb", 
                                         hyperparams = self.hps.get("CharEmb", {}),
@@ -50,7 +52,7 @@ class JointPN(PTLBase):
                                 layer = "CRF",
                                 hyperparams = self.hps.get("CRF", {}),
                                 input_size = self.encoder.output_size,
-                                output_size = NONE
+                                output_size = self.task_dims[self.task]
                                 )
 
 
@@ -79,10 +81,10 @@ class JointPN(PTLBase):
 
         return  {
                 "logits":{
-                        TASK: logits,
+                        self.task: logits,
                         },
                 "preds": {
-                        TASK: preds,
+                        self.task: preds,
                         }
                 }
 
@@ -90,8 +92,8 @@ class JointPN(PTLBase):
 
     def loss(self, batch, forward_output:dict):
         return = self.segmenter.loss(
-                                        logits = forward_output["logits"][TASK],
-                                        targets = batch["seg"][TASK],
+                                        logits = forward_output["logits"][self.task],
+                                        targets = batch["seg"][self.task],
                                         mask = batch["token"]["mask"],
                                     )
 
