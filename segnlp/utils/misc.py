@@ -22,8 +22,6 @@ import pandas as pd
 from numpy.random import MT19937
 from numpy.random import RandomState, SeedSequence
 
-
-
 #torch
 import torch
 
@@ -31,6 +29,10 @@ import torch
 from pytorch_lightning import seed_everything
 
 
+#segnlp
+from segnlp import get_logger
+
+logger = get_logger("MISC-UTILS")
 
 
 def check_gpu(self, gpu:int, verbose=1) -> Tuple[bool, torch.device]:

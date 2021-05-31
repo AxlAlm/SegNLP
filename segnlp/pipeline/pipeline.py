@@ -1,22 +1,12 @@
 
 #basics
-import sys
 from typing import List, Tuple, Dict, Callable, Union
-import itertools
 import json
-import warnings
 import numpy as np
 import os
-import shutil
 import pwd
-from copy import deepcopy
-from glob import glob
 import pandas as pd
 from scipy import stats
-
-
-#deepsig
-from deepsig import aso
 
 #pytorch
 import torch
@@ -31,21 +21,6 @@ from segnlp.preprocessing import Preprocessor
 import segnlp.utils as utils
 from segnlp import models
 
-
-# from segnlp.preprocessing.dataset_preprocessor import PreProcessedDataset
-# from segnlp.ptl import get_ptl_trainer_args
-# from segnlp.ptl import PTLBase
-# from segnlp.utils import set_random_seed
-# from segnlp.utils import get_time
-# from segnlp.utils import create_uid
-# from segnlp.utils import random_ints
-# from segnlp.utils import ensure_numpy
-# from segnlp.evaluation_methods import get_evaluation_method
-# from segnlp.features import get_feature
-# from segnlp.nn.utils import ModelOutput
-# from segnlp.visuals.hp_tune_progress import HpProgress
-# from segnlp.metrics import base_metric
-
 logger = get_logger("PIPELINE")
 user_dir = pwd.getpwuid(os.getuid()).pw_dir
 
@@ -55,13 +30,11 @@ class Pipeline(Evaluation, ML, StatSig):
     
     def __init__(self,
                 id:str,
-                dataset:str,
+                dataset:Union[str, DataSet],
                 model:Union[torch.nn.Module, str],
                 metric:str,
                 features:list = [],
                 encodings:list = [],
-                model_dir:str = None,
-                tokens_per_sample:bool=False,
                 other_levels:list=[],
                 evaluation_method:str = "default",
                 root_dir:str =f"{user_dir}/.segnlp/" #".segnlp/pipelines"       
@@ -181,7 +154,7 @@ class Pipeline(Evaluation, ML, StatSig):
         config_fp = os.path.join(self._path, "config.json")
         if not os.path.exists(config_fp):
             with open(config_fp, "w") as f:
-                json.dump(self.config, f, indent=4)  
+                json.dump(self.config, f, indent=4)
 
 
 

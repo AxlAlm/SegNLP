@@ -8,7 +8,7 @@ from torch import Tensor
 from segnlp.utils import zero_pad
 
 # AllenNLP
-from allennlp.modules.conditional_random_field import ConditionalRandomField as CRF
+from allennlp.modules.conditional_random_field import ConditionalRandomField as CRF_
 
 
 class CRF(nn.Module):
@@ -24,16 +24,12 @@ class CRF(nn.Module):
     def __init__(self, 
                 input_size:int, 
                 output_size:int, 
-                hidden_size:int=256, 
-                num_layers:int=1, 
-                bidir:bool=True, 
                 dropout:float=0.0,
                 ):
         super().__init__()
         self.clf = nn.Linear(input_size, output_size)
-        self.crf = CRF(    
+        self.crf = CRF_(    
                         num_tags=output_size,
-                        batch_first=True
                         )
         self.dropout = nn.Dropout(dropout)
 
@@ -46,20 +42,20 @@ class CRF(nn.Module):
 
         input = self.dropout(input)
         logits = self.clf(input)
-        preds = crf.viterbi_tags(
+        preds = self.crf.viterbi_tags(
                                 logits=logits,
                                 mask=mask,
-                                top_k=1
+                                #top_k=1
                                 )
-        # preds = [p[0] for p in preds]
+        preds = [p[0] for p in preds]
     
         preds = torch.tensor(zero_pad(preds))
-        return logits, preds
+        return logits, {"preds": preds}
     
 
     def loss(self, logits:Tensor, targets:Tensor, mask:Tensor):
         targets[targets == -1] = 0
-        loss = - self.crf( 
+        loss = -self.crf( 
                             inputs=logits,
                             tags=targets,
                             mask=mask,

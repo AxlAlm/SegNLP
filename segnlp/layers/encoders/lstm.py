@@ -28,6 +28,7 @@ class LSTM(nn.Module):
                             )
         self.dropout = nn.Dropout(dropout)
         self.__initialize_weights(w_init)
+        self.output_size = hidden_size * (2 if bidir else 1)
 
     
 

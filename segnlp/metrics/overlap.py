@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 
 
+from segnlp import utils
+
 """
 Metric from : https://www.aclweb.org/anthology/N16-1164.pdf
 
@@ -47,6 +49,14 @@ def overlap(
             task: str,
             ):
 
+    """
+    Given all target segmetns in the sample and a predicted segments, the function 
+    will find all the ids of the targets segments which overlaps with the predicted segment 
+    and then calculate how large portion the predicted segment is overlapping with the 
+    target segments
+
+    """
+
     match_info = {
                     "exact":None,
                     "approx": None,
@@ -54,15 +64,16 @@ def overlap(
                     "target_label": None,
                     "pred_label": None,
                 }
-
+    
     t_segs = pred_seg.groupby("T-seg_id")
 
-    if not t_seg_ids:
+    if not t_segs:
         return match_info
 
     for t_seg_id, overlap_df in t_segs:
-        target_df = target_segs[t_seg_id]
-        overlap_percent = overlap_df.shape / target_df.shape
+
+        target_df = target_segs.get_group(t_seg_id)
+        overlap_percent = overlap_df.shape[0] / target_df.shape[0]
 
         match_info["target_label"] =  labels.index(target_df[task].tolist()[0])
         match_info["pred_label"] = labels.index(overlap_df[task].tolist()[0])
@@ -97,18 +108,18 @@ def fill_pred_labels(
                                 task="label",
                             )
 
-        j2match_info[j] = match_info
+        j2match_info[match_info["j"]] = match_info
         i2j[i] = match_info["j"]
 
         t = match_info["target_label"]
         p = match_info["pred_label"]
 
-        if approx:
+        if match_info["approx"]:
             conf_ms["label"]["approx"][t, p] += 1
         else:
             conf_ms["label"]["approx"][-1, p] += 1
 
-        if exact:
+        if match_info["exact"]:
             conf_ms["label"]["exact"][t, p] += 1
         else:
             conf_ms["label"]["exact"][-1, p] += 1
@@ -117,6 +128,7 @@ def fill_pred_labels(
 def fill_pred_link_labels(  i, 
                             conf_ms:dict, 
                             target_segs:list, 
+                            pred_segs:list,
                             pred_seg:pd.DataFrame, 
                             i2j:dict, 
                             j2match_info:dict,
@@ -125,7 +137,8 @@ def fill_pred_link_labels(  i,
 
     source = pred_seg
     link = pred_seg["link"].tolist()[0]
-    target = pred_segs[link]
+    target = source
+    #[df for i,df in pred_segs][int(link)]
 
     #if something is an exact match its also going to be an approximate match so we dont need the returned labels etc
     source_match_info = overlap(
@@ -138,7 +151,7 @@ def fill_pred_link_labels(  i,
 
     target_match_info = overlap(
                                     target_segs = target_segs,
-                                    pred_seg = source,
+                                    pred_seg = target,
                                     labels = labels,
                                     task = "link_label"
                                 )
@@ -149,26 +162,26 @@ def fill_pred_link_labels(  i,
 
     j2match_info["link_info"] = {"exact":False, "approx":True}
            
-    for overlap in ["approx", "exact"]:
+    for overlap_ratio in ["approx", "exact"]:
 
         # check if source and target both overlap with ground truth segments
         #  if they do not, we treat the case as a FP, i.e. set the True label to NO OVERLAP
-        if source_match_info[overlap] and target_match_info[overlap]:
+        if source_match_info[overlap_ratio] and target_match_info[overlap_ratio]:
 
             # then we check if the target is the ground truth target
             # i.e. is the predicted link the same as the ground truth link
             # IF its not we treat it as a FP, i.e. set the True label to NO OVERLAP
             if i2j.get(link, "") == tj:
-                conf_ms["link_label"][overlap][t, p] += 1
-                j2match_info["link_info"][overlap] = True
+                conf_ms["link_label"][overlap_ratio][t, p] += 1
+                j2match_info["link_info"][overlap_ratio] = True
             else:
-                conf_ms["link_label"][overlap][-1, p] += 1
+                conf_ms["link_label"][overlap_ratio][-1, p] += 1
         
         else:
-            conf_ms["link_label"][overlap][-1, p] += 1
+            conf_ms["link_label"][overlap_ratio][-1, p] += 1
 
 
-def fill_missing_label(j, t, j2match_info:dict):
+def fill_missing_label(j, t, j2match_info:dict, conf_ms:dict):
 
     # if there is not any predicted segments that overlaps with j we count it
     # as NO OVERLAP
@@ -183,9 +196,9 @@ def fill_missing_label(j, t, j2match_info:dict):
 
         if not j2match_info[j]["approx"]:
             conf_ms["label"]["approx"][t, -1] += 1
-        
 
-def fill_missing_link_label(j, t, j2match_info:dict):
+
+def fill_missing_link_label(j, t, j2match_info:dict, conf_ms:dict):
 
     # if there is not any predicted segments that overlaps with j we count it
     # as NO OVERLAP
@@ -212,15 +225,16 @@ def create_cms(df:pd.DataFrame, task_labels:dict):
         conf_ms[task] = {}
         nr_l = len(labels)
         conf_ms[task]["exact"] = np.zeros((nr_l, nr_l))
-        conf_ms[task]["approximate"] = np.zeros((nr_l, nr_l))
+        conf_ms[task]["approx"] = np.zeros((nr_l, nr_l))
 
 
-    for _, sample in df.groupby("sample_id"):
+    for k, sample in df.groupby("sample_id"):
+        print(k)
 
         target_segs = sample.groupby("T-seg_id")
         pred_segs = sample.groupby("seg_id")
 
-        j2i = {}
+        i2j = {}
         j2match_info = {}
 
         for i, pred_seg in pred_segs:
@@ -231,7 +245,7 @@ def create_cms(df:pd.DataFrame, task_labels:dict):
                             target_segs = target_segs, 
                             pred_seg = pred_seg,
                             j2match_info = j2match_info,
-                            j2i = j2i,
+                            i2j = i2j,
                             labels = task_labels["label"]
                             )
 
@@ -239,9 +253,11 @@ def create_cms(df:pd.DataFrame, task_labels:dict):
                                     i, 
                                     conf_ms = conf_ms,
                                     target_segs = target_segs, 
+                                    pred_segs = pred_segs,
                                     pred_seg = pred_seg,
-                                    j2i = j2i,
-                                    labels = task_labels["label"]
+                                    i2j = i2j,
+                                    j2match_info = j2match_info,
+                                    labels = task_labels["link_label"]
                                     )
 
 
@@ -252,13 +268,15 @@ def create_cms(df:pd.DataFrame, task_labels:dict):
             fill_missing_label(
                                 j, 
                                 t, 
-                                j2match_info=j2match_info
+                                j2match_info=j2match_info,
+                                conf_ms=conf_ms,
                                 )
 
             fill_missing_link_label(
                                     j, 
                                     t, 
-                                    j2match_info=j2match_info
+                                    j2match_info=j2match_info,
+                                    conf_ms=conf_ms,
                                     )
 
 
@@ -388,16 +406,13 @@ def overlap_metric(
 
 
 
-
-
-
 # def fill_label_cm(sample:pd.DataFrame, conf_ms:dict, index_map:dict):
 
 #     target_segments = sample.groupby()
 
 #     # this dict will contain a mapping between predicted segment ids and the ground truth segments id
 #     # that they represent, i.e. overlap with.
-#     j2i = {}
+#     i2j = {}
 
 #     # we save info for each ground truth segments about which predicted segments is overlapping with it etc
 #     overlap_info = []
@@ -465,7 +480,7 @@ def overlap_metric(
 #                             "approximate": approx_match,
 #                             })
     
-#     return overlap_info, j2i
+#     return overlap_info, i2j
 
 
 
@@ -550,11 +565,11 @@ def overlap_metric(
 #         # in previous steps we mapped predicted segments j with the overlapping ground truth segments i
 #         # i is ith segments of all ground truth segments
 #         # j is jth segments of all ground truth segments
-#         # j2i(j) is the i of the ground truth segment that j is overlapping with.
+#         # i2j(j) is the i of the ground truth segment that j is overlapping with.
 #         #
-#         # if j2i(j) != i where i and j are predicted link indexes, we 
+#         # if i2j(j) != i where i and j are predicted link indexes, we 
 #         # know that the predicted link is wrong.
-#         if j2i.get(dict_["link"], None) != dict_["T-link"]:
+#         if i2j.get(dict_["link"], None) != dict_["T-link"]:
 #             continue
         
 

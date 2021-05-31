@@ -29,6 +29,7 @@ class CharEmb(nn.Module):
                                     kernel_size=kernel_size, 
                                     )
         self.dropout = nn.Dropout(dropout)
+        self.output_size = n_filters
                                     
 
     def forward(self, char_encs:Tensor):

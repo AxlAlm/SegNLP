@@ -15,6 +15,7 @@ from segnlp.layers import reducers
 from segnlp.layers import linkers
 from segnlp.layers import segmenters
 from segnlp.layers import general
+from segnlp.layers import reprojecters
 
 
 class Layer(nn.Module):
@@ -22,12 +23,11 @@ class Layer(nn.Module):
     def __init__(self, 
                 layer:nn.Module, 
                 hyperparams:dict, 
-                input_size:int, 
+                input_size:int=None, 
                 output_size:int=None,
                 ):
         super().__init__()
         input_size = input_size
-        #output_size = output_size
 
         params = hyperparams
         params["input_size"] = input_size
@@ -68,13 +68,25 @@ class Layer(nn.Module):
 
 class Embedder(Layer):
 
-    def __init__(self, layer:nn.Module, hyperparams:dict, input_size:int):
+    def __init__(self, layer:nn.Module, hyperparams:dict):
         
         if isinstance(layer, str):
             layer = getattr(embedders, layer)
 
-        super().__init__(layer=layer, hyperparams=hyperparams, input_size=input_size)
+        super().__init__(layer=layer, hyperparams=hyperparams)
         
+
+
+class Reprojecter(Layer):
+
+
+    def __init__(self, layer:nn.Module, hyperparams:dict, input_size:int):
+        
+        if isinstance(layer, str):
+            layer = getattr(reprojecters, layer)
+
+        super().__init__(layer=layer, hyperparams=hyperparams, input_size=input_size)
+
 
 class Encoder(Layer):
 
@@ -150,8 +162,9 @@ class Segmenter(CLFlayer):
                 hyperparams:dict, 
                 input_size:int,
                 output_size:int,
-                labels:dict,
-                encoding_scheme:str="bio",
+                decode:bool = False,
+                encoding_scheme:str = "bio",
+                labels:dict=None,
                 ):
 
         if isinstance(layer, str):
@@ -164,22 +177,26 @@ class Segmenter(CLFlayer):
                         output_size=output_size
                         )
 
-        if encoding_scheme == "bio":
-            self.seg_decoder = BIODecoder(
-                                        B = [i for i,l in enumerate(labels) if "B-" in l],
-                                        I = [i for i,l in enumerate(labels) if "I-" in l],
-                                        O = [i for i,l in enumerate(labels) if "O-" in l],
-                                        )
-        else:
-            raise NotImplementedError(f'"{encoding_scheme}" is not a supported encoding scheme')
+        self.decode = decode
+        if decode:
+            if encoding_scheme == "bio":
+                self.seg_decoder = BIODecoder(
+                                            B = [i for i,l in enumerate(labels) if "B-" in l],
+                                            I = [i for i,l in enumerate(labels) if "I-" in l],
+                                            O = [i for i,l in enumerate(labels) if "O-" in l],
+                                            )
+            else:
+                raise NotImplementedError(f'"{encoding_scheme}" is not a supported encoding scheme')
 
 
     def _call(self, *args, **kwargs):
         logits, output =  self.layer(*args, **kwargs)
-        output.update(self.seg_decoder(
-                                        batch_encoded_bios = output["preds"], 
-                                        lengths = kwarg["lengths"],                  
-                                        ))
+
+        if self.decode:
+            output.update(self.seg_decoder(
+                                            batch_encoded_bios = output["preds"], 
+                                            lengths = kwarg["lengths"],                  
+                                            ))
         return logits, output
 
 

@@ -1,9 +1,26 @@
 
+
+
+# {
+#     "name": "lark",
+#     "host": "lark.clasp.gu.se",
+#     "protocol": "sftp",
+#     "username": "axlalm",
+#     "remotePath": "/home/axlalm/SegNLP",
+#     "uploadOnSave": true,
+#     "privateKeyPath": "/Users/xalmax/.ssh/id_rsa"
+#     }
+
+# {
+#     "python.pythonPath": "/Users/xalmax/opt/anaconda3/envs/segnlp/bin/python"
+# }
+
 from segnlp import Pipeline
 from segnlp.datasets.am import PE
 from segnlp.models import JointPN
 from segnlp.features import GloveEmbeddings
 from segnlp.features import SegPos
+
 from segnlp.features import BOW
 
 exp = Pipeline(
@@ -27,7 +44,7 @@ hps = {
                 "optimizer": "Adam",
                 "lr": 0.001,
                 "batch_size": 16,
-                "max_epochs": 1,
+                "max_epochs":4000,
                 "patience": 15,
                 "task_weight": 0.5,
                 },

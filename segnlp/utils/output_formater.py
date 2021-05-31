@@ -49,7 +49,7 @@ class OutputFormater:
                             seg_lengths:np.ndarray,
                             span_lengths:np.ndarray
                             ) -> list:
-
+        
         batch_token_seg_ids = []
         bz = len(span_token_lengths)
         total_segs = 0
@@ -57,7 +57,8 @@ class OutputFormater:
             nr_seg = int(seg_lengths[i])
 
             span_tok_lens = ensure_numpy(span_token_lengths[i][:span_lengths[i]])
-            seg_mask = ensure_numpy(none_span_masks[i][:span_lengths[i]])
+            seg_mask = ensure_numpy(none_span_masks[i][:span_lengths[i]]).astype(np.int)
+            
             seg_ids = np.arange(start=total_segs, stop=total_segs+nr_seg, dtype=seg_mask.dtype)
             seg_mask[seg_mask.astype(bool)] += seg_ids
 
@@ -104,7 +105,7 @@ class OutputFormater:
                 subtask_preds[i][:lengths[i]] = [decoder(x) for x in decoded_labels[i][:lengths[i]]]
 
 
-            self.add_preds(
+            self.__add_preds(
                             task=subtask, 
                             level=level, 
                             data=subtask_preds,
@@ -337,8 +338,7 @@ class OutputFormater:
                                                         span_lengths = self.pred_seg_info["span"]["lengths"],
                                                         )
             self._outputs["seg_id"] = token_seg_ids
-        else:
-            self._outputs["seg_id"] = self._outputs["T-seg_id"]
+
 
         mask = ensure_numpy(self.batch[level]["mask"])
         preds_flat = ensure_flat(ensure_numpy(preds), mask=mask)
@@ -375,6 +375,7 @@ class OutputFormater:
                                                                 seg_lengths = self.batch["seg"]["lengths"],
                                                                 span_lengths = self.batch["span"]["lengths"],
                                                             )
+            self._outputs["seg_id"] = self._outputs["T-seg_id"].copy()
 
 
     def format(self, batch:dict, preds:dict):

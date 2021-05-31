@@ -71,7 +71,6 @@ class ML:
         #dumping the arguments
         model_args_c = deepcopy(model_args)
         model_args_c.pop("label_encoders")
-
         time = utils.get_time()
         config = {
                     "time": str(time),
@@ -144,13 +143,13 @@ class ML:
                                 )
 
 
-        if self.exp_logger:
-            self.exp_logger.set_id(model_id)
-            self.exp_logger.log_hyperparams(hyperparamaters)
+        # if self.exp_logger:
+        #     self.exp_logger.set_id(model_id)
+        #     self.exp_logger.log_hyperparams(hyperparamaters)
 
-            if isinstance(exp_logger, CometLogger):
-                self.exp_logger.experiment.add_tags([self.project, self.id])
-                self.exp_logger.experiment.log_others(exp_config)
+        #     if isinstance(exp_logger, CometLogger):
+        #         self.exp_logger.experiment.add_tags([self.project, self.id])
+        #         self.exp_logger.experiment.log_others(exp_config)
 
 
         ptl_trn_args = get_ptl_trainer_args( 

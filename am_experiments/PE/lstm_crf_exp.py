@@ -8,11 +8,6 @@ from segnlp.nn.models.general import LSTM_CRF
 from segnlp.features import GloveEmbeddings, FlairEmbeddings, BertEmbeddings
 from segnlp.nn.default_hyperparamaters import get_default_hps
 
-from segnlp.utils import random_ints, set_random_seed
-import numpy as np
-
-from pprint import pprint
-
 import flair, torch
 flair.device = torch.device('cpu') 
 
