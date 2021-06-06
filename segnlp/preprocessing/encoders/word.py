@@ -1,25 +1,31 @@
 
 
-from segnlp.preprocessing.encoders.base import Encoder
-#from nltk.corpus import words
-from ...resources.vocab import vocab
+#basics
 from typing import List, Union, Dict
-#import json
+
+#segnlp
+from segnlp.resources.vocab import brown_vocab
+from segnlp.preprocessing.encoders.base import Encoder
+
 
 class WordEncoder(Encoder):
 
 
-    def __init__(self, max_sample_length:int=None):
+    def __init__(self, max_sample_length:int=None, vocab:list=None):
         self._name = "words"
         self._max_sample_length = max_sample_length
         self.pad_value = 0
-        self.word2id = vocab
-        self.id2word = {i:w for w,i in self.word2id.items()}
-        self.unkown = "<unkown>"
+
+        if vocab == None:
+            self._vocab = brown_vocab()
+
+        self._vocab.append("<UNK>")
+        self.id2word = dict(enumerate(self._vocab))
+        self.word2id = {w:i for i,w in self.id2word.items()}
 
 
     def __len__(self):
-       len(self._vocab)
+       return len(self._vocab)
     
     
     @property
@@ -28,7 +34,7 @@ class WordEncoder(Encoder):
 
 
     def encode(self, word):
-        return self.word2id.get(word,self.word2id["<unkown>"])
+        return self.word2id.get(word,self.word2id["<UNK>"])
 
 
     def decode(self, i):

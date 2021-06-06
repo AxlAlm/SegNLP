@@ -2,7 +2,8 @@
 
 #pytorch
 import torch.nn as nn
-from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+from torch.nn.utils.rnn import pack_padded_sequence
+from torch.nn.utils.rnn import pad_packed_sequence
 from torch import Tensor
 
 
@@ -15,6 +16,7 @@ class LSTM(nn.Module):
                     num_layers:int, 
                     bidir:bool, 
                     dropout:float=0.0,
+                    input_dropout:float=0.0,
                     w_init:str="xavier_uniform"
                     ):
         super().__init__()
@@ -24,9 +26,10 @@ class LSTM(nn.Module):
                                 hidden_size=hidden_size,
                                 num_layers=num_layers, 
                                 bidirectional=bidir,  
-                                batch_first=True
+                                batch_first=True,
+                                dropout = dropout
                             )
-        self.dropout = nn.Dropout(dropout)
+        self.input_dropout = nn.Dropout(input_dropout)
         self.__initialize_weights(w_init)
         self.output_size = hidden_size * (2 if bidir else 1)
 
@@ -52,7 +55,7 @@ class LSTM(nn.Module):
 
     def forward(self, input:Tensor, lengths:Tensor, padding=0.0):
 
-        input = self.dropout(input)
+        input = self.input_dropout(input)
         
         pass_states = False
         if isinstance(input, tuple):

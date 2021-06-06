@@ -28,11 +28,10 @@ exp = Pipeline(
 hps = {
         "general":{
                 "optimizer": "SGD",
-                "lr": 0.001,
+                "lr": 0.1,
                 "batch_size": 10,
                 "max_epochs":200,
                 "patience": 5,
-                "task_weight": 0.5,
                 },
         "CharEmb": {  
                     "emb_size": 30,
@@ -54,9 +53,10 @@ best_hp = exp.train(
                         hyperparamaters = hps,
                         n_random_seeds=1,
                         ptl_trn_args=dict(
-                                            #gpus=[1],
+                                            gpus=[2],
                                             #gradient_clip_val=5
-                                        )
+                                        ),
+                        monitor_metric="val_f1-50%-micro"
                         )
 
 exp1_scores, exp1_outputs = exp.test()

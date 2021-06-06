@@ -1,4 +1,5 @@
 #pytroch
+from segnlp.layer_wrappers.layer_wrappers import Embedder, Reprojecter
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,6 +11,8 @@ from segnlp.layer_wrappers import Reducer
 from segnlp.layer_wrappers import Encoder
 from segnlp.layer_wrappers import Linker
 from segnlp.layer_wrappers import Labeler
+
+from segnlp.layers.embedders import BOW
 
 
 class JointPN(PTLBase):
@@ -38,16 +41,35 @@ class JointPN(PTLBase):
                             input_size = self.feature_dims["word_embs"]
                             )
 
+
+        self.bow = Embedder(
+                            layer = "BOW",
+                            #vocab = self.feature_dims["vocab"],
+                            hyperparams = self.hps.get("BOW", {}),
+                            )
+
+        self.fc1 = Reprojecter(
+                                    layer = "LinearRP", 
+                                    hyperparams = self.hps.get("LinearRP", {}),
+                                    input_size = self.bow.output_size + self.agg.output_size + self.feature_dims["doc_embs"]
+                                )
+
+        self.fc2 = Reprojecter(
+                                    layer = "LinearRP", 
+                                    hyperparams = self.hps.get("LinearRP", {}),
+                                    input_size = self.bow.output_size + self.agg.output_size + self.feature_dims["doc_embs"]
+                                )
+
         self.encoder = Encoder(    
-                                layer = "LLSTM", 
-                                hyperparams = self.hps.get("LLSTM", {}),
-                                input_size = self.agg.output_size + self.feature_dims["doc_embs"]
+                                layer = "LSTM", 
+                                hyperparams = self.hps.get("LSTM", {}),
+                                input_size = self.fc1.output_size
                                 )
 
         self.pointer = Linker(
                                 layer = "Pointer",
                                 hyperparams = self.hps.get("Pointer", {}),
-                                input_size = self.agg.output_size + self.feature_dims["doc_embs"],
+                                input_size = self.fc2.output_size,
                                 output_size = self.task_dims["link"]
                                 )
 
@@ -57,6 +79,8 @@ class JointPN(PTLBase):
                                 input_size = self.encoder.output_size,
                                 output_size = self.task_dims["label"]
                                 )
+        
+    
 
 
     @classmethod
@@ -72,19 +96,27 @@ class JointPN(PTLBase):
                             span_idxs = batch["seg"]["span_idxs"],
                             )
 
-        seg_embs = torch.cat((seg_embs, batch["seg"]["doc_embs"]), dim=-1)
+        bow = self.bow(
+                        word_encs = batch["token"]["words"], 
+                        span_idxs = batch["seg"]["span_idxs"]
+                        )
 
+        seg_embs = torch.cat((seg_embs, bow, batch["seg"]["doc_embs"]), dim=-1)
+
+        
+        f1c_out =self.fc1(seg_embs)
         encoder_out, states = self.encoder(
-                                    input = seg_embs,
-                                    lengths = batch["seg"]["lengths"],
-                                    )
+                                        input = f1c_out,
+                                        lengths = batch["seg"]["lengths"],
+                                        )
     
         label_logits, label_preds  = self.labeler(
                                                 input = encoder_out,
                                                 )
 
+        f2c_out = self.fc1(seg_embs)
         link_logits, link_preds = self.pointer(
-                                            input = seg_embs,
+                                            inputs = f2c_out,
                                             encoder_outputs = encoder_out,
                                             mask = batch["seg"]["mask"],
                                             states = states,

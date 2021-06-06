@@ -84,27 +84,15 @@ class CBAttentionLayer(nn.Module):
 class Pointer(nn.Module):
 
     """
-    A pointer is learing attention scores for each position over all possible position. Attention scores
-    are probility distributions over all possible units in the input.
 
-    These probabilites are interpreted as to where a units it pointing. E.g. if the attention
-    scores for a unit at position n is are hightest at position n+2, then we say that
-    n points to n+2.
+    Implementation of 
 
+    https://arxiv.org/pdf/1612.08994.pdf
+    
+    and
 
-    The works as follows:
+    https://arxiv.org/pdf/1506.03134v1.pdf
 
-    1) we set first decode input cell state and hidden state from encoder outputs
-
-    then for each LSTMCELL timestep we:
-
-    2) apply a ffnn with sigmoid activation
-
-    3) apply dropout
-
-    4) pass output of 3 to lstm cell with reps from prev timestep
-
-    5) apply attention over given decoder at timestep i and all decoder timestep reps
 
     """
 
@@ -120,7 +108,7 @@ class Pointer(nn.Module):
         self.hidden_size = hidden_size
 
 
-    def forward(self, input:Tensor, encoder_outputs:Tensor, mask:Tensor, states:Tensor=None):
+    def forward(self, inputs:Tensor, encoder_outputs:Tensor, mask:Tensor, states:Tensor=None):
 
         seq_len = encoder_outputs.shape[1]
         batch_size = encoder_outputs.shape[0]
@@ -150,22 +138,24 @@ class Pointer(nn.Module):
                 raise NotImplementedError()
             
  
-        encoder_outputs = self.dropout(encoder_outputs)
-        input = self.dropout(input)
-
         logits = torch.zeros(batch_size, seq_len, seq_len, device=device)
+
+        decoder_input = torch.zeros((batch_size, self.hidden_size), device=device)
         for i in range(seq_len):
 
-            if i == 0:
-                decoder_input = torch.zeros(input[:,0].shape, device=device)
-            else:
-                decoder_input = input[:,i-1]
-            
-            decoder_input = torch.sigmoid(self.input_layer(decoder_input))
             h_s, c_s = self.lstm_cell(decoder_input, (h_s, c_s))
 
-            logits[:, i] = self.attention(h_s, encoder_outputs, mask)
-        
-        preds = torch.argmax(logits, dim=-1)
+            #h_s = self.dropout(h_s)
 
+            logits[:, i] = self.attention(h_s, encoder_outputs, mask)
+
+            # index of the target
+            link = torch.argmax(logits[:, i], dim=-1)
+            decoder_input = torch.stack([inputs[j, link[j]] for j in range(batch_size)])
+
+            #h_s = self.dropout(h_s)
+            #decoder_input = self.dropout(decoder_input)
+
+                            
+        preds = torch.argmax(logits, dim=-1)
         return logits, preds

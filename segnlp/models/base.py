@@ -17,7 +17,7 @@ from transformers import get_constant_schedule_with_warmup
 
 #am 
 from segnlp import get_logger
-import segnlp.utils as utils
+from segnlp import utils
 import segnlp.metrics as metrics
 
 logger = get_logger("PTLBase (ptl.LightningModule)")
@@ -67,6 +67,7 @@ class PTLBase(ptl.LightningModule):
         return self._step(batch, split="test")
 
 
+    #@utils.timer
     def _step(self, batch:utils.ModelInput, split:str):
         batch.current_epoch = self.current_epoch
         output = self.forward(batch)

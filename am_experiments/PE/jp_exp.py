@@ -21,8 +21,11 @@ exp = Pipeline(
                 features =[
                             GloveEmbeddings(),
                             SegPos(),
-                            BOW()
+                            #BOW()
                             ],
+                encodings = [
+                                "words"
+                                ]
             )
 
 hps = {
@@ -37,23 +40,28 @@ hps = {
         "Agg":{
                 "mode":"mix",
                 },
-        "LLSTM": {  
+        "LinearRP": {
+                        "hidden_size": 512,
+                        "activation": "Sigmoid"
+
+                },
+        "LSTM": {  
                     "dropout":0.9,
                     "hidden_size": 256,
                     "num_layers":1,
                     "bidir":True,
                     },
         "Pointer": {
-                    #"dropout":0.0,
+                    "dropout":0.9,
                     "hidden_size":512,
                     }
         }
 
 best_hp = exp.train(
                         hyperparamaters = hps,
-                        n_random_seeds=1,
+                        n_random_seeds=6,
                         ptl_trn_args=dict(
-                                            #gpus=[1]
+                                            gpus=[1]
                                         ),
                         monitor_metric="val_link-f1"
                         )

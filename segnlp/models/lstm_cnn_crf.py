@@ -11,11 +11,13 @@ import torch.nn.functional as F
 
 #segnlp
 from .base import PTLBase
-
 from segnlp.layer_wrappers import Embedder
 from segnlp.layer_wrappers import Encoder
 from segnlp.layer_wrappers import Segmenter
 from segnlp.layer_wrappers import Reprojecter
+
+
+from segnlp import utils
 
 
 class LSTM_CNN_CRF(PTLBase):
@@ -68,7 +70,7 @@ class LSTM_CNN_CRF(PTLBase):
     def name(self):
         return "LSTM_CNN_CRF"
 
-
+    #@utils.timer
     def forward(self, batch):
 
         word_embs = self.finetuner(batch["token"]["word_embs"])
@@ -94,11 +96,9 @@ class LSTM_CNN_CRF(PTLBase):
                         }
                 }
 
-
-
     def loss(self, batch:dict, forward_output:dict):
         return self.segmenter.loss(
                                         logits = forward_output["logits"][self.task],
-                                        targets = batch["seg"][self.task],
+                                        targets = batch["token"][self.task],
                                         mask = batch["token"]["mask"],
                                     )

@@ -8,6 +8,9 @@ from .array import ensure_numpy
 from .array import ensure_flat
 from .array import create_mask
 
+from segnlp import utils
+
+
 class BIODecoder:
 
     def __init__(self, 
@@ -30,7 +33,6 @@ class BIODecoder:
         #self.pattern = re.compile(f"({Bs})({Is})*|({Os})+")
         self.pattern = re.compile(f"(?P<UNIT>({Bs})({Is})*)|(?P<NONE>({Os})+)")
         
-
     def __call__(
                 self,
                 batch_encoded_bios:np.ndarray, 
@@ -97,6 +99,7 @@ class BIODecoder:
 
         encoded_bios = ensure_numpy(encoded_bios)
         encoded_bios_str = "<START>-" + "-".join(encoded_bios.astype(str)) + "-"
+        print(encoded_bios_str)
         all_matches = re.finditer(self.pattern, encoded_bios_str)
 
         none_span_mask = []

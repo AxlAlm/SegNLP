@@ -12,6 +12,7 @@ class CharEmb(nn.Module):
 
     def __init__(   
                 self,
+                vocab:int,
                 n_filters:int,
                 emb_size:int,
                 kernel_size:int,
@@ -19,7 +20,7 @@ class CharEmb(nn.Module):
                 ):
         super().__init__()
         self.char_emb_layer = nn.Embedding( 
-                                            num_embeddings=len(string.printable)+1,
+                                            num_embeddings=vocab,
                                             embedding_dim=emb_size, 
                                             padding_idx=0
                                             )

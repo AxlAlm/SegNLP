@@ -76,7 +76,6 @@ class Embedder(Layer):
         super().__init__(layer=layer, hyperparams=hyperparams)
         
 
-
 class Reprojecter(Layer):
 
 
@@ -127,18 +126,20 @@ class CLFlayer(Layer):
                         )
 
 
-    def loss(self, logits:Tensor, targets:Tensor):
+    def loss(self, *args, **kwargs):
 
         if hasattr(self.layer, "loss"):
-            loss = self.layer.loss(logits=logits, targets=targets)
+            loss = self.layer.loss(*args, **kwargs)
         else:
 
             if isinstance(self, Segmenter):
                 raise NotImplementedError
 
             else:
+                logits = kwargs["logits"]
+                targets = kwargs["targets"]
                 loss = F.cross_entropy(
-                                        torch.flatten(logits, end_dim=-2), 
+                                        torch.flatten(logits,end_dim=-2), 
                                         targets.view(-1), 
                                         reduction="mean",
                                         ignore_index=-1

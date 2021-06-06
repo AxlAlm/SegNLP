@@ -8,7 +8,6 @@ import pandas as pd
 #segnlp
 from .encoders import *
 from segnlp import get_logger
-from segnlp.utils import one_tqdm
 
 logger = get_logger("ENCODER")
 
@@ -70,6 +69,7 @@ class Encoder:
 
             if enc_type == "words":
                 self.encoders["words"] = WordEncoder()
+                #self.feature2dim["vocab"] = len(self.encoders["words"])
 
             elif enc_type == "pos":
                 self.encoders["pos"] = PosEncoder()

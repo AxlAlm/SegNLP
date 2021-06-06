@@ -7,6 +7,7 @@ import pandas as pd
 from .metric_utils import f1_precision_recall
 from .metric_utils import link_f1
 
+
 def default_segment_metric(df:pd.DataFrame, tasks_labels:dict):
     
     df = df.groupby("seg_id").first()

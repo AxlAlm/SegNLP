@@ -11,6 +11,7 @@ from collections import Counter
 from .model_input import ModelInput
 from .array import ensure_flat, ensure_numpy, flatten
 from .bio_decoder import BIODecoder
+from segnlp import utils
 
 #pytorch
 import torch
@@ -42,7 +43,6 @@ class OutputFormater:
                                         O = [i for i,l in id2label.items() if "O-" in l],
                                         )
 
-
     def __get_token_seg_ids(self,
                             span_token_lengths:np.ndarray, 
                             none_span_masks:np.ndarray,
@@ -51,14 +51,22 @@ class OutputFormater:
                             ) -> list:
         
         batch_token_seg_ids = []
+        batch_token_span_ids = []
         bz = len(span_token_lengths)
         total_segs = 0
+        total_nr_spans = 0
         for i in range(bz):
             nr_seg = int(seg_lengths[i])
-
+            nr_spans = len(none_span_masks[i][:span_lengths[i]])
             span_tok_lens = ensure_numpy(span_token_lengths[i][:span_lengths[i]])
+
+
+            span_ids = np.arange(start=total_nr_spans, stop=total_nr_spans+nr_spans)
+            token_span_ids = np.repeat(span_ids, span_tok_lens)
+            batch_token_span_ids.extend(token_span_ids.tolist())
+
+
             seg_mask = ensure_numpy(none_span_masks[i][:span_lengths[i]]).astype(np.int)
-            
             seg_ids = np.arange(start=total_segs, stop=total_segs+nr_seg, dtype=seg_mask.dtype)
             seg_mask[seg_mask.astype(bool)] += seg_ids
 
@@ -68,9 +76,11 @@ class OutputFormater:
 
             token_seg_ids = np.repeat(ids, span_tok_lens)
             batch_token_seg_ids.extend(token_seg_ids.tolist())
-            total_segs += nr_seg
 
-        return batch_token_seg_ids
+            total_segs += nr_seg
+            total_nr_spans += nr_spans
+
+        return batch_token_seg_ids, batch_token_span_ids
 
 
     def __add_subtask_preds(self, decoded_labels:np.ndarray, lengths:np.ndarray, level:str,  task:str):
@@ -331,13 +341,15 @@ class OutputFormater:
             self.pred_seg_info["span"]["none_span_mask"] = seg_data["span"]["none_span_mask"]
             
 
-            token_seg_ids = self.__get_token_seg_ids(
-                                                        span_token_lengths = self.pred_seg_info["span"]["lengths_tok"],
-                                                        none_span_masks = self.pred_seg_info["span"]["none_span_mask"],
-                                                        seg_lengths = self.pred_seg_info["seg"]["lengths"],
-                                                        span_lengths = self.pred_seg_info["span"]["lengths"],
-                                                        )
+            token_seg_ids, token_span_ids = self.__get_token_seg_ids(
+                                                            span_token_lengths = self.pred_seg_info["span"]["lengths_tok"],
+                                                            none_span_masks = self.pred_seg_info["span"]["none_span_mask"],
+                                                            seg_lengths = self.pred_seg_info["seg"]["lengths"],
+                                                            span_lengths = self.pred_seg_info["span"]["lengths"],
+                                                            )
             self._outputs["seg_id"] = token_seg_ids
+            self._outputs["span_id"] = token_span_ids
+
 
 
         mask = ensure_numpy(self.batch[level]["mask"])
@@ -346,6 +358,7 @@ class OutputFormater:
 
         self._outputs[task] = preds_flat
         self._outputs[f"T-{task}"] = targets_flat
+
 
 
     def __init__output(self, batch):
@@ -369,15 +382,21 @@ class OutputFormater:
         self._outputs["token_id"] = ensure_numpy([int(t) for sub in token_ids for t in sub])
 
         if not self.inference:  
-            self._outputs["T-seg_id"] = self.__get_token_seg_ids(
+            token_seg_ids, token_span_ids, = self.__get_token_seg_ids(
                                                                 span_token_lengths = self.batch["span"]["lengths_tok"],
                                                                 none_span_masks = self.batch["span"]["none_span_mask"],
                                                                 seg_lengths = self.batch["seg"]["lengths"],
                                                                 span_lengths = self.batch["span"]["lengths"],
                                                             )
-            self._outputs["seg_id"] = self._outputs["T-seg_id"].copy()
+
+            self._outputs["T-seg_id"] = token_seg_ids
+            self._outputs["seg_id"] = token_seg_ids
+
+            self._outputs["T-span_id"] = token_span_ids
+            self._outputs["span_id"] = token_span_ids
 
 
+    #@utils.timer
     def format(self, batch:dict, preds:dict):
 
         self.__init__output(batch)

@@ -66,10 +66,10 @@ class Pointer(nn.Module):
         output = torch.zeros(batch_size, seq_len, seq_len, device=device)
         for i in range(seq_len):
 
-            if i == 0:
-                decoder_input = torch.zeros(inputs[:,0].shape, device=device)
-            else:
-                decoder_input = inputs[:,i-1]
+            # if i == 0:
+            #     decoder_input = torch.zeros(inputs[:,0].shape, device=device)
+            # else:
+            decoder_input = inputs[:,i]
 
             # if self.use_dropout:
             #     decoder_input = self.dropout(decoder_input)

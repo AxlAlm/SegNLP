@@ -1,6 +1,7 @@
 
 #basics
 import numpy as np
+from numpy.lib import utils
 
 #pytroch
 import torch
@@ -13,6 +14,7 @@ from torch.nn.utils.rnn import pad_sequence
 from segnlp.nn.layers.rep_layers import CharEmb
 from segnlp.nn.layers.rep_layers import LSTM
 from segnlp.utils import zero_pad
+from segnlp import utils
 
 # use a torch implementation of CRF
 #from torchcrf import CRF
@@ -120,7 +122,6 @@ class LSTM_CNN_CRF(nn.Module):
     @classmethod
     def name(self):
         return "LSTM_CNN_CRF"
-
 
     def forward(self, batch, output):
 

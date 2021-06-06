@@ -323,14 +323,15 @@ class ML:
                 shutil.rmtree(self._path_to_tmp_models)
 
             hpp.update()
-        
-        hpp.close()
-            
-        with open(self._path_to_hp_hist, "w") as f:
-            json.dump(hp_dicts, f, indent=4)
+                    
+            with open(self._path_to_hp_hist, "w") as f:
+                json.dump(hp_dicts, f, indent=4)
+    
+            with open(self._path_to_model_info, "w") as f:
+                json.dump(best_model_info, f, indent=4)
 
-        with open(self._path_to_model_info, "w") as f:
-            json.dump(best_model_info, f, indent=4)
+
+        hpp.close()
 
         return best_model_info
 
