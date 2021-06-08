@@ -8,8 +8,7 @@ import torch.nn.functional as F
 import torch.nn as nn
 
 #segnlp
-from segnlp.nn.utils import pair_matrix
-
+from segnlp.layers.general import LinearCLF
 
 
 
@@ -93,8 +92,6 @@ class PairingLayer(torch.nn.Module):
                 max_units:int, 
                 mode:list=["cat", "multi"], 
                 rel_pos:bool=True,
-                dropout:float=0.0,
-                weight_init:str=None,
                 ):
         super().__init__()
 
@@ -119,18 +116,10 @@ class PairingLayer(torch.nn.Module):
         if "mean" in mode:
             self._input_dim += input_dim
 
-        self.link_clf = torch.nn.Linear(self._input_dim, 1)
-
-        self.__init_weights(weight_init)
-    
-
-    def __init_weights(self, weight_init:str):
-
-        if weight_init is None:
-            torch.nn.init.uniform_(self.link_clf.weight.data,  a=-0.05, b=0.05)
-            torch.nn.init.uniform_(self.link_clf.bias.data,  a=-0.05, b=0.05)
-        else:
-            raise NotImplementedError()
+        self.link_clf = LinearCLF(
+                                    input_size = self._input_dim, 
+                                    output_size = 1
+                                    )
 
 
     def __create_matrix(self, input:Tensor,  pair_mask:Tensor=None) -> Tensor:        
@@ -174,11 +163,6 @@ class PairingLayer(torch.nn.Module):
             to_cat.append(one_hots)
 
         pair_matrix = torch.cat(to_cat, axis=-1)
-
-        # if pair_mask is not None:
-        #     pairs_flat = torch.flatten(pair_matrix, end_dim=-2)
-        #     return pairs_flat[pair_mask]
-        # else:
         
         return pair_matrix
 
@@ -190,17 +174,18 @@ class PairingLayer(torch.nn.Module):
 
         pm = self.__create_matrix(input_tensor)
 
-        #step 6
-        pair_scores = self.link_clf(pm).squeeze(-1)
+        #predict links
+        pair_logits, _ = self.link_clf(pm)
+        pair_logits = pair_logits.squeeze(-1)
 
-        # step 7, for all samples we set the probs for non existing units to inf and the prob for all
+        # for all samples we set the probs for non existing units to inf and the prob for all
         # units pointing to an non existing unit to -inf.
         unit_mask = unit_mask.type(torch.bool)
-        pair_scores[~unit_mask]  =  float("-inf")
-        pf = torch.flatten(pair_scores, end_dim=-2)
+        pair_logits[~unit_mask]  =  float("-inf")
+        pf = torch.flatten(pair_logits, end_dim=-2)
         mf = torch.repeat_interleave(unit_mask, unit_mask.shape[1], dim=0)
         pf[~mf] = float("-inf")
-        logits = pf.view(pair_scores.shape)
+        logits = pf.view(pair_logits.shape)
         preds = torch.argmax(logits, dim=-1)
 
         return logits, preds 

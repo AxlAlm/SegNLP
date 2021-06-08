@@ -48,6 +48,7 @@ class LSTM_CRF(PTLBase):
                                 hyperparams = self.hps.get("CRF", {}),
                                 input_size = self.encoder.output_size,
                                 output_size = self.task_dims[self.task],
+                                task = self.task,
                                 #labels = self.task_labels[self.task],
                                 )
 

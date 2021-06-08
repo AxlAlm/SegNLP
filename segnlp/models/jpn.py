@@ -33,8 +33,6 @@ class JointPN(PTLBase):
     def __init__(self,  *args, **kwargs):   
         super().__init__(*args, **kwargs)
 
-        self.TASK_WEIGHT = self.hps["general"]["task_weight"]
-
         self.agg = Reducer(
                             layer = "Agg", 
                             hyperparams = self.hps.get("Agg", {}),
@@ -81,7 +79,6 @@ class JointPN(PTLBase):
                                 )
         
     
-
 
     @classmethod
     def name(self):
@@ -145,6 +142,8 @@ class JointPN(PTLBase):
                                         targets = batch["seg"]["link"]
                                     )
                                         
-        loss = ((1-self.TASK_WEIGHT) * link_loss) + ((1-self.TASK_WEIGHT) * label_loss)
+
+        tw = self.hps["general"]["task_weight"]
+        loss = ((1 - tw) * link_loss) + ((1 - tw) * label_loss)
 
         return loss

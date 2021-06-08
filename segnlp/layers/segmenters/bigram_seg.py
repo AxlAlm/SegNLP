@@ -30,42 +30,29 @@ class BigramSeg(nn.Module):
     def forward(
         self,
         input: Tensor,
-        lengths: Tensor,
-    ):
+        ):
+
         # sizes
-        batch_size = X.size(0)
-        max_lenght = X.size(1)
+        batch_size = input.size(0)
+        max_lenght = input.size(1)
         size = [batch_size, max_lenght, self.output_size]
-        device = X.device
+        device = input.device
 
         # construct tensors
         logits = torch.zeros(size, device=device)
-        probs = torch.zeros(size, device=device)
-        one_hots = torch.zeros(size, dtype=torch.long, device=device)
         preds = torch.zeros(batch_size, max_lenght, dtype=torch.long, device=device)
 
         # predict labels token by token
         for i in range(max_lenght):
-            x = torch.cat((X[:, i], one_hots[:, i - 1]), dim=-1)
+            prev_label_one_hot = F.one_hot(
+                                preds[:, i - 1 ],
+                                num_classes=self.output_size
+                                )
+            x = torch.cat((input[:, i], prev_label_one_hot), dim=-1)
             logit = self.clf(x)  # (B, NE-OUT)
             logits[:, i] = logit
-            probs[:, i] = F.softmax(logit, dim=1)
-            preds[:, i] = torch.argmax(probs[:, i], dim=1)
-            one_hots[:, i] = F.one_hot(preds[:, i],
-                                       num_classes=self.output_size
-                                        )
-
-        return {
-                "logits": logits, 
-                "probs": probs, 
-                "preds": preds, 
-                "one_hots": one_hots
-                }
+            preds[:, i] = torch.argmax(logits[:, i], dim=1)
+          
+   
+        return logits, preds
     
-    def loss(self, logits:Tensor, targets:Tensor):
-        return F.cross_entropy(
-                        torch.flatten(logits,end_dim=-2), 
-                        targets.view(-1), 
-                        reduction="mean",
-                        ignore_index=-1
-                        )

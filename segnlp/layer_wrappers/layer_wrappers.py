@@ -16,7 +16,7 @@ from segnlp.layers import linkers
 from segnlp.layers import segmenters
 from segnlp.layers import general
 from segnlp.layers import reprojecters
-
+from segnlp.layers import link_labelers
 
 class Layer(nn.Module):
 
@@ -39,7 +39,18 @@ class Layer(nn.Module):
 
         if hasattr(self.layer, "output_size"):
             self.output_size = self.layer.output_size
-    
+        
+
+        self.frozen = False
+        if params.get("freeze", False):
+            self.__freeze()
+            self.frozen = True
+
+
+    def __freeze(self):
+        for param in self.layer.parameters():
+            param.requires_grad = False
+
 
     def __filter_paramaters(self, layer, params):
         sig = inspect.signature(layer)
@@ -59,11 +70,12 @@ class Layer(nn.Module):
 
     def forward(self, *args, **kwargs):
         #kwargs = self.__filter_paramaters(**kwargs)
-        out = self._call(*args, **kwargs)
+        return self._call(*args, **kwargs)
   
         # assert isinstance(output, dict)
         # assert torch.is_tensor(loss)
-        return  out  
+        #return  out  
+
 
 
 class Embedder(Layer):
@@ -163,13 +175,21 @@ class Segmenter(CLFlayer):
                 hyperparams:dict, 
                 input_size:int,
                 output_size:int,
+                task:str = None, 
                 decode:bool = False,
                 encoding_scheme:str = "bio",
                 labels:dict=None,
                 ):
+        self.task = task
 
         if isinstance(layer, str):
             layer = getattr(segmenters, layer)
+
+        self.schedule = None
+        if "scheduler" in hyperparams:
+            self.schedule = ScheduleSampling(
+                                            schedule="inverse_sig",
+                                            k=hyperparams["k"])
 
         super().__init__(
                         layer=layer, 
@@ -191,14 +211,24 @@ class Segmenter(CLFlayer):
 
 
     def _call(self, *args, **kwargs):
-        logits, output =  self.layer(*args, **kwargs)
+        logits, preds =  self.layer(*args, **kwargs)
+
+        if self.schedule is not None:
+
+            batch = kwargs.pop("batch")
+            if self.schedule.next(batch.current_epoch):
+                preds = batch["token"][self.task]
+
 
         if self.decode:
-            output.update(self.seg_decoder(
-                                            batch_encoded_bios = output["preds"], 
-                                            lengths = kwarg["lengths"],                  
-                                            ))
-        return logits, output
+            seg_data = self.seg_decoder(
+                                            batch_encoded_bios = preds, 
+                                            lengths = kwargs["lengths"],                  
+                                            )
+            return logits, preds, seg_data
+
+        else:
+            return logits, preds, {}
 
 
 class Labeler(CLFlayer):
@@ -214,7 +244,7 @@ class Labeler(CLFlayer):
                 ):
 
         if isinstance(layer, str):
-            #layer = getattr(linkers, layer)
+            layer = getattr(linkers, layer)
             layer = getattr(general, layer)
 
 
@@ -250,45 +280,25 @@ class Linker(CLFlayer):
 
 
 
+class LinkLabeler(CLFlayer):
+    """
+    Layer which works on segment level
+    """
 
-# class LinkLayer(Layer):
-#     """
-#     Layer which works on segment level
-#     """
+    def __init__(self, 
+                layer:nn.Module, 
+                hyperparams:dict, 
+                input_size:int,
+                output_size:int,
+                ):
 
-#     def __init__(self, 
-#                 layer:nn.Module, 
-#                 hyperparams:dict, 
-#                 input_size:int,
-#                 output_size:int,
-#                 ):
+        if isinstance(layer, str):
+            layer = getattr(link_labelers, layer)
+            layer = getattr(general, layer)
 
-#         if isinstance(layer, str):
-#             layer = getattr(linkers, layer)
-
-
-#         super().__init__(              
-#                         layer=layer, 
-#                         hyperparams=hyperparams,
-#                         input_size=input_size,
-#                         output_size=output_size
-#                         )
-
-
-#     def loss(self, target:Tensor, logits:Tensor):
-
-#         if self.prediction_level == "unit":
-#             self.loss = nn.CrossEntropyLoss(reduction="mean", ignore_index=-1)
-#             return self.loss(torch.flatten(logits, end_dim=-2), target.view(-1))
-#         else:
-#             raise NotADirectoryError
-            
-
-#     def _call(self, *args, **kwargs):
-#         logits, output =  self.layer(*args, **kwargs)
-
-#         if not self.inference:
-#             loss = self.layer.loss(logits=logits, **kwargs)
-#             return loss, output
-
-#         return output
+        super().__init__(              
+                        layer=layer, 
+                        hyperparams=hyperparams,
+                        input_size=input_size,
+                        output_size=output_size
+                        )
