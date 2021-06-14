@@ -22,6 +22,7 @@ from networkx import Graph as nxGraph
 import dgl
 from dgl import DGLGraph
 from dgl.traversal import topological_nodes_generator as traverse_topo
+from torch.nn.modules.loss import CrossEntropyLoss
 
 # hotam
 from segnlp.nn.layers.rep_layers import TypeTreeLSTM
@@ -337,6 +338,7 @@ class DepPairingLayer(nn.Module):
         p1 = torch.cat(pair_data["p1"])
         p2 = torch.cat(pair_data["p2"])  # 2nd item in the pair (the
         # possible link prediction)
+
         # Also start and end indices of pairs' tokens are affected
         p1_st, p2_st = self.split_nested_list(pair_data["start"], p1.device)
         p1_end, p2_end = self.split_nested_list(pair_data["end"], p1.device)
@@ -534,32 +536,25 @@ class DepPairingLayer(nn.Module):
                                                     )
         # We predict link labels for both directions. Get the dominant pair dir
         # plus roots' probabilities
-        logits = self.link_label_clf_layer(pair_embs)
+        ll_logits = self.link_label_clf_layer(pair_embs)
 
         # Get predictions
         ll_logits, ll_preds, pair_link_preds_data = self.get_pair_preds(
-                                                                logits = logits,
-                                                                pair_data = pair_data, 
-                                                                )
+                                                                    logits = ll_logits,
+                                                                    pair_data = pair_data, 
+                                                                    )
 
-        # Formate predections tensor
-        l_preds_token, ll_pred_tokens = self.get_tokens_preds(
-            ll_preds_id, ll_preds_prob, token_mask, pair_link_preds_data)
-
-        return {
-            "link_preds":
-            l_preds_token,
-            "link_label_preds":
-            ll_pred_tokens,
-            "link_label_logits":
-            ll_logits_all,
-            "link_label_target":
-            ll_target,
-        }
-
-
-
+        # # Formate predections tensor
+        # l_preds_token, ll_pred_tokens = self.get_tokens_preds(
+        #                                                         ll_preds_id, 
+        #                                                         ll_preds_prob, 
+        #                                                         token_mask, 
+        #                                                         pair_link_preds_data
+        #                                                         )
+  
         return logits, ll_preds, l_preds, pair_data
+
+
 
 
     def loss(self,  targets:Tensor, 
@@ -568,7 +563,6 @@ class DepPairingLayer(nn.Module):
                     token_targets:Tensor, 
                     pair_data:dict
                     ):
-
 
         # Get link label target, based on the predicted pairs
         targets = self.get_ll_targets(    
@@ -585,9 +579,7 @@ class DepPairingLayer(nn.Module):
                                                     pair_data = pair_data
                                                     )
 
-        logits[neg_rel_bool] = logits.new_tensor(
-                                np.log([0.99, 0.0025, 0.0025, 0.0025, 0.0025]))
-
+  
         loss = F.cross_entropy(
                                 torch.flatten(logits,end_dim=-2), 
                                 targets.view(-1), 
@@ -596,6 +588,63 @@ class DepPairingLayer(nn.Module):
                                 )
         
         return loss
+
+
+
+
+class LinkLabelPairLoss(nn.Module):
+
+    """
+
+    For each pair we create a target label either from the ground truths for that pair if its a true pair, or we 
+    treat the target as a negative sample, i.e. the target label will be equivallent to "THIS SHOULD NOT BE PREDICTED TO LINK"-.
+
+    Negative sampling is applied for any pair which satisifies the following conditions:
+
+        1) the label of the members of the pairs are incorrect
+        
+        2) the pair has no link_label
+    
+    EXAMPLE:
+
+
+    """
+
+    def __init__(self, nr_label:int, mode:str):
+        self.nr_label = nr_label
+        self.mode = mode
+        self.loss_fn = CrossEntropyLoss(reduce="mean", ignore_index=-1)
+
+
+    def forward(
+                logits:Tensor, 
+                #link_predictions: Tensor,
+                #link_targets: Tensor,
+                pair_token_idxs: Tensor, 
+                token_labels: Tensor, 
+                token_targets: Tensor,
+                ):
+        
+        #create a flat list of all candidate pairs
+        if self.mode == "pair":
+            pair_logits = logits
+        else:
+            raise NotImplementedError
+
+        #create a target tensor based on the 
+  
+        # create a mask for selecting pairs which entities are incorrect
+        
+
+        # create a mask for selecting pairs where links are incorrect
+
+
+
+
+
+
+
+
 
 
 

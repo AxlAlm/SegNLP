@@ -77,7 +77,6 @@ class Layer(nn.Module):
         #return  out  
 
 
-
 class Embedder(Layer):
 
     def __init__(self, layer:nn.Module, hyperparams:dict):
@@ -129,6 +128,7 @@ class CLFlayer(Layer):
                 hyperparams:dict, 
                 input_size:int,
                 output_size:int,
+                output: dict,
                 ):
         super().__init__(              
                         layer=layer, 
@@ -136,6 +136,7 @@ class CLFlayer(Layer):
                         input_size=input_size,
                         output_size=output_size
                         )
+        self.output = output
 
 
     def loss(self, *args, **kwargs):
@@ -162,7 +163,8 @@ class CLFlayer(Layer):
 
 
     def _call(self, *args, **kwargs):
-        return self.layer(*args, **kwargs)
+        return = self.layer(*args, **kwargs)
+
 
 
 class Segmenter(CLFlayer):
@@ -277,7 +279,6 @@ class Linker(CLFlayer):
                         input_size=input_size,
                         output_size=output_size
                         )
-
 
 
 class LinkLabeler(CLFlayer):

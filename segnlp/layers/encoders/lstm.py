@@ -1,6 +1,7 @@
 
 
 #pytorch
+import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence
 from torch.nn.utils.rnn import pad_packed_sequence
@@ -17,7 +18,8 @@ class LSTM(nn.Module):
                     bidir:bool, 
                     dropout:float=0.0,
                     input_dropout:float=0.0,
-                    w_init:str="xavier_uniform"
+                    w_init:str="xavier_uniform",
+                    sorted:bool = True,
                     ):
         super().__init__()
 
@@ -32,7 +34,7 @@ class LSTM(nn.Module):
         self.input_dropout = nn.Dropout(input_dropout)
         self.__initialize_weights(w_init)
         self.output_size = hidden_size * (2 if bidir else 1)
-
+        self.sorted = sorted
     
 
     def __initialize_weights(self, w_init:str):
@@ -55,6 +57,11 @@ class LSTM(nn.Module):
 
     def forward(self, input:Tensor, lengths:Tensor, padding=0.0):
 
+        if not self.sorted:
+            sorted, sorted_idxs = torch.sort(lengths, descending=True)
+            _ , original_idxs = torch.sort(sorted_idxs, descending=False)
+            input = input[sorted_idxs]
+
         input = self.input_dropout(input)
         
         pass_states = False
@@ -66,10 +73,15 @@ class LSTM(nn.Module):
         packed_embs = nn.utils.rnn.pack_padded_sequence(input, lengths, batch_first=True)
 
         if pass_states:
-            lstm_packed, hidden = self.lstm(packed_embs, states)
+            lstm_packed, states = self.lstm(packed_embs, states)
         else:
-            lstm_packed, hidden = self.lstm(packed_embs)
+            lstm_packed, states = self.lstm(packed_embs)
 
-        unpacked, lengths = pad_packed_sequence(lstm_packed, batch_first=True, padding_value=0.0)
+        output, lengths = pad_packed_sequence(lstm_packed, batch_first=True, padding_value=0.0)
 
-        return unpacked, hidden
+
+        if not self.sorted:
+            output = output[original_idxs]
+
+
+        return output, states

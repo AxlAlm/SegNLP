@@ -117,40 +117,25 @@ class LSTM_DIST(nn.Module):
 
 
     def forward(self, batch, output):
-        
-        # batch is sorted by length of prediction level which is seg
-        # so we need to sort the word embeddings for the sample, pass to lstm then return to 
-        # original order
-        sorted_lengths_tok, sorted_indices = torch.sort(batch["token"]["lengths"], descending=True)
-        _ , original_indices = torch.sort(sorted_indices, descending=False)
 
         # input (Batch_dize, nr_tokens, word_emb_dim)
         # output (Batch_dize, nr_tokens, word_emb_dim)
         lstm_out, _ = self.word_lstm(
-                                        input = batch["token"]["word_embs"][sorted_indices], 
-                                        lengths = sorted_lengths_tok
+                                        input = batch["token"]["word_embs"], 
+                                        lengths =  batch["token"]["lengths"]
                                     )
-        lstm_out = lstm_out[original_indices]
 
         # create span representation for Argument Components and Argumentative Markers
         am_minus_embs = self.minus_span(
                                         input = lstm_out, 
                                         span_idxs = batch["am"]["span_idxs"]
                                         )
-        ac_minus_embs = self.minus_span(lstm_out, batch["seg"]["span_idxs"])
+        ac_minus_embs = self.minus_span(
+                                        input = lstm_out, 
+                                        span_idxs = batch["seg"]["span_idxs"]
+                                        )
 
-        # pass each of the spans to a seperate BiLSTM. 
-        # NOTE! as Argumentative Markers are not allways present the length will sometimes be 0, 
-        # which will cause an error when useing pack_padded_sequence etc.
-        # to fix this all AM's that are non existing are set to a default lenght of 1.
-        # this will not really matter as these representations will be 0s anyway.
-        #
-        # we also need to sort AMS so they can be passed to the lstm
-        sorted_am_lengths, sorted_am_indices = torch.sort(batch["am"]["lengths"], descending=True)
-        _ , original_am_indices = torch.sort(sorted_indices, descending=False)
-        am_lstm_out, _ = self.am_lstm(am_minus_embs[sorted_indices], sorted_am_lengths)
-        am_lstm_out = am_lstm_out[original_am_indices]
-
+        am_lstm_out, _ = self.am_lstm(am_minus_embs, batch["am"]["lengths"])
         ac_lstm_out, _ = self.ac_lstm(ac_minus_embs, batch["unit"]["lengths"])
 
 

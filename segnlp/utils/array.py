@@ -4,8 +4,7 @@ import numpy as np
 from typing import List, Tuple, DefaultDict
 from math import floor, exp
 from random import random
-from itertools import product, repeat, combinations
-from collections import defaultdict
+
 
 #pytroch
 import torch
@@ -63,12 +62,6 @@ def to_tensor(item, dtype=torch.float):
         return item
     except TypeError as e:
         return item
-
-
-def one_hots(a):
-    m = np.zeros((a.shape[0], a.shape[0]))
-    m[np.arange(a.shape[0]),a] = 1
-    return m
 
 
 
@@ -244,7 +237,13 @@ def get_all_possible_pairs(
 
 
 
-def util_one_hot(matrix: Tensor, mask: Tensor, num_classes: int):
+def one_hots(a):
+    m = np.zeros((a.shape[0], a.shape[0]))
+    m[np.arange(a.shape[0]),a] = 1
+    return m
+
+
+def one_hot(matrix: Tensor, mask: Tensor, num_classes: int):
     # check padding = -1
     thematrix = matrix.clone()  # avoid possible changing of the original Tensor
     pad_emb = thematrix[~mask.type(torch.bool)]
