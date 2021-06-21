@@ -18,7 +18,6 @@ class LSTM_ER(nn.Module):
     def __init__(self,  *args, **kwargs):   
         super().__init__(*args, **kwargs)
 
-
         self.word_lstm = Encoder(    
                                 layer = "LSTM", 
                                 hyperparams = self.hps.get("LSTM", {}),
@@ -40,32 +39,24 @@ class LSTM_ER(nn.Module):
                                     output_size = self.task_dims["link_label"],
                                     )
 
-        # nt = 3 if tree_bidirectional else 1
-        # ns = 2 if lstm_bidirectional else 1
-        # tree_input_size = seq_lstm_h_size * ns + \
-        #     dep_embs_size + self.num_seg_labels
-        # link_label_input_size = tree_lstm_h_size * nt + 2 * seq_lstm_h_size * ns
-
-        # self.link_label_output_size = 2 * (num_link_labels - 1) + 1
-        # self.link_label_clf = DepPairingLayer(
-        #                                     tree_input_size=tree_input_size,
-        #                                     tree_lstm_h_size=tree_lstm_h_size,
-        #                                     tree_bidirectional=tree_bidirectional,
-        #                                     decoder_input_size=link_label_input_size,
-        #                                     decoder_h_size=link_label_clf_h_size,
-        #                                     decoder_output_size=self.link_label_output_size,
-        #                                     dropout=dropout)
-
 
     @classmethod
     def name(self):
         return "LSTM_ER"
 
-    def forward(self, batch):
+    
+    def encoding():
+        # (batch_size, max_nr_tokens, word_embs + pos_embs)
+        pos_word_embs = torch.cat((batch["token"]["word_embs"], batch["token"]["pos_embs"]), dim=2)
+        pos_word_embs = self.dropout(pos_word_embs)
 
-        token_mask = batch["token"]["mask"].type(torch.bool)
+        # lstm_out = (batch_size, max_nr_tokens, lstm_hidden)
+        lstm_out, _ = self.lstm(pos_word_embs, batch["token"]["lengths"])
 
-        # pos_word_embs.shape =
+
+
+    def forward(self, batch, output):
+
         # (batch_size, max_nr_tokens, word_embs + pos_embs)
         pos_word_embs = torch.cat((batch["token"]["word_embs"], batch["token"]["pos_embs"]), dim=2)
         pos_word_embs = self.dropout(pos_word_embs)
@@ -75,59 +66,39 @@ class LSTM_ER(nn.Module):
 
         # outpts the logits, preds for seg+label as well as segmentation data which contain
         # information about where segments start, in this cases it decoded BIO patterns
-        sl_logits, sl_preds, seg_data = self.segmenter(
-                                                        input = lstm_out,
-                                                        lengths = batch["token"]["lengths"],
-                                                        batch = batch
-                                                        )
-
-        one_hot_embs = utils.one_hot(
-                                    preds = sl_preds, 
-                                    mask = token_mask,
-                                    nr_labels = self.num_seg_labels
-                                    )
-
-        ll_logits, ll_preds, l_preds, pair_data  = self.link_labeler(
-                                                                    token_embs = lstm_out,
-                                                                    dep_embs = batch["token"]["deprel_embs"],
-                                                                    one_hot_embs = one_hot_embs,
-                                                                    roots = batch["token"]["root_idxs"],
-                                                                    deplinks = batch["token"]["dephead"],
-                                                                    token_mask = token_mask,
-                                                                    seg_data = seg_data,
-                                                                    )
+        output.add(self.segmenter(
+                        input = lstm_out,
+                        lengths = batch["token"]["lengths"],
+                        ))
 
 
-        return {  
-                "logits": {
-                            "seg+label": sl_logits,
-                            "link_label": ll_logits,
-                            },
-                "preds":
-                        {
-                            "seg+label": sl_preds,
-                            "link_label": ll_preds,
-                            "link": l_preds
-                        },
-                "pair_data": pair_data
+        output.add(self.link_labeler(
+                        token_embs = lstm_out,
+                        dep_embs = batch["token"]["deprel_embs"],
+                        one_hot_embs = output.one_hots(TASK),
+                        roots = batch["token"]["root_idxs"],
+                        deplinks = batch["token"]["dephead"],
+                        token_mask = batch["token"]["mask"].type(torch.bool),
+                        ))
 
-                 }
+        return output
 
 
 
-    def loss(self, batch, forward_outputs:dict):
+
+    def loss(self, batch, output):
 
         seg_label_loss = self.segmenter.loss(
                                             targets =  batch["token"]["seg+label"],
-                                            logits = forward_outputs["logits"]["seg+label"],
+                                            logits = output.logits["seg+label"],
                                             )
 
         link_label_loss = self.link_labeler.loss(
                                                 targets = batch["token"]["link_label"],
-                                                logits = forward_outputs["logits"]["link_label"],
-                                                token_preds = forward_outputs["preds"]["seg+label"],
-                                                token_targets = batch["token"]["seg+label"],
-                                                pair_data = forward_outputs["pair_data"]
+                                                logits = output.logits["link_label"],
+                                                token_preds = output.logits["seg+label"],
+                                                token_targets = batch.logits["seg+label"],
+                                                pair_data = output["pair_data"]
                                                 )
 
         total_loss = seg_label_loss + link_label_loss

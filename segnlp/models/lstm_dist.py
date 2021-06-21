@@ -98,7 +98,7 @@ class LSTM_DIST(nn.Module):
                                 input_size = self.am_ac_lstm.output_size,
                                 )
 
-        self.labeler = LinkLabeler(
+        self.labeler = Labeler(
                                         layer = "LinearCLF",
                                         hyperparams = self.hps.get("LinearCLF", {}),
                                         input_size = self.am_ac_lstm.output_size,
@@ -148,14 +148,14 @@ class LSTM_DIST(nn.Module):
         # concatenate the output from Argument Component BiLSTM and Argument Marker BiLSTM with BOW and with structural features stored in "doc_embs"
         cat_emb = torch.cat((am_lstm_out, ac_lstm_out, bow, batch["seg"]["doc_embs"]), dim=-1)
         adu_emb, _= self.am_ac_lstm(cat_emb, batch["unit"]["lengths"])
-
   
         # Classification of label and link labels is pretty straight forward
         link_label_logits, link_label_preds = self.link_labeler(adu_emb)
         label_logits, label_preds = self.labeler(adu_emb)
-        
-        adu_emb, _ = self.last_lstm(adu_emb, batch["unit"]["lengths"])
-        link_logits, link_preds = self.linker(adu_emb, unit_mask=batch["unit"]["mask"])
+
+        adu_emb2, _ = self.last_lstm(adu_emb, batch["unit"]["lengths"])
+
+        link_logits, link_preds = self.linker(adu_emb2, unit_mask=batch["unit"]["mask"])
 
 
         return {
@@ -169,7 +169,6 @@ class LSTM_DIST(nn.Module):
                             "label": label_preds,
                             "link_label": link_label_preds,
                             },
-
                 }
 
 

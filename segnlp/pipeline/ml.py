@@ -51,6 +51,7 @@ class ML:
                         hyperparamaters = hyperparamaters,
                         tasks = self.config["tasks"],
                         all_tasks = self.config["all_tasks"],
+                        subtasks = self.config["subtasks"],
                         label_encoders = self._pp_encoders,
                         task_labels = self.config["task_labels"],
                         prediction_level = self.config["prediction_level"],

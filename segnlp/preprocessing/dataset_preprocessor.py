@@ -27,7 +27,7 @@ import h5py
 
 # segnlp
 from segnlp.datasets.base import DataSet
-from segnlp.utils import ModelInput
+from segnlp.utils import Input
 from segnlp.utils import DataModule
 import segnlp.utils as utils
 from segnlp import get_logger
@@ -49,13 +49,13 @@ class DataPreprocessor:
         self.h5py_f = h5py.File(file_path, 'w')
 
 
-    def __init_store(self, Input:ModelInput):
+    def __init_store(self, input:Input):
         
-        self.h5py_f.create_dataset("ids", data=Input.ids, dtype=np.int16, chunks=True, maxshape=(None,))
+        self.h5py_f.create_dataset("ids", data=input.ids, dtype=np.int16, chunks=True, maxshape=(None,))
 
-        for level in Input.levels:
+        for level in input.levels:
             
-            for k,v in Input[level].items():
+            for k,v in input[level].items():
                 v = utils.ensure_numpy(v)
                 #dynamic_shape = tuple([None for v in enumerate(v.shape)])
                 #self.h5py_f.create_dataset(k, dynamic_shape, dtype=v.dtype)
@@ -75,14 +75,14 @@ class DataPreprocessor:
         self.__init_storage_done = True
     
 
-    def __append_store(self, Input:ModelInput):
+    def __append_store(self, input:Input):
 
         last_sample_i = self.h5py_f["ids"].shape[0]
-        self.h5py_f["ids"].resize((self.h5py_f["ids"].shape[0] + Input.ids.shape[0],))
-        self.h5py_f["ids"][last_sample_i:] = Input.ids
+        self.h5py_f["ids"].resize((self.h5py_f["ids"].shape[0] + input.ids.shape[0],))
+        self.h5py_f["ids"][last_sample_i:] = input.ids
 
-        for level in Input.levels:
-            for k,v in Input[level].items():
+        for level in input.levels:
+            for k,v in input[level].items():
                 v = utils.ensure_numpy(v)
                 k = f"/{level}/{k}"
 
@@ -230,14 +230,14 @@ class DataPreprocessor:
 
         size = 0
         for i in tqdm(range(len(dataset)), desc="Processing and Storing Dataset"):
-            Input = self(dataset[i])
+            input = self(dataset[i])
 
             if not self.__init_storage_done:
-                self.__init_store(Input)
+                self.__init_store(input)
             else:
-                self.__append_store(Input)
+                self.__append_store(input)
 
-            size += len(Input)
+            size += len(input)
 
         splits = self.__set_splits(dump_dir, dataset=dataset, size=size, evaluation_method=evaluation_method)
         self.__calc_stats(dump_dir, splits, dataset.name())

@@ -28,7 +28,6 @@ import torch
 #pytroch lightning 
 from pytorch_lightning import seed_everything
 
-
 #segnlp
 from segnlp import get_logger
 

@@ -8,7 +8,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 #segnlp
-from segnlp.utils import BIODecoder
 from segnlp.layers import encoders 
 from segnlp.layers import embedders
 from segnlp.layers import reducers
@@ -128,7 +127,6 @@ class CLFlayer(Layer):
                 hyperparams:dict, 
                 input_size:int,
                 output_size:int,
-                output: dict,
                 ):
         super().__init__(              
                         layer=layer, 
@@ -136,7 +134,6 @@ class CLFlayer(Layer):
                         input_size=input_size,
                         output_size=output_size
                         )
-        self.output = output
 
 
     def loss(self, *args, **kwargs):
@@ -163,8 +160,7 @@ class CLFlayer(Layer):
 
 
     def _call(self, *args, **kwargs):
-        return = self.layer(*args, **kwargs)
-
+        return self.layer(*args, **kwargs)
 
 
 class Segmenter(CLFlayer):
@@ -177,21 +173,14 @@ class Segmenter(CLFlayer):
                 hyperparams:dict, 
                 input_size:int,
                 output_size:int,
-                task:str = None, 
-                decode:bool = False,
-                encoding_scheme:str = "bio",
-                labels:dict=None,
+                task:str,
                 ):
         self.task = task
+        self.level = "token"
 
         if isinstance(layer, str):
             layer = getattr(segmenters, layer)
 
-        self.schedule = None
-        if "scheduler" in hyperparams:
-            self.schedule = ScheduleSampling(
-                                            schedule="inverse_sig",
-                                            k=hyperparams["k"])
 
         super().__init__(
                         layer=layer, 
@@ -199,38 +188,6 @@ class Segmenter(CLFlayer):
                         input_size=input_size,
                         output_size=output_size
                         )
-
-        self.decode = decode
-        if decode:
-            if encoding_scheme == "bio":
-                self.seg_decoder = BIODecoder(
-                                            B = [i for i,l in enumerate(labels) if "B-" in l],
-                                            I = [i for i,l in enumerate(labels) if "I-" in l],
-                                            O = [i for i,l in enumerate(labels) if "O-" in l],
-                                            )
-            else:
-                raise NotImplementedError(f'"{encoding_scheme}" is not a supported encoding scheme')
-
-
-    def _call(self, *args, **kwargs):
-        logits, preds =  self.layer(*args, **kwargs)
-
-        if self.schedule is not None:
-
-            batch = kwargs.pop("batch")
-            if self.schedule.next(batch.current_epoch):
-                preds = batch["token"][self.task]
-
-
-        if self.decode:
-            seg_data = self.seg_decoder(
-                                            batch_encoded_bios = preds, 
-                                            lengths = kwargs["lengths"],                  
-                                            )
-            return logits, preds, seg_data
-
-        else:
-            return logits, preds, {}
 
 
 class Labeler(CLFlayer):
@@ -244,9 +201,11 @@ class Labeler(CLFlayer):
                 input_size:int,
                 output_size:int,
                 ):
+        self.task = "label"
+        self.level = "seg"
 
         if isinstance(layer, str):
-            layer = getattr(linkers, layer)
+            #layer = getattr(Labeler, layer)
             layer = getattr(general, layer)
 
 
@@ -269,6 +228,8 @@ class Linker(CLFlayer):
                 input_size:int,
                 output_size:int,
                 ):
+        self.task = "link"
+        self.level = "seg"
 
         if isinstance(layer, str):
             layer = getattr(linkers, layer)
@@ -292,6 +253,9 @@ class LinkLabeler(CLFlayer):
                 input_size:int,
                 output_size:int,
                 ):
+        self.task = "link_label"
+        self.level = "seg"
+
 
         if isinstance(layer, str):
             layer = getattr(link_labelers, layer)

@@ -21,7 +21,7 @@ import pytorch_lightning as ptl
 
 #segnlp
 import segnlp
-from .model_input import ModelInput
+from .input import Input
 
 
 class DataModule(ptl.LightningDataModule):
@@ -42,14 +42,14 @@ class DataModule(ptl.LightningDataModule):
             self._splits = pickle.load(f)
         
 
-    def __getitem__(self, key:Union[np.ndarray, list]) -> ModelInput:
-        Input = ModelInput()
+    def __getitem__(self, key:Union[np.ndarray, list]) -> Input:
+        input = Input()
 
         with h5py.File(self._fp, "r") as data:
             sorted_key = np.sort(key)
             lengths = data[self.prediction_level]["lengths"][sorted_key]
             lengths_decending = np.argsort(lengths)[::-1]
-            Input._ids = data["ids"][key][lengths_decending]
+            input._ids = data["ids"][key][lengths_decending]
             
             for group in data:
 
@@ -58,18 +58,18 @@ class DataModule(ptl.LightningDataModule):
 
                 max_len = max(data[group]["lengths"][sorted_key])
 
-                Input[group] = {}
+                input[group] = {}
                 for k, v in data[group].items():
                     a = v[key]
                 
                     if len(a.shape) > 1:
                         a = a[:, :max_len]
                 
-                    Input[group][k] = a[lengths_decending]
+                    input[group][k] = a[lengths_decending]
                 
-            Input.to_tensor()
+            input.to_tensor()
 
-        return Input
+        return input
     
 
     def __len__(self):

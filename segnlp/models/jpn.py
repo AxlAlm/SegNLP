@@ -83,10 +83,9 @@ class JointPN(PTLBase):
     @classmethod
     def name(self):
         return "JointPN"
+    
 
-
-    def forward(self, batch):
-
+    def seg_rep(self, batch, output):
         seg_embs = self.agg(
                             input = batch["token"]["word_embs"], 
                             lengths = batch["seg"]["lengths"],
@@ -100,45 +99,86 @@ class JointPN(PTLBase):
 
         seg_embs = torch.cat((seg_embs, bow, batch["seg"]["doc_embs"]), dim=-1)
 
-        
-        f1c_out =self.fc1(seg_embs)
+        f1c_out = self.fc1(seg_embs)
+        f2c_out = self.fc2(seg_embs)
+
         encoder_out, states = self.encoder(
                                         input = f1c_out,
                                         lengths = batch["seg"]["lengths"],
                                         )
-    
-        label_logits, label_preds  = self.labeler(
-                                                input = encoder_out,
-                                                )
-
-        f2c_out = self.fc1(seg_embs)
-        link_logits, link_preds = self.pointer(
-                                            inputs = f2c_out,
-                                            encoder_outputs = encoder_out,
-                                            mask = batch["seg"]["mask"],
-                                            states = states,
-                                            )
-        return {
-                "logits":{
-                        "label": label_logits,
-                        "link": link_logits
-                        },
-                "preds": {
-                        "label": label_preds,
-                        "link": link_preds
-                        }
+        
+        return {    
+                "encoder_out":encoder_out, 
+                "states": states,
+                "f1c_out":f1c_out, 
+                "f2c_out":f2c_out
                 }
+        
+
+    def label_clf(self, batch, output):
+        logits, preds = self.labeler(
+                                    input = output.stuff["encoder_out"],
+                                    )
+        return logits, preds
 
 
-    def loss(self, batch, forward_output:dict):
+    def link_clf(self, batch, output):
+        logits, preds = self.pointer(
+                                    inputs = output.stuff["f2c_out"],
+                                    encoder_outputs = output.stuff["encoder_out"],
+                                    mask = batch["seg"]["mask"],
+                                    states = output.stuff["states"],
+                                    )
+        return logits, preds
+
+
+
+    # def forward(self, batch, output):
+
+    #     seg_embs = self.agg(
+    #                         input = batch["token"]["word_embs"], 
+    #                         lengths = batch["seg"]["lengths"],
+    #                         span_idxs = batch["seg"]["span_idxs"],
+    #                         )
+
+    #     bow = self.bow(
+    #                     word_encs = batch["token"]["words"], 
+    #                     span_idxs = batch["seg"]["span_idxs"]
+    #                     )
+
+    #     seg_embs = torch.cat((seg_embs, bow, batch["seg"]["doc_embs"]), dim=-1)
+
+        
+    #     f1c_out = self.fc1(seg_embs)
+    #     encoder_out, states = self.encoder(
+    #                                     input = f1c_out,
+    #                                     lengths = batch["seg"]["lengths"],
+    #                                     )
+    
+    #     output.add(self.labeler(
+    #                     input = encoder_out,
+    #                 ))
+
+
+    #     f2c_out = self.fc2(seg_embs)
+    #     output.add(self.pointer(
+    #                     inputs = f2c_out,
+    #                     encoder_outputs = encoder_out,
+    #                     mask = batch["seg"]["mask"],
+    #                     states = states,
+    #                     ))
+
+
+
+    def loss(self, batch, output:dict):
         
         label_loss = self.labeler.loss(
-                                        logits = forward_output["logits"]["label"],
+                                        logits = output.logits["label"],
                                         targets = batch["seg"]["label"]
                                     )
 
         link_loss = self.pointer.loss(
-                                        logits = forward_output["logits"]["link"],
+                                        logits = output.logits["link"],
                                         targets = batch["seg"]["link"]
                                     )
                                         

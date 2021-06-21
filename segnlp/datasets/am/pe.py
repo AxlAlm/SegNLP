@@ -321,7 +321,9 @@ class PE(DataSet):
                         ac_id2span:Dict[str,Tuple[int,int]], 
                         ac_id2ac:Dict[str,str], 
                         ac_id2stance:Dict[str,str], 
-                        ac_id2relation:Dict[str,str]) -> RangeDict:
+                        ac_id2relation:Dict[str,str],
+                        global_seg_id:int,
+                        ) -> RangeDict:
         """creates a unified dict for label spans in the essay. Dict constructed contains the span tuple as a key
         and dict of all labels as value. The dict, a RangeDict, fetches the value of the span the key is within.
 
@@ -345,11 +347,10 @@ class PE(DataSet):
         """
 
         span2label = RangeDict()
-        current_seg_id = 0
+        #current_seg_id = 0
         for i, (ac_id, span) in enumerate(ac_id2span.items()):
 
             relation = ac_id2relation.get(ac_id, 0)
-            #self.__task_labels["link"].add(relation)
 
             ac = ac_id2ac.get(ac_id,"None")
             stance = self._stance2new_stance.get(ac_id2stance.get(ac_id,"None"), "None")
@@ -357,8 +358,8 @@ class PE(DataSet):
             if "None" in ac_id:
                 seg_id = np.nan 
             else:
-                seg_id = current_seg_id
-                current_seg_id += 1
+                seg_id = global_seg_id
+                global_seg_id += 1
 
             label = {   
                         "label": ac_id2ac.get(ac_id,"None"), 
@@ -434,6 +435,7 @@ class PE(DataSet):
         number_files = len(ann_files) + len(text_files)
 
         data = []
+        global_seg_id = 0
         grouped_files = list(zip(ann_files, text_files))
         for ann_file, txt_file in grouped_files:
 
@@ -446,7 +448,13 @@ class PE(DataSet):
             # extract annotation spans
             ac_id2span, ac_id2ac,ac_id2stance, ac_id2relation = self.__parse_ann_file(ann, len(text))
 
-            span2label = self.__get_label_dict(ac_id2span, ac_id2ac,ac_id2stance, ac_id2relation)
+            span2label = self.__get_label_dict(
+                                                ac_id2span, 
+                                                ac_id2ac,
+                                                ac_id2stance, 
+                                                ac_id2relation,
+                                                global_seg_id
+                                                )
                         
             data.append({
                             "sample_id":file_id,

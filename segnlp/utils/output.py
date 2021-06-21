@@ -3,42 +3,80 @@
 #basics
 from typing import Union, List
 import numpy as np
+from numpy.lib import utils
 import pandas as pd
 from collections import Counter
 
 
 #segnlp
-from .model_input import ModelInput
+from .input import Input
 from .array import ensure_flat, ensure_numpy, flatten
 from .bio_decoder import BIODecoder
-from segnlp import utils
+from .schedule_sample import ScheduleSampling
 
 #pytorch
 import torch
 from torch import Tensor
 
 
-
 class Output:
 
-    def __init__(self, batch, subtasks):
-        index = np.repeat(range(len(batch)), batch["token"]["lengths"])
-        columns = ["sample_id", "text", "token_id"] + subtasks + [f"T-{t}" for t in subtasks] + ["seg_id", "T-seg_id"]
-        self.df  = pd.DataFrame([], index = index,  columns=columns)
+    def __init__(self, 
+                label_encoders:dict,
+                tasks:list,
+                all_tasks:list,
+                subtasks:list,
+                prediction_level:str,
+                inference:bool,
+                segment_sampling:bool=False,
+                sampling_k:int=5,
+                ):
+
+        self.inference = inference
+        self.label_encoders = label_encoders
+        self.tasks = tasks
+        self.all_tasks = all_tasks
+        self.prediction_level = prediction_level
+        self.subtasks = subtasks
+
+        
+        self.schedule = segment_sampling
+        if segment_sampling:
+            self.schedule = ScheduleSampling(
+                                            schedule="inverse_sig",
+                                            k=sampling_k
+                                            )
+
+        seg_task = [task for task in self.tasks if "seg" in task]
+        if seg_task:
+            id2label = label_encoders[seg_task[0]].id2label
+            self.seg_decoder = BIODecoder(
+                                        B = [i for i,l in id2label.items() if "B-" in l],
+                                        I = [i for i,l in id2label.items() if "I-" in l],
+                                        O = [i for i,l in id2label.items() if "O-" in l],
+                                        )
 
 
-    def set(self, i, key, value):
+    def __set(self, i, key, value):
         self.df.loc[i, key] = value
 
     
-    def unfold_over_seg(self, i, key, data, gt:bool=False):
+    def __unfold_over_seg(self, i, key, data, gt:bool=False):
+
+        index = self.df.index
+        self.df.reset_index()
+
         groups = self.df.groupby("T-seg_id" if gt else "seg_id")
+        print(groups.groups.values())
         idx = np.hstack(groups.groups.values())
+        print(idx)
         values = np.repeat(data, groups.size().to_numpy())
-        self.df.loc[idx, key] = values        
+        print(values)
+        self.df.loc[idx, key] = values    
+        self.df.index = index    
 
 
-    def extract_match_info(self):
+    def __extract_match_info(self):
         
 
         def overlap(target, pdf):
@@ -69,63 +107,15 @@ class Output:
         ratio = match_info[:,0].astype(bool)
         i = match_info[:,1] #predicted segment id
         j = match_info[:,2] # ground truth segment id
-        
-        # #contains mapping between i j where i is an exact/approx match for j
-        # i2j_exact = dict(zip(i[exact],j[exact]))
-        # i2j_approx = dict(zip(i[approx],j[approx]))
+        return i, j, ratio
 
 
-        return exact, approx, i2j_exact, i2j_approx, i
-
-
-    def pairs(self, bidir:bool = False):
-        pass
-
-
-
-
-
-class OutputFormater:
-
-    def __init__(self, 
-                label_encoders:dict,
-                tasks:list,
-                all_tasks:list,
-                subtasks:list,
-                prediction_level:str,
-                inference:bool,
-                ):
-
-        self.inference = inference
-        self.label_encoders = label_encoders
-        self.tasks = tasks
-        self.all_tasks = all_tasks
-        self.prediction_level = prediction_level
-
-        
-        seg_task = [task for task in self.tasks if "seg" in task]
-        if seg_task:
-            id2label = label_encoders[seg_task[0]].id2label
-            self.seg_decoder = BIODecoder(
-                                        B = [i for i,l in id2label.items() if "B-" in l],
-                                        I = [i for i,l in id2label.items() if "I-" in l],
-                                        O = [i for i,l in id2label.items() if "O-" in l],
-                                        )
-
-
-    def __decode(self, sample_data, subtask_position, task):
+    def __decode(self, sample_preds, subtask_position, task):
         decoder = lambda x: self.label_encoders[task].decode(x).split("_")[subtask_position]
-        return [decoder(x) for x in sample_data]
+        return [decoder(x) for x in sample_preds]
 
 
-    def __unfold(self, sample_data:np.ndarray, span_lengths:np.ndarray, none_span_mask:np.ndarray, fill_value:int):
-        span_labels = np.full(none_span_mask.shape, fill_value=fill_value)
-        span_labels[none_span_mask] = sample_data
-        token_labels = np.repeat(span_labels, span_lengths)
-        return token_labels
-
-
-    def __correct_links(self, sample_data, max_seg):
+    def __correct_links(self, sample_preds, max_seg):
 
         """
         This function perform correction 3 mentioned in https://arxiv.org/pdf/1704.06104.pdf  (Appendix)
@@ -135,16 +125,16 @@ class OutputFormater:
         """
         #last_seg_idx = max(0, lengths_segs[i]-1)
     
-        links_above_allowed = sample_data > max_seg
-        sample_data[links_above_allowed] = max_seg
+        links_above_allowed = sample_preds > max_seg
+        sample_preds[links_above_allowed] = max_seg
 
-        links_above_allowed = sample_data < 0
-        sample_data[links_above_allowed] = max_seg
+        links_above_allowed = sample_preds < 0
+        sample_preds[links_above_allowed] = max_seg
 
-        return sample_data
+        return sample_preds
 
 
-    def __ensure_homogeneous(self, sample_data, span_token_lengths, none_span_mask):
+    def __ensure_homogeneous(self, sample_preds, span_token_lengths, none_span_mask):
 
         """
         ensures that the labels inside a segments are the same. For each segment we take the majority label 
@@ -157,76 +147,128 @@ class OutputFormater:
             if none_span_mask[j] == 0:
                 pass
             else:
-                majority_label = Counter(sample_data[s:s+l]).most_common(1)[0][0]
-                sample_data[s:s+l] = majority_label
+                majority_label = Counter(sample_preds[s:s+l]).most_common(1)[0][0]
+                sample_preds[s:s+l] = majority_label
             s += l
     
-        return sample_data
+        return sample_preds
      
 
- 
+    def step(self, batch):
+        index = np.repeat(range(len(batch)), batch["token"]["lengths"])
+        columns = ["sample_id", "text", "token_id"] + self.subtasks + [f"T-{t}" for t in self.subtasks] + ["seg_id", "T-seg_id"]
+        self.df = pd.DataFrame([], index = index,  columns=columns)
+        self.stuff = {}
+        self.logits = {}
+        self.batch = batch
 
-    def fill(self, output:Output, batch:Input, data:Union[np.ndarray, Tensor], level:str,  task:str, first=False):
-        """
-        given that some labels are complexed, i.e. 2 plus tasks in one, we can break these apart and 
-        get the predictions for each of the task so we can get metric for each of them. 
+        return self
 
-        for example, if one task is Segmentation+Arugment Component Classification, this task is actually two
-        tasks hence we can break the predictions so we cant get scores for each of the tasks.
-        """
 
-        data = ensure_numpy(data)
-        lengths = batch[level]["length"]
+    def add_stuff(self, stuff):
+        self.stuff.update(stuff)
+
+
+    def add_logits(self, logits:Tensor, task:str):
+        self.logits[task] = logits
+
+
+    def add_preds(self, preds:Union[np.ndarray, Tensor], level:str,  task:str):
+
+        preds = ensure_numpy(preds)
+        tok_lengths = self.batch["token"]["lengths"]
         global_seg_id = 0
-        for i in range(len(data)):
+        for i in range(len(preds)):
 
-            sample_data = data[i][:lengths[i]]
+            sample_preds = preds[i][:self.batch[level]["lengths"][i]]
 
-            if not hasattr(output, "_first_done"):
-                output.set(i, "sample_id", self.batch.ids[i])
-                output.set(i, "text", self.batch["token"]["text"][i, :lengths[i]])
-                output.set(i, "token_id", self.batch["token"]["token_ids"][i, :lengths[i]])
-                output.set(i, "T-seg_id", np.repeat(range(global_seg_id, self.batch["seg"]["length"][i])), self.batch["seg"]["tok_lengths"][i]))
-                output._first_done = True
+            if not hasattr(self, "_first_done"):
+                self.__set(
+                            i, 
+                            "sample_id", 
+                            self.batch.ids[i]
+                            )
+
+                self.__set(
+                            i, 
+                            "text", 
+                            self.batch["token"]["text"][i, :tok_lengths[i]]
+                            )
+
+                self.__set(
+                            i, 
+                            "token_id", 
+                            self.batch["token"]["token_ids"][i, :tok_lengths[i]]
+                        )
+                
+                self.__set(
+                            i,
+                            "T-seg_id", 
+                            self.batch["token"]["seg_id"][i, :tok_lengths[i]]
+                            )
+
 
             for k, subtask in enumerate(task.split("+")):
                 
                 # if we are predicting on token level we make select the majority label for each segment
-                if level == "token":
-                    sample_data = self.__ensure_homogeneous(sample_data)
+                if level == "token" and subtask != "seg":
+                    sample_preds = self.__ensure_homogeneous(sample_preds)
         
                 # we dont decode the links, and if we are allowign prediction of links outside the scope of the segments, example when encoding links into complexed labels.
                 # we want to correct this. ALl links which point to outside the predicted amount of segments will be set to point to the last segment in the sample
                 if task != "link":
-                    sample_data = self.__correct_links(
-                                                        sample_data = sample_data,
-                                                        max_seg = len(output.df.loc[i].groupby("seg_id"))
+                    sample_preds = self.__correct_links(
+                                                        sample_preds = sample_preds,
+                                                        max_seg = len(self.df.loc[i].groupby("seg_id"))
                                                         )
                 else:
-                    sample_data = self.__decode(
-                                                sample_data = sample_data, 
+                    sample_preds = self.__decode(
+                                                sample_preds = sample_preds, 
                                                 subtask_position = k
                                                 )
 
 
                 # we are unfolding the segment preditions to tokens. This is only so we can fit the predictions into a standardised token-based df
                 if level == "seg":
-                    output.unfold_over_seg(i, sample_data, task, gt=True)
+                    print(sample_preds)
+                    self.__unfold_over_seg(i, sample_preds, task, gt=True)
 
                 # we decode segments
                 if task == "seg":
-                    tok_seg_ids, _ = self.seg_decoder(sample_data, seg_id_start = global_seg_id)
-                    output.set(i, "seg_id", tok_seg_ids)
-                    output.unfold_over_seg(i, sample_data, task , gt = False)
+                    tok_seg_ids, _ = self.seg_decoder(sample_preds, seg_id_start = global_seg_id)
+                    self.__set(i, "seg_id", tok_seg_ids)
+                    self.__unfold_over_seg(i, sample_preds, task , gt = False)
                     
 
-                output.set(i, subtask, sample_data)
+                self.__set(i, subtask, sample_preds)
+
+            self._first_done = True
 
            
+    def get_pairs(self, bidir:bool = False):
+        pass
 
 
+    def get_stuff(self, key:str):
+        return self.stuff[key]
 
 
+    def get_logits(self, task:str):
+        return self.logits[task]
+
+
+    def get_preds(self, task:str):
+
+        seg_id = "seg_id"
+
+        if self.schedule.next(self.batch.current_epoch):
+            task = f"T-{task}"
+            seg_id = f"T-seg_id"
+        
+        preds_splits = np.split(self.df[task].to_numpy(), self.df.groupby("seg_id").size().to_numpy())
+        preds = utils.zero_pad(preds_splits)
+        return preds
+        
 
 
 
@@ -449,21 +491,21 @@ class OutputFormater:
     # #@utils.timer
     # def format(self, batch:dict, preds:dict):
 
-        self.__init__output(batch)
+        # self.__init__output(batch)
 
-        for task, data in preds.items():
+        # for task, data in preds.items():
 
-            if data.shape[-1] == self.max_seg:
-                level = "seg"
-            elif data.shape[-1] == self.max_tok:
-                level = "token"
-            else:
-                raise RuntimeError(f"data was given in shape {data.shape[0]} but {self.max_seg} (segment level) or {self.max_tok} (token level) was expected")
+        #     if data.shape[-1] == self.max_seg:
+        #         level = "seg"
+        #     elif data.shape[-1] == self.max_tok:
+        #         level = "token"
+        #     else:
+        #         raise RuntimeError(f"data was given in shape {data.shape[0]} but {self.max_seg} (segment level) or {self.max_tok} (token level) was expected")
 
-            self.__add_preds(
-                            task=task, 
-                            level=level,
-                            data=data,
-                            )
+        #     self.__add_preds(
+        #                     task=task, 
+        #                     level=level,
+        #                     data=data,
+        #                     )
          
-        return pd.DataFrame(self._outputs)
+        # return pd.DataFrame(self._outputs)

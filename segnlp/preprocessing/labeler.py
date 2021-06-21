@@ -27,10 +27,6 @@ class Labeler:
         return df
 
 
-    def _label_tokens(self):
-        pass
-
-
     def _label_bios(self, df):
         df["seg"] = "O"
         segs = df.groupby("seg_id")

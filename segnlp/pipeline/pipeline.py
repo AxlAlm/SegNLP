@@ -148,7 +148,8 @@ class Pipeline(Evaluation, ML, StatSig):
 
             if key != config_key:
                 raise RuntimeError(f"Current config is not the same as the config found in {self._path}. Either change the id of the pipeline or make sure all the paramaters the same as for {self.id}")
-
+        # else:
+        #     raise RuntimeError("pipeline is missing key.txt file. Recreate the the pipeline.")
 
     def __dump_config(self):
         config_fp = os.path.join(self._path, "config.json")

@@ -1,5 +1,8 @@
+from segnlp.utils.output import Output
+from segnlp.utils.input import Input
 import numpy as np
 import os
+from numpy.lib.arraysetops import isin
 import pandas as pd
 from typing import List, Dict, Union, Tuple, Callable
 import re
@@ -31,6 +34,7 @@ class PTLBase(ptl.LightningModule):
                     hyperparamaters:dict,
                     tasks:list,
                     all_tasks:list,
+                    subtasks:list,
                     label_encoders:dict,
                     task_labels:dict,
                     prediction_level:str,
@@ -48,37 +52,137 @@ class PTLBase(ptl.LightningModule):
         self.task_labels = task_labels
         self.tasks = tasks
 
+
+        if "seg" in subtasks:
+            self.seg_task = sorted([task for task in tasks if "seg" in task], key = lambda x: len(x))
+
+
         self.metrics = utils.MetricContainer(
                                             metric = metric
                                             )
 
-        self.formater = utils.OutputFormater(
-                                        label_encoders=label_encoders, 
-                                        tasks=tasks,
-                                        all_tasks=all_tasks,
-                                        prediction_level=prediction_level,
+        self.output = utils.Output(
+                                        label_encoders = label_encoders, 
+                                        tasks = tasks,
+                                        all_tasks = all_tasks,
+                                        subtasks = subtasks,
+                                        prediction_level = prediction_level,
                                         inference = inference,
                                         )
 
         self.outputs = {"val":[], "test":[], "train":[]}
 
 
-    def forward(self, batch:utils.ModelInput):
-        return self._step(batch, split="test")
+    def _token_rep(self, batch:utils.Input, output:dict):
+
+        if hasattr(self, "token_rep"):
+            stuff = self.token_rep(batch, output)
+
+            assert isinstance(stuff, dict)
+
+            output.add_stuff(stuff)
+    
+
+    def _token_clf(self, batch:utils.Input, output:dict):
+
+        if hasattr(self, "token_clf"):
+            logits, preds = self.token_clf(batch, output)
+            output.add_logits(
+                            logits, 
+                            task = self.seg_task
+                            )
+            output.add_preds(
+                            preds, 
+                            level = "token", 
+                            task = self.seg_task
+                            )
 
 
-    #@utils.timer
-    def _step(self, batch:utils.ModelInput, split:str):
+    def _seg_rep(self, batch:utils.Input, output:dict):
+
+        if hasattr(self, "seg_rep"):
+            stuff = self.seg_rep(batch, output)
+
+            assert isinstance(stuff, dict)
+
+            output.add_stuff(stuff)
+    
+
+    def _label_clf(self, batch:utils.Input, output:dict):
+
+        if hasattr(self, "label_clf"):
+            logits, preds = self.label_clf(batch, output)
+            output.add_logits(  logits, 
+                                task = "label"
+                            )
+            output.add_preds(   preds, 
+                                level = "seg", 
+                                task = "label"
+                                )
+
+        
+    def _link_clf(self, batch:utils.Input, output:dict):
+
+        if hasattr(self, "link_clf"):
+            logits, preds = self.link_clf(batch, output)
+            output.add_logits(
+                            logits, 
+                            task = "label"
+                            )
+            output.add_preds(
+                            preds, 
+                            level = "seg", 
+                            task = "label"
+                            )
+
+
+    def _link_label_clf(self, batch:utils.Input, output:dict):
+
+        if hasattr(self, "link_label_clf"):
+            logits, preds = self.link_label_clf(batch, output)
+            output.add_logits(
+                            logits, 
+                            task = "link_label"
+                            )
+            output.add_preds(
+                            preds, 
+                            level = "seg", 
+                            task = "link_label"
+                            )
+
+
+    def forward(self, batch:Input, output:Output):
+
+        # 1) represent tokens
+        self._token_rep(batch, output)
+
+        # 2) classifiy on tokens
+        self._token_clf(batch, output)
+
+        # 3) represent segments
+        self._seg_rep(batch, output)
+
+        # 4) classify labels
+        self._label_clf(batch, output)
+
+        # 5) classify links
+        self._link_clf(batch, output)
+
+        #6) classify link_labels
+        self._link_label_clf(batch, output)
+
+
+    def _step(self, batch:utils.Input, split:str):
         batch.current_epoch = self.current_epoch
-        output = self.forward(batch)
-        df = self.formater.format(
-                                    batch=batch,
-                                    preds=output["preds"],
-                                    )
+
+        output = self.output.step(batch)
+
+        self.forward(batch, output)
+
         self.metrics.calc_add(
-                            df=df, 
-                            task_labels=self.task_labels,
-                            split=split
+                            d = output.df, 
+                            task_labels = self.task_labels,
+                            split = split
                             )
                                 
 
@@ -87,7 +191,7 @@ class PTLBase(ptl.LightningModule):
         else:
             loss = self.loss(batch, output)
 
-        return loss, df
+        return loss, output.df
       
     
     def training_step(self, batch, batch_idx):
@@ -103,7 +207,6 @@ class PTLBase(ptl.LightningModule):
         if self.monitor_metric != "val_loss":
             self.log(f'val_{self.monitor_metric}', self.metrics["val"][-1][self.monitor_metric.replace("val_","")], prog_bar=True)
 
-        #self.outputs["val"].extend(df.to_dict("records"))
         return {"val_loss": loss}
 
 
