@@ -9,21 +9,22 @@ from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 
 
-def f1_precision_recall(targets:np.ndarray, preds:np.ndarray, task:str, labels:list):
+def f1_precision_recall(targets:np.ndarray, preds:np.ndarray, task:str, labels:list, label_ids:list):
 
     assert targets.shape == preds.shape, f"shape missmatch for {task}: Targets:{targets.shape} | Preds: {preds.shape}"
 
-    label_counts = Counter({l:0 for l in labels})
+    label_counts = Counter({l:0 for l in label_ids})
     label_counts += Counter(preds.tolist()+targets.tolist())
 
-    rs = recall_score(targets, preds, labels=labels, average=None)
-    ps = precision_score(targets, preds, labels=labels, average=None)
+    rs = recall_score(targets, preds, labels=label_ids, average=None)
+    ps = precision_score(targets, preds, labels=label_ids, average=None)
+    
     
     label_metrics = []
-    for i,label in enumerate(labels):
+    for i, (label_id, label) in enumerate(zip(label_ids, labels)):
 
         # if a label is not present in the targets or the predictions we ignore is so it doesn count towards the average
-        if label_counts[label] == 0:
+        if label_counts[label_id] == 0:
             continue
 
         p = ps[i]
@@ -39,9 +40,9 @@ def f1_precision_recall(targets:np.ndarray, preds:np.ndarray, task:str, labels:l
 
 
     df = pd.DataFrame(label_metrics)
-    task_pr = float(df[df["metric"]=="precision"].mean())
-    task_re = float(df[df["metric"]=="recall"].mean())
-    task_f1 = float(df[df["metric"]=="f1"].mean())
+    task_pr = float(df[df["metric"] == "precision"].mean())
+    task_re = float(df[df["metric"] == "recall"].mean())
+    task_f1 = float(df[df["metric"] == "f1"].mean())
 
     task_metrics = [
                         {"name":f"{task}-precision", "metric": "precision", "value": task_pr},

@@ -15,23 +15,26 @@ from segnlp import utils
 class BIODecoder:
 
     def __init__(self, 
-                B:list=["B"],
-                I:list=["I"],
-                O:list=["O"],
+                bio_order = ["O","B","I"],
+                # B:list=["B"],
+                # I:list=["I"],
+                # O:list=["O"],
                 apply_correction:bool = True
                 ):
 
-        Bs = "-|".join([str(b) for b in B]) + "-"
-        Is = "-|".join([str(i) for i in I]) + "-"
-        Os = "-|".join([str(o) for o in O]) + "-"
+        # Bs = "-|".join([str(b) for b in B]) + "-"
+        # Is = "-|".join([str(i) for i in I]) + "-"
+        # Os = "-|".join([str(o) for o in O]) + "-"
+
+        O, B, I = bio_order
         
         # if we have invalid BIO structure we can correct these
         #  https://arxiv.org/pdf/1704.06104.pdf, appendix
         # 1) I follows 0 -> allow OI to be interpreted as a B
         if apply_correction:
-            Bs += f"|(?<=({Os}))({Is})|<START>-"
+            B += f"|(?<=({O}))({I})|<START>-"
 
-        self.pattern = re.compile(f"(?P<UNIT>({Bs})({Is})*)|(?P<NONE>({Os})+)")
+        self.pattern = re.compile(f"(?P<UNIT>({B})({I})*)|(?P<NONE>({O})+)")
         
 
     def __call__(self, encoded_bios:List[str], seg_id_start:int = 0):

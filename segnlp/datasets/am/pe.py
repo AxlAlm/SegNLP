@@ -347,7 +347,6 @@ class PE(DataSet):
         """
 
         span2label = RangeDict()
-        #current_seg_id = 0
         for i, (ac_id, span) in enumerate(ac_id2span.items()):
 
             relation = ac_id2relation.get(ac_id, 0)
@@ -360,7 +359,7 @@ class PE(DataSet):
             else:
                 seg_id = global_seg_id
                 global_seg_id += 1
-
+            
             label = {   
                         "label": ac_id2ac.get(ac_id,"None"), 
                         "link_label": self._stance2new_stance.get(ac_id2stance.get(ac_id,"None"), "None"), 
@@ -372,7 +371,7 @@ class PE(DataSet):
 
             span2label[span] = label #[label, ac_id]
 
-        return span2label
+        return span2label, global_seg_id
 
 
     def _shuffle_split_data(self, data:list) -> Dict[int, Dict[str, np.ndarray]]:
@@ -448,13 +447,13 @@ class PE(DataSet):
             # extract annotation spans
             ac_id2span, ac_id2ac,ac_id2stance, ac_id2relation = self.__parse_ann_file(ann, len(text))
 
-            span2label = self.__get_label_dict(
-                                                ac_id2span, 
-                                                ac_id2ac,
-                                                ac_id2stance, 
-                                                ac_id2relation,
-                                                global_seg_id
-                                                )
+            span2label, global_seg_id = self.__get_label_dict(
+                                                            ac_id2span, 
+                                                            ac_id2ac,
+                                                            ac_id2stance, 
+                                                            ac_id2relation,
+                                                            global_seg_id
+                                                            )
                         
             data.append({
                             "sample_id":file_id,

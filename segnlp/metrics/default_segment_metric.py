@@ -8,12 +8,13 @@ from .metric_utils import f1_precision_recall
 from .metric_utils import link_f1
 
 
-def default_segment_metric(df:pd.DataFrame, tasks_labels:dict):
+def default_segment_metric(df:pd.DataFrame, task_labels:dict, task_label_ids:dict):
     
-    df = df.groupby("seg_id").first()
+    df = df.groupby("T-seg_id").first()
+
 
     collected_scores = {}
-    for task, labels in tasks_labels.items():
+    for task in task_labels.keys():
 
         if task == "link":            
             scores = link_f1(
@@ -30,7 +31,8 @@ def default_segment_metric(df:pd.DataFrame, tasks_labels:dict):
                                         targets = targets,
                                         preds = preds,
                                         task = task,
-                                        labels = labels,
+                                        labels = task_labels[task],
+                                        label_ids = task_label_ids[task]
                                         )
             collected_scores.update(scores)
     

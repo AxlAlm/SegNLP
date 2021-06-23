@@ -9,7 +9,10 @@ from segnlp import metrics
 
 class MetricContainer(dict):
 
-    def __init__(self, metric=Union[Callable,str]):
+    def __init__(self, metric:Union[Callable,str], label_encoders:dict):
+
+        self.task_labels = {task: list(enc.id2label.values()) if task != "link" else [] for task, enc in label_encoders.items() }
+        self.task_label_ids = {task: list(enc.id2label.keys()) if task != "link" else [] for task, enc in label_encoders.items() }
 
         if isinstance(metric, str):
             metric = getattr(metrics, metric)
@@ -20,11 +23,11 @@ class MetricContainer(dict):
             self[k] = []
 
 
-    def calc_add(self, df:pd.DataFrame, task_labels:dict, split:str):
+    def calc_add(self, df:pd.DataFrame, split:str):
         """
         metrics = {"metic1": 0.3, "metric2": 0.5, ...., "metricn": 0.9 }
         """
-        metrics = self._metric_fn(df, task_labels)
+        metrics = self._metric_fn(df, self.task_labels, self.task_label_ids)
         self[split].append(metrics)
 
         

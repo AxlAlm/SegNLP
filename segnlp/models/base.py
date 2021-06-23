@@ -36,7 +36,6 @@ class PTLBase(ptl.LightningModule):
                     all_tasks:list,
                     subtasks:list,
                     label_encoders:dict,
-                    task_labels:dict,
                     prediction_level:str,
                     task_dims:dict,
                     feature_dims:dict,
@@ -49,16 +48,14 @@ class PTLBase(ptl.LightningModule):
         self.feature_dims = feature_dims
         self.task_dims = task_dims
         self.inference = inference
-        self.task_labels = task_labels
         self.tasks = tasks
-
 
         if "seg" in subtasks:
             self.seg_task = sorted([task for task in tasks if "seg" in task], key = lambda x: len(x))
 
-
         self.metrics = utils.MetricContainer(
-                                            metric = metric
+                                            metric = metric,
+                                            label_encoders = label_encoders,
                                             )
 
         self.output = utils.Output(
@@ -127,12 +124,12 @@ class PTLBase(ptl.LightningModule):
             logits, preds = self.link_clf(batch, output)
             output.add_logits(
                             logits, 
-                            task = "label"
+                            task = "link"
                             )
             output.add_preds(
                             preds, 
                             level = "seg", 
-                            task = "label"
+                            task = "link"
                             )
 
 
@@ -180,8 +177,7 @@ class PTLBase(ptl.LightningModule):
         self.forward(batch, output)
 
         self.metrics.calc_add(
-                            d = output.df, 
-                            task_labels = self.task_labels,
+                            df = output.df, 
                             split = split
                             )
                                 
