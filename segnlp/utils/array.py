@@ -338,6 +338,20 @@ def index_select_array(input:torch.tensor, index:torch.tensor):
     return flat_input[flat_idx]
 
 
+
+def pair_matrix(input:Tensor):
+    # create a matrix of pairs from a 3d tensor.
+    dim1 = input.shape[1]
+    shape = (input.shape[0], dim1, dim1, input.shape[-1])
+    m = torch.reshape(torch.repeat_interleave(input, dim1, dim=1),  shape)
+    mT = m.transpose(2, 1)
+    return torch.cat((m, mT), dim=-1)
+    
+
+
+
+
+
 def range_3d_tensor_index(matrix: Tensor,
                           start: Tensor,
                           end: Tensor,

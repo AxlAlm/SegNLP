@@ -12,7 +12,7 @@ from segnlp.layers.general import LinearCLF
 
 
 
-class PairingLayer(torch.nn.Module):
+class Pairer(torch.nn.Module):
 
     """
 
@@ -122,7 +122,7 @@ class PairingLayer(torch.nn.Module):
                                     )
 
 
-    def __create_matrix(self, input:Tensor,  pair_mask:Tensor=None) -> Tensor:        
+    def __create_matrix(self, input:Tensor) -> Tensor:        
         device = input.device
         batch_size = input.shape[0]
         dim1 = input.shape[1]

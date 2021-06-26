@@ -11,8 +11,8 @@ from segnlp.layer_wrappers import Reducer
 from segnlp.layer_wrappers import Encoder
 from segnlp.layer_wrappers import Linker
 from segnlp.layer_wrappers import Labeler
-
 from segnlp.layers.embedders import BOW
+from segnlp import utils
 
 
 class JointPN(PTLBase):
@@ -115,14 +115,14 @@ class JointPN(PTLBase):
                 }
         
 
-    def label_clf(self, batch, output):
+    def label_clf(self, batch:utils.Input, output:utils.Output):
         logits, preds = self.labeler(
                                     input = output.stuff["encoder_out"],
                                     )
         return logits, preds
 
 
-    def link_clf(self, batch, output):
+    def link_clf(self, batch:utils.Input, output:utils.Output):
         logits, preds = self.pointer(
                                     inputs = output.stuff["f2c_out"],
                                     encoder_outputs = output.stuff["encoder_out"],

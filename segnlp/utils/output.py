@@ -103,7 +103,6 @@ class Output:
         self.df.loc[i, key] = sample[key].to_numpy()
 
 
-
     def __extract_match_info(self):
         
 
@@ -155,7 +154,6 @@ class Output:
 
         links_bellow_allowed = self.df.loc[i, "link"] < 0
         self.df.loc[i,"link"][links_bellow_allowed] = max_seg
-
 
 
     def __ensure_homogeneous(self, i, subtask):
@@ -301,31 +299,77 @@ class Output:
                 # else:
                 #     self.__set(i, subtask, sample_preds)
 
-
-           
+     
     def get_pairs(self, bidir:bool = False):
         pass
 
 
-    def get_stuff(self, key:str):
-        return self.stuff[key]
+def get_all_possible_pairs(
+                            start: List[List[int]],
+                            end: List[List[int]],
+                            device=torch.device,
+                            bidir=False,
+                        ) -> DefaultDict[str, List[List[Tuple[int]]]]:
+
+    if bidir:
+        get_pairs = lambda x, r: list(product(x, repeat=r))  # noqa
+    else:
+        get_pairs = lambda x, r: sorted(  # noqa
+            list(combinations(x, r=r)) + [(e, e) for e in x],
+            key=lambda u: (u[0], u[1]))
+
+    all_possible_pairs = defaultdict(lambda: [])
+    for idx_start, idx_end in zip(start, end):
+        idxs = list(get_pairs(range(len(idx_start)), 2))
+        if idxs:
+            p1, p2 = zip(*idxs)  # pairs' seg id
+            p1 = torch.tensor(p1, dtype=torch.long, device=device)
+            p2 = torch.tensor(p2, dtype=torch.long, device=device)
+            # pairs start and end token id.
+            start = get_pairs(idx_start, 2)  # type: List[Tuple[int]]
+            end = get_pairs(idx_end, 2)  # type: List[Tuple[int]]
+            lens = len(start)  # number of pairs' segs len  # type: int
+
+        else:
+            p1 = torch.empty(0, dtype=torch.long, device=device)
+            p2 = torch.empty(0, dtype=torch.long, device=device)
+            start = []
+            end = []
+            lens = 0
+
+        all_possible_pairs["idx"].append(idxs)
+        all_possible_pairs["p1"].append(p1)
+        all_possible_pairs["p2"].append(p2)
+        all_possible_pairs["start"].append(start)
+        all_possible_pairs["end"].append(end)
+        all_possible_pairs["lengths"].append(lens)
+
+    all_possible_pairs["lengths"] = torch.tensor(all_possible_pairs["lengths"],
+                                                 dtype=torch.long,
+                                                 device=device)
+    all_possible_pairs["total_pairs"] = sum(all_possible_pairs["lengths"])
+    return all_possible_pairs
 
 
-    def get_logits(self, task:str):
-        return self.logits[task]
+    # def get_stuff(self, key:str):
+    #     return self.stuff[key]
 
 
-    def get_preds(self, task:str):
+    # def get_logits(self, task:str):
+    #     return self.logits[task]
 
-        seg_id = "seg_id"
 
-        if self.schedule.next(self.batch.current_epoch):
-            task = f"T-{task}"
-            seg_id = f"T-seg_id"
+    # def get_preds(self, task:str):
+
+    #     seg_id = "seg_id"
+
+    #     if self.schedule.next(self.batch.current_epoch):
+    #         task = f"T-{task}"
+    #         seg_id = f"T-seg_id"
         
-        preds_splits = np.split(self.df[task].to_numpy(), self.df.groupby("seg_id").size().to_numpy())
-        preds = utils.zero_pad(preds_splits)
-        return preds
+    #     preds_splits = np.split(self.df[task].to_numpy(), self.df.groupby("seg_id").size().to_numpy())
+    #     preds = utils.zero_pad(preds_splits)
+    #     return preds
         
 
 

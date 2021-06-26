@@ -1,5 +1,4 @@
 
-
 #basics
 import pandas as pd
 
@@ -11,7 +10,6 @@ from .metric_utils import link_f1
 def default_segment_metric(df:pd.DataFrame, task_labels:dict, task_label_ids:dict):
     
     df = df.groupby("T-seg_id").first()
-
 
     collected_scores = {}
     for task in task_labels.keys():

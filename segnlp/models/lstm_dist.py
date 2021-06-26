@@ -22,6 +22,7 @@ from segnlp.layer_wrappers import Reducer
 from segnlp.layer_wrappers import Embedder
 from segnlp.layer_wrappers import Labeler
 from segnlp.layer_wrappers import LinkLabeler
+from segnlp import utils
 
 
 class LSTM_DIST(nn.Module):
@@ -93,8 +94,8 @@ class LSTM_DIST(nn.Module):
                                     )
 
         self.linker = Linker(
-                                layer = "PairingLayer",
-                                hyperparams = self.hps.get("PairingLayer", {}),
+                                layer = "Pairer",
+                                hyperparams = self.hps.get("Pairer", {}),
                                 input_size = self.am_ac_lstm.output_size,
                                 )
 
@@ -116,10 +117,8 @@ class LSTM_DIST(nn.Module):
         return "LSTM_DIST"
 
 
-    def forward(self, batch, output):
+    def seg_rep(self, batch:utils.Input, output:utils.Output):
 
-        # input (Batch_dize, nr_tokens, word_emb_dim)
-        # output (Batch_dize, nr_tokens, word_emb_dim)
         lstm_out, _ = self.word_lstm(
                                         input = batch["token"]["word_embs"], 
                                         lengths =  batch["token"]["lengths"]
@@ -148,45 +147,46 @@ class LSTM_DIST(nn.Module):
         # concatenate the output from Argument Component BiLSTM and Argument Marker BiLSTM with BOW and with structural features stored in "doc_embs"
         cat_emb = torch.cat((am_lstm_out, ac_lstm_out, bow, batch["seg"]["doc_embs"]), dim=-1)
         adu_emb, _= self.am_ac_lstm(cat_emb, batch["unit"]["lengths"])
-  
-        # Classification of label and link labels is pretty straight forward
-        link_label_logits, link_label_preds = self.link_labeler(adu_emb)
-        label_logits, label_preds = self.labeler(adu_emb)
-
-        adu_emb2, _ = self.last_lstm(adu_emb, batch["unit"]["lengths"])
-
-        link_logits, link_preds = self.linker(adu_emb2, unit_mask=batch["unit"]["mask"])
+        adu_emb_last, _ = self.last_lstm(adu_emb, batch["unit"]["lengths"])
 
 
         return {
-                "logits": {
-                            "link": link_logits,
-                            "label": label_logits,
-                            "link_label": link_label_logits,
-                            },
-                "preds":{
-                            "link":link_preds,
-                            "label": label_preds,
-                            "link_label": link_label_preds,
-                            },
+                "adu_emb": adu_emb,
+                "adu_emb_last": adu_emb_last
                 }
 
 
-    def loss(self, batch, forward_output:dict):
+    def label_clf(self, batch:utils.Input, output:utils.Output):
+        logits, preds = self.labeler(output.stuff["adu_emb"])
+        return logits, preds
+
+
+    def link_clf(self, batch:utils.Input, output:utils.Output):
+        logits, preds = self.linker(output.stuff["adu_emb_last"], unit_mask=batch["unit"]["mask"])
+        return logits, preds
+
+
+    def link_label_clf(self, batch:utils.Input, output:utils.Output):
+        logits, preds = self.link_labeler(output.stuff["adu_emb"])
+        return logits, preds
+
+
+
+    def loss(self,  batch:utils.Input, output:utils.Output):
 
 
         link_loss = self.linker.loss(
-                                torch.flatten(forward_output["logits"]["link"], end_dim=-2), 
+                                torch.flatten(output.logits["link"], end_dim=-2), 
                                 batch["unit"]["link"].view(-1)
                                 )
 
         link_label_loss = self.link_labeler.loss(
-                                    torch.flatten(forward_output["logits"]["link_label"], end_dim=-2),
+                                    torch.flatten(output.logits["link_label"], end_dim=-2),
                                      batch["unit"]["link_label"].view(-1)
                                      )
 
         label_loss = self.labeler.loss(
-                                torch.flatten(forward_output["logits"]["label"], end_dim=-2), 
+                                torch.flatten(output.logits["label"], end_dim=-2), 
                                 batch["unit"]["label"].view(-1)
                                 )
 

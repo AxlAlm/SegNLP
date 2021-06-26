@@ -534,6 +534,7 @@ class DepPairingLayer(nn.Module):
                                                     deplinks=deplinks,
                                                     seg_data=seg_data,
                                                     )
+
         # We predict link labels for both directions. Get the dominant pair dir
         # plus roots' probabilities
         ll_logits = self.link_label_clf_layer(pair_embs)
@@ -544,17 +545,7 @@ class DepPairingLayer(nn.Module):
                                                                     pair_data = pair_data, 
                                                                     )
 
-        # # Formate predections tensor
-        # l_preds_token, ll_pred_tokens = self.get_tokens_preds(
-        #                                                         ll_preds_id, 
-        #                                                         ll_preds_prob, 
-        #                                                         token_mask, 
-        #                                                         pair_link_preds_data
-        #                                                         )
   
-        return logits, ll_preds, l_preds, pair_data
-
-
 
 
     def loss(self,  targets:Tensor, 
@@ -592,51 +583,53 @@ class DepPairingLayer(nn.Module):
 
 
 
-class LinkLabelPairLoss(nn.Module):
 
-    """
 
-    For each pair we create a target label either from the ground truths for that pair if its a true pair, or we 
-    treat the target as a negative sample, i.e. the target label will be equivallent to "THIS SHOULD NOT BE PREDICTED TO LINK"-.
+# class LinkLabelPairLoss(nn.Module):
 
-    Negative sampling is applied for any pair which satisifies the following conditions:
+#     """
 
-        1) the label of the members of the pairs are incorrect
+#     For each pair we create a target label either from the ground truths for that pair if its a true pair, or we 
+#     treat the target as a negative sample, i.e. the target label will be equivallent to "THIS SHOULD NOT BE PREDICTED TO LINK"-.
+
+#     Negative sampling is applied for any pair which satisifies the following conditions:
+
+#         1) the label of the members of the pairs are incorrect
         
-        2) the pair has no link_label
+#         2) the pair has no link_label
     
-    EXAMPLE:
+#     EXAMPLE:
 
 
-    """
+#     """
 
-    def __init__(self, nr_label:int, mode:str):
-        self.nr_label = nr_label
-        self.mode = mode
-        self.loss_fn = CrossEntropyLoss(reduce="mean", ignore_index=-1)
+#     def __init__(self, nr_label:int, mode:str):
+#         self.nr_label = nr_label
+#         self.mode = mode
+#         self.loss_fn = CrossEntropyLoss(reduce="mean", ignore_index=-1)
 
 
-    def forward(
-                logits:Tensor, 
-                #link_predictions: Tensor,
-                #link_targets: Tensor,
-                pair_token_idxs: Tensor, 
-                token_labels: Tensor, 
-                token_targets: Tensor,
-                ):
+#     def forward(
+#                 logits:Tensor, 
+#                 #link_predictions: Tensor,
+#                 #link_targets: Tensor,
+#                 pair_token_idxs: Tensor, 
+#                 token_labels: Tensor, 
+#                 token_targets: Tensor,
+#                 ):
         
-        #create a flat list of all candidate pairs
-        if self.mode == "pair":
-            pair_logits = logits
-        else:
-            raise NotImplementedError
+#         #create a flat list of all candidate pairs
+#         if self.mode == "pair":
+#             pair_logits = logits
+#         else:
+#             raise NotImplementedError
 
-        #create a target tensor based on the 
+#         #create a target tensor based on the 
   
-        # create a mask for selecting pairs which entities are incorrect
+#         # create a mask for selecting pairs which entities are incorrect
         
 
-        # create a mask for selecting pairs where links are incorrect
+#         # create a mask for selecting pairs where links are incorrect
 
 
 

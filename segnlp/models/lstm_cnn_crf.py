@@ -15,8 +15,6 @@ from segnlp.layer_wrappers import Embedder
 from segnlp.layer_wrappers import Encoder
 from segnlp.layer_wrappers import Segmenter
 from segnlp.layer_wrappers import Reprojecter
-
-
 from segnlp import utils
 
 
@@ -70,8 +68,8 @@ class LSTM_CNN_CRF(PTLBase):
     def name(self):
         return "LSTM_CNN_CRF"
 
-    #@utils.timer
-    def forward(self, batch):
+
+    def token_rep(self, batch: utils.Input, output: utils.Output):
 
         word_embs = self.finetuner(batch["token"]["word_embs"])
         char_embs = self.char_embedder(batch["token"]["chars"])
@@ -82,23 +80,22 @@ class LSTM_CNN_CRF(PTLBase):
                                     lengths = batch["token"]["lengths"]
                                 )
 
-        logits, preds = self.segmenter(
-                                    input=lstm_out,
-                                    mask=batch["token"]["mask"],
-                                    )
-
-        return  {
-                "logits":{
-                        self.task: logits,
-                        },
-                "preds": {
-                        self.task: preds["preds"],
-                        }
+        return {
+                "lstm_out":lstm_out
                 }
 
-    def loss(self, batch:dict, forward_output:dict):
+
+    def token_clf(self, batch: utils.Input, output: utils.Output):
+        logits, preds = self.segmenter(
+                                    input=output.stuff["lstm_out"],
+                                    mask=batch["token"]["mask"],
+                                    )
+        return logits, preds
+
+
+    def loss(self, batch: utils.Input, output: utils.Output):
         return self.segmenter.loss(
-                                        logits = forward_output["logits"][self.task],
+                                        logits = output.logits[self.task],
                                         targets = batch["token"][self.task],
                                         mask = batch["token"]["mask"],
                                     )

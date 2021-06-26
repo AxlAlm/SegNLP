@@ -10,18 +10,28 @@ from torch import Tensor
 from segnlp.layer_wrappers import Encoder
 from segnlp.layer_wrappers import LinkLabeler
 from segnlp.layer_wrappers import Segmenter
+from segnlp.layer_wrappers import Reducer
 from segnlp import utils
 
 
 class LSTM_ER(nn.Module):
 
+    #https://www.aclweb.org/anthology/P16-1105.pdf
+
     def __init__(self,  *args, **kwargs):   
         super().__init__(*args, **kwargs)
+
 
         self.word_lstm = Encoder(    
                                 layer = "LSTM", 
                                 hyperparams = self.hps.get("LSTM", {}),
-                                input_size = self.fc1.output_size
+                                input_size = self.feature_dims["word_embs"]
+                                )
+        
+        self.deptreelstm = Reducer(
+                                    layer = "DepTreeLSTM",
+                                    hyperparams = self.hps.get("DepTreeLSTM", {}),
+                                    input_size = self.word_lstm.output_size,
                                 )
 
         self.segmenter = Segmenter(
@@ -45,43 +55,98 @@ class LSTM_ER(nn.Module):
         return "LSTM_ER"
 
     
-    def encoding():
-        # (batch_size, max_nr_tokens, word_embs + pos_embs)
+
+    def token_rep(self, batch:utils.Input, output:utils.Output):
+        #(batch_size, max_nr_tokens, word_embs + pos_embs)
         pos_word_embs = torch.cat((batch["token"]["word_embs"], batch["token"]["pos_embs"]), dim=2)
         pos_word_embs = self.dropout(pos_word_embs)
 
         # lstm_out = (batch_size, max_nr_tokens, lstm_hidden)
         lstm_out, _ = self.lstm(pos_word_embs, batch["token"]["lengths"])
 
+        return {
+                "lstm_out": lstm_out
+                }
 
 
-    def forward(self, batch, output):
-
-        # (batch_size, max_nr_tokens, word_embs + pos_embs)
-        pos_word_embs = torch.cat((batch["token"]["word_embs"], batch["token"]["pos_embs"]), dim=2)
-        pos_word_embs = self.dropout(pos_word_embs)
-
-        # lstm_out = (batch_size, max_nr_tokens, lstm_hidden)
-        lstm_out, _ = self.lstm(pos_word_embs, batch["token"]["lengths"])
-
+    def token_clf(self, batch:utils.Input, output:utils.Output):
         # outpts the logits, preds for seg+label as well as segmentation data which contain
         # information about where segments start, in this cases it decoded BIO patterns
-        output.add(self.segmenter(
-                        input = lstm_out,
+        logits, preds = self.segmenter(
+                        input = output.stuff["lstm_out"],
                         lengths = batch["token"]["lengths"],
-                        ))
+                        )
+        
+        return logits, preds
 
 
-        output.add(self.link_labeler(
-                        token_embs = lstm_out,
-                        dep_embs = batch["token"]["deprel_embs"],
-                        one_hot_embs = output.one_hots(TASK),
-                        roots = batch["token"]["root_idxs"],
-                        deplinks = batch["token"]["dephead"],
-                        token_mask = batch["token"]["mask"].type(torch.bool),
-                        ))
 
-        return output
+    def seg_rep(self, batch:utils.Input, output:utils.Output):
+
+        # get the average embedding for each segments 
+        seg_embs = self.agg(
+                            input = batch["token"]["word_embs"], 
+                            lengths = batch["seg"]["lengths"],
+                            span_idxs = output["seg"]["span_idxs"],
+                            )
+
+       
+        # We create directional pairs embeddings by concatenating segment embeddings
+        # if we have 1 sample with the segments A,B,C we create the follwing matrix :
+        # [
+        #   [
+        #     [
+        #         [A;A],
+        #         [A;B],
+        #         [A;C]
+        #      ]
+        #     [
+        #        [B;A],
+        #        [B;B],
+        #        [B;C]
+        #      ]
+        #   ]
+        # ]        
+        pair_matrix = utils.pair_matrix(
+                                        input=seg_embs
+                                        )
+
+ 
+        # We create Non-Directional Pair Embeddings using DepTreeLSTM
+        # if we follow the example above we get the embedings for all combination of A,B,C. E.g. embeddings for 
+        # (A,A), (A,B), (A,C), (B,B), (B,C)
+        tree_pair_embs = self.deptreelstm(    
+                                            token_embs = output.stuff["lstm_out"],
+                                            dep_embs = batch["token"]["deprel_embs"],
+                                            one_hot_embs = output.one_hots(TASK),
+                                            roots = batch["token"]["root_idxs"],
+                                            deplinks = batch["token"]["dephead"],
+                                            token_mask = batch["token"]["mask"].type(torch.bool),
+                                            pair_data = pair_data_COMB
+                                            )
+
+        torch.repeat_interleave(tree_pair_embs, )
+
+                #tree_pair_embs
+        
+        # We then add the non directional pair embeddings to the directional pair representations
+        # creating dp´ = [dp; s1,s2] (see paper, page 1109)
+
+
+     
+
+        #pair_embs = torch.cat((tree_pair_embs, pair_embs), dim=-1)
+        return {
+                "pair_embs":pair_embs
+                }
+
+
+    def link_label_clf(self, batch:utils.Input, output:utils.Output):
+
+        # We predict link labels for both directions. Get the dominant pair dir
+        # plus roots' probabilities
+        logits, preds  = self.link_labeler(output.stuff["pair_embs"])
+        return logits, preds 
 
 
 
