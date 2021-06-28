@@ -243,7 +243,6 @@ class DepPairingLayer(nn.Module):
                         roots: Tensor,
                         token_mask: Tensor,
                         deplinks: Tensor,
-                        seg_data: dict,
                         assertion: bool = False):
 
         # get all possible pairs

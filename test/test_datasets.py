@@ -4,7 +4,6 @@ import unittest
 import pandas as pd
 from segnlp.datasets import PE, MTC
 from segnlp.datasets import DataSet
-import itertools
 
 
 class TestDataset(unittest.TestCase):

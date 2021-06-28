@@ -30,7 +30,7 @@ class Agg(nn.Module):
         
 
 
-    def forward(self, input:Tensor, lengths:Tensor, span_idxs:Tensor, flat:bool=False):
+    def forward(self, input:Tensor, lengths:Tensor, span_idxs:Tensor):
 
         batch_size = input.shape[0]
         device = input.device
@@ -41,6 +41,9 @@ class Agg(nn.Module):
         for i in range(batch_size):
             for j in range(lengths[i]):
                 ii, jj = span_idxs[i][j]
+
+                #when slicing we need to add 1 to the roof so we dont miss the last token
+                jj += 1
 
                 if self.mode == "average":
                     agg_m[i][j] = torch.mean(input[i][ii:jj], dim=0)
@@ -63,10 +66,10 @@ class Agg(nn.Module):
         if self.fine_tune:
             agg_m = self.ft(agg_m)
 
-        if flat:
-            mask = create_mask(lengths).view(-1)
-            agg_m_f = torch.flatten(agg_m, end_dim=-2)
-            return agg_m_f[mask]
+        # if flat:
+        #     mask = create_mask(lengths).view(-1)
+        #     agg_m_f = torch.flatten(agg_m, end_dim=-2)
+        #     return agg_m_f[mask]
 
         return agg_m
 

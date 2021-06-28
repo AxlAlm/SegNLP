@@ -211,8 +211,8 @@ def get_all_possible_pairs(
             p1 = torch.tensor(p1, dtype=torch.long, device=device)
             p2 = torch.tensor(p2, dtype=torch.long, device=device)
             # pairs start and end token id.
-            start = get_pairs(idx_start, 2)  # type: List[Tuple[int]]
-            end = get_pairs(idx_end, 2)  # type: List[Tuple[int]]
+            start = get_pairs(idx_start, 2)  # type: List[Tuple[int, int]]
+            end = get_pairs(idx_end, 2)  # type: List[Tuple[int,int]]
             lens = len(start)  # number of pairs' segs len  # type: int
 
         else:
@@ -300,7 +300,7 @@ def scatter_repeat(
 def cumsum_zero(input:torch.tensor):
     """
     torch.cumsum([4,5,10]) -> [4,9,19]
-    cumsum_zero([4,5,10]) -> [0,4,19]
+    cumsum_zero([4,5,10]) -> [0,4,9]
     """
     return torch.cat((torch.zeros(1),torch.cumsum(input, dim=0)))[:-1].type(torch.LongTensor)
 

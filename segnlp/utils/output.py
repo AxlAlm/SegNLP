@@ -1,18 +1,23 @@
 
 
 #basics
+from inspect import getsource
+from re import sub
 from typing import Union, List
+from unittest import result
 import numpy as np
 from numpy.lib import utils
 import pandas as pd
 from collections import Counter
-
+from itertools import product
+from itertools import combinations
 
 #segnlp
 from .input import Input
 from .array import ensure_flat, ensure_numpy, flatten
 from .bio_decoder import BIODecoder
 from .schedule_sample import ScheduleSampling
+from segnlp import utils
 
 #pytorch
 import torch
@@ -72,36 +77,13 @@ class Output:
             labels = label_encoders[task].label2id.keys()
             subtasks = task.split("+")
 
-            for label in labels:
+            for i,label in enumerate(labels):
 
                 sublabels = label.split("_")
-                decouplers[task][label] = [label_encoders[st].decode(sl) for st, sl in zip(subtasks, sublabels)]
+                decouplers[task][i] = [label_encoders[st].encode(sl) for st, sl in zip(subtasks, sublabels)]
 
         return decouplers
     
-
-    def __set(self, i, key, value):
-        self.df.loc[i, key] = value
-
-    
-    def __unfold_over_seg(self, i, key, data, gt:bool=False):
-
-        sample = self.df.loc[i]
-        sample.index = np.arange(sample.shape[0])
-
-        groups = sample.groupby("T-seg_id" if gt else "seg_id")
-
-        seg_id =  [i for i,g in groups][0]
-
-        idx = np.hstack(list(groups.groups.values()))
-        lengths = groups.size().to_numpy()
-
-        values = np.repeat(data, lengths)
-
-        sample.loc[idx, key] = values
-
-        self.df.loc[i, key] = sample[key].to_numpy()
-
 
     def __extract_match_info(self):
         
@@ -137,35 +119,60 @@ class Output:
         return i, j, ratio
 
 
-    def __decouple(self, subtask_preds:np.ndarray, task:str):
-        decouple = lambda x: self.__decouplers[task][x] #.split("_") #[subtask_position]
-        return zip(*[decouple(x) for x in subtask_preds])
+    def __decode_segs(self):
+    
+        # we get the sample start indexes from sample lengths. We need this to tell de decoder where samples start
+        sample_sizes = self.df.groupby("sample_id").size().to_numpy()
+        sample_end_idxs = np.cumsum(sample_sizes)
+        sample_start_idxs = np.concatenate((np.zeros(1), sample_end_idxs))[:-1]
+
+        self.df["seg_id"] = self.seg_decoder(
+                                                self.df["seg"].to_numpy(), 
+                                                sample_start_idxs=sample_start_idxs
+                                                )
 
 
-    def __correct_links(self, i, max_seg:int):
+    def __correct_links(self, true_segs:bool=False):
         """
         This function perform correction 3 mentioned in https://arxiv.org/pdf/1704.06104.pdf  (Appendix)
-
         Any link that is outside of the actuall text, e.g. when predicted link > max_idx, is set to predicted_link== max_idx
         """
-    
-        links_above_allowed = self.df.loc[i, "link"] > max_seg
-        self.df.loc[i,"link"][links_above_allowed] = max_seg
 
-        links_bellow_allowed = self.df.loc[i, "link"] < 0
-        self.df.loc[i,"link"][links_bellow_allowed] = max_seg
+        max_segs = self.df.groupby("sample_id")["T-seg_id" if true_segs else "seg_id"].nunique().to_numpy()
+        self.df["max_seg"] = np.repeat(max_segs, df.groupby("sample_id").size().to_numpy())
+
+        above = self.df["link"] > self.df["max_seg"]
+        below = self.df["link"] < 0
+
+        self.df.loc[above,"link"] = self.df.loc[above,"max_seg"]
+        self.df.loc[below,"link"] = self.df.loc[below,"max_seg"]
 
 
-    def __ensure_homogeneous(self, i, subtask):
+    def __ensure_homogeneous(self, subtask):
 
         """
         ensures that the labels inside a segments are the same. For each segment we take the majority label 
         and use it for the whole span.
         """
-        self.df.loc[i,subtask] = self.df.loc[i].groupby("seg_id")[subtask].transform(lambda x:x.value_counts().index[0])
+        df = self.df.loc[:,["seg_id", subtask]].value_counts().to_frame()
+        df.reset_index(inplace=True)
+        df.rename(columns={0:"counts"}, inplace=True)
+        df.drop_duplicates(subset=['seg_id'], inplace=True)
+
+        seg_lengths = self.df.groupby("seg_id").size()
+        most_common = np.repeat(df[subtask].to_numpy(), seg_lengths)
+
+        self.df.loc[~self.df["seg_id"].isna(), subtask] = most_common
 
      
     def step(self, batch):
+
+        if hasattr(self, "pair_data"):
+            del self.pair_data
+
+        if hasattr(self, "seg_data"):
+            del self.seg_data
+
         index = np.repeat(range(len(batch)), batch["token"]["lengths"])
         ids = np.repeat(batch.ids, batch["token"]["lengths"])
 
@@ -177,43 +184,15 @@ class Output:
         self.batch = batch
 
         mask = ensure_numpy(self.batch["token"]["mask"]).astype(bool)
-        
+
         self.df["sample_id"] = ids
         self.df["text"] = ensure_numpy(batch["token"]["text"])[mask]
-        self.df["token_id"] = ensure_numpy(batch["token"]["token_ids"])[mask]
+        self.df["token_id"] = np.hstack([np.arange(l) for l in ensure_numpy(batch["token"]["lengths"])])
+        self.df["original_token_id"] = ensure_numpy(batch["token"]["token_ids"])[mask]
         self.df["T-seg_id"] = ensure_numpy(batch["token"]["seg_id"])[mask]
 
         for s in self.subtasks:
             self.df[f"T-{s}"] = ensure_numpy(batch["token"][s])[mask]
-
-
-
-            # if not hasattr(self, "_first_done"):
-            #     self.__set(
-            #                 i, 
-            #                 "sample_id", 
-            #                 self.batch.ids[i]
-            #                 )
-
-            #     self.__set(
-            #                 i, 
-            #                 "text", 
-            #                 self.batch["token"]["text"][i, :tok_lengths[i]]
-            #                 )
-
-            #     self.__set(
-            #                 i, 
-            #                 "token_id", 
-            #                 self.batch["token"]["token_ids"][i, :tok_lengths[i]]
-            #             )
-                
-            #     self.__set(
-            #                 i,
-            #                 "T-seg_id", 
-            #                 self.batch["token"]["seg_id"][i, :tok_lengths[i]]
-            #                 )
-
-
 
         return self
 
@@ -225,131 +204,188 @@ class Output:
     def add_logits(self, logits:Tensor, task:str):
         self.logits[task] = logits
 
-
+    @utils.timer
     def add_preds(self, preds:Union[np.ndarray, Tensor], level:str,  task:str):
         
-        preds = ensure_numpy(preds)
-        global_seg_id = 0
-        for i in range(len(preds)):
+        mask = ensure_numpy(self.batch[level]["mask"]).astype(bool)
 
-            sample_preds = preds[i][:self.batch[level]["lengths"][i]]
-
-            # if task is complexed, i.e. combination of two or more subtasks, we decouple the labels for each 
-            # subtask
-            if "+" in task:
-                decoupled_preds = self.__decouple(
-                                                sample_preds = sample_preds,
-                                                task = task 
-                                                )
-                pred_dict =  dict(zip(task.split("+"), decoupled_preds))
-            else:
-                pred_dict = {task: sample_preds}
-            
-            if "seg" in pred_dict:
-                tok_seg_ids, _ = self.seg_decoder(
-                                                pred_dict.pop("seg"), 
-                                                seg_id_start = global_seg_id
-                                                )
-                self.__set(i, "seg_id", tok_seg_ids)
-
-                max_seg = len(self.df.loc[i].groupby("seg_id"))
-            else:
-                max_seg = len(self.df.loc[i].groupby("T-seg_id"))
+        if level == "token":
+            self.df[task] = ensure_numpy(preds[mask])
+        
+        else:
+            seg_preds = ensure_numpy(preds[mask])
+            cond = ~self.df["T-seg_id"].isna()
+            self.df[task, cond] = np.repeat(seg_preds, ensure_numpy(self.batch["seg"]["lengths"]))
 
 
-            for subtask, subtask_preds in pred_dict.items():
-                
-                # we are unfolding the segment preditions to tokens. This is only so we can fit the predictions into a standardised token-based df
-                if level == "seg":
-                    self.__unfold_over_seg(i, subtask, subtask_preds, gt=True)
-                else:
-                    self.__set(i, subtask, subtask_preds)
+        subtasks = task.split("+")  
 
-                    self.__ensure_homogeneous(i)
+        # if our task is complexed, e.g. "seg+label". We decouple the label ids for "seg+label"
+        # so we get the labels for Seg and for Label
+        if len(subtasks) > 1:
 
+            subtask_preds = self.df[task].apply(lambda x: np.array(self.__decouplers[task][x]))
+            subtask_preds = np.stack(subtask_preds.to_numpy())
+
+            for i, subtask in enumerate(subtasks):
+                self.df[subtask] = subtask_preds[:,i]
+        
+
+        for subtask in subtasks:
+
+            if subtask == "seg":
+                self.__decode_segs()
+        
+            if level == "token":
+                self.__ensure_homogeneous(subtask)
 
             if subtask == "link":
-                self.__correct_links(
-                                    i,
-                                    max_seg = max_seg
-                                    )
+                self.__correct_links(true_segs = level == "seg")    
 
 
-
-                # if we are predicting on token level we make select the majority label for each segment
-                # #if level == "token":
-                #     # sample_preds = self.__ensure_homogeneous(
-                #     #                                         subtask_preds = subtask_preds,
-                #     #                                         span_token_lengths = span_token_lengths,
-                #     #                                         none_span_mask = none_span_mask
-                #     #                                         )
-
-                # # we dont decode the links, and if we are allowign prediction of links outside the scope of the segments, example when encoding links into complexed labels.
-                # # we want to correct this. ALl links which point to outside the predicted amount of segments will be set to point to the last segment in the sample
-                # # if subtask == "link":
-                # #     sample_preds = self.__correct_links(
-                # #                                         subtask_preds = subtask_preds,
-                # #                                         max_seg = len(self.df.loc[i].groupby("seg_id"))
-                # #                                         )
-
-
-                # # we are unfolding the segment preditions to tokens. This is only so we can fit the predictions into a standardised token-based df
-                # if level == "seg":
-                #     self.__unfold_over_seg(i, task, sample_preds, gt=True)
-                # else:
-                #     self.__set(i, subtask, sample_preds)
 
      
-    def get_pairs(self, bidir:bool = False):
-        pass
+    def get_pair_data(self, bidir:bool = False):
+        
+
+        def create_pair_data(
+                                df:pd.DataFrame,
+                                bidir = False,
+                                device = torch.device
+                            ) -> DefaultDict[str, List[List[Tuple[int]]]]:
+
+            if bidir:
+                get_pairs = lambda x, r: list(product(x, repeat=r))  # noqa
+            else:
+                get_pairs = lambda x, r: sorted(  # noqa
+                                                list(combinations(x, r=r)) + [(e, e) for e in x],
+                                                key=lambda u: (u[0], u[1])
+                                                )
+
+            start_token_idxs = ""
+            end_token_idxs = ""
 
 
-def get_all_possible_pairs(
-                            start: List[List[int]],
-                            end: List[List[int]],
-                            device=torch.device,
-                            bidir=False,
-                        ) -> DefaultDict[str, List[List[Tuple[int]]]]:
+            pair_data = defaultdict(lambda: [])
+            for idx_start, idx_end in zip(start_token_idxs, end_token_idxs):
+                
+                # create indexes for pairs 
+                idxs = list(get_pairs(range(len(idx_start)), 2))
 
-    if bidir:
-        get_pairs = lambda x, r: list(product(x, repeat=r))  # noqa
-    else:
-        get_pairs = lambda x, r: sorted(  # noqa
-            list(combinations(x, r=r)) + [(e, e) for e in x],
-            key=lambda u: (u[0], u[1]))
+                if idxs:
+                    p1, p2 = zip(*idxs)  # pairs' seg id
+                    p1 = torch.tensor(p1, dtype=torch.long, device=device)
+                    p2 = torch.tensor(p2, dtype=torch.long, device=device)
+                    # pairs start and end token id.
+                    start = get_pairs(idx_start, 2)  # type: List[Tuple[int, int]]
+                    end = get_pairs(idx_end, 2)  # type: List[Tuple[int, int]]
+                    lens = len(start)  # number of pairs' segs len  # type: int
 
-    all_possible_pairs = defaultdict(lambda: [])
-    for idx_start, idx_end in zip(start, end):
-        idxs = list(get_pairs(range(len(idx_start)), 2))
-        if idxs:
-            p1, p2 = zip(*idxs)  # pairs' seg id
-            p1 = torch.tensor(p1, dtype=torch.long, device=device)
-            p2 = torch.tensor(p2, dtype=torch.long, device=device)
-            # pairs start and end token id.
-            start = get_pairs(idx_start, 2)  # type: List[Tuple[int]]
-            end = get_pairs(idx_end, 2)  # type: List[Tuple[int]]
-            lens = len(start)  # number of pairs' segs len  # type: int
+                else:
+                    p1 = torch.empty(0, dtype=torch.long, device=device)
+                    p2 = torch.empty(0, dtype=torch.long, device=device)
+                    start = []
+                    end = []
+                    lens = 0
 
-        else:
-            p1 = torch.empty(0, dtype=torch.long, device=device)
-            p2 = torch.empty(0, dtype=torch.long, device=device)
-            start = []
-            end = []
-            lens = 0
+                pair_data["idx"].append(idxs)
+                pair_data["p1"].append(p1)
+                pair_data["p2"].append(p2)
+                pair_data["start"].append(start)
+                pair_data["end"].append(end)
+                pair_data["lengths"].append(lens)
 
-        all_possible_pairs["idx"].append(idxs)
-        all_possible_pairs["p1"].append(p1)
-        all_possible_pairs["p2"].append(p2)
-        all_possible_pairs["start"].append(start)
-        all_possible_pairs["end"].append(end)
-        all_possible_pairs["lengths"].append(lens)
+            pair_data["lengths"] = torch.tensor(
+                                                pair_data["lengths"],
+                                                dtype=torch.long,
+                                                device=device
+                                                )
+            pair_data["total_pairs"] = sum(pair_data["lengths"])
 
-    all_possible_pairs["lengths"] = torch.tensor(all_possible_pairs["lengths"],
-                                                 dtype=torch.long,
-                                                 device=device)
-    all_possible_pairs["total_pairs"] = sum(all_possible_pairs["lengths"])
-    return all_possible_pairs
 
+            return pair_data
+
+
+        #simple cacheing
+        if not hasattr(self, "pair_data"):
+            self.pair_data = create_pair_data(
+                                            df = self.df, 
+                                            bidir = bidir,
+                                            device = self.batch.device
+                                            )
+        
+
+        elif self.pair_data["bidir"] != bidir:
+             self.pair_data = create_pair_data(
+                                            df = self.df, 
+                                            bidir = bidir,
+                                            device = self.batch.device
+                                            )
+
+
+        return self.pair_data
+
+
+    @utils.timer
+    def get_seg_data(self):
+        
+        #simple cacheing
+        if not hasattr(self, "seg_data"):
+
+            
+            # X = []
+            # prev_seg_id = -1
+            # for i,row in self.df.iterrows():
+                
+            #     if prev_seg_id != row["seg_id"]:
+            #         prev_seg_id = row["seg_id"]
+            #         X.append(row["seg_id"])
+
+            
+            # print(Counter(X).most_common(10))
+
+                
+            print(len(set(self.df["seg_id"])))
+        
+            x = np.sum(self.df.groupby("sample_id")["T-seg_id"].nunique(dropna=True).to_numpy())
+            y = len(self.df.groupby("T-seg_id").first()["token_id"])
+            assert x == y
+
+            print(set(self.df[~self.df["seg_id"].isna()]["seg_id"]))
+            seg_lengths = self.df[~self.df["seg_id"].isna()].groupby("sample_id")["seg_id"].nunique().to_numpy()
+
+            print("SEG LENGTHS", np.sum(seg_lengths), np.sum(self.df.groupby("sample_id")["seg_id"].nunique().to_numpy()))
+
+            start = self.df.groupby("seg_id").first()["token_id"]
+            end = self.df.groupby("seg_id").last()["token_id"]
+
+            print("START", len(start))
+            print("END", len(end))
+
+            span_idxs_flat = list(zip(start, end))
+
+            assert len(span_idxs_flat) == np.sum(seg_lengths), f"{len(span_idxs_flat)} {np.sum(seg_lengths)}"
+
+            span_idxs = np.zeros((len(self.batch), np.max(seg_lengths), 2))
+            floor = 0
+            for i,l in enumerate(seg_lengths):
+
+                print(i,l, floor)
+                span_idxs[i][:l] = np.array(span_idxs_flat[floor:floor+l])
+                floor += l
+
+            print(span_idxs)
+
+
+
+            self.seg_data = {
+                            "span_idxs": span_idxs,
+                            "lengths": nr_segs
+                            }   
+
+
+        return self.seg_data
+        
 
     # def get_stuff(self, key:str):
     #     return self.stuff[key]
@@ -359,17 +395,22 @@ def get_all_possible_pairs(
     #     return self.logits[task]
 
 
-    # def get_preds(self, task:str):
+    def get_preds(self, task:str, one_hot:bool = False):
 
-    #     seg_id = "seg_id"
+        seg_id = "seg_id"
 
-    #     if self.schedule.next(self.batch.current_epoch):
-    #         task = f"T-{task}"
-    #         seg_id = f"T-seg_id"
+        if self.schedule.next(self.batch.current_epoch):
+            task = f"T-{task}"
+            seg_id = f"T-seg_id"
+
         
-    #     preds_splits = np.split(self.df[task].to_numpy(), self.df.groupby("seg_id").size().to_numpy())
-    #     preds = utils.zero_pad(preds_splits)
-    #     return preds
+        
+        nr_segs = self.df.groupby("sample_id")["seg_id"].nunique()
+
+        
+        preds_splits = np.split(self.df[task].to_numpy(), self.df.groupby("seg_id").size().to_numpy())
+        preds = utils.zero_pad(preds_splits)
+        return preds
         
 
 

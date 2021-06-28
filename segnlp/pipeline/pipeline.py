@@ -109,7 +109,7 @@ class Pipeline(Evaluation, ML, StatSig):
 
         # small hack to perserve
         self._pp_feature_params = {f.name:f.params for f in features}
-        self._pp_label_encoders = {k:v for k,v in self.preprocessor.encoders.items() if k in dataset.subtasks}
+        self._pp_label_encoders = {k:v for k,v in self.preprocessor.encoders.items() if k in self.config["all_tasks"]}
         del self.preprocessor
         self._pp_status = "inactive"
 

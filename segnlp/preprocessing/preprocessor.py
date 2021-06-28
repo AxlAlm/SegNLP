@@ -248,8 +248,15 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             sent_depheads = sent_df["dephead"].to_numpy() + sent_length
 
             sent_root_id = self.encode_list(["root"], "deprel")[0]
-            sent_root_idx = int(np.where(sent_df["deprel"].to_numpy() == sent_root_id)[0])
-            
+            sent_root_idx_match = np.where(sent_df["deprel"].to_numpy() == sent_root_id)
+
+            # if we dont find a sentence root, we default the root to the first word
+            if not sent_root_idx_match[0]:
+                sent_root_idx = 0
+            else:
+                sent_root_idx = int(sent_root_idx_match[0])
+
+
             if sent_length == 0 and root_idx == -1:
                 root_idx = sent_root_idx
                 sent_length = sent_df.shape[0]
@@ -273,7 +280,7 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             #if self.sample_level != "sentence" and enc in ["deprel", "dephead"]:
             if enc in ["deprel", "dephead"]:
                 if not deps_done:
-                    self.__get_sample_dep_encs(input=Input, sample=sample)
+                    self.__get_sample_dep_encs(input=input, sample=sample)
                     deps_done = True
             else:
                 # if self.prediction_level == "seg" and not self.tokens_per_sample:

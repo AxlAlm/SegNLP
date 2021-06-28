@@ -1,6 +1,8 @@
 
 
 #pytorch
+from typing import Sequence, Union
+from numpy.lib.arraysetops import isin
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence
@@ -55,7 +57,11 @@ class LSTM(nn.Module):
                     raise RuntimeError()
 
 
-    def forward(self, input:Tensor, lengths:Tensor, padding=0.0):
+    def forward(self, input:Union[Tensor,Sequence[Tensor]], lengths:Tensor, padding_value=0.0):
+
+        #if input in a sequence we concatentate the tensors
+        if not isinstance(input, Tensor):
+            input = torch.cat(input, dim = -1)
 
         if not self.sorted:
             sorted, sorted_idxs = torch.sort(lengths, descending=True)
@@ -66,7 +72,7 @@ class LSTM(nn.Module):
         
         pass_states = False
         if isinstance(input, tuple):
-           #X, h_0, c_0 = X
+            #X, h_0, c_0 = X
             input, *states = input
             pass_states = True
 
@@ -77,7 +83,7 @@ class LSTM(nn.Module):
         else:
             lstm_packed, states = self.lstm(packed_embs)
 
-        output, lengths = pad_packed_sequence(lstm_packed, batch_first=True, padding_value=0.0)
+        output, lengths = pad_packed_sequence(lstm_packed, batch_first=True, padding_value=padding_value)
 
 
         if not self.sorted:

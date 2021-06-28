@@ -2,11 +2,13 @@
       
       
 #pytroch
+from segnlp.models.base import PTLBase
 import torch
 import torch.nn as nn
 from torch import Tensor
 
 #segnlp
+from .base import PTLBase
 from segnlp.layer_wrappers import Encoder
 from segnlp.layer_wrappers import LinkLabeler
 from segnlp.layer_wrappers import Segmenter
@@ -14,7 +16,7 @@ from segnlp.layer_wrappers import Reducer
 from segnlp import utils
 
 
-class LSTM_ER(nn.Module):
+class LSTM_ER(PTLBase):
 
     #https://www.aclweb.org/anthology/P16-1105.pdf
 
@@ -25,9 +27,16 @@ class LSTM_ER(nn.Module):
         self.word_lstm = Encoder(    
                                 layer = "LSTM", 
                                 hyperparams = self.hps.get("LSTM", {}),
-                                input_size = self.feature_dims["word_embs"]
+                                input_size = self.feature_dims["word_embs"] + self.feature_dims["pos_embs"]
                                 )
         
+        self.agg = Reducer(
+                                layer = "Agg",
+                                hyperparams = self.hps.get("Agg", {}),
+                                input_size = self.word_lstm.output_size,
+                            )
+
+
         self.deptreelstm = Reducer(
                                     layer = "DepTreeLSTM",
                                     hyperparams = self.hps.get("DepTreeLSTM", {}),
@@ -43,8 +52,8 @@ class LSTM_ER(nn.Module):
 
 
         self.link_labeler = LinkLabeler(
-                                    layer = "DepPairingLayer",
-                                    hyperparams = self.hps.get("DepPairingLayer", {}),
+                                    layer = "DirLinkLabeler",
+                                    hyperparams = self.hps.get("DirLinkLabeler", {}),
                                     input_size = self.word_lstm.output_size,
                                     output_size = self.task_dims["link_label"],
                                     )
@@ -54,15 +63,16 @@ class LSTM_ER(nn.Module):
     def name(self):
         return "LSTM_ER"
 
-    
 
     def token_rep(self, batch:utils.Input, output:utils.Output):
-        #(batch_size, max_nr_tokens, word_embs + pos_embs)
-        pos_word_embs = torch.cat((batch["token"]["word_embs"], batch["token"]["pos_embs"]), dim=2)
-        pos_word_embs = self.dropout(pos_word_embs)
-
         # lstm_out = (batch_size, max_nr_tokens, lstm_hidden)
-        lstm_out, _ = self.lstm(pos_word_embs, batch["token"]["lengths"])
+        lstm_out, _ = self.word_lstm(
+                                input = [
+                                            batch["token"]["word_embs"],
+                                            batch["token"]["pos_embs"],
+                                            ],
+                                lengths = batch["token"]["lengths"]
+                                )
 
         return {
                 "lstm_out": lstm_out
@@ -70,13 +80,9 @@ class LSTM_ER(nn.Module):
 
 
     def token_clf(self, batch:utils.Input, output:utils.Output):
-        # outpts the logits, preds for seg+label as well as segmentation data which contain
-        # information about where segments start, in this cases it decoded BIO patterns
         logits, preds = self.segmenter(
-                        input = output.stuff["lstm_out"],
-                        lengths = batch["token"]["lengths"],
-                        )
-        
+                                        input = output.stuff["lstm_out"],
+                                        )
         return logits, preds
 
 
@@ -87,7 +93,7 @@ class LSTM_ER(nn.Module):
         seg_embs = self.agg(
                             input = batch["token"]["word_embs"], 
                             lengths = batch["seg"]["lengths"],
-                            span_idxs = output["seg"]["span_idxs"],
+                            span_idxs = output.get_seg_data()["span_idxs"],
                             )
 
        
@@ -118,14 +124,14 @@ class LSTM_ER(nn.Module):
         tree_pair_embs = self.deptreelstm(    
                                             token_embs = output.stuff["lstm_out"],
                                             dep_embs = batch["token"]["deprel_embs"],
-                                            one_hot_embs = output.one_hots(TASK),
+                                            one_hot_embs = output.get_preds("seg+label", one_hot = True),
                                             roots = batch["token"]["root_idxs"],
                                             deplinks = batch["token"]["dephead"],
                                             token_mask = batch["token"]["mask"].type(torch.bool),
-                                            pair_data = pair_data_COMB
+                                            pair_token_idxs = output.get_pairs(bidir=False)["end_idxs"] #the last token indexes in each seg
                                             )
 
-        torch.repeat_interleave(tree_pair_embs, )
+        #torch.repeat_interleave(tree_pair_embs, repeats = , dim= )
 
                 #tree_pair_embs
         

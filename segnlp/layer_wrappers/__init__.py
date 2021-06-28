@@ -7,3 +7,4 @@ from .layer_wrappers import Embedder
 from .layer_wrappers import Encoder
 from .layer_wrappers import Labeler
 from .layer_wrappers import Reprojecter
+from .layer_wrappers import LinkLabeler

@@ -1,5 +1,6 @@
 #basics
 import inspect
+from typing import Union
 
 #pytorch
 import torch
@@ -169,14 +170,14 @@ class Segmenter(CLFlayer):
     """
 
     def __init__(self, 
-                layer:nn.Module, 
+                layer:Union[nn.Module, str], 
                 hyperparams:dict, 
                 input_size:int,
                 output_size:int,
-                task:str,
+                #task:str,
                 ):
-        self.task = task
-        self.level = "token"
+        # self.task = task
+        # self.level = "token"
 
         if isinstance(layer, str):
             layer = getattr(segmenters, layer)
@@ -196,13 +197,13 @@ class Labeler(CLFlayer):
     """
 
     def __init__(self, 
-                layer:nn.Module, 
+                layer:Union[nn.Module, str],
                 hyperparams:dict, 
                 input_size:int,
                 output_size:int,
                 ):
-        self.task = "label"
-        self.level = "seg"
+        # self.task = "label"
+        # self.level = "seg"
 
         if isinstance(layer, str):
             #layer = getattr(Labeler, layer)
@@ -223,13 +224,13 @@ class Linker(CLFlayer):
     """
 
     def __init__(self, 
-                layer:nn.Module, 
+                layer:Union[nn.Module, str], 
                 hyperparams:dict, 
                 input_size:int,
                 output_size:int,
                 ):
-        self.task = "link"
-        self.level = "seg"
+        # self.task = "link"
+        # self.level = "seg"
 
         if isinstance(layer, str):
             layer = getattr(linkers, layer)
@@ -248,18 +249,17 @@ class LinkLabeler(CLFlayer):
     """
 
     def __init__(self, 
-                layer:nn.Module, 
+                layer:Union[nn.Module, str], 
                 hyperparams:dict, 
                 input_size:int,
                 output_size:int,
                 ):
-        self.task = "link_label"
-        self.level = "seg"
-
+        # self.task = "link_label"
+        # self.level = "seg"
 
         if isinstance(layer, str):
             layer = getattr(link_labelers, layer)
-            layer = getattr(general, layer)
+            #layer = getattr(general, layer)
 
         super().__init__(              
                         layer=layer, 

@@ -20,17 +20,22 @@ class BigramSeg(nn.Module):
     ):
         super().__init__()
         self.output_size = output_size
+
+        # as we are using onehot encodings we will add the label size to 
+        # the input size
+        input_size = input_size + self.output_size
+
         self.clf = nn.Sequential(
-            nn.Linear(input_size, hidden_size),
-            nn.Tanh(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_size, output_size),
-        )
+                            nn.Linear(input_size, hidden_size),
+                            nn.Tanh(),
+                            nn.Dropout(dropout),
+                            nn.Linear(hidden_size, output_size),
+                            )
 
     def forward(
-        self,
-        input: Tensor,
-        ):
+                self,
+                input: Tensor,
+                ):
 
         # sizes
         batch_size = input.size(0)
@@ -49,10 +54,9 @@ class BigramSeg(nn.Module):
                                 num_classes=self.output_size
                                 )
             x = torch.cat((input[:, i], prev_label_one_hot), dim=-1)
-            logit = self.clf(x)  # (B, NE-OUT)
+            logit = self.clf(x) 
             logits[:, i] = logit
             preds[:, i] = torch.argmax(logits[:, i], dim=1)
           
-   
         return logits, preds
     

@@ -3,145 +3,63 @@ import re
 import numpy as np
 from typing import List
 
-
 #segnlp
 from .array import ensure_numpy
-from .array import ensure_flat
-from .array import create_mask
-
-from segnlp import utils
-
 
 class BIODecoder:
 
     def __init__(self, 
-                bio_order = ["O","B","I"],
-                # B:list=["B"],
-                # I:list=["I"],
-                # O:list=["O"],
-                apply_correction:bool = True
+                O:int = 0,
+                B:int = 1,
+                I:int = 2,
+                apply_correction:bool = True,
+                start_value = 9999
                 ):
 
-        # Bs = "-|".join([str(b) for b in B]) + "-"
-        # Is = "-|".join([str(i) for i in I]) + "-"
-        # Os = "-|".join([str(o) for o in O]) + "-"
+        self.start_value = f"{start_value}-"
+        O = f"{O}-"
+        B = f"{B}-"
+        I = f"{I}-"
 
-        O, B, I = bio_order
-        
         # if we have invalid BIO structure we can correct these
         #  https://arxiv.org/pdf/1704.06104.pdf, appendix
         # 1) I follows 0 -> allow OI to be interpreted as a B
         if apply_correction:
-            B += f"|(?<=({O}))({I})|<START>-"
-
-        self.pattern = re.compile(f"(?P<UNIT>({B})({I})*)|(?P<NONE>({O})+)")
+            B += f"|(?<=({O}))({I})|{self.start_value}"
+            
+        self.pattern = re.compile(f"(?P<UNIT>({B})({I})*)|(?P<NONE>({O})+|{I}+)")
         
 
-    def __call__(self, encoded_bios:List[str], seg_id_start:int = 0):
+    def __call__(self, encoded_bios:List[str], sample_start_idxs:np.ndarray=None):
 
         encoded_bios = ensure_numpy(encoded_bios)
-        encoded_bios_str = "<START>-" + "-".join(encoded_bios.astype(str)) + "-"
+
+        if sample_start_idxs is not None:
+            # we insert an arbitrary value 9999 to be used as a start pattern so we can seperate samples
+            # 9999 is the default value for all SegDecoders
+            seg_preds_w_starts = np.insert(encoded_bios, sample_start_idxs, 9999)
+            encoded_bios_str = "-".join(seg_preds_w_starts.astype(str)) + "-"
+
+        else:
+            encoded_bios_str = self.start_value + "-".join(encoded_bios.astype(str)) + "-"
+            
         all_matches = re.finditer(self.pattern, encoded_bios_str)
 
-        tok_seg_ids = []
-        i = seg_id_start
+        tok_seg_ids = np.full(encoded_bios.shape, fill_value=np.nan)
+        seg_id = 0
+        p = 0
         for m in all_matches:
-
-            match_string = m.group(0).replace("<START>-", "")
+            
+            match_string = m.group(0).replace(self.start_value, "")
             length = len(match_string.split("-")[:-1])
-
+            
             if length == 0:
                 continue
 
-            if m.groupdict()["UNIT"] is None:
-                tok_seg_ids.extend([None] * length)
-            else:
-                tok_seg_ids.extend([i] * length)
-                i += 1
+            if not m.groupdict()["UNIT"] is None:
+                tok_seg_ids[p:p+length] = seg_id
+                seg_id += 1
+            
+            p += length
 
         return tok_seg_ids
-
-        #ids = 
-
-
-
-        # return {
-        #             "span":{
-        #                     "ids": np.array(seg_ids),
-        #                     "none_span_mask":none_span_mask,
-        #                     "tok_lengths": np.array(span_lengths),
-        #                     "start": span_starts,
-        #                     "end": span_ends,
-        #                     "idxs": span_indexes
-        #                     },
-        #             "unit":{
-        #                     "none_span_mask": np.array(none_span_mask, dtype=bool),
-        #                     "tok_lengths": p.array(span_lengths),
-        #                     "ids": np.array(seg_ids)[none_span_mask],
-        #                     "start": span_starts[none_span_mask],
-        #                     "end": span_ends[none_span_mask],
-        #                     "idxs": span_indexes[none_span_mask]
-        #                     }
-
-        #             }, i
-
-    # def __call__(
-    #             self,
-    #             batch_encoded_bios:np.ndarray, 
-    #             lengths:np.ndarray, 
-    #             ):
-    
-    #     batch_size = batch_encoded_bios.shape[0]
-
-    #     bio_data = {
-    #                 "span":{
-    #                         "lengths_tok":[],
-    #                         "lengths": [],
-    #                         "span_idxs": [],
-    #                         "none_span_mask":[],
-    #                         "start":[],
-    #                         "end":[],
-    #                         },
-    #                 "seg":{
-    #                         "lengths_tok":[],
-    #                         "lengths":[],
-    #                         "span_idxs": [],
-    #                         "none_span_mask":[],
-    #                         "start":[],
-    #                         "end":[],
-    #                         },
-    #                 "max_segs":0
-    #                 }
-
-
-    #     for i in range(batch_size):
-    #         span_lengths, none_span_mask, seg_ids = self.__decode_sample(
-    #                                                             encoded_bios=batch_encoded_bios[i][:lengths[i]]
-    #                                                             )
-
-    #         span_ends = np.cumsum(span_lengths)
-    #         span_starts = np.insert(span_ends,0,0)[:-1]
-    #         span_indexes = np.stack((span_starts, span_ends), axis=-1)
-    #         seg_indexes = span_indexes[none_span_mask]
-    #         seg_lengths = span_lengths[none_span_mask]
-
-    #         # bio_data["span"]["lengths"].append(len(span_lengths))
-    #         # bio_data["span"]["lengths_tok"].append(span_lengths.tolist())
-
-    #         # bio_data["span"]["none_span_mask"].append(none_span_mask.tolist())
-    #         # bio_data["span"]["span_idxs"].append(span_indexes.tolist())
-    #         # bio_data["span"]["start"].append(span_starts.tolist())
-    #         # bio_data["span"]["end"].append(span_ends.tolist())
-            
-    #         # seg_length = sum(none_span_mask)
-    #         # bio_data["seg"]["lengths"].append(seg_length)
-    #         # bio_data["seg"]["lengths_tok"].append(span_lengths[none_span_mask].tolist())
-    #         # bio_data["seg"]["span_idxs"].append(span_indexes[none_span_mask].tolist())
-    #         # bio_data["seg"]["start"].append(span_starts[none_span_mask].tolist())
-    #         # bio_data["seg"]["end"].append(span_ends[none_span_mask].tolist())
-
-    #         # bio_data["max_segs"] = max(seg_length, bio_data["max_segs"])
-
-    #     bio_data["seg"]["mask"] = create_mask(bio_data["seg"]["lengths"])
-  
-    #     return bio_data

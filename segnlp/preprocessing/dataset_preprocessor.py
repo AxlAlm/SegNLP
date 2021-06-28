@@ -10,8 +10,6 @@ import json
 import pickle
 from collections import Counter
 import pandas as pd
-from IPython.display import display
-import multiprocessing
 import shutil
 
 #pytroch lighnting

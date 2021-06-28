@@ -51,7 +51,7 @@ class PTLBase(ptl.LightningModule):
         self.tasks = tasks
 
         if "seg" in subtasks:
-            self.seg_task = sorted([task for task in tasks if "seg" in task], key = lambda x: len(x))
+            self.seg_task = sorted([task for task in tasks if "seg" in task], key = lambda x: len(x))[0]
 
         self.metrics = utils.MetricContainer(
                                             metric = metric,

@@ -11,6 +11,7 @@ class MinusSpan(nn.Module):
     def __init__(self, input_size:int, dropout:float=0.0, fine_tune:bool=False):
         super().__init__()
 
+        self.hidden_dim = hidden_dim
         self.input_size = input_size
         self.output_size = hidden_dim*4
 
@@ -73,26 +74,26 @@ class MinusSpan(nn.Module):
 
         minus_reps = torch.zeros((batch_size, nr_seq, self.output_size), device=self.device)
         
-        for idx in range(batch_size):
-            for sidx,(i,j) in enumerate(spans[idx]):
+        for k in range(batch_size):
+            for n,(i,j) in enumerate(span_idxs[k]):
 
                 if i==0 and j == 0:
                     continue
 
                 if i-1 == -1:
-                    f_pre = torch.zeros(hidden_dim, device=self.device)
+                    f_pre = torch.zeros(self.hidden_dim, device=self.device)
                 else:
-                    f_pre = forward[idx][i-1]
+                    f_pre = forward[k][i-1]
 
                 if j+1 >= backward.shape[1]:
-                    b_post = torch.zeros(hidden_dim,  device=self.device)
+                    b_post = torch.zeros(self.hidden_dim,  device=self.device)
                 else:
-                    b_post = backward[idx][j+1]
+                    b_post = backward[k][j+1]
 
-                f_end = forward[idx][j]
-                b_start = backward[idx][i]
+                f_end = forward[k][j]
+                b_start = backward[k][i]
 
-                minus_reps[idx][sidx] = torch.cat((
+                minus_reps[k][n] = torch.cat((
                                                     f_end - f_pre,
                                                     b_start - b_post,
                                                     f_pre, 

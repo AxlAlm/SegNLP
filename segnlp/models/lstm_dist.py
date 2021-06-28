@@ -16,6 +16,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 #segnlp
+from .base import PTLBase
 from segnlp.layer_wrappers import Encoder
 from segnlp.layer_wrappers import Linker
 from segnlp.layer_wrappers import Reducer
@@ -24,8 +25,7 @@ from segnlp.layer_wrappers import Labeler
 from segnlp.layer_wrappers import LinkLabeler
 from segnlp import utils
 
-
-class LSTM_DIST(nn.Module):
+class LSTM_DIST(PTLBase):
 
     """
 
