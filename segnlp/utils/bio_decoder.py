@@ -25,10 +25,11 @@ class BIODecoder:
         #  https://arxiv.org/pdf/1704.06104.pdf, appendix
         # 1) I follows 0 -> allow OI to be interpreted as a B
         if apply_correction:
-            B += f"|(?<=({O}))({I})|{self.start_value}"
+            B = f"{B}|(?<={O}){I}|{self.start_value}{I}"
             
-        self.pattern = re.compile(f"(?P<UNIT>({B})({I})*)|(?P<NONE>({O})+|{I}+)")
+        self.pattern = re.compile(f"(?P<UNIT>({B})({I})*)|(?P<NONE>({O})+|({I})+)")
         
+        print(self.pattern)
 
     def __call__(self, encoded_bios:List[str], sample_start_idxs:np.ndarray=None):
 
@@ -42,7 +43,7 @@ class BIODecoder:
 
         else:
             encoded_bios_str = self.start_value + "-".join(encoded_bios.astype(str)) + "-"
-            
+        
         all_matches = re.finditer(self.pattern, encoded_bios_str)
 
         tok_seg_ids = np.full(encoded_bios.shape, fill_value=np.nan)
@@ -57,6 +58,7 @@ class BIODecoder:
                 continue
 
             if not m.groupdict()["UNIT"] is None:
+        
                 tok_seg_ids[p:p+length] = seg_id
                 seg_id += 1
             

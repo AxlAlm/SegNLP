@@ -40,7 +40,7 @@ hps = {
                 "max_epochs":300,
                 "patience": 10,
                 "task_weight": 0.5,
-                "k": 25,
+                "sampling_k": 25,
                 },
        "LSTM": {   
                     "input_dropout": 0.5,

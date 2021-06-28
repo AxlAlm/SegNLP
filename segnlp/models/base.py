@@ -65,6 +65,7 @@ class PTLBase(ptl.LightningModule):
                                         subtasks = subtasks,
                                         prediction_level = prediction_level,
                                         inference = inference,
+                                        sampling_k = self.hps["general"].get("sampling_k", 0)
                                         )
 
         self.outputs = {"val":[], "test":[], "train":[]}

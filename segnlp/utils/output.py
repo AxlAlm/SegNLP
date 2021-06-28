@@ -33,24 +33,20 @@ class Output:
                 subtasks:list,
                 prediction_level:str,
                 inference:bool,
-                segment_sampling:bool=False,
-                sampling_k:int=5,
+                sampling_k:int=0,
                 ):
 
         self.inference = inference
-        #self.label_encoders = label_encoders
+        self.label_encoders = label_encoders
         self.tasks = tasks
         self.all_tasks = all_tasks
         self.prediction_level = prediction_level
         self.subtasks = subtasks
 
-        
-        self.schedule = segment_sampling
-        if segment_sampling:
-            self.schedule = ScheduleSampling(
-                                            schedule="inverse_sig",
-                                            k=sampling_k
-                                            )
+        self.schedule = ScheduleSampling(
+                                        schedule="inverse_sig",
+                                        k=sampling_k
+                                        )
 
         seg_task = [task for task in self.tasks if "seg" in task]
         if seg_task:
@@ -122,7 +118,7 @@ class Output:
     def __decode_segs(self):
     
         # we get the sample start indexes from sample lengths. We need this to tell de decoder where samples start
-        sample_sizes = self.df.groupby("sample_id").size().to_numpy()
+        sample_sizes = self.df.groupby(level=0).size().to_numpy()
         sample_end_idxs = np.cumsum(sample_sizes)
         sample_start_idxs = np.concatenate((np.zeros(1), sample_end_idxs))[:-1]
 
@@ -138,7 +134,7 @@ class Output:
         Any link that is outside of the actuall text, e.g. when predicted link > max_idx, is set to predicted_link== max_idx
         """
 
-        max_segs = self.df.groupby("sample_id")["T-seg_id" if true_segs else "seg_id"].nunique().to_numpy()
+        max_segs = self.df.groupby(level=0)["T-seg_id" if true_segs else "seg_id"].nunique().to_numpy()
         self.df["max_seg"] = np.repeat(max_segs, df.groupby("sample_id").size().to_numpy())
 
         above = self.df["link"] > self.df["max_seg"]
@@ -191,7 +187,7 @@ class Output:
         self.df["original_token_id"] = ensure_numpy(batch["token"]["token_ids"])[mask]
         self.df["T-seg_id"] = ensure_numpy(batch["token"]["seg_id"])[mask]
 
-        for s in self.subtasks:
+        for s in self.all_tasks:
             self.df[f"T-{s}"] = ensure_numpy(batch["token"][s])[mask]
 
         return self
@@ -243,8 +239,6 @@ class Output:
                 self.__correct_links(true_segs = level == "seg")    
 
 
-
-     
     def get_pair_data(self, bidir:bool = False):
         
 
@@ -332,35 +326,10 @@ class Output:
         #simple cacheing
         if not hasattr(self, "seg_data"):
 
-            
-            # X = []
-            # prev_seg_id = -1
-            # for i,row in self.df.iterrows():
-                
-            #     if prev_seg_id != row["seg_id"]:
-            #         prev_seg_id = row["seg_id"]
-            #         X.append(row["seg_id"])
-
-            
-            # print(Counter(X).most_common(10))
-
-                
-            print(len(set(self.df["seg_id"])))
-        
-            x = np.sum(self.df.groupby("sample_id")["T-seg_id"].nunique(dropna=True).to_numpy())
-            y = len(self.df.groupby("T-seg_id").first()["token_id"])
-            assert x == y
-
-            print(set(self.df[~self.df["seg_id"].isna()]["seg_id"]))
-            seg_lengths = self.df[~self.df["seg_id"].isna()].groupby("sample_id")["seg_id"].nunique().to_numpy()
-
-            print("SEG LENGTHS", np.sum(seg_lengths), np.sum(self.df.groupby("sample_id")["seg_id"].nunique().to_numpy()))
+            seg_lengths = self.df[~self.df["seg_id"].isna()].groupby(level=0)["seg_id"].nunique().to_numpy()
 
             start = self.df.groupby("seg_id").first()["token_id"]
             end = self.df.groupby("seg_id").last()["token_id"]
-
-            print("START", len(start))
-            print("END", len(end))
 
             span_idxs_flat = list(zip(start, end))
 
@@ -369,48 +338,47 @@ class Output:
             span_idxs = np.zeros((len(self.batch), np.max(seg_lengths), 2))
             floor = 0
             for i,l in enumerate(seg_lengths):
-
-                print(i,l, floor)
                 span_idxs[i][:l] = np.array(span_idxs_flat[floor:floor+l])
                 floor += l
 
-            print(span_idxs)
-
-
-
             self.seg_data = {
                             "span_idxs": span_idxs,
-                            "lengths": nr_segs
+                            "lengths": seg_lengths
                             }   
 
 
         return self.seg_data
         
 
-    # def get_stuff(self, key:str):
-    #     return self.stuff[key]
-
-
-    # def get_logits(self, task:str):
-    #     return self.logits[task]
-
-
+    @utils.timer
     def get_preds(self, task:str, one_hot:bool = False):
 
-        seg_id = "seg_id"
+        task_key = task
 
+        # if we want to use schedule sampling we select the ground truths instead of 
+        # the predictions
         if self.schedule.next(self.batch.current_epoch):
-            task = f"T-{task}"
-            seg_id = f"T-seg_id"
+            task_key = f"T-{task}"
 
-        
-        
-        nr_segs = self.df.groupby("sample_id")["seg_id"].nunique()
+        # we take the lengths in tokens for each sample
+        tok_lengths = self.df.groupby(level=0).size().to_numpy()
 
-        
-        preds_splits = np.split(self.df[task].to_numpy(), self.df.groupby("seg_id").size().to_numpy())
-        preds = utils.zero_pad(preds_splits)
-        return preds
+        # create the end indexes. Remove the last value as its the end and will create a faulty split
+        end_idxs = np.cumsum(tok_lengths)[:-1]
+
+        # split and then pad
+        preds = utils.zero_pad(np.hsplit(self.df[task_key].to_numpy(), end_idxs))
+
+
+        #then we create one_hots from the preds if thats needed
+        if one_hot:
+            return utils.one_hot(
+                                    matrix = torch.LongTensor(preds),
+                                    mask = self.batch["token"]["mask"],
+                                    num_classes = len(self.label_encoders[task])
+                                    )
+        else:
+            return preds
         
 
 
