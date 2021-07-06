@@ -29,8 +29,7 @@ class BIODecoder:
             
         self.pattern = re.compile(f"(?P<UNIT>({B})({I})*)|(?P<NONE>({O})+|({I})+)")
         
-        print(self.pattern)
-
+        
     def __call__(self, encoded_bios:List[str], sample_start_idxs:np.ndarray=None):
 
         encoded_bios = ensure_numpy(encoded_bios)

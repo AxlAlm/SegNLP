@@ -69,6 +69,30 @@ class PTLBase(ptl.LightningModule):
                                         )
 
         self.outputs = {"val":[], "test":[], "train":[]}
+    
+
+    def __init_token_rep(self):
+        pass
+
+
+    def __init_token_clf(self):
+        pass
+
+
+    def __init_seg_rep(self):
+        pass
+
+
+    def __init_label_clf(self):
+        pass
+        
+
+    def __init_link_clf(self):
+        pass
+
+
+    def __init_link_label_clf(self):
+        pass
 
 
     def _token_rep(self, batch:utils.Input, output:dict):

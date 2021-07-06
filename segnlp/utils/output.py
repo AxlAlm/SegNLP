@@ -3,14 +3,15 @@
 #basics
 from inspect import getsource
 from re import sub
-from typing import Union, List
+from typing import Union, List, DefaultDict, Tuple
 from unittest import result
 import numpy as np
 from numpy.lib import utils
 import pandas as pd
-from collections import Counter
+from collections import Counter, defaultdict
 from itertools import product
 from itertools import combinations
+from time import time
 
 #segnlp
 from .input import Input
@@ -80,40 +81,6 @@ class Output:
 
         return decouplers
     
-
-    def __extract_match_info(self):
-        
-
-        def overlap(target, pdf):
-            j = target["T-seg_id"].to_list()[0]
-            seg_ids = target["seg_id"].dropna().to_list()
-
-            if not seg_ids:
-                return [0, 0, -1, -1]
-
-            i = Counter(seg_ids).most_common(1)[0][0]
-
-            p_index = set(pdf.loc[[i], "index"]) #slowest part
-            t_index = set(target.index)
-
-            ratio = len(t_index.intersection(p_index)) / max(len(p_index), len(t_index))
-            return ratio
-
-
-        # create pdf with predicted segments ids as index to be able
-        # to select rows faster
-        pdf = self.df.copy()
-        pdf["index"] = pdf.index 
-        pdf.index = pdf["seg_id"]
-
-        # we extract matching information. Which predicted segments are overlapping with which 
-        # ground truth segments
-        match_info = np.vstack(self.df.groupby("T-seg_id").apply(overlap, (pdf)))
-        ratio = match_info[:,0].astype(bool)
-        i = match_info[:,1] #predicted segment id
-        j = match_info[:,2] # ground truth segment id
-        return i, j, ratio
-
 
     def __decode_segs(self):
     
@@ -190,6 +157,10 @@ class Output:
         for s in self.all_tasks:
             self.df[f"T-{s}"] = ensure_numpy(batch["token"][s])[mask]
 
+        # if we want to use schedule sampling we select the ground truths instead of 
+        # the predictions
+        self.__use_gt = self.schedule.next(self.batch.current_epoch)
+
         return self
 
 
@@ -238,126 +209,205 @@ class Output:
             if subtask == "link":
                 self.__correct_links(true_segs = level == "seg")    
 
-
-    def get_pair_data(self, bidir:bool = False):
-        
-
-        def create_pair_data(
-                                df:pd.DataFrame,
-                                bidir = False,
-                                device = torch.device
-                            ) -> DefaultDict[str, List[List[Tuple[int]]]]:
-
-            if bidir:
-                get_pairs = lambda x, r: list(product(x, repeat=r))  # noqa
-            else:
-                get_pairs = lambda x, r: sorted(  # noqa
-                                                list(combinations(x, r=r)) + [(e, e) for e in x],
-                                                key=lambda u: (u[0], u[1])
-                                                )
-
-            start_token_idxs = ""
-            end_token_idxs = ""
-
-
-            pair_data = defaultdict(lambda: [])
-            for idx_start, idx_end in zip(start_token_idxs, end_token_idxs):
-                
-                # create indexes for pairs 
-                idxs = list(get_pairs(range(len(idx_start)), 2))
-
-                if idxs:
-                    p1, p2 = zip(*idxs)  # pairs' seg id
-                    p1 = torch.tensor(p1, dtype=torch.long, device=device)
-                    p2 = torch.tensor(p2, dtype=torch.long, device=device)
-                    # pairs start and end token id.
-                    start = get_pairs(idx_start, 2)  # type: List[Tuple[int, int]]
-                    end = get_pairs(idx_end, 2)  # type: List[Tuple[int, int]]
-                    lens = len(start)  # number of pairs' segs len  # type: int
-
-                else:
-                    p1 = torch.empty(0, dtype=torch.long, device=device)
-                    p2 = torch.empty(0, dtype=torch.long, device=device)
-                    start = []
-                    end = []
-                    lens = 0
-
-                pair_data["idx"].append(idxs)
-                pair_data["p1"].append(p1)
-                pair_data["p2"].append(p2)
-                pair_data["start"].append(start)
-                pair_data["end"].append(end)
-                pair_data["lengths"].append(lens)
-
-            pair_data["lengths"] = torch.tensor(
-                                                pair_data["lengths"],
-                                                dtype=torch.long,
-                                                device=device
-                                                )
-            pair_data["total_pairs"] = sum(pair_data["lengths"])
-
-
-            return pair_data
-
-
-        #simple cacheing
-        if not hasattr(self, "pair_data"):
-            self.pair_data = create_pair_data(
-                                            df = self.df, 
-                                            bidir = bidir,
-                                            device = self.batch.device
-                                            )
-        
-
-        elif self.pair_data["bidir"] != bidir:
-             self.pair_data = create_pair_data(
-                                            df = self.df, 
-                                            bidir = bidir,
-                                            device = self.batch.device
-                                            )
-
-
-        return self.pair_data
-
-
     @utils.timer
+    def get_pair_data(self):
+
+        def set_id_fn():
+            pair_dict = dict()
+
+            def set_id(row):
+                p = tuple(sorted((row["p1"], row["p2"])))
+
+                if p not in pair_dict:
+                    pair_dict[p] = len(pair_dict)
+                
+                return pair_dict[p]
+
+            return set_id
+
+
+        def extract_match_info(self, df):
+            
+
+            def overlap(target, pdf):
+                #print(target)
+                j = target["T-seg_id"].to_list()[0]
+                seg_ids = target["seg_id"].dropna().to_list()
+
+                if not seg_ids:
+                    return np.array([None, None, None])
+
+                i = Counter(seg_ids).most_common(1)[0][0]
+
+                p_index = set(pdf.loc[[i], "token_id"]) #slowest part
+                t_index = set(target["token_id"])
+
+                ratio = len(t_index.intersection(p_index)) / max(len(p_index), len(t_index))
+                return np.array([i, j, ratio])
+
+            # create pdf with predicted segments ids as index to be able
+            # to select rows faster
+            pdf = df.copy()
+            pdf["index"] = pdf.index 
+            pdf.index = pdf["seg_id"]
+
+            # we extract matching information. Which predicted segments are overlapping with which 
+            # ground truth segments
+            match_info = np.vstack(df.groupby("T-seg_id").apply(overlap, (pdf)))
+            
+            i = match_info[:,0].astype(int) #predicted segment id
+            j = match_info[:,1].astype(int) # ground truth segment id
+            ratio = match_info[:,2]
+
+            return i, j, ratio
+
+
+        key = "seg_id"
+        if self.__use_gt:
+            key = "T-seg_id"
+        
+        first_df = self.df.groupby(key).first()
+        first_df.reset_index(inplace=True)
+        last_df = self.df.groupby(key).last()
+        last_df.reset_index(inplace=True)
+
+        p1, p2 = [], []
+        j = 0
+        for i in range(len(self.batch)):
+            n = len(self.df.loc[i,key].dropna().unique())
+            sample_seg_ids = np.arange(
+                                        start= j,
+                                        stop = j+n
+                                        )
+            p1.extend(np.repeat(sample_seg_ids, n).astype(int))
+            p2.extend(np.tile(sample_seg_ids, n))
+            j += n
+        
+
+        pair_df = pd.DataFrame({
+                                "p1": p1,
+                                "p2": p2,
+                                })
+        
+        # create ids for each NON-directional pair
+        pair_df["id"] = pair_df.apply(set_id_fn(), axis=1)
+
+        #set the sample id for each pair
+        pair_df["sample_id"] = first_df.loc[pair_df["p1"], "sample_id"].to_numpy()
+
+        #set start and end token indexes for p1 and p2
+        pair_df["p1_start"] = first_df.loc[pair_df["p1"], "token_id"].to_numpy()
+        pair_df["p1_end"] = last_df.loc[pair_df["p1"], "token_id"].to_numpy()
+
+        pair_df["p2_start"] = first_df.loc[pair_df["p2"], "token_id"].to_numpy()
+        pair_df["p2_end"] = last_df.loc[pair_df["p2"], "token_id"].to_numpy()
+
+        # set directions
+        pair_df["direction"] = 0
+        pair_df.loc[pair_df["p1"] < pair_df["p2"], "direction"] = 1
+        pair_df.loc[pair_df["p1"] > pair_df["p2"], "direction"] = -1
+
+        if not self.__use_gt:
+            # we also have information about whether the seg_id is a true segments 
+            # and if so, which TRUE segmentent id it overlaps with, and how much
+            seg_id, T_seg_id, ratio = extract_match_info(self.df)
+
+            p1_matches = np.isin(pair_df["p1"], seg_id)
+            p2_matches = np.isin(pair_df["p2"], seg_id)
+
+            # adding true seg ids for each p1,p2
+            i2j = dict(zip(seg_id, T_seg_id))
+
+            p1_v = np.array(p1, dtype=np.float)
+            p1_v[~p1_matches] = np.nan
+
+            p2_v = np.array(p2, dtype=np.float)
+            p2_v[~p2_matches] =  np.nan
+
+            pair_df["T-p1"] = p1_v
+            pair_df["T-p2"] = p2_v
+            pair_df["T-p1"] = pair_df["T-p1"].map(i2j)
+            pair_df["T-p2"] = pair_df["T-p2"].map(i2j)
+
+
+            # adding ratio for true seg ids for each p1,p2
+            i2ratio = dict(zip(seg_id, ratio))
+
+            p1_ratio_default = np.array(p1, dtype=np.float)
+            p1_ratio_default[~p1_matches] = float("-inf")
+
+            p2_ratio_default = np.array(p2, dtype=np.float)
+            p2_ratio_default[~p2_matches] = float("-inf")
+
+            pair_df["T-p1-ratio"] = p1_ratio_default
+            pair_df["T-p2-ratio"] = p2_ratio_default
+            pair_df["T-p1-ratio"] = pair_df["T-p1-ratio"].map(i2ratio)
+            pair_df["T-p2-ratio"] = pair_df["T-p2-ratio"].map(i2ratio)
+        
+        else:
+            pair_df["T-p1"] = p1
+            pair_df["T-p2"] = p2
+            pair_df["T-p1-ratio"] = 1
+            pair_df["T-p2-ratio"] = 1
+
+
+        nodir_pair_df = pair_df[pair_df["direction"].isin([0,1]).to_numpy()]
+
+        pair_dict = {
+                    "bidir": {k:torch.tensor(v, device=self.batch.device) for k,v in pair_df.to_dict("list").items()},
+                    "nodir": {k:torch.tensor(v, device=self.batch.device) for k,v in nodir_pair_df.to_dict("list").items()}
+                    }
+
+        pair_dict["bidir"]["lengths"] = torch.LongTensor(pair_df.groupby("sample_id").size().to_numpy(), device=self.batch.device)
+        pair_dict["nodir"]["lengths"] = torch.LongTensor(nodir_pair_df.groupby("sample_id").size().to_numpy(), device=self.batch.device)
+
+
+        print("OKOKOK", pair_dict["nodir"]["lengths"])
+        return pair_dict
+
+
     def get_seg_data(self):
         
         #simple cacheing
         if not hasattr(self, "seg_data"):
 
-            seg_lengths = self.df[~self.df["seg_id"].isna()].groupby(level=0)["seg_id"].nunique().to_numpy()
+            if self.__use_gt:
+                self.seg_data = {
+                                "span_idxs": self.batch["seg"]["span_idxs"],
+                                "lengths": self.batch["seg"]["lengths"],
+                                }   
+            else:
+                seg_lengths = self.df[~self.df["seg_id"].isna()].groupby(level=0)["seg_id"].nunique().to_numpy()
 
-            start = self.df.groupby("seg_id").first()["token_id"]
-            end = self.df.groupby("seg_id").last()["token_id"]
+                start = self.df.groupby("seg_id").first()["token_id"]
+                end = self.df.groupby("seg_id").last()["token_id"]
 
-            span_idxs_flat = list(zip(start, end))
+                span_idxs_flat = list(zip(start, end))
 
-            assert len(span_idxs_flat) == np.sum(seg_lengths), f"{len(span_idxs_flat)} {np.sum(seg_lengths)}"
+                assert len(span_idxs_flat) == np.sum(seg_lengths), f"{len(span_idxs_flat)} {np.sum(seg_lengths)}"
 
-            span_idxs = np.zeros((len(self.batch), np.max(seg_lengths), 2))
-            floor = 0
-            for i,l in enumerate(seg_lengths):
-                span_idxs[i][:l] = np.array(span_idxs_flat[floor:floor+l])
-                floor += l
+                span_idxs = np.zeros((len(self.batch), np.max(seg_lengths), 2))
+                floor = 0
+                for i,l in enumerate(seg_lengths):
+                    span_idxs[i][:l] = np.array(span_idxs_flat[floor:floor+l])
+                    floor += l
 
-            self.seg_data = {
-                            "span_idxs": span_idxs,
-                            "lengths": seg_lengths
-                            }   
-
+                self.seg_data = {
+                                "span_idxs": span_idxs,
+                                "lengths": seg_lengths
+                                }   
+       
 
         return self.seg_data
         
 
-    @utils.timer
     def get_preds(self, task:str, one_hot:bool = False):
-
+        
         task_key = task
 
         # if we want to use schedule sampling we select the ground truths instead of 
         # the predictions
-        if self.schedule.next(self.batch.current_epoch):
+        if self.__use_gt:
             task_key = f"T-{task}"
 
         # we take the lengths in tokens for each sample
@@ -368,7 +418,6 @@ class Output:
 
         # split and then pad
         preds = utils.zero_pad(np.hsplit(self.df[task_key].to_numpy(), end_idxs))
-
 
         #then we create one_hots from the preds if thats needed
         if one_hot:

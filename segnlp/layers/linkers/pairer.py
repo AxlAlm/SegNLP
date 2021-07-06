@@ -88,7 +88,7 @@ class Pairer(torch.nn.Module):
     """
 
     def __init__(self, 
-                input_dim:int, 
+                input_size:int, 
                 max_units:int, 
                 mode:list=["cat", "multi"], 
                 rel_pos:bool=True,
@@ -99,25 +99,25 @@ class Pairer(torch.nn.Module):
         self.rel_pos = rel_pos
         self.max_units = max_units
 
-        self._input_dim = 0
+        self._input_size = 0
 
         if rel_pos:
-            self._input_dim += (max_units*2)-1
+            self._input_size += (max_units*2)-1
 
         if "cat" in mode:
-            self._input_dim += input_dim*2
+            self._input_size += input_size*2
 
         if "multi" in mode:
-            self._input_dim += input_dim
+            self._input_size += input_size
 
         if "sum" in mode:
-            self._input_dim += input_dim
+            self._input_size += input_size
 
         if "mean" in mode:
-            self._input_dim += input_dim
+            self._input_size += input_size
 
         self.link_clf = LinearCLF(
-                                    input_size = self._input_dim, 
+                                    input_size = self._input_size, 
                                     output_size = 1
                                     )
 

@@ -296,7 +296,6 @@ def index_select_array(input:torch.tensor, index:torch.tensor):
     return flat_input[flat_idx]
 
 
-
 def pair_matrix(input:Tensor):
     # create a matrix of pairs from a 3d tensor.
     dim1 = input.shape[1]

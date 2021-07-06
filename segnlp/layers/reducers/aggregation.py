@@ -29,7 +29,6 @@ class Agg(nn.Module):
             self.ft = nn.Linear(input_size, input_size)
         
 
-
     def forward(self, input:Tensor, lengths:Tensor, span_idxs:Tensor):
 
         batch_size = input.shape[0]
@@ -41,6 +40,9 @@ class Agg(nn.Module):
         for i in range(batch_size):
             for j in range(lengths[i]):
                 ii, jj = span_idxs[i][j]
+
+                if ii == 0 and jj == 0:
+                    continue
 
                 #when slicing we need to add 1 to the roof so we dont miss the last token
                 jj += 1

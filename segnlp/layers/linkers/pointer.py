@@ -87,75 +87,56 @@ class Pointer(nn.Module):
 
     Implementation of 
 
-    https://arxiv.org/pdf/1612.08994.pdf
+    1) https://arxiv.org/pdf/1612.08994.pdf
     
-    and
+    
+    more about pointers
+    2) https://arxiv.org/pdf/1506.03134v1.pdf
 
-    https://arxiv.org/pdf/1506.03134v1.pdf
 
+    NOTE!
+
+    In the original paper (1), there is little information about what the decoder does more than applying Content Based Attention.
+    In Figure 3 its implied that FC3 is applied at each timestep of the LSTM, except the first. 
+    However, some reasons suggests this is incorrect;
+
+    1) they state that the reason for FC is to reduce the dimension of a sparse input, the output of the LSTM is not sparse. So,
+        when they talk about input to LSTM they must talk about the input to ANY of the LSTM (encoder or decoder)
+     
+    2) a Seq2seq network takes input at both encoding and decoding, meaning that the input to the decoding LSTM needs to be 
+        something and what makes most sense is that its the sparse features passed to FC3 then to the LSTM.
+
+    3) they state in the variations of models they test that they test:
+    
+        
+            "; 4) A non-sequence-tosequence model that uses the hidden layers produced by the BLSTM encoder with the same type
+            of attention as the joint model (called Joint Model No Seq2Seq in the table). That is, di n Equation 3 is replaced by ei.
+
+        meaning that they do not create a decoding representation but use the encoding representations for the decoding. This
+        suggests the input to the decoder is the feature representation to FC3 then to LSTM
+
+    
+    4) in the Pointer paper (2), they pass inputs to the decoder and encoder. Following this both FC1 and FC3 would need to 
+        first reduce the dim of the features if an input to be able to be passed to the encoder and decoder.
 
     """
 
 
-    def __init__(self, input_size:int, hidden_size:int, dropout=0.0):
+    def __init__(self, input_size:int):
         super().__init__()
-        self.input_layer = nn.Linear(input_size, hidden_size)
-        self.lstm_cell =  nn.LSTMCell(hidden_size, hidden_size)
         self.attention = CBAttentionLayer(
-                                        input_dim=hidden_size,
+                                        input_dim=input_size,
                                         )
-        self.dropout = nn.Dropout(dropout)
-        self.hidden_size = hidden_size
 
+    def forward(self, inputs:Tensor, encoder_outputs:Tensor, mask:Tensor):
 
-    def forward(self, inputs:Tensor, encoder_outputs:Tensor, mask:Tensor, states:Tensor=None):
+        batch_size = inputs.shape[0]
+        seq_len = inputs.shape[1]
+        device = inputs.device
 
-        seq_len = encoder_outputs.shape[1]
-        batch_size = encoder_outputs.shape[0]
-        device = encoder_outputs.device
-
-        if states is None:
-            # if no states are given we will initate states
-            seq_len = input.shape[1]
-            batch_size = input.shape[0]
-            device = input.device
-
-            h_s = torch.rand((batch_size, self.hidden_size), device=device)
-            c_s = torch.rand((batch_size, self.hidden_size), device=device)
-     
-        else:
-            h_s, c_s = states
-
-            # if states given are bidirectional
-            if h_s.shape[-1] == (self.hidden_size/2):
-                # We get the last hidden cell states and timesteps and concatenate them for each directions
-                # from (NUM_LAYER*DIRECTIONS, BATCH_SIZE, HIDDEN_SIZE) -> (BATCH_SIZE, HIDDEN_SIZE*NR_DIRECTIONS)
-                # The cell state and last hidden state is used to start the decoder (first states and hidden of the decoder)
-                # -2 will pick the last layer forward and -1 will pick the last layer backwards
-                h_s = torch.cat((h_s[-2], h_s[-1]), dim=1)
-                c_s = torch.cat((c_s[-2], c_s[-1]), dim=1)
-            else:
-                raise NotImplementedError()
-            
- 
         logits = torch.zeros(batch_size, seq_len, seq_len, device=device)
-
-        decoder_input = torch.zeros((batch_size, self.hidden_size), device=device)
         for i in range(seq_len):
-
-            h_s, c_s = self.lstm_cell(decoder_input, (h_s, c_s))
-
-            #h_s = self.dropout(h_s)
-
-            logits[:, i] = self.attention(h_s, encoder_outputs, mask)
-
-            # index of the target
-            link = torch.argmax(logits[:, i], dim=-1)
-            decoder_input = torch.stack([inputs[j, link[j]] for j in range(batch_size)])
-
-            #h_s = self.dropout(h_s)
-            #decoder_input = self.dropout(decoder_input)
-
+            logits[:, i] = self.attention(input[:,i], encoder_outputs, mask)
                             
         preds = torch.argmax(logits, dim=-1)
         return logits, preds

@@ -1,10 +1,11 @@
 
 
 # basics
-from typing import List, Tuple, DefaultDict, Dict
+from typing import List, Sequence, Tuple, DefaultDict, Dict, Union
 import functools
 from itertools import chain, repeat
 import numpy as np
+from numpy.lib.arraysetops import isin
 import pandas as pd
 
 # pytorch
@@ -372,10 +373,13 @@ class DepGraph:
                  deplinks: Tensor,
                  roots: Tensor,
                  token_mask: Tensor,
-                 subgraphs: List[Tensor],
+                 starts: Tensor,
+                 ends: Tensor,
+                 lengths: Tensor,
                  mode: str,
                  device=None,
-                 assertion: bool = False) -> List[DGLGraph]:
+                 assertion: bool = False
+                 ) -> List[DGLGraph]:
 
         assert mode in set([
             "shortest_path"
@@ -383,32 +387,55 @@ class DepGraph:
         self.device = device
         batch_size = deplinks.size(0)
 
-        # creat sample graphs G(U, V) tensor on CPU
-        U, V, M = self.get_sample_graph(deplinks=deplinks,
-                                        roots=roots,
-                                        token_mask=token_mask,
-                                        assertion=assertion)
+        # # creat sample graphs G(U, V) tensor on CPU
+        # U, V, M = self.get_sample_graph(
+        #                                 deplinks=deplinks,
+        #                                 roots=roots,
+        #                                 token_mask=token_mask,
+        #                                 lengths = lengths,
+        #                                 assertion=assertion
+        #                                 )
+
         # creat sub_graph for each pair
         dep_graphs = []
         nodes_emb = []
+        
+        starts = torch.split(starts, lengths)
+        ends  = torch.split(ends, lengths)
+
         for b_i in range(batch_size):
-            if not subgraphs[b_i]:  # no candidate pair
+
+            if not starts[b_i]:  # no candidate pair
                 continue
-            mask = M[b_i]
-            u = U[b_i][mask]
-            v = V[b_i][mask]
+            
+            #create u and v from deplinks and nr of tokens in sample
+            u = deplinks[b_i][token_mask[b_i]]
+            v = torch.arange(len(u), device=device)
+
+            #filter out self loops at root noodes, THIS BECAUSE?
+            self_loop = u == v
+            u = u[~self_loop]
+            v = v[~self_loop]
+
             # creat sample DGLGraph, convert it to unidirection, separate the
             # list of tuples candidate pairs into two lists: (start and end
             # tokens), then create subgraph
             graph = dgl.graph((u, v))
             graph_unidir = graph.to_networkx().to_undirected()
-            start, end = list(zip(*subgraphs[b_i]))
 
-            subgraph_func = functools.partial(self.get_subgraph,
-                                              g=graph,
-                                              g_nx=graph_unidir,
-                                              sub_graph_type=mode,
-                                              assertion=assertion)
+            start = starts[b_i]
+            end = ends[b_i]
+
+
+            print("HELLO", u.shape, v.shape, start.shape, end.shape)
+
+            subgraph_func = functools.partial(
+                                            self.get_subgraph,
+                                            g=graph,
+                                            g_nx=graph_unidir,
+                                            sub_graph_type=mode,
+                                            assertion=assertion
+                                            )
 
             dep_graphs.append(dgl.batch(list(map(subgraph_func, start, end))))
 
@@ -421,42 +448,50 @@ class DepGraph:
         self.graphs = dgl.batch(dep_graphs).to(self.device)
         self.graphs.ndata["emb"] = nodes_emb
 
-    def assert_graph(self, u: Tensor, v: Tensor, roots: Tensor,
-                     self_loop: Tensor) -> None:
+    # def assert_graph(self, u: Tensor, v: Tensor, roots: Tensor,
+    #                  self_loop: Tensor) -> None:
 
-        # check that self loops do not exist in places other than roots
-        self_loop_check = u == roots[:, None]
-        if not torch.all(self_loop == self_loop_check):
-            # we have a problem. Get samples ids where we have more than one
-            # self loop
-            problem_id = torch.where(torch.sum(self_loop, 1) > 1)[0]
-            self_loop_id = v[problem_id, :][self_loop[problem_id, :]].tolist()
-            theroot = roots[problem_id].tolist()
-            error_msg_1 = f"Self loop found in sample(s): {problem_id}, "
-            error_msg_2 = f"Node(s) {self_loop_id}. Root(s): {theroot}."
-            raise Exception(error_msg_1 + error_msg_2)
+    #     # check that self loops do not exist in places other than roots
+    #     self_loop_check = u == roots[:, None]
+    #     if not torch.all(self_loop == self_loop_check):
+    #         # we have a problem. Get samples ids where we have more than one
+    #         # self loop
+    #         problem_id = torch.where(torch.sum(self_loop, 1) > 1)[0]
+    #         self_loop_id = v[problem_id, :][self_loop[problem_id, :]].tolist()
+    #         theroot = roots[problem_id].tolist()
+    #         error_msg_1 = f"Self loop found in sample(s): {problem_id}, "
+    #         error_msg_2 = f"Node(s) {self_loop_id}. Root(s): {theroot}."
+    #         raise Exception(error_msg_1 + error_msg_2)
 
-    def get_sample_graph(self, deplinks: Tensor, roots: Tensor,
-                         token_mask: Tensor, assertion: bool) -> List[Tensor]:
 
-        batch_size = deplinks.size(0)
-        max_lenght = deplinks.size(1)
-        device = torch.device("cpu")
+    # def get_sample_graph(self, 
+    #                     deplinks: Tensor, 
+    #                     roots: Tensor,
+    #                     token_mask: Tensor,
+    #                     lengths: Tensor,
+    #                     assertion: bool
+    #                     ) -> List[Tensor]:
 
-        # G(U, V)
-        U = torch.arange(max_lenght, device=self.device).repeat(batch_size, 1)
-        V = deplinks.clone()
-        M = token_mask.clone()
+    #     batch_size = deplinks.size(0)
+    #     max_lenght = deplinks.size(1)
+    #     device = torch.device("cpu")
 
-        # remove self loops at root nodes
-        self_loop = U == V
-        if assertion:
-            self.assert_graph(U, V, roots, self_loop)
-        U = U[~self_loop].view(batch_size, -1).to(device)
-        V = V[~self_loop].view(batch_size, -1).to(device)
-        M = M[~self_loop].view(batch_size, -1).to(device)
+    #     # G(U, V)
+    #     U = torch.arange(max_lenght, device=self.device).repeat(batch_size, 1)
+    #     V = deplinks.clone()
+    #     M = token_mask.clone()
 
-        return [U, V, M]
+    #     # remove self loops at root nodes
+    #     self_loop = U == V
+    #     if assertion:
+    #         self.assert_graph(U, V, roots, self_loop)
+
+    #     U = torch.split(U[~self_loop].to(device), lengths)
+    #     V = torch.split(V[~self_loop].to(device), lengths)
+    #     M = torch.split(M[~self_loop].to(device), lengths)
+
+    #     return U, V, M
+
 
     def get_subgraph(self,
                      start: int,
@@ -538,27 +573,31 @@ class DepTreeLSTM(nn.Module):
 
 
     def forward(self,
-                token_embs: Tensor,
-                dep_embs: Tensor,
-                one_hot_embs: Tensor,
+                input: Union[Tensor, Sequence[Tensor]],
                 roots: Tensor,
                 token_mask: Tensor,
                 deplinks: Tensor,
-                pair_token_idxs: List[Tuple[int,int]],
+                starts: Tensor,
+                ends: Tensor,
+                lengths: Tensor,
                 assertion: bool = False
                 ):
-        device = token_embs.device
+
+
+        if not isinstance(input, Tensor):
+            input = torch.cat(input, dim=-1)
         
+        device = input.device
 
         # 1) Build graph from dependecy data
-        node_embs = torch.cat((token_embs, one_hot_embs, dep_embs), dim=-1)
-
         G = DepGraph(
-                    token_embs = node_embs,
+                    token_embs = input,
                     deplinks = deplinks,
                     roots = roots,
                     token_mask = token_mask,
-                    subgraphs = pair_token_idxs,
+                    starts = starts,
+                    ends = ends,
+                    lengths = lengths, #lengths in pairs per sample
                     mode = self.mode,
                     device = device,
                     assertion = assertion
@@ -566,7 +605,7 @@ class DepTreeLSTM(nn.Module):
 
         # 2) Pass graph to a TreeLSTM to create hidden representations
         h0 = torch.zeros(
-                        G.graphs.num_nodes(),
+                         G.graphs.num_nodes(),
                          self.hidden_size,
                          device = device
                          )

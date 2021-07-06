@@ -46,11 +46,13 @@ class JointPN(PTLBase):
                             hyperparams = self.hps.get("BOW", {}),
                             )
 
+
         self.fc1 = Reprojecter(
                                     layer = "LinearRP", 
                                     hyperparams = self.hps.get("LinearRP", {}),
                                     input_size = self.bow.output_size + self.agg.output_size + self.feature_dims["doc_embs"]
                                 )
+
 
         self.fc2 = Reprojecter(
                                     layer = "LinearRP", 
@@ -58,18 +60,28 @@ class JointPN(PTLBase):
                                     input_size = self.bow.output_size + self.agg.output_size + self.feature_dims["doc_embs"]
                                 )
 
+
         self.encoder = Encoder(    
                                 layer = "LSTM", 
                                 hyperparams = self.hps.get("LSTM", {}),
                                 input_size = self.fc1.output_size
                                 )
 
+
+        self.decoder = Encoder(    
+                                layer = "LSTM", 
+                                hyperparams = self.hps.get("LSTM2", {}),
+                                input_size = self.fc1.output_size
+                                )
+
+
         self.pointer = Linker(
                                 layer = "Pointer",
                                 hyperparams = self.hps.get("Pointer", {}),
-                                input_size = self.fc2.output_size,
+                                input_size = self.decoder.output_size,
                                 output_size = self.task_dims["link"]
                                 )
+
 
         self.labeler =  Labeler(
                                 layer = "LinearCLF",
@@ -106,12 +118,16 @@ class JointPN(PTLBase):
                                         input = f1c_out,
                                         lengths = batch["seg"]["lengths"],
                                         )
+
+
+        decoder_out, _  = self.encoder(
+                                        input = (f2c_out, states),
+                                        lengths = batch["seg"]["lengths"],
+                                        )
         
         return {    
                 "encoder_out":encoder_out, 
-                "states": states,
-                "f1c_out":f1c_out, 
-                "f2c_out":f2c_out
+                "decoder_out":decoder_out
                 }
         
 
@@ -124,10 +140,9 @@ class JointPN(PTLBase):
 
     def link_clf(self, batch:utils.Input, output:utils.Output):
         logits, preds = self.pointer(
-                                    inputs = output.stuff["f2c_out"],
+                                    inputs = output.stuff["decoder_out"],
                                     encoder_outputs = output.stuff["encoder_out"],
                                     mask = batch["seg"]["mask"],
-                                    states = output.stuff["states"],
                                     )
         return logits, preds
 

@@ -20,10 +20,12 @@ class LSTM(nn.Module):
                     bidir:bool, 
                     dropout:float=0.0,
                     input_dropout:float=0.0,
+                    #reproject:str = None, #linear reprojection of input to the hidden size dim
                     w_init:str="xavier_uniform",
                     sorted:bool = True,
                     ):
         super().__init__()
+
 
         self.lstm = nn.LSTM(     
                                 input_size=input_size,
@@ -57,7 +59,8 @@ class LSTM(nn.Module):
                     raise RuntimeError()
 
 
-    def forward(self, input:Union[Tensor,Sequence[Tensor]], lengths:Tensor, padding_value=0.0):
+    def forward(self, input:Union[Tensor, Sequence[Tensor]], lengths:Tensor, padding_value=0.0):
+
 
         #if input in a sequence we concatentate the tensors
         if not isinstance(input, Tensor):
@@ -70,24 +73,36 @@ class LSTM(nn.Module):
 
         input = self.input_dropout(input)
         
+
+        #to take care of given states
         pass_states = False
         if isinstance(input, tuple):
-            #X, h_0, c_0 = X
-            input, *states = input
+            input, h_0, c_0 = input
+
+            # if states given are bidirectional
+            if h_0.shape[-1] == (self.hidden_size/2):
+                # We get the last hidden cell states and timesteps and concatenate them for each directions
+                # from (NUM_LAYER*DIRECTIONS, BATCH_SIZE, HIDDEN_SIZE) -> (BATCH_SIZE, HIDDEN_SIZE*NR_DIRECTIONS)
+                # The cell state and last hidden state is used to start the decoder (first states and hidden of the decoder)
+                # -2 will pick the last layer forward and -1 will pick the last layer backwards
+                h_0 = torch.cat((h_0[-2], h_0[-1]), dim=1)
+                c_0 = torch.cat((c_0[-2], c_0[-1]), dim=1)
+            else:
+                raise NotImplementedError()
+
             pass_states = True
+
 
         packed_embs = nn.utils.rnn.pack_padded_sequence(input, lengths, batch_first=True)
 
         if pass_states:
-            lstm_packed, states = self.lstm(packed_embs, states)
+            lstm_packed, states = self.lstm(packed_embs, (h_0, c_0))
         else:
             lstm_packed, states = self.lstm(packed_embs)
 
         output, lengths = pad_packed_sequence(lstm_packed, batch_first=True, padding_value=padding_value)
 
-
         if not self.sorted:
             output = output[original_idxs]
-
 
         return output, states

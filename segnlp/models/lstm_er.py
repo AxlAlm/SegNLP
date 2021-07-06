@@ -86,62 +86,46 @@ class LSTM_ER(PTLBase):
         return logits, preds
 
 
-
     def seg_rep(self, batch:utils.Input, output:utils.Output):
 
         # get the average embedding for each segments 
         seg_embs = self.agg(
                             input = batch["token"]["word_embs"], 
-                            lengths = batch["seg"]["lengths"],
+                            lengths = output.get_seg_data()["lengths"], 
                             span_idxs = output.get_seg_data()["span_idxs"],
                             )
 
-       
-        # We create directional pairs embeddings by concatenating segment embeddings
-        # if we have 1 sample with the segments A,B,C we create the follwing matrix :
-        # [
-        #   [
-        #     [
-        #         [A;A],
-        #         [A;B],
-        #         [A;C]
-        #      ]
-        #     [
-        #        [B;A],
-        #        [B;B],
-        #        [B;C]
-        #      ]
-        #   ]
-        # ]        
-        pair_matrix = utils.pair_matrix(
-                                        input=seg_embs
-                                        )
+        pair_data = output.get_pair_data()
 
- 
         # We create Non-Directional Pair Embeddings using DepTreeLSTM
         # if we follow the example above we get the embedings for all combination of A,B,C. E.g. embeddings for 
         # (A,A), (A,B), (A,C), (B,B), (B,C)
         tree_pair_embs = self.deptreelstm(    
-                                            token_embs = output.stuff["lstm_out"],
-                                            dep_embs = batch["token"]["deprel_embs"],
-                                            one_hot_embs = output.get_preds("seg+label", one_hot = True),
+                                            input = (
+                                                        output.stuff["lstm_out"],
+                                                        batch["token"]["deprel_embs"],
+                                                        output.get_preds("seg+label", one_hot = True),
+                                                        ),
                                             roots = batch["token"]["root_idxs"],
                                             deplinks = batch["token"]["dephead"],
-                                            token_mask = batch["token"]["mask"].type(torch.bool),
-                                            pair_token_idxs = output.get_pairs(bidir=False)["end_idxs"] #the last token indexes in each seg
+                                            token_mask = batch["token"]["mask"],
+                                            ends = pair_data["nodir"]["p1_end"], #the last token indexes in each seg
+                                            starts = pair_data["nodir"]["p2_end"],
+                                            lengths = pair_data["nodir"]["lengths"]
                                             )
 
-        #torch.repeat_interleave(tree_pair_embs, repeats = , dim= )
-
-                #tree_pair_embs
-        
         # We then add the non directional pair embeddings to the directional pair representations
         # creating dp´ = [dp; s1,s2] (see paper, page 1109)
 
+        print("HELLO", tree_pair_embs.shape)
+        seg_embs_flat = seg_embs[batch["seg"]["mask"].astype(bool)]
 
-     
+        pair_data = output.get_pair_data()
+        p1_embs = seg_embs_flat[pair_data["p1"]]
+        p2_embs = seg_embs_flat[pair_data["p2"]]
+        tree_pair_embs_bidir = tree_pair_embs[pair_data["id"]]
 
-        #pair_embs = torch.cat((tree_pair_embs, pair_embs), dim=-1)
+        pair_embs = torch.cat((p1_embs, p2_embs, tree_pair_embs_bidir), dim=-1)
         return {
                 "pair_embs":pair_embs
                 }
