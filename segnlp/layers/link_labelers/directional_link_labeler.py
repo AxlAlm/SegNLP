@@ -31,6 +31,7 @@ class DirLinkLabeler(nn.Module):
                                 nn.Dropout(dropout),
                                 nn.Linear(hidden_size, output_size),
                             )
+    
 
 
     def forward(self, input:Tensor):

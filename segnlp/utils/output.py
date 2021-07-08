@@ -102,7 +102,7 @@ class Output:
         """
 
         max_segs = self.df.groupby(level=0)["T-seg_id" if true_segs else "seg_id"].nunique().to_numpy()
-        self.df["max_seg"] = np.repeat(max_segs, df.groupby("sample_id").size().to_numpy())
+        self.df["max_seg"] = np.repeat(max_segs, self.df.groupby(level=0).size().to_numpy())
 
         above = self.df["link"] > self.df["max_seg"]
         below = self.df["link"] < 0
@@ -266,9 +266,10 @@ class Output:
         if self.__use_gt:
             key = "T-seg_id"
         
-        first_df = self.df.groupby(key).first()
+        first_df = self.df.groupby(key, sort=False).first()
         first_df.reset_index(inplace=True)
-        last_df = self.df.groupby(key).last()
+
+        last_df = self.df.groupby(key, sort=False).last()
         last_df.reset_index(inplace=True)
 
         p1, p2 = [], []
@@ -350,19 +351,37 @@ class Output:
             pair_df["T-p1-ratio"] = 1
             pair_df["T-p2-ratio"] = 1
 
-
+        
         nodir_pair_df = pair_df[pair_df["direction"].isin([0,1]).to_numpy()]
+
 
         pair_dict = {
                     "bidir": {k:torch.tensor(v, device=self.batch.device) for k,v in pair_df.to_dict("list").items()},
                     "nodir": {k:torch.tensor(v, device=self.batch.device) for k,v in nodir_pair_df.to_dict("list").items()}
                     }
 
-        pair_dict["bidir"]["lengths"] = torch.LongTensor(pair_df.groupby("sample_id").size().to_numpy(), device=self.batch.device)
-        pair_dict["nodir"]["lengths"] = torch.LongTensor(nodir_pair_df.groupby("sample_id").size().to_numpy(), device=self.batch.device)
+        pair_dict["bidir"]["lengths"] = pair_df.groupby("sample_id", sort=False).size().to_list()
+        pair_dict["nodir"]["lengths"] = nodir_pair_df.groupby("sample_id", sort=False).size().to_list()
 
+  
+        #s = torch.split(pair_dict["nodir"]["p1_end"], pair_dict["nodir"]["lengths"])
+        #s2 = torch.split(pair_dict["nodir"]["p2_end"], pair_dict["nodir"]["lengths"])
 
-        print("OKOKOK", pair_dict["nodir"]["lengths"])
+        # #print(pair_dict["nodir"]["p1_end"])
+        # for i, (id, g) in enumerate(nodir_pair_df.groupby("sample_id", sort=False)):
+        #     print("_____")
+        #     print(i,id)
+        #     print()
+        #     print(len(self.df.loc[i]), self.batch["token"]["lengths"][i])
+        #     print(len(g), pair_dict["nodir"]["lengths"][i])
+        #     print("split p1", s[i])
+        #     print("ends p1", g["p1_end"].to_numpy())
+
+        #     print("\n")
+        #     print()
+        #     print("split p2", s2[i])
+        #     print("ends p2", g["p2_end"].to_numpy())
+
         return pair_dict
 
 
@@ -379,8 +398,8 @@ class Output:
             else:
                 seg_lengths = self.df[~self.df["seg_id"].isna()].groupby(level=0)["seg_id"].nunique().to_numpy()
 
-                start = self.df.groupby("seg_id").first()["token_id"]
-                end = self.df.groupby("seg_id").last()["token_id"]
+                start = self.df.groupby("seg_id", sort=False).first()["token_id"]
+                end = self.df.groupby("seg_id",  sort=False).last()["token_id"]
 
                 span_idxs_flat = list(zip(start, end))
 

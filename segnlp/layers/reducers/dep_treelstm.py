@@ -24,6 +24,9 @@ from dgl import DGLGraph
 from dgl.traversal import topological_nodes_generator as traverse_topo
 
 
+#segnlp
+from segnlp import utils
+
 
 class TreeLSTMCell(nn.Module):
     def __init__(self, xemb_size, h_size):
@@ -400,34 +403,44 @@ class DepGraph:
         dep_graphs = []
         nodes_emb = []
         
-        starts = torch.split(starts, lengths)
-        ends  = torch.split(ends, lengths)
+        starts = torch.split(starts, lengths, dim=0)
+        ends  = torch.split(ends, lengths, dim=0)
+
+        #token_mask = token_mask.type(torch.bool)
 
         for b_i in range(batch_size):
 
-            if not starts[b_i]:  # no candidate pair
+            if lengths[b_i] == 0:  # no candidate pair
                 continue
             
-            #create u and v from deplinks and nr of tokens in sample
-            u = deplinks[b_i][token_mask[b_i]]
-            v = torch.arange(len(u), device=device)
+            #create v and u from deplinks and nr of tokens in sample
+            v = deplinks[b_i][token_mask[b_i]]
+            u = torch.arange(len(v), device=device)
 
-            #filter out self loops at root noodes, THIS BECAUSE?
-            self_loop = u == v
-            u = u[~self_loop]
-            v = v[~self_loop]
+
+            ## filter out self loops at root noodes, THIS BECAUSE?
+            # self_loop = u == v
+            # print("BEFORE", u.shape, v.shape)
+            # u = u[~self_loop]
+            # v = v[~self_loop]
+            # print("AFTER", u.shape, v.shape)
 
             # creat sample DGLGraph, convert it to unidirection, separate the
             # list of tuples candidate pairs into two lists: (start and end
             # tokens), then create subgraph
-            graph = dgl.graph((u, v))
+            graph = dgl.graph((u,v))
+
+            # print("____________________________")
+            # print(b_i, len(u))
+
+            #print("OOKKOK",graph.nodes())
             graph_unidir = graph.to_networkx().to_undirected()
 
-            start = starts[b_i]
-            end = ends[b_i]
+            start = utils.ensure_numpy(starts[b_i])
+            end = utils.ensure_numpy(ends[b_i])
 
-
-            print("HELLO", u.shape, v.shape, start.shape, end.shape)
+            #print(start, end)
+            # print("HELLO", u.shape, v.shape, start.shape, end.shape)
 
             subgraph_func = functools.partial(
                                             self.get_subgraph,
@@ -442,9 +455,11 @@ class DepGraph:
             # get nodes' token embedding
             nodes_emb.append(token_embs[b_i, dep_graphs[-1].ndata["_ID"]])
 
+
         # batch graphs, move to model device, update nodes data by tokens
         # embedding
         nodes_emb = torch.cat(nodes_emb, dim=0)
+        print("NODE EMBS", nodes_emb.shape)
         self.graphs = dgl.batch(dep_graphs).to(self.device)
         self.graphs.ndata["emb"] = nodes_emb
 
@@ -504,6 +519,7 @@ class DepGraph:
         """
         if sub_graph_type == "shortest_path":
             thepath = nx.shortest_path(g_nx, source=start, target=end)
+
             sub_g = dgl.node_subgraph(g, thepath)
             root = list(traverse_topo(sub_g))[-1]
 
@@ -559,6 +575,8 @@ class DepTreeLSTM(nn.Module):
                                         dropout=dropout,
                                         bidirectional=True
                                       )
+        
+        self.output_size = hidden_size * 3
 
 
     def split_nested_list(self,

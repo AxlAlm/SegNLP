@@ -36,11 +36,12 @@ class LSTM_ER(PTLBase):
                                 input_size = self.word_lstm.output_size,
                             )
 
-
         self.deptreelstm = Reducer(
                                     layer = "DepTreeLSTM",
                                     hyperparams = self.hps.get("DepTreeLSTM", {}),
-                                    input_size = self.word_lstm.output_size,
+                                    input_size =    self.agg.output_size 
+                                                    + self.feature_dims["deprel_embs"]
+                                                    + self.task_dims["seg+label"],
                                 )
 
         self.segmenter = Segmenter(
@@ -54,7 +55,7 @@ class LSTM_ER(PTLBase):
         self.link_labeler = LinkLabeler(
                                     layer = "DirLinkLabeler",
                                     hyperparams = self.hps.get("DirLinkLabeler", {}),
-                                    input_size = self.word_lstm.output_size,
+                                    input_size = (self.word_lstm.output_size * 2) + self.deptreelstm.output_size,
                                     output_size = self.task_dims["link_label"],
                                     )
 
@@ -109,23 +110,21 @@ class LSTM_ER(PTLBase):
                                             roots = batch["token"]["root_idxs"],
                                             deplinks = batch["token"]["dephead"],
                                             token_mask = batch["token"]["mask"],
-                                            ends = pair_data["nodir"]["p1_end"], #the last token indexes in each seg
-                                            starts = pair_data["nodir"]["p2_end"],
+                                            starts = pair_data["nodir"]["p1_end"],
+                                            ends = pair_data["nodir"]["p2_end"], #the last token indexes in each seg
                                             lengths = pair_data["nodir"]["lengths"]
                                             )
 
         # We then add the non directional pair embeddings to the directional pair representations
         # creating dp´ = [dp; s1,s2] (see paper, page 1109)
+        seg_embs_flat = seg_embs[batch["seg"]["mask"].type(torch.bool)]
 
-        print("HELLO", tree_pair_embs.shape)
-        seg_embs_flat = seg_embs[batch["seg"]["mask"].astype(bool)]
-
-        pair_data = output.get_pair_data()
-        p1_embs = seg_embs_flat[pair_data["p1"]]
-        p2_embs = seg_embs_flat[pair_data["p2"]]
-        tree_pair_embs_bidir = tree_pair_embs[pair_data["id"]]
+        p1_embs = seg_embs_flat[pair_data["bidir"]["p1"]]
+        p2_embs = seg_embs_flat[pair_data["bidir"]["p2"]]
+        tree_pair_embs_bidir = tree_pair_embs[pair_data["bidir"]["id"]]
 
         pair_embs = torch.cat((p1_embs, p2_embs, tree_pair_embs_bidir), dim=-1)
+
         return {
                 "pair_embs":pair_embs
                 }
@@ -136,6 +135,7 @@ class LSTM_ER(PTLBase):
         # We predict link labels for both directions. Get the dominant pair dir
         # plus roots' probabilities
         logits, preds  = self.link_labeler(output.stuff["pair_embs"])
+        print("HELLO", type(preds))
         return logits, preds 
 
 
