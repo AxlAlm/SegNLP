@@ -5,6 +5,7 @@ from inspect import getsource
 from re import sub
 from typing import Union, List, DefaultDict, Tuple
 from unittest import result
+from networkx.algorithms.assortativity import pairs
 import numpy as np
 from numpy.lib import utils
 import pandas as pd
@@ -12,6 +13,8 @@ from collections import Counter, defaultdict
 from itertools import product
 from itertools import combinations
 from time import time
+from functools import wraps
+
 
 #segnlp
 from .input import Input
@@ -59,6 +62,19 @@ class Output:
                                         # )
 
         self.__decouplers = self.__create_decouplers(label_encoders, tasks)
+        
+
+    def _cache(f):
+        @wraps(f)
+        def wrapped(self, *args, **kwargs):
+            v_name =  f.__name__.split("_",1)[1]
+            if hasattr(self, v_name):
+                return getattr(self, v_name)
+            else:
+                return_value = f(self, *args, **kwargs)
+                setattr(self, v_name, return_value)
+                return return_value
+        return wrapped
 
 
     def __create_decouplers(self, label_encoders, tasks):
@@ -209,8 +225,9 @@ class Output:
             if subtask == "link":
                 self.__correct_links(true_segs = level == "seg")    
 
-    @utils.timer
+    @_cache
     def get_pair_data(self):
+        print("CALLED")
 
         def set_id_fn():
             pair_dict = dict()
@@ -296,6 +313,48 @@ class Output:
         #set the sample id for each pair
         pair_df["sample_id"] = first_df.loc[pair_df["p1"], "sample_id"].to_numpy()
 
+
+        #set true the link_label
+        pair_df["T-link_label"] = first_df.loc[pair_df["p1"], "T-link_label"].to_numpy()
+
+        # find which pairs are "false", i.e. the members whould not be linked
+        links = first_df.loc[pair_df["p1"], "T-link"].to_numpy()
+        pairs_per_sample = pair_df.groupby("sample_id", sort=False).size().to_numpy()
+        seg_per_sample = utils.np_cumsum_zero(first_df.groupby("sample_id", sort=False).size().to_numpy())
+        normalized_links  = links + np.repeat(seg_per_sample, pairs_per_sample)
+        pair_df["not_linked"] = first_df.iloc[normalized_links].index.to_numpy() == p2
+
+     
+        print(first_df)
+        print(links[20:80])
+        print(first_df.iloc[normalized_links].index[20:80])
+        print(p2[20:80])
+        d = first_df.iloc[normalized_links].index.to_numpy() == p2
+        print(d[20:80])
+
+        print(pair_df)
+
+        print(Lol)
+        # #set the true links
+
+        #np.repeat()
+        #first_df.loc[pair_df["p1"], "T-link"].to_numpy() + 
+
+
+
+        #( pair_df["p1"] + first_df.loc[pair_df["p1"], "T-link"].to_numpy()  ) == pair_df["p1"
+        
+        #first_df.loc[pair_df["p1"], "T-link_label"].to_numpy()
+
+
+
+
+        #pair_df["T-link_label"] = first_df.loc[pair_df["p1"], "T-link_label"].to_numpy()
+        #pair_df["T-link_label"] = first_df.loc[pair_df["p1"], "T-link_label"].to_numpy()
+
+        #pair_df["label"] = first_df.loc[pair_df["p1"], "label"].to_numpy()
+
+
         #set start and end token indexes for p1 and p2
         pair_df["p1_start"] = first_df.loc[pair_df["p1"], "token_id"].to_numpy()
         pair_df["p1_end"] = last_df.loc[pair_df["p1"], "token_id"].to_numpy()
@@ -304,9 +363,9 @@ class Output:
         pair_df["p2_end"] = last_df.loc[pair_df["p2"], "token_id"].to_numpy()
 
         # set directions
-        pair_df["direction"] = 0
-        pair_df.loc[pair_df["p1"] < pair_df["p2"], "direction"] = 1
-        pair_df.loc[pair_df["p1"] > pair_df["p2"], "direction"] = -1
+        pair_df["direction"] = 0  #self
+        pair_df.loc[pair_df["p1"] < pair_df["p2"], "direction"] = 1 # ->
+        pair_df.loc[pair_df["p1"] > pair_df["p2"], "direction"] = 2 # <-
 
         if not self.__use_gt:
             # we also have information about whether the seg_id is a true segments 
@@ -330,7 +389,6 @@ class Output:
             pair_df["T-p1"] = pair_df["T-p1"].map(i2j)
             pair_df["T-p2"] = pair_df["T-p2"].map(i2j)
 
-
             # adding ratio for true seg ids for each p1,p2
             i2ratio = dict(zip(seg_id, ratio))
 
@@ -351,7 +409,7 @@ class Output:
             pair_df["T-p1-ratio"] = 1
             pair_df["T-p2-ratio"] = 1
 
-        
+
         nodir_pair_df = pair_df[pair_df["direction"].isin([0,1]).to_numpy()]
 
 
@@ -363,62 +421,40 @@ class Output:
         pair_dict["bidir"]["lengths"] = pair_df.groupby("sample_id", sort=False).size().to_list()
         pair_dict["nodir"]["lengths"] = nodir_pair_df.groupby("sample_id", sort=False).size().to_list()
 
-  
-        #s = torch.split(pair_dict["nodir"]["p1_end"], pair_dict["nodir"]["lengths"])
-        #s2 = torch.split(pair_dict["nodir"]["p2_end"], pair_dict["nodir"]["lengths"])
-
-        # #print(pair_dict["nodir"]["p1_end"])
-        # for i, (id, g) in enumerate(nodir_pair_df.groupby("sample_id", sort=False)):
-        #     print("_____")
-        #     print(i,id)
-        #     print()
-        #     print(len(self.df.loc[i]), self.batch["token"]["lengths"][i])
-        #     print(len(g), pair_dict["nodir"]["lengths"][i])
-        #     print("split p1", s[i])
-        #     print("ends p1", g["p1_end"].to_numpy())
-
-        #     print("\n")
-        #     print()
-        #     print("split p2", s2[i])
-        #     print("ends p2", g["p2_end"].to_numpy())
 
         return pair_dict
 
-
+    @_cache
     def get_seg_data(self):
-        
-        #simple cacheing
-        if not hasattr(self, "seg_data"):
 
-            if self.__use_gt:
-                self.seg_data = {
-                                "span_idxs": self.batch["seg"]["span_idxs"],
-                                "lengths": self.batch["seg"]["lengths"],
-                                }   
-            else:
-                seg_lengths = self.df[~self.df["seg_id"].isna()].groupby(level=0)["seg_id"].nunique().to_numpy()
 
-                start = self.df.groupby("seg_id", sort=False).first()["token_id"]
-                end = self.df.groupby("seg_id",  sort=False).last()["token_id"]
+        if self.__use_gt:
+            seg_data = {
+                            "span_idxs": self.batch["seg"]["span_idxs"],
+                            "lengths": self.batch["seg"]["lengths"],
+                            }   
+        else:
+            seg_lengths = self.df[~self.df["seg_id"].isna()].groupby(level=0)["seg_id"].nunique().to_numpy()
 
-                span_idxs_flat = list(zip(start, end))
+            start = self.df.groupby("seg_id", sort=False).first()["token_id"]
+            end = self.df.groupby("seg_id",  sort=False).last()["token_id"]
 
-                assert len(span_idxs_flat) == np.sum(seg_lengths), f"{len(span_idxs_flat)} {np.sum(seg_lengths)}"
+            span_idxs_flat = list(zip(start, end))
 
-                span_idxs = np.zeros((len(self.batch), np.max(seg_lengths), 2))
-                floor = 0
-                for i,l in enumerate(seg_lengths):
-                    span_idxs[i][:l] = np.array(span_idxs_flat[floor:floor+l])
-                    floor += l
+            assert len(span_idxs_flat) == np.sum(seg_lengths), f"{len(span_idxs_flat)} {np.sum(seg_lengths)}"
 
-                self.seg_data = {
-                                "span_idxs": span_idxs,
-                                "lengths": seg_lengths
-                                }   
-       
+            span_idxs = np.zeros((len(self.batch), np.max(seg_lengths), 2))
+            floor = 0
+            for i,l in enumerate(seg_lengths):
+                span_idxs[i][:l] = np.array(span_idxs_flat[floor:floor+l])
+                floor += l
 
-        return self.seg_data
-        
+            seg_data = {
+                        "span_idxs": span_idxs,
+                        "lengths": seg_lengths
+                        }   
+        return seg_data
+
 
     def get_preds(self, task:str, one_hot:bool = False):
         

@@ -24,12 +24,24 @@ class LSTM_ER(PTLBase):
         super().__init__(*args, **kwargs)
 
 
+    def setup_token_rep(self):
         self.word_lstm = Encoder(    
-                                layer = "LSTM", 
-                                hyperparams = self.hps.get("LSTM", {}),
-                                input_size = self.feature_dims["word_embs"] + self.feature_dims["pos_embs"]
+                        layer = "LSTM", 
+                        hyperparams = self.hps.get("LSTM", {}),
+                        input_size = self.feature_dims["word_embs"] + self.feature_dims["pos_embs"]
+                        )
+
+
+    def setup_token_clf(self):
+        self.segmenter = Segmenter(
+                                layer = "BigramSeg",
+                                hyperparams = self.hps.get("BigramSeg", {}),
+                                input_size = self.word_lstm.output_size,
+                                output_size = self.task_dims["seg+label"],
                                 )
-        
+
+
+    def setup_seg_rep(self):
         self.agg = Reducer(
                                 layer = "Agg",
                                 hyperparams = self.hps.get("Agg", {}),
@@ -43,27 +55,16 @@ class LSTM_ER(PTLBase):
                                                     + self.feature_dims["deprel_embs"]
                                                     + self.task_dims["seg+label"],
                                 )
+    
 
-        self.segmenter = Segmenter(
-                                layer = "BigramSeg",
-                                hyperparams = self.hps.get("BigramSeg", {}),
-                                input_size = self.word_lstm.output_size,
-                                output_size = self.task_dims["seg+label"],
-                                )
-
-
+    def setup_link_label_clf(self):
         self.link_labeler = LinkLabeler(
                                     layer = "DirLinkLabeler",
                                     hyperparams = self.hps.get("DirLinkLabeler", {}),
                                     input_size = (self.word_lstm.output_size * 2) + self.deptreelstm.output_size,
                                     output_size = self.task_dims["link_label"],
                                     )
-
-
-    @classmethod
-    def name(self):
-        return "LSTM_ER"
-
+                                    
 
     def token_rep(self, batch:utils.Input, output:utils.Output):
         # lstm_out = (batch_size, max_nr_tokens, lstm_hidden)
@@ -97,6 +98,11 @@ class LSTM_ER(PTLBase):
                             )
 
         pair_data = output.get_pair_data()
+        pair_data = output.get_pair_data()
+        pair_data = output.get_pair_data()
+        pair_data = output.get_pair_data()
+        pair_data = output.get_pair_data()
+
 
         # We create Non-Directional Pair Embeddings using DepTreeLSTM
         # if we follow the example above we get the embedings for all combination of A,B,C. E.g. embeddings for 
@@ -134,8 +140,11 @@ class LSTM_ER(PTLBase):
 
         # We predict link labels for both directions. Get the dominant pair dir
         # plus roots' probabilities
-        logits, preds  = self.link_labeler(output.stuff["pair_embs"])
-        print("HELLO", type(preds))
+        logits, preds  = self.link_labeler(
+                                            output.stuff["pair_embs"],
+                                            pair_ids = output.get_pair_data()["bidir"]["id"],
+                                            directions = output.get_pair_data()["bidir"]["direction"],
+                                            )
         return logits, preds 
 
 

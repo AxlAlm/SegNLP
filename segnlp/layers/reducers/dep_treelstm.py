@@ -371,6 +371,8 @@ class TypeTreeLSTM(nn.Module):
 
 
 class DepGraph:
+
+    @utils.timer 
     def __init__(self,
                  token_embs: Tensor,
                  deplinks: Tensor,
@@ -419,28 +421,20 @@ class DepGraph:
 
 
             ## filter out self loops at root noodes, THIS BECAUSE?
-            # self_loop = u == v
-            # print("BEFORE", u.shape, v.shape)
-            # u = u[~self_loop]
-            # v = v[~self_loop]
-            # print("AFTER", u.shape, v.shape)
+            self_loop = u == v
+            u = u[~self_loop]
+            v = v[~self_loop]
 
             # creat sample DGLGraph, convert it to unidirection, separate the
             # list of tuples candidate pairs into two lists: (start and end
             # tokens), then create subgraph
             graph = dgl.graph((u,v))
 
-            # print("____________________________")
-            # print(b_i, len(u))
-
-            #print("OOKKOK",graph.nodes())
+    
             graph_unidir = graph.to_networkx().to_undirected()
 
             start = utils.ensure_numpy(starts[b_i])
             end = utils.ensure_numpy(ends[b_i])
-
-            #print(start, end)
-            # print("HELLO", u.shape, v.shape, start.shape, end.shape)
 
             subgraph_func = functools.partial(
                                             self.get_subgraph,
@@ -459,7 +453,6 @@ class DepGraph:
         # batch graphs, move to model device, update nodes data by tokens
         # embedding
         nodes_emb = torch.cat(nodes_emb, dim=0)
-        print("NODE EMBS", nodes_emb.shape)
         self.graphs = dgl.batch(dep_graphs).to(self.device)
         self.graphs.ndata["emb"] = nodes_emb
 
@@ -553,6 +546,7 @@ class DepGraph:
         return sub_g
 
 
+
 class DepTreeLSTM(nn.Module):
 
     def __init__(self,
@@ -589,7 +583,7 @@ class DepTreeLSTM(nn.Module):
         list_2 = torch.tensor(list_2, dtype=torch.long, device=device)
         return list_1, list_2
 
-
+    @utils.timer 
     def forward(self,
                 input: Union[Tensor, Sequence[Tensor]],
                 roots: Tensor,
