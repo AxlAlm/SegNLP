@@ -229,7 +229,6 @@ class Output:
 
     @_cache
     def get_pair_data(self):
-        print("CALLED")
 
         def set_id_fn():
             pair_dict = dict()
@@ -381,9 +380,7 @@ class Output:
             pair_df["T-p1-ratio"] = 1
             pair_df["T-p2-ratio"] = 1
 
-
         nodir_pair_df = pair_df[pair_df["direction"].isin([0,1]).to_numpy()]
-
 
         pair_dict = {
                     "bidir": {k:torch.tensor(v, device=self.batch.device) for k,v in pair_df.to_dict("list").items()},

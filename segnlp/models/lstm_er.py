@@ -138,17 +138,14 @@ class LSTM_ER(PTLBase):
 
         # We predict link labels for both directions. Get the dominant pair dir
         # plus roots' probabilities
-        logits, preds  = self.link_labeler(
+        logits, link_label_preds, link_preds  = self.link_labeler(
                                             input = output.stuff["pair_embs"],
-                                            pair_ids = pair_data["bidir"]["id"],
-                                            pair_directions = pair_data["bidir"]["direction"],
                                             pair_sample_ids =  pair_data["bidir"]["sample_id"],
                                             pair_p1 = pair_data["bidir"]["p1"],
                                             pair_p2 =  pair_data["bidir"]["p2"],
                                             )
         
-        print(lol)
-        return logits, preds 
+        return logits, [] 
 
 
     def loss(self, batch, output):
@@ -159,11 +156,9 @@ class LSTM_ER(PTLBase):
                                             )
 
         link_label_loss = self.link_labeler.loss(
-                                                targets = batch["token"]["link_label"],
+                                                targets = output.get_pair_data()["bidir"]["T-link_label"],
                                                 logits = output.logits["link_label"],
-                                                #token_preds = output.logits["seg+label"],
-                                                #token_targets = batch.logits["seg+label"],
-                                                #pair_data = output["pair_data"]
+                                                neg_mask = output.get_pair_data()["bidir"]["neg_paris"],
                                                 )
 
         total_loss = seg_label_loss + link_label_loss
