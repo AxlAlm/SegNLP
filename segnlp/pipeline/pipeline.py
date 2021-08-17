@@ -35,7 +35,7 @@ class Pipeline(Evaluation, ML, StatSig):
                 metric:str,
                 features:list = [],
                 encodings:list = [],
-                other_levels:list=[],
+                other_levels:list = [],
                 evaluation_method:str = "default",
                 root_dir:str =f"{user_dir}/.segnlp/" #".segnlp/pipelines"       
                 ):

@@ -149,10 +149,12 @@ class PTLBase(ptl.LightningModule):
                 task = f_name.rsplit("_")[0]
                 level = "seg"
 
+
             output.add_logits(
                             logits, 
                             task = task
                             )
+
             output.add_preds(
                             preds, 
                             level = level, 

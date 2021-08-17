@@ -17,8 +17,12 @@ class BigramSeg(nn.Module):
         hidden_size,
         output_size,
         dropout=0.0,
+        loss_reduction = "mean",
+        ignore_index = -1
     ):
         super().__init__()
+        self.ignore_index = ignore_index
+        self.loss_reduction = loss_reduction
         self.output_size = output_size
 
         # as we are using onehot encodings we will add the label size to 
@@ -60,3 +64,10 @@ class BigramSeg(nn.Module):
           
         return logits, preds
     
+
+    def loss(self, logits: Tensor, targets:Tensor):
+        return F.cross_entropy( logits, 
+                                targets, 
+                                reduction = self.loss_reduction,
+                                ignore_index = self.ignore_index
+                                )

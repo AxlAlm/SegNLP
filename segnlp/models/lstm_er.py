@@ -98,10 +98,6 @@ class LSTM_ER(PTLBase):
                             )
 
         pair_data = output.get_pair_data()
-        pair_data = output.get_pair_data()
-        pair_data = output.get_pair_data()
-        pair_data = output.get_pair_data()
-        pair_data = output.get_pair_data()
 
 
         # We create Non-Directional Pair Embeddings using DepTreeLSTM
@@ -138,16 +134,21 @@ class LSTM_ER(PTLBase):
 
     def link_label_clf(self, batch:utils.Input, output:utils.Output):
 
+        pair_data = output.get_pair_data()
+
         # We predict link labels for both directions. Get the dominant pair dir
         # plus roots' probabilities
         logits, preds  = self.link_labeler(
-                                            output.stuff["pair_embs"],
-                                            pair_ids = output.get_pair_data()["bidir"]["id"],
-                                            directions = output.get_pair_data()["bidir"]["direction"],
+                                            input = output.stuff["pair_embs"],
+                                            pair_ids = pair_data["bidir"]["id"],
+                                            pair_directions = pair_data["bidir"]["direction"],
+                                            pair_sample_ids =  pair_data["bidir"]["sample_id"],
+                                            pair_p1 = pair_data["bidir"]["p1"],
+                                            pair_p2 =  pair_data["bidir"]["p2"],
                                             )
+        
+        print(lol)
         return logits, preds 
-
-
 
 
     def loss(self, batch, output):
@@ -160,9 +161,9 @@ class LSTM_ER(PTLBase):
         link_label_loss = self.link_labeler.loss(
                                                 targets = batch["token"]["link_label"],
                                                 logits = output.logits["link_label"],
-                                                token_preds = output.logits["seg+label"],
-                                                token_targets = batch.logits["seg+label"],
-                                                pair_data = output["pair_data"]
+                                                #token_preds = output.logits["seg+label"],
+                                                #token_targets = batch.logits["seg+label"],
+                                                #pair_data = output["pair_data"]
                                                 )
 
         total_loss = seg_label_loss + link_label_loss

@@ -187,7 +187,7 @@ class Output:
     def add_logits(self, logits:Tensor, task:str):
         self.logits[task] = logits
 
-    @utils.timer
+
     def add_preds(self, preds:Union[np.ndarray, Tensor], level:str,  task:str):
         
         mask = ensure_numpy(self.batch[level]["mask"]).astype(bool)
@@ -197,6 +197,8 @@ class Output:
         
         else:
             seg_preds = ensure_numpy(preds[mask])
+            
+            # we spread the predictions on segments over all tokens in the segments
             cond = ~self.df["T-seg_id"].isna()
             self.df[task, cond] = np.repeat(seg_preds, ensure_numpy(self.batch["seg"]["lengths"]))
 
@@ -289,6 +291,7 @@ class Output:
         last_df = self.df.groupby(key, sort=False).last()
         last_df.reset_index(inplace=True)
 
+        # we create ids for each memeber of the pairs
         p1, p2 = [], []
         j = 0
         for i in range(len(self.batch)):
@@ -301,7 +304,7 @@ class Output:
             p2.extend(np.tile(sample_seg_ids, n))
             j += n
         
-
+        # setup pairs
         pair_df = pd.DataFrame({
                                 "p1": p1,
                                 "p2": p2,
@@ -313,7 +316,6 @@ class Output:
         #set the sample id for each pair
         pair_df["sample_id"] = first_df.loc[pair_df["p1"], "sample_id"].to_numpy()
 
-
         #set true the link_label
         pair_df["T-link_label"] = first_df.loc[pair_df["p1"], "T-link_label"].to_numpy()
 
@@ -322,39 +324,9 @@ class Output:
         pairs_per_sample = pair_df.groupby("sample_id", sort=False).size().to_numpy()
         seg_per_sample = utils.np_cumsum_zero(first_df.groupby("sample_id", sort=False).size().to_numpy())
         normalized_links  = links + np.repeat(seg_per_sample, pairs_per_sample)
-        pair_df["not_linked"] = first_df.iloc[normalized_links].index.to_numpy() == p2
+        pair_df["linked"] = first_df.iloc[normalized_links].index.to_numpy() == p2
 
      
-        print(first_df)
-        print(links[20:80])
-        print(first_df.iloc[normalized_links].index[20:80])
-        print(p2[20:80])
-        d = first_df.iloc[normalized_links].index.to_numpy() == p2
-        print(d[20:80])
-
-        print(pair_df)
-
-        print(Lol)
-        # #set the true links
-
-        #np.repeat()
-        #first_df.loc[pair_df["p1"], "T-link"].to_numpy() + 
-
-
-
-        #( pair_df["p1"] + first_df.loc[pair_df["p1"], "T-link"].to_numpy()  ) == pair_df["p1"
-        
-        #first_df.loc[pair_df["p1"], "T-link_label"].to_numpy()
-
-
-
-
-        #pair_df["T-link_label"] = first_df.loc[pair_df["p1"], "T-link_label"].to_numpy()
-        #pair_df["T-link_label"] = first_df.loc[pair_df["p1"], "T-link_label"].to_numpy()
-
-        #pair_df["label"] = first_df.loc[pair_df["p1"], "label"].to_numpy()
-
-
         #set start and end token indexes for p1 and p2
         pair_df["p1_start"] = first_df.loc[pair_df["p1"], "token_id"].to_numpy()
         pair_df["p1_end"] = last_df.loc[pair_df["p1"], "token_id"].to_numpy()
@@ -420,7 +392,6 @@ class Output:
 
         pair_dict["bidir"]["lengths"] = pair_df.groupby("sample_id", sort=False).size().to_list()
         pair_dict["nodir"]["lengths"] = nodir_pair_df.groupby("sample_id", sort=False).size().to_list()
-
 
         return pair_dict
 
