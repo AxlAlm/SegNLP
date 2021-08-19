@@ -4,14 +4,12 @@ sys.path.insert(1, '../../')
 
 from segnlp import Pipeline
 from segnlp.datasets.am import PE
-from segnlp.models import JointPN
 from segnlp.features import GloveEmbeddings
-from segnlp.features import SegPos
-from segnlp.features import BOW
 from segnlp.features import OneHots
 
 import flair, torch
 flair.device = torch.device('cpu') 
+
 
             
 exp = Pipeline(

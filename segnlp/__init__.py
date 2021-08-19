@@ -16,13 +16,13 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 settings = {
-            "dl_n_workers": 0 #multiprocessing.cpu_count()
+            "dl_n_workers": 1 #multiprocessing.cpu_count()
             }
 
 set_random_seed(42)
 
 __version__ = 0.1
-__all__ = [
-            "get_logger",
-            "Pipeline",
-            ]
+# __all__ = [
+#             "get_logger",
+#             "Pipeline",
+#             ]

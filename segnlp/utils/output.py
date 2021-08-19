@@ -291,6 +291,8 @@ class Output:
         last_df.reset_index(inplace=True)
 
         # we create ids for each memeber of the pairs
+        # the segments in the batch will have unique ids starting from 0 to 
+        # the total mumber of segments
         p1, p2 = [], []
         j = 0
         for i in range(len(self.batch)):
@@ -318,14 +320,6 @@ class Output:
         #set true the link_label
         pair_df["T-link_label"] = first_df.loc[pair_df["p1"], "T-link_label"].to_numpy()
 
-        # find which pairs are "false", i.e. the members whould not be linked
-        links = first_df.loc[pair_df["p1"], "T-link"].to_numpy()
-        pairs_per_sample = pair_df.groupby("sample_id", sort=False).size().to_numpy()
-        seg_per_sample = utils.np_cumsum_zero(first_df.groupby("sample_id", sort=False).size().to_numpy())
-        normalized_links  = links + np.repeat(seg_per_sample, pairs_per_sample)
-        pair_df["linked"] = first_df.iloc[normalized_links].index.to_numpy() == p2
-
-     
         #set start and end token indexes for p1 and p2
         pair_df["p1_start"] = first_df.loc[pair_df["p1"], "token_id"].to_numpy()
         pair_df["p1_end"] = last_df.loc[pair_df["p1"], "token_id"].to_numpy()
@@ -338,7 +332,9 @@ class Output:
         pair_df.loc[pair_df["p1"] < pair_df["p2"], "direction"] = 1 # ->
         pair_df.loc[pair_df["p1"] > pair_df["p2"], "direction"] = 2 # <-
 
+        # finding the matches between predicted segments and true segments
         if not self.__use_gt:
+
             # we also have information about whether the seg_id is a true segments 
             # and if so, which TRUE segmentent id it overlaps with, and how much
             seg_id, T_seg_id, ratio = extract_match_info(self.df)
@@ -379,6 +375,30 @@ class Output:
             pair_df["T-p2"] = p2
             pair_df["T-p1-ratio"] = 1
             pair_df["T-p2-ratio"] = 1
+        
+
+        # We also need to create mask which tells us which pairs either:
+        # 1; include NON-LINKING segments
+        # 2; include segments which do not match/overlap sufficiently with a 
+        # ground truth segment
+
+        # 1 find which pairs are "false", i.e. the members whould not be linked
+        links = first_df.loc[pair_df["p1"], "T-link"].to_numpy()
+        pairs_per_sample = pair_df.groupby("sample_id", sort=False).size().to_numpy()
+        seg_per_sample = utils.np_cumsum_zero(first_df.groupby("sample_id", sort=False).size().to_numpy())
+        normalized_links  = links + np.repeat(seg_per_sample, pairs_per_sample)
+        false_linked_pairs = first_df.iloc[normalized_links].index.to_numpy() == p2
+
+        # creating a mask over all pairs which tells us which pairs include a segmnets
+        # which is not a TRUE segment, i.e. overlaps with a ground truth segments to a certain
+        # configurable extend.
+        #if self.threshohold == "first":
+        #else:
+        p1_cond = pair_df["T-p1-ratio"] >= 0.5
+        p2_cond = pair_df["T-p2-ratio"] >= 0.5
+        contain_false_segs = np.logical_and(p1_cond.to_numpy(), p2_cond.to_numpy())
+    
+        pair_df["false_pairs"] = np.logical_and(false_linked_pairs, contain_false_segs)
 
         nodir_pair_df = pair_df[pair_df["direction"].isin([0,1]).to_numpy()]
 

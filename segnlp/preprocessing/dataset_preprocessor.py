@@ -22,6 +22,7 @@ import torch
 
 #h5py
 import h5py
+import segnlp
 
 # segnlp
 from segnlp.datasets.base import DataSet
@@ -133,7 +134,7 @@ class DataPreprocessor:
 
         def cv_split(size):
             ### MTC normaly uses Cross Validation
-            kf = KFold(n_splits=10, shuffle=False, random_state=42)
+            kf = KFold(n_splits=10, shuffle=False)
             ids = np.arange(size)
             splits = {i:{"train": train_index,  "val":test_index} for i, (train_index, test_index) in enumerate(kf.split(ids))}
             return splits

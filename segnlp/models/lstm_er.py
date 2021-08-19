@@ -140,7 +140,6 @@ class LSTM_ER(PTLBase):
         # plus roots' probabilities
         logits, link_label_preds, link_preds  = self.link_labeler(
                                             input = output.stuff["pair_embs"],
-                                            pair_sample_ids =  pair_data["bidir"]["sample_id"],
                                             pair_p1 = pair_data["bidir"]["p1"],
                                             pair_p2 =  pair_data["bidir"]["p2"],
                                             )
@@ -158,7 +157,7 @@ class LSTM_ER(PTLBase):
         link_label_loss = self.link_labeler.loss(
                                                 targets = output.get_pair_data()["bidir"]["T-link_label"],
                                                 logits = output.logits["link_label"],
-                                                neg_mask = output.get_pair_data()["bidir"]["neg_paris"],
+                                                neg_mask = ~output.get_pair_data()["bidir"]["false_pairs"],
                                                 )
 
         total_loss = seg_label_loss + link_label_loss

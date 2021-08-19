@@ -51,7 +51,6 @@ class DirLinkLabeler(nn.Module):
 
     def __get_preds(self, 
                     logits: Tensor,  
-                    pair_sample_ids: Tensor,
                     pair_p1: Tensor,
                     pair_p2: Tensor
                     ):
@@ -64,7 +63,6 @@ class DirLinkLabeler(nn.Module):
                             {
                             "value": v,
                             "label": l,
-                            "sample_id": pair_sample_ids,
                             "p1": pair_p1,
                             "p2": pair_p2,
                             }
@@ -111,7 +109,6 @@ class DirLinkLabeler(nn.Module):
 
     def forward(self, 
                 input:Tensor,
-                pair_sample_ids: Tensor,
                 pair_p1 : Tensor,
                 pair_p2 : Tensor,
                 ):
@@ -120,7 +117,6 @@ class DirLinkLabeler(nn.Module):
         # preds = torch.argmax(logits, dim=-1)
         link_labels, links = self.__get_preds(
                                     logits = logits,
-                                    pair_sample_ids = pair_sample_ids,
                                     pair_p1 = pair_p1,
                                     pair_p2 = pair_p2
                                     )
@@ -147,7 +143,6 @@ class DirLinkLabeler(nn.Module):
         # are not true segments.
         targets[neg_mask] = 0
 
-        
         loss = F.cross_entropy(
                                 logits, 
                                 targets, 
