@@ -21,6 +21,15 @@ from segnlp import utils
 class DirLinkLabeler(nn.Module):
 
 
+    """
+    Direktional Link Labeler work on the level of all possible pairs. It takes all bi-directional pairs
+    between segments and predicts the directional labels including None for no link and root for pointing 
+    to itself.
+    
+    
+    """
+
+
     def __init__(self, 
                 input_size:int, 
                 hidden_size:int, 
@@ -33,8 +42,8 @@ class DirLinkLabeler(nn.Module):
         self.loss_reduction = loss_reduction
         self.ignore_index = ignore_index
 
-        # if we have link labels {root, POS, NEG} we will predict the folowing labels
-        # {None, root, POS, NEG, POS-rev, NEG-rev}
+        # if we have link labels {root, REL1, REL2} we will predict the folowing labels
+        # {None, root, REL1, REL2, REL1-rev, REL2-rev}
         #  0      1      2    3        4        5 
         # 
 
@@ -48,7 +57,6 @@ class DirLinkLabeler(nn.Module):
                                                     nn.Linear(hidden_size, output_size),
                                                 )
 
-
     def __get_preds(self, 
                     logits: Tensor,  
                     pair_p1: Tensor,
@@ -61,8 +69,8 @@ class DirLinkLabeler(nn.Module):
         #then we build a df
         df = pd.DataFrame(
                             {
-                            "value": v,
-                            "label": l,
+                            "value": v.detach().numpy(),
+                            "label": l.detach().numpy(),
                             "p1": pair_p1,
                             "p2": pair_p2,
                             }
@@ -114,15 +122,24 @@ class DirLinkLabeler(nn.Module):
                 ):
 
         logits = self.link_label_clf_layer(input)
-        # preds = torch.argmax(logits, dim=-1)
         link_labels, links = self.__get_preds(
                                     logits = logits,
                                     pair_p1 = pair_p1,
                                     pair_p2 = pair_p2
                                     )
 
-        return logits, link_labels, links
-
+        return logits, (
+                        {
+                        "preds":link_labels,
+                        "level": "p_seg",
+                        "task": "link_label"
+                        },
+                        {
+                        "preds": links,
+                        "level": "p_seg",
+                        "task": "link"
+                        }
+                        )
 
 
     def loss(self,
@@ -146,7 +163,7 @@ class DirLinkLabeler(nn.Module):
         loss = F.cross_entropy(
                                 logits, 
                                 targets, 
-                                reduction=self.reduction,
+                                reduction=self.loss_reduction,
                                 ignore_index=self.ignore_index
                                 )
 

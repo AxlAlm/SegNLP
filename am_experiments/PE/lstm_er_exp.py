@@ -40,6 +40,7 @@ hps = {
                 "task_weight": 0.5,
                 "sampling_k": 25,
                 },
+
        "LSTM": {   
                     "input_dropout": 0.5,
                     "dropout":0.5,
@@ -75,7 +76,7 @@ best_hp = exp.train(
                         ptl_trn_args=dict(
                                             #gpus=[1]
                                         ),
-                        monitor_metric="val_f1"
+                        monitor_metric="val_f1-50%"
                         )
 
 

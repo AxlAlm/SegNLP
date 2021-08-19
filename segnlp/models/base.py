@@ -69,16 +69,21 @@ class PTLBase(ptl.LightningModule):
                                         )
 
         self.outputs = {"val":[], "test":[], "train":[]}
+
+
+        self.freeze_segmentation = hyperparamaters["general"].get("freeze_segmentation", False)
+        self.freeze_post_seg = hyperparamaters["general"].get("freeze_segmentation", False)
+
     
-        self.__setup_token_rep()
-        self.__setup_token_clf()
-        self.__setup_seg_rep()
-        self.__setup_label_rep()
-        self.__setup_label_clf()
-        self.__setup_link_rep()
-        self.__setup_link_clf()
-        self.__setup_link_label_rep()
-        self.__setup_link_label_clf()
+        # self.__setup_token_rep()
+        # self.__setup_token_clf()
+        # self.__setup_seg_rep()
+        # self.__setup_label_rep()
+        # self.__setup_label_clf()
+        # self.__setup_link_rep()
+        # self.__setup_link_clf()
+        # self.__setup_link_label_rep()
+        # self.__setup_link_label_clf()
 
 
     @classmethod
@@ -86,46 +91,46 @@ class PTLBase(ptl.LightningModule):
         return self.__name__
 
 
-    def __setup(self, f_name:str):
+    # def __setup(self, f_name:str):
 
-        if hasattr(self, f_name):
-            getattr(self, f_name)()
+    #     if hasattr(self, f_name):
+    #         getattr(self, f_name)()
         
 
-    def __setup_token_rep(self):
-        self.__setup("setup_token_rep")
+    # def __setup_token_rep(self):
+    #     self.__setup("setup_token_rep")
 
 
-    def __setup_token_clf(self):
-        self.__setup("setup_token_clf")
+    # def __setup_token_clf(self):
+    #     self.__setup("setup_token_clf")
 
 
-    def __setup_seg_rep(self):
-        self.__setup("setup_seg_rep")
+    # def __setup_seg_rep(self):
+    #     self.__setup("setup_seg_rep")
 
 
-    def __setup_label_rep(self):
-        self.__setup("setup_label_rep")
+    # def __setup_label_rep(self):
+    #     self.__setup("setup_label_rep")
 
 
-    def __setup_label_clf(self):
-        self.__setup("setup_label_clf")
+    # def __setup_label_clf(self):
+    #     self.__setup("setup_label_clf")
 
 
-    def __setup_link_rep(self):
-        self.__setup("setup_link_rep")
+    # def __setup_link_rep(self):
+    #     self.__setup("setup_link_rep")
 
 
-    def __setup_link_clf(self):
-        self.__setup("setup_link_clf")
+    # def __setup_link_clf(self):
+    #     self.__setup("setup_link_clf")
 
 
-    def __setup_link_label_rep(self):
-        self.__setup("setup_link_label_rep")
+    # def __setup_link_label_rep(self):
+    #     self.__setup("setup_link_label_rep")
     
 
-    def __setup_link_label_clf(self):
-        self.__setup("setup_link_label_clf")
+    # def __setup_link_label_clf(self):
+    #     self.__setup("setup_link_label_clf")
 
 
     def __rep(self, batch:utils.Input, output:dict, f_name:str):
@@ -142,22 +147,29 @@ class PTLBase(ptl.LightningModule):
         if hasattr(self, f_name):
             logits, preds = getattr(self, f_name)(batch, output)
 
-            if "token" in f_name:
-                task = self.seg_task
-                level = "token"
-            else:   
-                task = f_name.rsplit("_")[0]
-                level = "seg"
+            if isinstance(preds, tuple):
+                for pred_dict in preds:
+                    output.add_preds(**pred_dict)
+                
+                task = f_name.rsplit("_", 1)[0]
+            else:
 
+                if "token" in f_name:
+                    task = self.seg_task
+                    level = "token"
+                else:   
+                    task = f_name.rsplit("_", 1)[0]
+                    level = "seg"
+
+
+                output.add_preds(
+                        preds, 
+                        level = level, 
+                        task = task
+                        )
 
             output.add_logits(
                             logits, 
-                            task = task
-                            )
-
-            output.add_preds(
-                            preds, 
-                            level = level, 
                             task = task
                             )
     
@@ -237,31 +249,34 @@ class PTLBase(ptl.LightningModule):
     def forward(self, batch:Input, output:Output):
 
         # 1) represent tokens
-        self.__token_rep(batch, output)
 
-        # 2) classifiy on tokens
-        self.__token_clf(batch, output)
+        if not self.freeze_segmentation:
+            self.__token_rep(batch, output)
 
-        # 3) represent segments
-        self.__seg_rep(batch, output)
+            # 2) classifiy on tokens
+            self.__token_clf(batch, output)
 
-        # 4) specififc function for label representations
-        self.__label_rep(batch, output)
+        if not self.freeze_post_seg:
+            # 3) represent segments
+            self.__seg_rep(batch, output)
 
-        # 5) classify labels
-        self.__label_clf(batch, output)
+            # 4) specififc function for label representations
+            self.__label_rep(batch, output)
 
-        # 6) specififc function for link representations
-        self.__link_rep(batch, output)
+            # 5) classify labels
+            self.__label_clf(batch, output)
 
-        # 7) classify links
-        self.__link_clf(batch, output)
+            # 6) specififc function for link representations
+            self.__link_rep(batch, output)
 
-        # 8) specififc function for link_label representations
-        self.__link_label_rep(batch, output)
+            # 7) classify links
+            self.__link_clf(batch, output)
 
-        # 9) classify link_labels
-        self.__link_label_clf(batch, output)
+            # 8) specififc function for link_label representations
+            self.__link_label_rep(batch, output)
+
+            # 9) classify link_labels
+            self.__link_label_clf(batch, output)
 
 
     def _step(self, batch:utils.Input, split:str):

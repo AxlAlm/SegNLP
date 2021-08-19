@@ -52,29 +52,22 @@ class Layer(nn.Module):
             param.requires_grad = False
 
 
-    def __filter_paramaters(self, layer, params):
-        sig = inspect.signature(layer)
+    # def __filter_paramaters(self, layer, params):
+    #     sig = inspect.signature(layer)
 
-        filtered_params = {}
-        for para in sig.parameters:
+    #     filtered_params = {}
+    #     for para in sig.parameters:
 
-            if para in params:
-                filtered_params[para] = params[para]
+    #         if para in params:
+    #             filtered_params[para] = params[para]
         
-        return filtered_params
-
-
-    def _call(self, *args, **kwargs):
-        return self.layer(*args, **kwargs)
+    #     return filtered_params
 
 
     def forward(self, *args, **kwargs):
         #kwargs = self.__filter_paramaters(**kwargs)
-        return self._call(*args, **kwargs)
-  
-        # assert isinstance(output, dict)
-        # assert torch.is_tensor(loss)
-        #return  out  
+        return self.layer(*args, **kwargs)
+
 
 
 class Embedder(Layer):
@@ -137,27 +130,27 @@ class CLFlayer(Layer):
                         )
 
 
-    def loss(self, *args, **kwargs):
+    # def loss(self, *args, **kwargs):
 
-        if hasattr(self.layer, "loss"):
-            loss = self.layer.loss(*args, **kwargs)
-        else:
+    #     if hasattr(self.layer, "loss"):
+    #         loss = self.layer.loss(*args, **kwargs)
+    #     else:
 
-            if isinstance(self, Segmenter):
-                raise NotImplementedError
+    #         if isinstance(self, Segmenter):
+    #             raise NotImplementedError
 
-            else:
-                logits = kwargs["logits"]
-                targets = kwargs["targets"]
-                loss = F.cross_entropy(
-                                        torch.flatten(logits,end_dim=-2), 
-                                        targets.view(-1), 
-                                        reduction="mean",
-                                        ignore_index=-1
-                                        )
+    #         else:
+    #             logits = kwargs["logits"]
+    #             targets = kwargs["targets"]
+    #             loss = F.cross_entropy(
+    #                                     torch.flatten(logits,end_dim=-2), 
+    #                                     targets.view(-1), 
+    #                                     reduction="mean",
+    #                                     ignore_index=-1
+    #                                     )
             
 
-        return loss
+    #     return loss
 
 
     def _call(self, *args, **kwargs):

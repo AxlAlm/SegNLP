@@ -27,7 +27,12 @@ class MetricContainer(dict):
         """
         metrics = {"metic1": 0.3, "metric2": 0.5, ...., "metricn": 0.9 }
         """
-        metrics = self._metric_fn(df, self.task_labels, self.task_label_ids)
+
+        if self._metric_fn.__name__ == "overlap_metric":
+            metrics = self._metric_fn(df, self.task_labels)
+        else:
+            metrics = self._metric_fn(df, self.task_labels, self.task_label_ids)
+
         self[split].append(metrics)
 
         

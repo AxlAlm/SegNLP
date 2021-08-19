@@ -23,30 +23,28 @@ class LSTM_ER(PTLBase):
     def __init__(self,  *args, **kwargs):   
         super().__init__(*args, **kwargs)
 
-
-    def setup_token_rep(self):
         self.word_lstm = Encoder(    
-                        layer = "LSTM", 
-                        hyperparams = self.hps.get("LSTM", {}),
-                        input_size = self.feature_dims["word_embs"] + self.feature_dims["pos_embs"]
-                        )
+                                layer = "LSTM", 
+                                hyperparams = self.hps.get("LSTM", {}),
+                                input_size = self.feature_dims["word_embs"] + self.feature_dims["pos_embs"],
+                                type = "token_rep"
+                                )
 
-
-    def setup_token_clf(self):
         self.segmenter = Segmenter(
                                 layer = "BigramSeg",
                                 hyperparams = self.hps.get("BigramSeg", {}),
                                 input_size = self.word_lstm.output_size,
                                 output_size = self.task_dims["seg+label"],
+                                type = "token_clf"
                                 )
 
 
-    def setup_seg_rep(self):
         self.agg = Reducer(
-                                layer = "Agg",
-                                hyperparams = self.hps.get("Agg", {}),
-                                input_size = self.word_lstm.output_size,
-                            )
+                            layer = "Agg",
+                            hyperparams = self.hps.get("Agg", {}),
+                            input_size = self.word_lstm.output_size,
+                            type = "seg_rep"
+                        )
 
         self.deptreelstm = Reducer(
                                     layer = "DepTreeLSTM",
@@ -54,18 +52,18 @@ class LSTM_ER(PTLBase):
                                     input_size =    self.agg.output_size 
                                                     + self.feature_dims["deprel_embs"]
                                                     + self.task_dims["seg+label"],
+                                    type = "seg_rep"
                                 )
     
-
-    def setup_link_label_clf(self):
         self.link_labeler = LinkLabeler(
                                     layer = "DirLinkLabeler",
                                     hyperparams = self.hps.get("DirLinkLabeler", {}),
                                     input_size = (self.word_lstm.output_size * 2) + self.deptreelstm.output_size,
                                     output_size = self.task_dims["link_label"],
+                                    type = "link_label_clf"
                                     )
-                                    
 
+    # SEGMENTATION
     def token_rep(self, batch:utils.Input, output:utils.Output):
         # lstm_out = (batch_size, max_nr_tokens, lstm_hidden)
         lstm_out, _ = self.word_lstm(
@@ -88,6 +86,7 @@ class LSTM_ER(PTLBase):
         return logits, preds
 
 
+    # LINK LABELING
     def seg_rep(self, batch:utils.Input, output:utils.Output):
 
         # get the average embedding for each segments 
@@ -138,15 +137,16 @@ class LSTM_ER(PTLBase):
 
         # We predict link labels for both directions. Get the dominant pair dir
         # plus roots' probabilities
-        logits, link_label_preds, link_preds  = self.link_labeler(
+        logits, preds  = self.link_labeler(
                                             input = output.stuff["pair_embs"],
                                             pair_p1 = pair_data["bidir"]["p1"],
                                             pair_p2 =  pair_data["bidir"]["p2"],
                                             )
         
-        return logits, [] 
+        return logits, preds
 
 
+    # LOSS
     def loss(self, batch, output):
 
         seg_label_loss = self.segmenter.loss(
@@ -154,10 +154,14 @@ class LSTM_ER(PTLBase):
                                             logits = output.logits["seg+label"],
                                             )
 
+
+        pair_data = output.get_pair_data()
+
         link_label_loss = self.link_labeler.loss(
-                                                targets = output.get_pair_data()["bidir"]["T-link_label"],
+                                                targets = pair_data["bidir"]["T-link_label"],
                                                 logits = output.logits["link_label"],
-                                                neg_mask = ~output.get_pair_data()["bidir"]["false_pairs"],
+                                                directions = pair_data["bidir"]["direction"],
+                                                neg_mask = ~pair_data["bidir"]["false_pairs"],
                                                 )
 
         total_loss = seg_label_loss + link_label_loss

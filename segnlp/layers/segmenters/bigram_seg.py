@@ -7,16 +7,19 @@ import torch.nn.functional as F
 
 
 class BigramSeg(nn.Module):
+    
     """
         https://www.aclweb.org/anthology/P16-1105.pdf
 
     """
+
     def __init__(
         self,
         input_size,
         hidden_size,
         output_size,
         dropout=0.0,
+        #loss = "CrossEntropy"
         loss_reduction = "mean",
         ignore_index = -1
     ):
@@ -66,8 +69,9 @@ class BigramSeg(nn.Module):
     
 
     def loss(self, logits: Tensor, targets:Tensor):
-        return F.cross_entropy( logits, 
-                                targets, 
+        return F.cross_entropy( 
+                                torch.flatten(logits,end_dim=-2), 
+                                targets.view(-1), 
                                 reduction = self.loss_reduction,
                                 ignore_index = self.ignore_index
                                 )

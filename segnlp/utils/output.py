@@ -107,7 +107,7 @@ class Output:
 
         self.df["seg_id"] = self.seg_decoder(
                                                 self.df["seg"].to_numpy(), 
-                                                sample_start_idxs=sample_start_idxs
+                                                sample_start_idxs=sample_start_idxs.astype(int)
                                                 )
 
 
@@ -190,17 +190,30 @@ class Output:
 
     def add_preds(self, preds:Union[np.ndarray, Tensor], level:str,  task:str):
         
-        mask = ensure_numpy(self.batch[level]["mask"]).astype(bool)
-
-        if level == "token":
-            self.df[task] = ensure_numpy(preds[mask])
         
-        else:
-            seg_preds = ensure_numpy(preds[mask])
+        if level == "token":
+            mask = ensure_numpy(self.batch["token"]["mask"]).astype(bool)
+            self.df[task] = ensure_numpy(preds)[mask]
+        
+        elif level == "seg":
+            mask = ensure_numpy(self.batch["seg"]["mask"]).astype(bool)
+            seg_preds = ensure_numpy(preds)[mask]
             
             # we spread the predictions on segments over all tokens in the segments
             cond = ~self.df["T-seg_id"].isna()
             self.df[task, cond] = np.repeat(seg_preds, ensure_numpy(self.batch["seg"]["lengths"]))
+
+        elif level == "p_segs":
+            
+            # we take the predictions per predicted seg_id and repeat over all the tokens
+            # in the predicted segment
+            seg_tok_lengths = self.df.groupby("seg_id", sort=False).size()
+            token_preds = np.repeat(preds, seg_tok_lengths)
+
+            # as predicts are given in seg ids ordered from 0 to nr predicted segments
+            # we can just remove all rows which doesnt belong to a predicted segments and 
+            # it will match all the token preds and be in the correct order.
+            self.df[~self.df["T-seg_id"].isna()][task] = token_preds
 
 
         subtasks = task.split("+")  
@@ -248,7 +261,6 @@ class Output:
             
 
             def overlap(target, pdf):
-                #print(target)
                 j = target["T-seg_id"].to_list()[0]
                 seg_ids = target["seg_id"].dropna().to_list()
 
@@ -271,7 +283,7 @@ class Output:
 
             # we extract matching information. Which predicted segments are overlapping with which 
             # ground truth segments
-            match_info = np.vstack(df.groupby("T-seg_id").apply(overlap, (pdf)))
+            match_info = np.vstack(df.groupby("T-seg_id", sort=False).apply(overlap, (pdf)))
             
             i = match_info[:,0].astype(int) #predicted segment id
             j = match_info[:,1].astype(int) # ground truth segment id

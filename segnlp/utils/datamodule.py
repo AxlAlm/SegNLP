@@ -54,9 +54,9 @@ class DataModule(ptl.LightningDataModule):
         with open(os.path.join(dir_path, f"{name}_splits.pkl"), "rb") as f:
             self._splits = pickle.load(f)
         
-    @utils.timer
+
     def __getitem__(self, key:Union[np.ndarray, list]) -> Input:
-        
+                
         input = Input()
 
         with h5py.File(self._fp, "r") as data:
@@ -153,12 +153,8 @@ class DataModule(ptl.LightningDataModule):
         # retrieve the sample for the h5py file
         split_ids = self.splits[self.split_id][split]
 
-        print(split_ids)
-
         # we shuffle the splits
         np.random.shuffle(split_ids)
-
-        print(split_ids)
 
         # we create a sampler which splits the split_ids into batches
         # and returns list of indexes

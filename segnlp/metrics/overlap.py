@@ -40,7 +40,7 @@ def extract_match_info(df):
 
     # we extract matching information. Which predicted segments are overlapping with which 
     # ground truth segments
-    match_info = np.vstack(df.groupby("T-seg_id").apply(overlap, (pdf)))
+    match_info = np.vstack(df.groupby("T-seg_id", sort=False).apply(overlap, (pdf)))
     exact = match_info[:,0].astype(bool)
     approx = match_info[:,1].astype(bool)
     i = match_info[:,2] #predicted segment id
