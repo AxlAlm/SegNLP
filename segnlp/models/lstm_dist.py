@@ -17,12 +17,6 @@ import torch.optim as optim
 
 #segnlp
 from .base import PTLBase
-from segnlp.layer_wrappers import Encoder
-from segnlp.layer_wrappers import Linker
-from segnlp.layer_wrappers import Reducer
-from segnlp.layer_wrappers import Embedder
-from segnlp.layer_wrappers import Labeler
-from segnlp.layer_wrappers import LinkLabeler
 from segnlp import utils
 
 class LSTM_DIST(PTLBase):
@@ -156,19 +150,35 @@ class LSTM_DIST(PTLBase):
                 }
 
 
-    def label_clf(self, batch:utils.Input, output:utils.Output):
-        logits, preds = self.labeler(output.stuff["adu_emb"])
-        return logits, preds
+    def seg_clf(self, batch:utils.Input, output:utils.Output):
 
+        label_logits, label_preds = self.labeler(output.stuff["adu_emb"])
+        
+        link_logits, link_preds = self.linker(output.stuff["adu_emb_last"], unit_mask=batch["unit"]["mask"])
 
-    def link_clf(self, batch:utils.Input, output:utils.Output):
-        logits, preds = self.linker(output.stuff["adu_emb_last"], unit_mask=batch["unit"]["mask"])
-        return logits, preds
+        link_label_logits, link_label_preds = self.link_labeler(output.stuff["adu_emb"])
 
+        return [
+                {  
+                    "task": "label",
+                    "logits": link_logits, 
+                    "preds": label_preds,
+                    "level": "seg",
+                },
+                {   
+                    "task":"link",
+                    "logits": link_logits,
+                    "preds": link_preds,
+                    "level": "seg",
+                },
+                {   
+                    "task": "link_label",
+                    "logits": link_label_logits,
+                    "preds": link_label_preds,
+                    "level": "seg",
+                }
+                ]   
 
-    def link_label_clf(self, batch:utils.Input, output:utils.Output):
-        logits, preds = self.link_labeler(output.stuff["adu_emb"])
-        return logits, preds
 
 
 

@@ -11,10 +11,6 @@ import torch.nn.functional as F
 
 #segnlp
 from .base import PTLBase
-from segnlp.layer_wrappers import Embedder
-from segnlp.layer_wrappers import Encoder
-from segnlp.layer_wrappers import Segmenter
-from segnlp.layer_wrappers import Reprojecter
 from segnlp import utils
 
 
@@ -33,7 +29,6 @@ class LSTM_CNN_CRF(PTLBase):
 
     """
 
-    
     def __init__(self,  *args, **kwargs):   
         super().__init__(*args, **kwargs)
 
@@ -70,7 +65,6 @@ class LSTM_CNN_CRF(PTLBase):
 
 
     def token_rep(self, batch: utils.Input, output: utils.Output):
-
         word_embs = self.finetuner(batch["token"]["word_embs"])
         char_embs = self.char_embedder(batch["token"]["chars"])
         cat_emb = torch.cat((word_embs, char_embs), dim=-1)

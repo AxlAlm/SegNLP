@@ -11,9 +11,6 @@ import torch.nn.functional as F
 
 #segnlp
 from .base import PTLBase
-from segnlp.layer_wrappers import Encoder
-from segnlp.layer_wrappers import Segmenter
-from segnlp.layer_wrappers import Reprojecter
 from segnlp import utils
 
 
@@ -69,7 +66,7 @@ class LSTM_CRF(PTLBase):
 
 
     def token_clf(self, batch: utils.Input, output: utils.Output):
-        logits, preds = self.segmenter(
+        return self.segmenter(
                                     input = output.stuff["lstm_out"],
                                     mask = batch["token"]["mask"],
                                     )

@@ -1,5 +1,4 @@
 #pytroch
-from segnlp.layer_wrappers.layer_wrappers import Embedder, Reprojecter
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -120,7 +119,7 @@ class JointPN(PTLBase):
                                         )
 
 
-        decoder_out, _  = self.encoder(
+        decoder_out, _  = self.decoder(
                                         input = (f2c_out, states),
                                         lengths = batch["seg"]["lengths"],
                                         )
@@ -131,57 +130,39 @@ class JointPN(PTLBase):
                 }
         
 
-    def label_clf(self, batch:utils.Input, output:utils.Output):
+    def seg_clf(self, batch:utils.Input, output:utils.Output):
+
         logits, preds = self.labeler(
                                     input = output.stuff["encoder_out"],
                                     )
-        return logits, preds
 
-
-    def link_clf(self, batch:utils.Input, output:utils.Output):
         logits, preds = self.pointer(
                                     inputs = output.stuff["decoder_out"],
                                     encoder_outputs = output.stuff["encoder_out"],
                                     mask = batch["seg"]["mask"],
                                     )
-        return logits, preds
 
+        return [
+                {  
+                    "task": "label",
+                    "logits": link_logits, 
+                    "preds": label_preds,
+                    "level": "seg",
+                },
+                {   
+                    "task":"link",
+                    "logits": link_logits,
+                    "preds": link_preds,
+                    "level": "seg",
+                },
+                {   
+                    "task": "link_label",
+                    "logits": link_label_logits,
+                    "preds": link_label_preds,
+                    "level": "seg",
+                }
+                ]   
 
-
-    # def forward(self, batch, output):
-
-    #     seg_embs = self.agg(
-    #                         input = batch["token"]["word_embs"], 
-    #                         lengths = batch["seg"]["lengths"],
-    #                         span_idxs = batch["seg"]["span_idxs"],
-    #                         )
-
-    #     bow = self.bow(
-    #                     word_encs = batch["token"]["words"], 
-    #                     span_idxs = batch["seg"]["span_idxs"]
-    #                     )
-
-    #     seg_embs = torch.cat((seg_embs, bow, batch["seg"]["doc_embs"]), dim=-1)
-
-        
-    #     f1c_out = self.fc1(seg_embs)
-    #     encoder_out, states = self.encoder(
-    #                                     input = f1c_out,
-    #                                     lengths = batch["seg"]["lengths"],
-    #                                     )
-    
-    #     output.add(self.labeler(
-    #                     input = encoder_out,
-    #                 ))
-
-
-    #     f2c_out = self.fc2(seg_embs)
-    #     output.add(self.pointer(
-    #                     inputs = f2c_out,
-    #                     encoder_outputs = encoder_out,
-    #                     mask = batch["seg"]["mask"],
-    #                     states = states,
-    #                     ))
 
 
 

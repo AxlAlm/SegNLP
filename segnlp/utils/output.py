@@ -203,17 +203,16 @@ class Output:
             cond = ~self.df["T-seg_id"].isna()
             self.df[task, cond] = np.repeat(seg_preds, ensure_numpy(self.batch["seg"]["lengths"]))
 
-        elif level == "p_segs":
+        elif level == "p_seg":
+            key = "T-seg_id" if self.__use_gt else "seg_id"
             
-            # we take the predictions per predicted seg_id and repeat over all the tokens
-            # in the predicted segment
-            seg_tok_lengths = self.df.groupby("seg_id", sort=False).size()
+            seg_tok_lengths = self.df.groupby(key, sort=False).size()
             token_preds = np.repeat(preds, seg_tok_lengths)
 
             # as predicts are given in seg ids ordered from 0 to nr predicted segments
             # we can just remove all rows which doesnt belong to a predicted segments and 
             # it will match all the token preds and be in the correct order.
-            self.df[~self.df["T-seg_id"].isna()][task] = token_preds
+            self.df.loc[~self.df[key].isna(), task] = token_preds
 
 
         subtasks = task.split("+")  

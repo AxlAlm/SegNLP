@@ -321,7 +321,6 @@ class TypeTreeLSTM(nn.Module):
         self.TeeLSTM_cell = TreeLSTMCell(embedding_dim, h_size)
         # self.dropout = nn.Dropout(dropout)
 
-    @utils.timer
     def forward(self, g: DGLGraph, h0: Tensor, c0: Tensor):
         """A modified N-ary tree-lstm (LSTM-ER) network
         ----------
@@ -373,7 +372,6 @@ class TypeTreeLSTM(nn.Module):
 
 class DepGraph:
 
-    @utils.timer 
     def __init__(self,
                  token_embs: Tensor,
                  deplinks: Tensor,
@@ -501,7 +499,6 @@ class DepGraph:
 
     #     return U, V, M
 
-    @utils.timer
     def get_subgraph(self,
                      start: int,
                      end: int,
@@ -584,7 +581,7 @@ class DepTreeLSTM(nn.Module):
         list_2 = torch.tensor(list_2, dtype=torch.long, device=device)
         return list_1, list_2
 
-    @utils.timer 
+
     def forward(self,
                 input: Union[Tensor, Sequence[Tensor]],
                 roots: Tensor,

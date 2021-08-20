@@ -1,5 +1,6 @@
-from segnlp.utils.output import Output
-from segnlp.utils.input import Input
+
+
+from segnlp.layer_wrappers.layer_wrappers import Layer
 import numpy as np
 import os
 from numpy.lib.arraysetops import isin
@@ -12,16 +13,27 @@ import pytorch_lightning as ptl
 
 #pytroch
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 #hugginface
 from transformers import get_constant_schedule_with_warmup
 
-#am 
+#segnlp
 from segnlp import get_logger
 from segnlp import utils
-import segnlp.metrics as metrics
+from segnlp.utils.output import Output
+from segnlp.utils.input import Input
+from segnlp.layer_wrappers.layer_wrappers import Layer
+from segnlp.layer_wrappers import Embedder
+from segnlp.layer_wrappers import Encoder
+from segnlp.layer_wrappers import Segmenter
+from segnlp.layer_wrappers import Reducer
+from segnlp.layer_wrappers import Labeler
+from segnlp.layer_wrappers import LinkLabeler
+from segnlp.layer_wrappers import Linker
+
 
 logger = get_logger("PTLBase (ptl.LightningModule)")
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
@@ -53,11 +65,15 @@ class PTLBase(ptl.LightningModule):
         if "seg" in subtasks:
             self.seg_task = sorted([task for task in tasks if "seg" in task], key = lambda x: len(x))[0]
 
+        # setting up metric container which takes care of metric calculation, aggregation and storing
         self.metrics = utils.MetricContainer(
                                             metric = metric,
                                             label_encoders = label_encoders,
                                             )
 
+        # setting up an output object which will format and store outputs for each batch.
+        # using .step() will create a batch specific output container which will be used to store information 
+        # throughout the step
         self.output = utils.Output(
                                         label_encoders = label_encoders, 
                                         tasks = tasks,
@@ -68,69 +84,38 @@ class PTLBase(ptl.LightningModule):
                                         sampling_k = self.hps["general"].get("sampling_k", 0)
                                         )
 
+        # the batch outputs can be collected and stored to get outputs over a complete split. E.g. returning 
+        # test outputs or validation outputs
         self.outputs = {"val":[], "test":[], "train":[]}
 
+        # we will add modules that we will freeze
+        self.freeze_modules = set()
 
-        self.freeze_segmentation = hyperparamaters["general"].get("freeze_segmentation", False)
-        self.freeze_post_seg = hyperparamaters["general"].get("freeze_segmentation", False)
+        # we will add modules that we will skip
+        self.skip_modules = set()
 
-    
-        # self.__setup_token_rep()
-        # self.__setup_token_clf()
-        # self.__setup_seg_rep()
-        # self.__setup_label_rep()
-        # self.__setup_label_clf()
-        # self.__setup_link_rep()
-        # self.__setup_link_clf()
-        # self.__setup_link_label_rep()
-        # self.__setup_link_label_clf()
+        # if one wants to train a part of a network first one can skip a section of the model
+        # skipping, unlike freezing, will skip all calls to the sections you decide to skip
+        # Skipping will also freeze layer weights
+        if hyperparamaters["general"].get("skip_token_module", False):
+            self.skip_modules.add("token_module")
+            self.freeze_modules.add("token_module")
 
+        if hyperparamaters["general"].get("skip_segment_module", False):
+            self.skip_modules.add("segment_module")
+            self.freeze_modules.add("segment_module")
 
+        # Freezing will freeze the weights in all layers in the section
+        if hyperparamaters["general"].get("freeze_token_module", False):
+            self.freeze_modules.add("token_module")
+
+        if hyperparamaters["general"].get("freeze_segment_module", False):
+            self.freeze_modules.add("segment_module")
+
+        
     @classmethod
     def name(self):
         return self.__name__
-
-
-    # def __setup(self, f_name:str):
-
-    #     if hasattr(self, f_name):
-    #         getattr(self, f_name)()
-        
-
-    # def __setup_token_rep(self):
-    #     self.__setup("setup_token_rep")
-
-
-    # def __setup_token_clf(self):
-    #     self.__setup("setup_token_clf")
-
-
-    # def __setup_seg_rep(self):
-    #     self.__setup("setup_seg_rep")
-
-
-    # def __setup_label_rep(self):
-    #     self.__setup("setup_label_rep")
-
-
-    # def __setup_label_clf(self):
-    #     self.__setup("setup_label_clf")
-
-
-    # def __setup_link_rep(self):
-    #     self.__setup("setup_link_rep")
-
-
-    # def __setup_link_clf(self):
-    #     self.__setup("setup_link_clf")
-
-
-    # def __setup_link_label_rep(self):
-    #     self.__setup("setup_link_label_rep")
-    
-
-    # def __setup_link_label_clf(self):
-    #     self.__setup("setup_link_label_clf")
 
 
     def __rep(self, batch:utils.Input, output:dict, f_name:str):
@@ -141,38 +126,28 @@ class PTLBase(ptl.LightningModule):
             assert isinstance(stuff, dict)
             output.add_stuff(stuff)
 
-    
+
     def __clf(self, batch:utils.Input, output:dict, f_name:str):
-        
-        if hasattr(self, f_name):
-            logits, preds = getattr(self, f_name)(batch, output)
 
-            if isinstance(preds, tuple):
-                for pred_dict in preds:
-                    output.add_preds(**pred_dict)
-                
-                task = f_name.rsplit("_", 1)[0]
-            else:
+        task_outs = getattr(self, f_name)(batch, output)
 
-                if "token" in f_name:
-                    task = self.seg_task
-                    level = "token"
-                else:   
-                    task = f_name.rsplit("_", 1)[0]
-                    level = "seg"
+        assert isinstance(task_outs, list)
 
+        for task_dict in task_outs:
 
+            if "task" in task_dict:
                 output.add_preds(
-                        preds, 
-                        level = level, 
-                        task = task
-                        )
+                                task_dict["preds"], 
+                                level = task_dict["level"],
+                                task = task_dict["task"]
+                                )
 
-            output.add_logits(
-                            logits, 
-                            task = task
-                            )
-    
+            if "logits" in task_dict:
+                output.add_logits(
+                                    task_dict["logits"], 
+                                    task = task_dict["task"]
+                                    )
+
 
     def __token_rep(self, batch:utils.Input, output:dict):
         self.__rep(
@@ -183,12 +158,12 @@ class PTLBase(ptl.LightningModule):
     
 
     def __token_clf(self, batch:utils.Input, output:dict):
-        self.__clf( 
-                batch=batch, 
-                output=output, 
-                f_name = "token_clf"
-                )
-
+        self.__clf(
+                    batch = batch, 
+                    output = output, 
+                    f_name = "token_clf"
+                    )
+        
 
     def __seg_rep(self, batch:utils.Input, output:dict):
         self.__rep(
@@ -198,100 +173,55 @@ class PTLBase(ptl.LightningModule):
                     )
     
 
-    def __label_rep(self, batch:utils.Input, output:dict):
-        self.__rep(
+    def __seg_clf(self, batch:utils.Input, output:dict):
+        self.__clf(
                     batch=batch, 
                     output=output, 
-                    f_name = "label_rep"
+                    f_name = "seg_clf"
                     )
-    
-
-    def __label_clf(self, batch:utils.Input, output:dict):
-        self.__clf( 
-                batch=batch, 
-                output=output, 
-                f_name = "label_clf"
-                )
-
-
-    def __link_rep(self, batch:utils.Input, output:dict):
-        self.__rep(
-                    batch=batch, 
-                    output=output, 
-                    f_name = "link_rep"
-                    )
-    
-        
-    def __link_clf(self, batch:utils.Input, output:dict):
-        self.__clf( 
-                batch=batch, 
-                output=output, 
-                f_name = "link_clf"
-                )
-
-
-    def __link_label_rep(self, batch:utils.Input, output:dict):
-        self.__rep(
-                    batch=batch, 
-                    output=output, 
-                    f_name = "link_label_rep"
-                    )
-    
-
-    def __link_label_clf(self, batch:utils.Input, output:dict):
-        self.__clf( 
-                batch=batch, 
-                output=output, 
-                f_name = "link_label_clf"
-                )
 
 
     def forward(self, batch:Input, output:Output):
 
-        # 1) represent tokens
+        ## will run every module and add stuff to output.
 
-        if not self.freeze_segmentation:
+        # we skip the token_module
+        if "token_module" not in self.skip_modules:
+            
+            # 1) represent tokens
             self.__token_rep(batch, output)
 
             # 2) classifiy on tokens
             self.__token_clf(batch, output)
 
-        if not self.freeze_post_seg:
+        # we freeze the segment module
+        if "segment_module" not in self.skip_modules:
+
             # 3) represent segments
             self.__seg_rep(batch, output)
 
-            # 4) specififc function for label representations
-            self.__label_rep(batch, output)
-
-            # 5) classify labels
-            self.__label_clf(batch, output)
-
-            # 6) specififc function for link representations
-            self.__link_rep(batch, output)
-
-            # 7) classify links
-            self.__link_clf(batch, output)
-
-            # 8) specififc function for link_label representations
-            self.__link_label_rep(batch, output)
-
-            # 9) classify link_labels
-            self.__link_label_clf(batch, output)
+            # 4) classify segments
+            self.__seg_clf(batch, output)
 
 
     def _step(self, batch:utils.Input, split:str):
         batch.current_epoch = self.current_epoch
 
+        # creates a batch specific output container which will be filled
+        # with predictions, logits and outputs of modules and submodules
         output = self.output.step(batch)
 
+        # pass the batch and output through the modules
         self.forward(batch, output)
 
+        # Will take the prediction dataframe created during the forward pass
+        # and pass it to the metric container which will calculate, aggregate
+        # and store metrics
         self.metrics.calc_add(
-                            df = output.df, 
+                            df = output.df.copy(deep=True), 
                             split = split
                             )
                                 
-
         if self.inference:
             loss = 0
         else:
@@ -374,4 +304,95 @@ class PTLBase(ptl.LightningModule):
             return [opt], [scheduler]
         else:
             return opt
-     
+
+
+    def __add_layer(self, layer:Layer, args:tuple, kwargs:dict):
+
+        module = kwargs.pop("module")
+        if module in self.freeze_modules:
+
+            #if isinstance(layer, Layer):
+            kwargs["hyperparamaters"]["freeze"] = True
+
+            # elif isinstance(layer, nn.Module):
+            #     utils.freeze_model(layer)
+
+        return layer(*args, **kwargs)
+
+
+    def add_embedder(self, *args, **kwargs):
+        return self.__add_layer(Embedder, args=args, kwargs=kwargs)
+
+
+    def add_encoder(self, *args, **kwargs):
+        return self.__add_layer(Encoder, args=args, kwargs=kwargs)
+
+
+    def add_segmenter(self, *args, **kwargs):
+        kwargs["task"] = self.seg_task
+        return self.__add_layer(Segmenter, args=args, kwargs=kwargs)
+
+
+    def add_reducer(self, *args, **kwargs):
+        return self.__add_layer(Reducer, args=args, kwargs=kwargs)
+
+
+    def add_labeler(self, *args, **kwargs):
+        return self.__add_layer(Labeler, args=args, kwargs=kwargs)
+
+
+    def add_link_labeler(self, *args, **kwargs):
+        return self.__add_layer(LinkLabeler, args=args, kwargs=kwargs)
+
+
+    def add_linker(self, *args, **kwargs):
+        return self.__add_layer(Linker, args=args, kwargs=kwargs)
+
+
+
+   # def __label_rep(self, batch:utils.Input, output:dict):
+    #     self.__rep(
+    #                 batch=batch, 
+    #                 output=output, 
+    #                 f_name = "label_rep"
+    #                 )
+    
+
+    # def __label_clf(self, batch:utils.Input, output:dict):
+    #     self.__clf( 
+    #             batch=batch, 
+    #             output=output, 
+    #             f_name = "label_clf"
+    #             )
+
+
+    # def __link_rep(self, batch:utils.Input, output:dict):
+    #     self.__rep(
+    #                 batch=batch, 
+    #                 output=output, 
+    #                 f_name = "link_rep"
+    #                 )
+    
+        
+    # def __link_clf(self, batch:utils.Input, output:dict):
+    #     self.__clf( 
+    #             batch=batch, 
+    #             output=output, 
+    #             f_name = "link_clf"
+    #             )
+
+
+    # def __link_label_rep(self, batch:utils.Input, output:dict):
+    #     self.__rep(
+    #                 batch=batch, 
+    #                 output=output, 
+    #                 f_name = "link_label_rep"
+    #                 )
+    
+
+    # def __link_label_clf(self, batch:utils.Input, output:dict):
+    #     self.__clf( 
+    #             batch=batch, 
+    #             output=output, 
+    #             f_name = "link_label_clf"
+    #             )

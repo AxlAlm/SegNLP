@@ -15,7 +15,6 @@ from segnlp.layers import reducers
 from segnlp.layers import linkers
 from segnlp.layers import segmenters
 from segnlp.layers import general
-from segnlp.layers import reprojecters
 from segnlp.layers import link_labelers
 
 class Layer(nn.Module):
@@ -37,14 +36,18 @@ class Layer(nn.Module):
 
         self.layer = layer(**params)
 
+        if "pretrain_weights" in params:
+            self.__load_weights(params["pretrained_weights"])
+
         if hasattr(self.layer, "output_size"):
             self.output_size = self.layer.output_size
         
-
-        self.frozen = False
         if params.get("freeze", False):
             self.__freeze()
-            self.frozen = True
+
+
+    def __load_weights(self, path_to_weights:str):
+        self.layer.load_state_dict(torch.load(path_to_weights))
 
 
     def __freeze(self):
@@ -52,22 +55,21 @@ class Layer(nn.Module):
             param.requires_grad = False
 
 
-    # def __filter_paramaters(self, layer, params):
-    #     sig = inspect.signature(layer)
+    def __filter_paramaters(self, layer, params):
+        sig = inspect.signature(layer)
 
-    #     filtered_params = {}
-    #     for para in sig.parameters:
+        filtered_params = {}
+        for para in sig.parameters:
 
-    #         if para in params:
-    #             filtered_params[para] = params[para]
+            if para in params:
+                filtered_params[para] = params[para]
         
-    #     return filtered_params
+        return filtered_params
 
 
     def forward(self, *args, **kwargs):
         #kwargs = self.__filter_paramaters(**kwargs)
         return self.layer(*args, **kwargs)
-
 
 
 class Embedder(Layer):
@@ -79,17 +81,6 @@ class Embedder(Layer):
 
         super().__init__(layer=layer, hyperparams=hyperparams)
         
-
-class Reprojecter(Layer):
-
-
-    def __init__(self, layer:nn.Module, hyperparams:dict, input_size:int):
-        
-        if isinstance(layer, str):
-            layer = getattr(reprojecters, layer)
-
-        super().__init__(layer=layer, hyperparams=hyperparams, input_size=input_size)
-
 
 class Encoder(Layer):
 
@@ -130,31 +121,19 @@ class CLFlayer(Layer):
                         )
 
 
-    # def loss(self, *args, **kwargs):
+    def forward(self, *args, **kwargs):
+        logits, preds = self.layer(*args, **kwargs)
 
-    #     if hasattr(self.layer, "loss"):
-    #         loss = self.layer.loss(*args, **kwargs)
-    #     else:
-
-    #         if isinstance(self, Segmenter):
-    #             raise NotImplementedError
-
-    #         else:
-    #             logits = kwargs["logits"]
-    #             targets = kwargs["targets"]
-    #             loss = F.cross_entropy(
-    #                                     torch.flatten(logits,end_dim=-2), 
-    #                                     targets.view(-1), 
-    #                                     reduction="mean",
-    #                                     ignore_index=-1
-    #                                     )
-            
-
-    #     return loss
+        return [{
+                "task": self.task,
+                "level": self.level,
+                "logits": logits,
+                "preds": preds,
+                }]
 
 
-    def _call(self, *args, **kwargs):
-        return self.layer(*args, **kwargs)
+    def loss(self, *args, **kwargs):
+        return self.layer.loss(*args, **kwargs)
 
 
 class Segmenter(CLFlayer):
@@ -167,10 +146,10 @@ class Segmenter(CLFlayer):
                 hyperparams:dict, 
                 input_size:int,
                 output_size:int,
-                #task:str,
+                task:str,
                 ):
-        # self.task = task
-        # self.level = "token"
+        self.task = task
+        self.level = "token"
 
         if isinstance(layer, str):
             layer = getattr(segmenters, layer)
@@ -195,12 +174,14 @@ class Labeler(CLFlayer):
                 input_size:int,
                 output_size:int,
                 ):
-        # self.task = "label"
-        # self.level = "seg"
+        self.task = "label"
+        self.level = "seg"
 
         if isinstance(layer, str):
-            #layer = getattr(Labeler, layer)
-            layer = getattr(general, layer)
+            try:
+                layer = getattr(general, layer)
+            except:
+                layer = getattr(Labeler, layer)
 
 
         super().__init__(              
@@ -247,12 +228,21 @@ class LinkLabeler(CLFlayer):
                 input_size:int,
                 output_size:int,
                 ):
-        # self.task = "link_label"
-        # self.level = "seg"
+
+        self._return_link_preds = False
+        if layer in ["DirLinkLabeler"]:
+            self._return_link_preds = True
+
+        self.task = "link_label"
+        self.level = "seg" if layer != "DirLinkLabeler" else "p_seg"
 
         if isinstance(layer, str):
-            layer = getattr(link_labelers, layer)
-            #layer = getattr(general, layer)
+
+            try:
+                layer = getattr(general, layer)
+            except:
+                layer = getattr(link_labelers, layer)
+
 
         super().__init__(              
                         layer=layer, 
@@ -260,3 +250,25 @@ class LinkLabeler(CLFlayer):
                         input_size=input_size,
                         output_size=output_size
                         )
+
+    def forward(self, *args, **kwargs):
+
+        if self._return_link_preds:
+            logits, link_label_preds, link_preds = self.layer(*args, **kwargs)
+
+            return [
+                    {
+                    "task": self.task,
+                    "level": self.level,
+                    "logits": logits,
+                    "preds": link_label_preds,
+                    },
+                    {
+                    "task": "link",
+                    "level": self.level,
+                    "preds": link_preds,
+                    },       
+                    ]
+
+        else:
+            return super().forward(*args, **kwargs)

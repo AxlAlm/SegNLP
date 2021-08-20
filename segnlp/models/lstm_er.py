@@ -9,12 +9,7 @@ from torch import Tensor
 
 #segnlp
 from .base import PTLBase
-from segnlp.layer_wrappers import Encoder
-from segnlp.layer_wrappers import LinkLabeler
-from segnlp.layer_wrappers import Segmenter
-from segnlp.layer_wrappers import Reducer
 from segnlp import utils
-
 
 class LSTM_ER(PTLBase):
 
@@ -23,45 +18,46 @@ class LSTM_ER(PTLBase):
     def __init__(self,  *args, **kwargs):   
         super().__init__(*args, **kwargs)
 
-        self.word_lstm = Encoder(    
+        self.word_lstm = self.add_encoder(    
                                 layer = "LSTM", 
                                 hyperparams = self.hps.get("LSTM", {}),
                                 input_size = self.feature_dims["word_embs"] + self.feature_dims["pos_embs"],
-                                type = "token_rep"
+                                module = "token_module"
                                 )
 
-        self.segmenter = Segmenter(
+        self.segmenter = self.add_segmenter(
                                 layer = "BigramSeg",
                                 hyperparams = self.hps.get("BigramSeg", {}),
                                 input_size = self.word_lstm.output_size,
                                 output_size = self.task_dims["seg+label"],
-                                type = "token_clf"
+                                module = "token_module"
                                 )
 
-
-        self.agg = Reducer(
+        self.agg = self.add_reducer(
                             layer = "Agg",
                             hyperparams = self.hps.get("Agg", {}),
                             input_size = self.word_lstm.output_size,
-                            type = "seg_rep"
+                            module = "segment_module"
                         )
 
-        self.deptreelstm = Reducer(
+        self.deptreelstm = self.add_reducer(
                                     layer = "DepTreeLSTM",
                                     hyperparams = self.hps.get("DepTreeLSTM", {}),
                                     input_size =    self.agg.output_size 
                                                     + self.feature_dims["deprel_embs"]
                                                     + self.task_dims["seg+label"],
-                                    type = "seg_rep"
+                                    module = "segment_module"
                                 )
-    
-        self.link_labeler = LinkLabeler(
+
+
+        self.link_labeler = self.add_link_labeler(
                                     layer = "DirLinkLabeler",
                                     hyperparams = self.hps.get("DirLinkLabeler", {}),
                                     input_size = (self.word_lstm.output_size * 2) + self.deptreelstm.output_size,
                                     output_size = self.task_dims["link_label"],
-                                    type = "link_label_clf"
+                                    module = "segment_module"
                                     )
+
 
     # SEGMENTATION
     def token_rep(self, batch:utils.Input, output:utils.Output):
@@ -80,10 +76,9 @@ class LSTM_ER(PTLBase):
 
 
     def token_clf(self, batch:utils.Input, output:utils.Output):
-        logits, preds = self.segmenter(
+        return self.segmenter(
                                         input = output.stuff["lstm_out"],
                                         )
-        return logits, preds
 
 
     # LINK LABELING
@@ -131,19 +126,17 @@ class LSTM_ER(PTLBase):
                 }
 
 
-    def link_label_clf(self, batch:utils.Input, output:utils.Output):
+    def seg_clf(self, batch:utils.Input, output:utils.Output):
 
         pair_data = output.get_pair_data()
 
         # We predict link labels for both directions. Get the dominant pair dir
         # plus roots' probabilities
-        logits, preds  = self.link_labeler(
-                                            input = output.stuff["pair_embs"],
-                                            pair_p1 = pair_data["bidir"]["p1"],
-                                            pair_p2 =  pair_data["bidir"]["p2"],
-                                            )
-        
-        return logits, preds
+        return self.link_labeler(
+                                input = output.stuff["pair_embs"],
+                                pair_p1 = pair_data["bidir"]["p1"],
+                                pair_p2 =  pair_data["bidir"]["p2"],
+                                )
 
 
     # LOSS

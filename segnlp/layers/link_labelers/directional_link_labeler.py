@@ -50,6 +50,7 @@ class DirLinkLabeler(nn.Module):
         self.link_labels_wo_root = output_size -1
         self.rev_label_treshhold = output_size
         output_size = ((output_size -1) * 2 ) + 2
+
         self.link_label_clf_layer = nn.Sequential(
                                                     nn.Linear(input_size, hidden_size),
                                                     nn.Tanh(),
@@ -128,18 +129,10 @@ class DirLinkLabeler(nn.Module):
                                     pair_p2 = pair_p2
                                     )
 
-        return logits, (
-                        {
-                        "preds":link_labels,
-                        "level": "p_seg",
-                        "task": "link_label"
-                        },
-                        {
-                        "preds": links,
-                        "level": "p_seg",
-                        "task": "link"
-                        }
-                        )
+        
+        print(link_labels, link_labels.shape, torch.unique(pair_p1).shape)
+
+        return logits, link_labels, links
 
 
     def loss(self,

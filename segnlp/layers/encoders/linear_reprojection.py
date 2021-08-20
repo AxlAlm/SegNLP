@@ -7,6 +7,11 @@ from torch import Tensor
 
 class LinearRP(nn.Module):
 
+    """
+    Reprojects input via linear layer. Its simply a wrapper around a linear layer
+    with options to use dropout and activation function. 
+    
+    """
 
     def __init__(self, 
                     input_size:int, 

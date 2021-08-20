@@ -19,7 +19,6 @@ class BigramSeg(nn.Module):
         hidden_size,
         output_size,
         dropout=0.0,
-        #loss = "CrossEntropy"
         loss_reduction = "mean",
         ignore_index = -1
     ):
