@@ -5,6 +5,7 @@
 
 
 #basics
+from torch.nn.modules import module
 from segnlp.layer_wrappers.layer_wrappers import Embedder, Reducer
 import numpy as np
 import time
@@ -41,69 +42,75 @@ class LSTM_DIST(PTLBase):
     def __init__(self,  *args, **kwargs):   
         super().__init__(*args, **kwargs)
 
-        self.bow = Embedder(
+        self.bow = self.add_embedder(
                                 layer = "BOW",
                                 hyperparams = self.hps.get("BOW", {}),
+                                module = "segment_module"
                             )
 
 
-        self.word_lstm = Encoder(
+        self.word_lstm = self.add_encoder(
                                     layer = "LSTM",
                                     hyperparams = self.hps.get("LSTM", {}),
                                     input_size = self.feature_dims["word_embs"],
+                                    module = "segment_module"
                                     )
 
-        self.minus_span = Reducer(
+        self.minus_span = self.add_reducer(
                                 layer = "MinusSpan",
                                 hyperparams = self.hps.get("MinusSPan", {}),
                                 input_size = self.word_lstm.output_size,
+                                module = "segment_module"
                             )
 
-
-        self.am_lstm = Encoder(
+        self.am_lstm = self.add_encoder(
                                     layer = "LSTM",
                                     hyperparams = self.hps.get("LSTM", {}),
                                     input_size = self.agg.output_size,
+                                    module = "segment_module"
                                     )
 
 
-        self.ac_lstm = Encoder(
+        self.ac_lstm = self.add_encoder(
                                     layer = "LSTM",
                                     hyperparams = self.hps.get("LSTM", {}),
                                     input_size = self.agg.output_size,
+                                    module = "segment_module"
                                     )
 
 
         input_size = (self.am_lstm.output_size * 2) + self.bow.output_size + self.feature_dims["doc_embs"]
-        self.am_ac_lstm =  Encoder(
+        self.am_ac_lstm =  self.add_encoder(
                                     layer = "LSTM",
                                     hyperparams = self.hps.get("LSTM", {}),
-                                    input_size = input_size
+                                    input_size = input_size,
+                                    module = "segment_module"
                                     )
 
-        self.last_lstm =  Encoder(
+        self.last_lstm =  self.add_encoder(
                                     layer = "LSTM",
                                     hyperparams = self.hps.get("LSTM", {}),
                                     input_size = self.am_ac_lstm.output_size,
+                                    module = "segment_module"
                                     )
 
-        self.linker = Linker(
+        self.linker = self.add_linker(
                                 layer = "Pairer",
                                 hyperparams = self.hps.get("Pairer", {}),
                                 input_size = self.am_ac_lstm.output_size,
                                 )
 
-        self.labeler = Labeler(
+        self.labeler = self.add_labeler(
                                         layer = "LinearCLF",
                                         hyperparams = self.hps.get("LinearCLF", {}),
                                         input_size = self.am_ac_lstm.output_size,
                                         )
 
-        self.link_labeler = LinkLabeler(
-                                        layer = "LinearCLF",
-                                        hyperparams = self.hps.get("LinearCLF", {}),
-                                        input_size = self.am_ac_lstm.output_size,
-                                        )
+        self.link_labeler = self.add_link_labeler(
+                                            layer = "LinearCLF",
+                                            hyperparams = self.hps.get("LinearCLF", {}),
+                                            input_size = self.am_ac_lstm.output_size,
+                                            )
 
 
     @classmethod
@@ -152,32 +159,11 @@ class LSTM_DIST(PTLBase):
 
     def seg_clf(self, batch:utils.Input, output:utils.Output):
 
-        label_logits, label_preds = self.labeler(output.stuff["adu_emb"])
-        
-        link_logits, link_preds = self.linker(output.stuff["adu_emb_last"], unit_mask=batch["unit"]["mask"])
-
-        link_label_logits, link_label_preds = self.link_labeler(output.stuff["adu_emb"])
-
-        return [
-                {  
-                    "task": "label",
-                    "logits": link_logits, 
-                    "preds": label_preds,
-                    "level": "seg",
-                },
-                {   
-                    "task":"link",
-                    "logits": link_logits,
-                    "preds": link_preds,
-                    "level": "seg",
-                },
-                {   
-                    "task": "link_label",
-                    "logits": link_label_logits,
-                    "preds": link_label_preds,
-                    "level": "seg",
-                }
-                ]   
+        label_outs = self.labeler(output.stuff["adu_emb"])
+        link_outs = self.linker(output.stuff["adu_emb_last"], unit_mask=batch["unit"]["mask"])
+        link_label_outs = self.link_labeler(output.stuff["adu_emb"])
+            
+        return label_outs + link_outs + link_label_outs
 
 
 

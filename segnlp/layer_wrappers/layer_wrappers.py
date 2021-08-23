@@ -203,8 +203,8 @@ class Linker(CLFlayer):
                 input_size:int,
                 output_size:int,
                 ):
-        # self.task = "link"
-        # self.level = "seg"
+        self.task = "link"
+        self.level = "seg"
 
         if isinstance(layer, str):
             layer = getattr(linkers, layer)

@@ -30,7 +30,6 @@ class LSTM_ER(PTLBase):
                                 hyperparams = self.hps.get("BigramSeg", {}),
                                 input_size = self.word_lstm.output_size,
                                 output_size = self.task_dims["seg+label"],
-                                module = "token_module"
                                 )
 
         self.agg = self.add_reducer(
@@ -55,7 +54,6 @@ class LSTM_ER(PTLBase):
                                     hyperparams = self.hps.get("DirLinkLabeler", {}),
                                     input_size = (self.word_lstm.output_size * 2) + self.deptreelstm.output_size,
                                     output_size = self.task_dims["link_label"],
-                                    module = "segment_module"
                                     )
 
 

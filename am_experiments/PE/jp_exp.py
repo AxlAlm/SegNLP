@@ -45,15 +45,20 @@ hps = {
                         "activation": "Sigmoid"
 
                 },
-        "LSTM": {  
+        "encoder_LSTM": {  
                     "dropout":0.9,
                     "hidden_size": 256,
                     "num_layers":1,
                     "bidir":True,
                     },
-        "Pointer": {
+        "decoder_LSTM": {  
                     "dropout":0.9,
-                    "hidden_size":512,
+                    "hidden_size": 512,
+                    "num_layers":1,
+                    "bidir":False,
+
+                    },
+        "Pointer": {
                     }
         }
 

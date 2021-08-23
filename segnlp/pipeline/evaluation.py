@@ -43,7 +43,7 @@ class Evaluation:
         
             trainer.fit(    
                         model=model, 
-                        train_dataloader=data_module.train_dataloader(), 
+                        train_dataloaders=data_module.train_dataloader(), 
                         val_dataloaders=data_module.val_dataloader()
                         )
 
@@ -74,7 +74,7 @@ class Evaluation:
 
         trainer.fit(    
                         model=model, 
-                        train_dataloader=data_module.train_dataloader(), 
+                        train_dataloaders=data_module.train_dataloader(), 
                         val_dataloaders=data_module.val_dataloader()
                         )
 

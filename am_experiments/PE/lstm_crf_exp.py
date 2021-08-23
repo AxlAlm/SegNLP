@@ -1,19 +1,16 @@
 
 import sys
-sys.path.insert(1, '../')
+sys.path.insert(1, '../../')
 
 from segnlp import Pipeline
 from segnlp.datasets.am import PE
-from segnlp.nn.models.general import LSTM_CRF
 from segnlp.features import GloveEmbeddings, FlairEmbeddings, BertEmbeddings
-from segnlp.nn.default_hyperparamaters import get_default_hps
 
-import flair, torch
-flair.device = torch.device('cpu') 
-
+# import flair, torch
+# flair.device = torch.device('cuda:0') 
 
 exp = Pipeline(
-                project="LSTM_CRF",
+                id="lstm_crf_pe_seg",
                 dataset=PE( 
                             tasks=["seg"],
                             prediction_level="token",
@@ -24,15 +21,41 @@ exp = Pipeline(
                             FlairEmbeddings(),
                             BertEmbeddings(),
                             ],
-                model = LSTM_CRF
+                model = "LSTM_CRF",
+                metric = "default_token_metric"
             )
 
-hps = get_default_hps(LSTM_CRF.name())
+
+hps = {
+        "general":{
+                "optimizer": "SGD",
+                "lr": 0.1,
+                "batch_size": 10,
+                "max_epochs":200,
+                "patience": 5,
+                },
+        "CharEmb": {  
+                    "emb_size": 30,
+                    "n_filters": 20,
+                    "kernel_size": 3,
+                    },
+        "LSTM": {  
+                    "dropout":0.5,
+                    "hidden_size": 150,
+                    "num_layers":1,
+                    "bidir":True,
+                    },
+        "CRF": {
+                "dropout": 0.5,
+                }
+        }
+
+
 best_hp = exp.train(
                         hyperparamaters = hps,
                         n_random_seeds=6,
                         ptl_trn_args=dict(
-                                            gpus=[1],
+                                            #gpus=[1],
                                             gradient_clip_val=5.0
                                         ),
                         )

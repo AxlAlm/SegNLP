@@ -1,5 +1,6 @@
 
 
+from torch.nn.modules import module
 from segnlp.layer_wrappers.layer_wrappers import Layer
 import numpy as np
 import os
@@ -81,7 +82,7 @@ class PTLBase(ptl.LightningModule):
                                         subtasks = subtasks,
                                         prediction_level = prediction_level,
                                         inference = inference,
-                                        sampling_k = self.hps["general"].get("sampling_k", 0)
+                                        seg_gts_k = self.hps["general"].get("seg_gts_k", None)
                                         )
 
         # the batch outputs can be collected and stored to get outputs over a complete split. E.g. returning 
@@ -120,14 +121,19 @@ class PTLBase(ptl.LightningModule):
 
     def __rep(self, batch:utils.Input, output:dict, f_name:str):
         
-        if hasattr(self,  f_name):
-            stuff = getattr(self, f_name)(batch, output)
+        if not hasattr(self,  f_name):
+            return 
 
-            assert isinstance(stuff, dict)
-            output.add_stuff(stuff)
+        stuff = getattr(self, f_name)(batch, output)
+
+        assert isinstance(stuff, dict)
+        output.add_stuff(stuff)
 
 
     def __clf(self, batch:utils.Input, output:dict, f_name:str):
+        
+        if not hasattr(self,  f_name):
+            return 
 
         task_outs = getattr(self, f_name)(batch, output)
 
@@ -252,7 +258,7 @@ class PTLBase(ptl.LightningModule):
         return loss
 
 
-    def on_train_epoch_end(self, *args, **kwargs):
+    def on_train_epoch_end(self):
         self._end_of_epoch("train")
 
 
@@ -309,6 +315,9 @@ class PTLBase(ptl.LightningModule):
     def __add_layer(self, layer:Layer, args:tuple, kwargs:dict):
 
         module = kwargs.pop("module")
+
+        assert module in ["token_module", "segment_module"], f'"{module}" is not a supported module. Chose on of {["token_module", "segment_module"]}'
+
         if module in self.freeze_modules:
 
             #if isinstance(layer, Layer):
@@ -328,71 +337,41 @@ class PTLBase(ptl.LightningModule):
         return self.__add_layer(Encoder, args=args, kwargs=kwargs)
 
 
-    def add_segmenter(self, *args, **kwargs):
-        kwargs["task"] = self.seg_task
-        return self.__add_layer(Segmenter, args=args, kwargs=kwargs)
-
-
     def add_reducer(self, *args, **kwargs):
         return self.__add_layer(Reducer, args=args, kwargs=kwargs)
 
 
+    def add_segmenter(self, *args, **kwargs):
+        kwargs["task"] = self.seg_task
+        kwargs["module"] = "token_module"
+        return self.__add_layer(Segmenter, 
+                                args=args,
+                                kwargs=kwargs,
+                                )
+
+
     def add_labeler(self, *args, **kwargs):
-        return self.__add_layer(Labeler, args=args, kwargs=kwargs)
+        kwargs["module"] = "segment_module"
+        return self.__add_layer(
+                                Labeler,                                 
+                                args=args,
+                                kwargs=kwargs,
+                                )
 
 
     def add_link_labeler(self, *args, **kwargs):
-        return self.__add_layer(LinkLabeler, args=args, kwargs=kwargs)
+        kwargs["module"] = "segment_module"
+        return self.__add_layer(
+                                LinkLabeler,                                 
+                                args=args,
+                                kwargs=kwargs,
+                                )
 
 
     def add_linker(self, *args, **kwargs):
-        return self.__add_layer(Linker, args=args, kwargs=kwargs)
-
-
-
-   # def __label_rep(self, batch:utils.Input, output:dict):
-    #     self.__rep(
-    #                 batch=batch, 
-    #                 output=output, 
-    #                 f_name = "label_rep"
-    #                 )
-    
-
-    # def __label_clf(self, batch:utils.Input, output:dict):
-    #     self.__clf( 
-    #             batch=batch, 
-    #             output=output, 
-    #             f_name = "label_clf"
-    #             )
-
-
-    # def __link_rep(self, batch:utils.Input, output:dict):
-    #     self.__rep(
-    #                 batch=batch, 
-    #                 output=output, 
-    #                 f_name = "link_rep"
-    #                 )
-    
-        
-    # def __link_clf(self, batch:utils.Input, output:dict):
-    #     self.__clf( 
-    #             batch=batch, 
-    #             output=output, 
-    #             f_name = "link_clf"
-    #             )
-
-
-    # def __link_label_rep(self, batch:utils.Input, output:dict):
-    #     self.__rep(
-    #                 batch=batch, 
-    #                 output=output, 
-    #                 f_name = "link_label_rep"
-    #                 )
-    
-
-    # def __link_label_clf(self, batch:utils.Input, output:dict):
-    #     self.__clf( 
-    #             batch=batch, 
-    #             output=output, 
-    #             f_name = "link_label_clf"
-    #             )
+        kwargs["module"] = "segment_module"
+        return self.__add_layer(
+                                Linker,                                 
+                                args=args,
+                                kwargs=kwargs,
+                                )

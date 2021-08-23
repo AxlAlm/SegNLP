@@ -20,7 +20,9 @@ exp = Pipeline(
                 features =[
                             GloveEmbeddings(),
                             ],
-                encodings=["chars"],
+                encodings=[
+                        "chars"
+                        ],
                 model = "LSTM_CNN_CRF",
                 metric = "overlap_metric",
             )
@@ -53,7 +55,7 @@ best_hp = exp.train(
                         hyperparamaters = hps,
                         n_random_seeds=1,
                         ptl_trn_args=dict(
-                                            gpus=[2],
+                                            #gpus=[2],
                                             #gradient_clip_val=5
                                         ),
                         monitor_metric="val_f1-50%-micro"

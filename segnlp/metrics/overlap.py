@@ -8,7 +8,6 @@ from collections import Counter
 from sklearn.metrics import confusion_matrix
 
 
-
 def extract_match_info(df):
     
 
@@ -120,7 +119,7 @@ def get_pred_counts(df, exact, approx, task_labels, i):
 
         lcm = np.zeros((n_labels, n_labels))
 
-        # will create confusion matrix for all segments which are matches.
+        #will create confusion matrix for all segments which are matches.
         try:
             lcm[:-1, :-1] +=  confusion_matrix(
                                 pred_df.loc[cond1,"T-label"].to_numpy(),
@@ -143,10 +142,11 @@ def get_pred_counts(df, exact, approx, task_labels, i):
 
         llcm = np.zeros((n_link_labels, n_link_labels))
 
-        # will create a confusion matrix for all link labels which 
-        # match and the relation is true
+        # # will create a confusion matrix for all link labels which 
+        # # match and the relation is true
         cond2 = pred_df[f"link-j-{k}"] == pred_df["T-link"]
         cond_1_2 = cond1 & cond2
+
         try:
             llcm[:-1, :-1] = confusion_matrix(
                                 pred_df.loc[cond_1_2,"T-link_label"].to_numpy(),

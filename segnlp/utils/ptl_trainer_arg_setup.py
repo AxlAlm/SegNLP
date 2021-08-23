@@ -6,63 +6,7 @@ import re
 from typing import Tuple, List, Dict
 
 #pytorch lightning 
-from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
-
-
-default_ptl_trn_args = dict(
-                            logger=None, 
-                            checkpoint_callback=None, 
-                            callbacks=None, 
-                            default_root_dir=None, 
-                            gradient_clip_val=0, 
-                            process_position=0, 
-                            num_nodes=1, 
-                            num_processes=1, 
-                            gpus=None, 
-                            auto_select_gpus=False, 
-                            tpu_cores=None, 
-                            log_gpu_memory=None, 
-                            progress_bar_refresh_rate=1, 
-                            overfit_batches=0.0, 
-                            track_grad_norm=-1, 
-                            check_val_every_n_epoch=1, 
-                            fast_dev_run=False,
-                            accumulate_grad_batches=1, 
-                            max_epochs=1000, 
-                            min_epochs=1, 
-                            max_steps=None, 
-                            min_steps=None, 
-                            limit_train_batches=1.0, 
-                            limit_val_batches=1.0, 
-                            limit_test_batches=1.0, 
-                            val_check_interval=1.0, 
-                            flush_logs_every_n_steps=100, 
-                            log_every_n_steps=50, 
-                            accelerator=None, 
-                            sync_batchnorm=False,
-                            precision=32, 
-                            weights_summary='top', 
-                            weights_save_path=None, 
-                            num_sanity_val_steps=2, 
-                            truncated_bptt_steps=None, 
-                            resume_from_checkpoint=None, 
-                            profiler=None, 
-                            benchmark=False, 
-                            deterministic=True, 
-                            reload_dataloaders_every_epoch=True,  # set default as true
-                            auto_lr_find=False, 
-                            replace_sampler_ddp=True, 
-                            terminate_on_nan=False, 
-                            auto_scale_batch_size=False, 
-                            prepare_data_per_node=True, 
-                            plugins=None, 
-                            amp_backend='native', 
-                            amp_level='O2', 
-                            distributed_backend=None, 
-                            automatic_optimization=None, 
-                            move_metrics_to_cpu=False, 
-                            enable_pl_optimizer=None
-                            )
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, ProgressBar
 
 
 def get_ptl_trainer_args(
@@ -70,16 +14,27 @@ def get_ptl_trainer_args(
                         hyperparamaters:dict, 
                         save_choice:str,
                         exp_model_path:str,
+                        
                         ):
+
+    default_ptl_trn_args = dict(
+                                logger = None,
+                                progress_bar_refresh_rate = 1,
+                                weights_summary = None
+                                )
     
     ptl_trn_args = {**default_ptl_trn_args, **ptl_trn_args}
-    
+
+    # for adding costum callbacks. We add ProgressBar only to set the process_position
+    ptl_trn_args["callbacks"] = [
+                                ProgressBar(
+                                            refresh_rate=ptl_trn_args["progress_bar_refresh_rate"], 
+                                            process_position=3
+                                            ),
+                                ]
+
     if save_choice:
-
-        if ptl_trn_args["callbacks"] == None:
-            ptl_trn_args["callbacks"] = []
         
-
         if len([c for c in ptl_trn_args["callbacks"] if isinstance(c, ModelCheckpoint)]) == 0:
 
             save_top_k = 1

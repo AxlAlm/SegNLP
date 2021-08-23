@@ -116,36 +116,44 @@ class Pointer(nn.Module):
         suggests the input to the decoder is the feature representation to FC3 then to LSTM
 
     
-    4) in the Pointer paper (2), they pass inputs to the decoder and encoder. Following this both FC1 and FC3 would need to 
+    4) in the Pointer paper (2), they pass input to the decoder and encoder. Following this both FC1 and FC3 would need to 
         first reduce the dim of the features if an input to be able to be passed to the encoder and decoder.
 
     """
 
-
-    def __init__(self, input_size:int):
+    def __init__(self, 
+                input_size:int, 
+                loss_reduction = "mean",
+                ignore_index = -1
+                ):
         super().__init__()
+        self.loss_reduction = loss_reduction
+        self.ignore_index = ignore_index
         self.attention = CBAttentionLayer(
                                         input_dim=input_size,
                                         )
 
-    def forward(self, inputs:Tensor, encoder_outputs:Tensor, mask:Tensor):
+    def forward(self, input:Tensor, encoder_outputs:Tensor, mask:Tensor):
 
-        batch_size = inputs.shape[0]
-        seq_len = inputs.shape[1]
-        device = inputs.device
+        batch_size = input.shape[0]
+        seq_len = input.shape[1]
+        device = input.device
 
         logits = torch.zeros(batch_size, seq_len, seq_len, device=device)
         for i in range(seq_len):
             logits[:, i] = self.attention(input[:,i], encoder_outputs, mask)
-                            
+
+
         preds = torch.argmax(logits, dim=-1)
         return logits, preds
 
 
     def loss(self, logits:Tensor, targets:Tensor):
-        loss = F.cross_entropy(
-                                torch.flatten(logits,end_dim=-2), 
+        return F.cross_entropy(
+                                torch.flatten(logits, end_dim=-2), 
                                 targets.view(-1), 
-                                reduction="mean",
-                                ignore_index=-1
+                                reduction = self.loss_reduction,
+                                ignore_index = self.ignore_index
                                 )
+
+

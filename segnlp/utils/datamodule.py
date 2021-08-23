@@ -4,6 +4,7 @@
 from typing import Union, List, Tuple
 import numpy as np
 import pickle
+from numpy.lib import utils
 import pandas as pd
 import os
 
@@ -18,14 +19,10 @@ from torch.utils.data import DataLoader
 # pytorch lightning
 import pytorch_lightning as ptl
 
-
 #segnlp
 import segnlp
 from .input import Input
-
 from segnlp import utils
-
-from more_itertools import consecutive_groups
 
 
 class DataModule(ptl.LightningDataModule):

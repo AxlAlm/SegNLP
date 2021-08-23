@@ -8,6 +8,7 @@ import os
 from copy import deepcopy
 import shutil
 import pandas as pd
+from tqdm import tqdm
 
 #pytorch
 import torch
@@ -18,11 +19,11 @@ from pytorch_lightning import Trainer
 #segnlp
 from segnlp import get_logger
 import segnlp.utils as utils
-from segnlp.visuals.hp_tune_progress import HpProgress
 from segnlp.utils import get_ptl_trainer_args
 
 
 logger = get_logger("ML")
+
 
 class ML:
 
@@ -221,16 +222,10 @@ class ML:
         hp_dicts = {create_hp_uid(hp):{"hyperparamaters":hp} for hp in set_hyperparamaters}
         hp_dicts.update(hp_hist)
 
-        hpp = HpProgress(
-                        keys=keys,
-                        hyperparamaters=hp_dicts,
-                        n_seeds = n_random_seeds,
-                        best=best_model_info.get("uid", None),
-                        show_n=3,
-                        debug=debug,
-                        )
 
-        for hp_uid, hp_dict in hp_dicts.items():    
+        print("_" * (os.get_terminal_size().columns -1))
+
+        for hp_uid, hp_dict in tqdm(hp_dicts.items(), desc="Hyperparamaters",  position=0):    
             
             if hp_uid in hp_hist and not override:
                 logger.info(f"Following hyperparamaters {hp_uid} has already been tested over n seed. Will skip this set.")
@@ -246,12 +241,7 @@ class ML:
             else:
                 random_seeds = utils.random_ints(n_random_seeds)
 
-            for ri, random_seed in enumerate(random_seeds, start=1):
-                hpp.refresh(hp_uid, 
-                            progress = ri, 
-                            best_score = best_model_score if best_model_score  else "-",
-                            mean_score = np.mean(model_scores) if model_scores else "-"
-                            )
+            for ri, random_seed in tqdm(list(enumerate(random_seeds, start=1)), desc = "Random Seeds", position=1):
 
                 output = self._fit(
                                     hyperparamaters=hp_dict["hyperparamaters"],
@@ -318,12 +308,10 @@ class ML:
                     
                 shutil.move(self._path_to_tmp_models, self._path_to_top_models)
 
-                hpp.set_top(hp_uid)
 
             if os.path.exists(self._path_to_tmp_models):
                 shutil.rmtree(self._path_to_tmp_models)
 
-            hpp.update()
                     
             with open(self._path_to_hp_hist, "w") as f:
                 json.dump(hp_dicts, f, indent=4)
@@ -331,8 +319,6 @@ class ML:
             with open(self._path_to_model_info, "w") as f:
                 json.dump(best_model_info, f, indent=4)
 
-
-        hpp.close()
 
         return best_model_info
 

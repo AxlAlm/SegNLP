@@ -34,28 +34,32 @@ class LSTM_CNN_CRF(PTLBase):
 
         self.task = self.tasks[0]
 
-        self.finetuner = Reprojecter(
+        self.finetuner = self.add_encoder(
                                     layer = "LinearRP", 
                                     hyperparams = self.hps.get("LinearRP", {}),
-                                    input_size = self.feature_dims["word_embs"]
+                                    input_size = self.feature_dims["word_embs"],
+                                    module = "token_module"
                                 )
 
-        self.char_embedder = Embedder(
+        self.char_embedder = self.add_embedder(
                                         layer = "CharEmb", 
                                         hyperparams = self.hps.get("CharEmb", {}),
+                                        module = "token_module"
                                     )
-        self.encoder = Encoder(    
+
+        self.encoder = self.add_encoder(    
                                 layer = "LSTM", 
                                 hyperparams = self.hps.get("LSTM", {}),
-                                input_size = self.finetuner.output_size + self.char_embedder.output_size
+                                input_size = self.finetuner.output_size + self.char_embedder.output_size,
+                                module = "token_module"
                                 )
 
-        self.segmenter = Segmenter(
+        self.segmenter = self.add_segmenter(
                                 layer = "CRF",
                                 hyperparams = self.hps.get("CRF", {}),
                                 input_size = self.encoder.output_size,
                                 output_size = self.task_dims[self.task],
-                                #labels = self.task_labels[self.task],
+                                task = self.seg_task
                                 )
 
 
@@ -78,13 +82,11 @@ class LSTM_CNN_CRF(PTLBase):
                 "lstm_out":lstm_out
                 }
 
-
     def token_clf(self, batch: utils.Input, output: utils.Output):
-        logits, preds = self.segmenter(
+        return self.segmenter(
                                     input=output.stuff["lstm_out"],
                                     mask=batch["token"]["mask"],
                                     )
-        return logits, preds
 
 
     def loss(self, batch: utils.Input, output: utils.Output):

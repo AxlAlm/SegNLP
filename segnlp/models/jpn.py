@@ -2,6 +2,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.modules import module
 
 #segnlp
 from .base import PTLBase
@@ -32,53 +33,63 @@ class JointPN(PTLBase):
     def __init__(self,  *args, **kwargs):   
         super().__init__(*args, **kwargs)
 
-        self.agg = Reducer(
+        self.agg = self.add_reducer(
                             layer = "Agg", 
                             hyperparams = self.hps.get("Agg", {}),
-                            input_size = self.feature_dims["word_embs"]
+                            input_size = self.feature_dims["word_embs"],
+                            module = "segment_module"
                             )
 
 
-        self.bow = Embedder(
+        self.bow = self.add_embedder(
                             layer = "BOW",
-                            #vocab = self.feature_dims["vocab"],
                             hyperparams = self.hps.get("BOW", {}),
+                            module = "segment_module"
                             )
 
 
-        self.fc1 = Reprojecter(
+        self.fc1 = self.add_encoder(
                                     layer = "LinearRP", 
                                     hyperparams = self.hps.get("LinearRP", {}),
-                                    input_size = self.bow.output_size + self.agg.output_size + self.feature_dims["doc_embs"]
-                                )
+                                    input_size  =   self.bow.output_size + 
+                                                    self.agg.output_size + 
+                                                    self.feature_dims["doc_embs"],
+                                    module = "segment_module"
+                                    )
 
 
-        self.fc2 = Reprojecter(
+        self.fc2 = self.add_encoder(
                                     layer = "LinearRP", 
                                     hyperparams = self.hps.get("LinearRP", {}),
-                                    input_size = self.bow.output_size + self.agg.output_size + self.feature_dims["doc_embs"]
+                                    input_size  =   self.bow.output_size + 
+                                                    self.agg.output_size + 
+                                                    self.feature_dims["doc_embs"],
+                                    module = "segment_module"
+
                                 )
 
 
-        self.encoder = Encoder(    
+        self.encoder = self.add_encoder(    
                                 layer = "LSTM", 
-                                hyperparams = self.hps.get("LSTM", {}),
-                                input_size = self.fc1.output_size
+                                hyperparams = self.hps.get("encoder_LSTM", {}),
+                                input_size = self.fc1.output_size,
+                                module = "segment_module"
                                 )
 
 
-        self.decoder = Encoder(    
+        self.decoder = self.add_encoder(    
                                 layer = "LSTM", 
-                                hyperparams = self.hps.get("LSTM2", {}),
-                                input_size = self.fc1.output_size
+                                hyperparams = self.hps.get("decoder_LSTM", {}),
+                                input_size = self.fc2.output_size,
+                                module = "segment_module"
                                 )
 
 
-        self.pointer = Linker(
+        self.pointer = self.add_linker(
                                 layer = "Pointer",
                                 hyperparams = self.hps.get("Pointer", {}),
                                 input_size = self.decoder.output_size,
-                                output_size = self.task_dims["link"]
+                                output_size = self.task_dims["link"],
                                 )
 
 
@@ -90,7 +101,6 @@ class JointPN(PTLBase):
                                 )
         
     
-
     @classmethod
     def name(self):
         return "JointPN"
@@ -132,38 +142,17 @@ class JointPN(PTLBase):
 
     def seg_clf(self, batch:utils.Input, output:utils.Output):
 
-        logits, preds = self.labeler(
+        label_outs = self.labeler(
                                     input = output.stuff["encoder_out"],
                                     )
 
-        logits, preds = self.pointer(
-                                    inputs = output.stuff["decoder_out"],
+        link_outs  = self.pointer(
+                                    input = output.stuff["decoder_out"],
                                     encoder_outputs = output.stuff["encoder_out"],
                                     mask = batch["seg"]["mask"],
                                     )
 
-        return [
-                {  
-                    "task": "label",
-                    "logits": link_logits, 
-                    "preds": label_preds,
-                    "level": "seg",
-                },
-                {   
-                    "task":"link",
-                    "logits": link_logits,
-                    "preds": link_preds,
-                    "level": "seg",
-                },
-                {   
-                    "task": "link_label",
-                    "logits": link_label_logits,
-                    "preds": link_label_preds,
-                    "level": "seg",
-                }
-                ]   
-
-
+        return label_outs + link_outs
 
 
     def loss(self, batch, output:dict):

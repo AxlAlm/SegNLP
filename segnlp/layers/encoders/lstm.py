@@ -20,6 +20,7 @@ class LSTM(nn.Module):
                     bidir:bool, 
                     dropout:float=0.0,
                     input_dropout:float=0.0,
+                    output_dropout:float=0.0,
                     #reproject:str = None, #linear reprojection of input to the hidden size dim
                     w_init:str="xavier_uniform",
                     sorted:bool = True,
@@ -36,7 +37,11 @@ class LSTM(nn.Module):
                                 dropout = dropout
                             )
         self.input_dropout = nn.Dropout(input_dropout)
+        self.output_dropout = nn.Dropout(output_dropout)
+
         self.__initialize_weights(w_init)
+        self.bidir = bidir
+        self.hidden_size = hidden_size
         self.output_size = hidden_size * (2 if bidir else 1)
         self.sorted = sorted
     
@@ -60,41 +65,45 @@ class LSTM(nn.Module):
 
 
     def forward(self, input:Union[Tensor, Sequence[Tensor]], lengths:Tensor, padding_value=0.0):
-
-
-        #if input in a sequence we concatentate the tensors
+        
+        # if input in a sequence we concatentate the tensors
+        # if the second input element is a tuple its assumed its the states (h0,c0)
+        pass_states = False
         if not isinstance(input, Tensor):
-            input = torch.cat(input, dim = -1)
+                
+            #to take care of given states
+            if isinstance(input[1], tuple):
+                input, (h_0, c_0) = input
+
+                # If states are bidirectional and the LSTM is not. The hidden dim of the states needs to be
+                # 1/2 of the LSTMs hidden dim. The states will be concatenated in terms of direction
+                # and passed as states to the LSTM
+                # from (NUM_LAYER*DIRECTIONS, BATCH_SIZE, HIDDEN_SIZE) -> (1, BATCH_SIZE, HIDDEN_SIZE*NR_DIRECTIONS)
+                if h_0.shape[-1] == (self.hidden_size/2) and not self.bidir:
+
+                    # The cell state and last hidden state is used to start the decoder (first states and hidden of the decoder)
+                    # -2 will pick the last layer forward and -1 will pick the last layer backwards
+                    h_0 = torch.cat((h_0[-2], h_0[-1]), dim=1).unsqueeze(0)
+                    c_0 = torch.cat((c_0[-2], c_0[-1]), dim=1).unsqueeze(0)
+           
+                pass_states = True
+        
+            else:
+                input = torch.cat(input, dim = -1)
+
 
         if not self.sorted:
             sorted, sorted_idxs = torch.sort(lengths, descending=True)
             _ , original_idxs = torch.sort(sorted_idxs, descending=False)
             input = input[sorted_idxs]
 
+        # dropout on input
         input = self.input_dropout(input)
         
 
-        #to take care of given states
-        pass_states = False
-        if isinstance(input, tuple):
-            input, h_0, c_0 = input
-
-            # if states given are bidirectional
-            if h_0.shape[-1] == (self.hidden_size/2):
-                # We get the last hidden cell states and timesteps and concatenate them for each directions
-                # from (NUM_LAYER*DIRECTIONS, BATCH_SIZE, HIDDEN_SIZE) -> (BATCH_SIZE, HIDDEN_SIZE*NR_DIRECTIONS)
-                # The cell state and last hidden state is used to start the decoder (first states and hidden of the decoder)
-                # -2 will pick the last layer forward and -1 will pick the last layer backwards
-                h_0 = torch.cat((h_0[-2], h_0[-1]), dim=1)
-                c_0 = torch.cat((c_0[-2], c_0[-1]), dim=1)
-            else:
-                raise NotImplementedError()
-
-            pass_states = True
-
-
         packed_embs = nn.utils.rnn.pack_padded_sequence(input, lengths, batch_first=True)
 
+        #if we are given states this are also passed
         if pass_states:
             lstm_packed, states = self.lstm(packed_embs, (h_0, c_0))
         else:
@@ -104,5 +113,8 @@ class LSTM(nn.Module):
 
         if not self.sorted:
             output = output[original_idxs]
+        
+        #dropout on output
+        output = self.output_dropout(output)
 
         return output, states

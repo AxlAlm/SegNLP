@@ -8,6 +8,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.modules import module
 
 #segnlp
 from .base import PTLBase
@@ -25,25 +26,26 @@ class LSTM_CRF(PTLBase):
 
         self.task = self.tasks[0]
 
-        self.finetuner = Reprojecter(
+        self.finetuner = self.add_encoder(
                                     layer = "LinearRP", 
                                     hyperparams = self.hps.get("LinearRP", {}),
-                                    input_size = self.feature_dims["word_embs"]
+                                    input_size = self.feature_dims["word_embs"],
+                                    module = "token_module"
                                 )
 
-        self.encoder = Encoder(    
+        self.encoder = self.add_encoder(    
                                 layer = "LSTM", 
                                 hyperparams = self.hps.get("LSTM", {}),
-                                input_size = self.finetuner.output_size + self.char_embedder.output_size
+                                input_size = self.finetuner.output_size + self.char_embedder.output_size,
+                                module = "token_module"
                                 )
 
-        self.segmenter = Segmenter(
+        self.segmenter = self.add_segmenter(
                                 layer = "CRF",
                                 hyperparams = self.hps.get("CRF", {}),
                                 input_size = self.encoder.output_size,
                                 output_size = self.task_dims[self.task],
                                 task = self.task,
-                                #labels = self.task_labels[self.task],
                                 )
 
 
@@ -70,7 +72,6 @@ class LSTM_CRF(PTLBase):
                                     input = output.stuff["lstm_out"],
                                     mask = batch["token"]["mask"],
                                     )
-        return logits, preds
 
 
 

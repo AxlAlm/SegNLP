@@ -37,7 +37,7 @@ class Output:
                 subtasks:list,
                 prediction_level:str,
                 inference:bool,
-                sampling_k:int=0,
+                seg_gts_k:int=None,
                 ):
 
         self.inference = inference
@@ -47,10 +47,13 @@ class Output:
         self.prediction_level = prediction_level
         self.subtasks = subtasks
 
-        self.schedule = ScheduleSampling(
-                                        schedule="inverse_sig",
-                                        k=sampling_k
-                                        )
+        # if we want to use ground truth in segmentation during training we can use
+        # the following variable value to based on epoch use ground truth segmentation
+        if seg_gts_k is not None:
+            self.seg_gts = ScheduleSampling(
+                                            schedule="inverse_sig",
+                                            k=seg_gts_k
+                                            )
 
         seg_task = [task for task in self.tasks if "seg" in task]
         if seg_task:
@@ -93,7 +96,7 @@ class Output:
             for i,label in enumerate(labels):
 
                 sublabels = label.split("_")
-                decouplers[task][i] = [label_encoders[st].encode(sl) for st, sl in zip(subtasks, sublabels)]
+                decouplers[task][i] = [label_encoders[st].encode(sl) if st != "link" else int(sl) for st, sl in zip(subtasks, sublabels)]
 
         return decouplers
     
@@ -101,7 +104,7 @@ class Output:
     def __decode_segs(self):
     
         # we get the sample start indexes from sample lengths. We need this to tell de decoder where samples start
-        sample_sizes = self.df.groupby(level=0).size().to_numpy()
+        sample_sizes = self.df.groupby(level=0, sort=False).size().to_numpy()
         sample_end_idxs = np.cumsum(sample_sizes)
         sample_start_idxs = np.concatenate((np.zeros(1), sample_end_idxs))[:-1]
 
@@ -117,14 +120,13 @@ class Output:
         Any link that is outside of the actuall text, e.g. when predicted link > max_idx, is set to predicted_link== max_idx
         """
 
-        max_segs = self.df.groupby(level=0)["T-seg_id" if true_segs else "seg_id"].nunique().to_numpy()
-        self.df["max_seg"] = np.repeat(max_segs, self.df.groupby(level=0).size().to_numpy())
+        max_segs = self.df.groupby(level=0, sort=False)["T-seg_id" if true_segs else "seg_id"].nunique().to_numpy()
+        self.df["max_seg"] = np.repeat(max_segs, self.df.groupby(level=0, sort=False).size().to_numpy())
 
         above = self.df["link"] > self.df["max_seg"]
         below = self.df["link"] < 0
 
-        self.df.loc[above,"link"] = self.df.loc[above,"max_seg"]
-        self.df.loc[below,"link"] = self.df.loc[below,"max_seg"]
+        self.df.loc[above | below,"link"] = self.df.loc[above | below, "max_seg"]
 
 
     def __ensure_homogeneous(self, subtask):
@@ -133,16 +135,33 @@ class Output:
         ensures that the labels inside a segments are the same. For each segment we take the majority label 
         and use it for the whole span.
         """
-        df = self.df.loc[:,["seg_id", subtask]].value_counts().to_frame()
+        df = self.df.loc[:,["seg_id", subtask]].value_counts(sort=False).to_frame()
         df.reset_index(inplace=True)
         df.rename(columns={0:"counts"}, inplace=True)
         df.drop_duplicates(subset=['seg_id'], inplace=True)
 
-        seg_lengths = self.df.groupby("seg_id").size()
+        seg_lengths = self.df.groupby("seg_id", sort=False).size()
         most_common = np.repeat(df[subtask].to_numpy(), seg_lengths)
 
         self.df.loc[~self.df["seg_id"].isna(), subtask] = most_common
 
+
+    def __encode_links(self, level):
+
+        key = "T-seg_id" if level == "seg" else "seg_id"
+
+        #get the nr of segments per sample
+        seg_per_sample = self.df.groupby(level=0, sort=False)[key].nunique().to_numpy()
+
+        # get the indexes of each segments per sample
+        seg_sample_idxes = np.hstack([np.arange(a) for a in seg_per_sample])
+        
+        #repeat the indexes of each segment id per sample for number of tokens in each segment
+        index_per_token = np.repeat(seg_sample_idxes, self.df.groupby(key, sort=False).size().to_numpy())
+        
+        # make the link labels encoded to be pointing instead of being difference in nr segments
+        self.df.loc[~self.df[key].isna(), "link"] += index_per_token
+    
      
     def step(self, batch):
 
@@ -175,7 +194,8 @@ class Output:
 
         # if we want to use schedule sampling we select the ground truths instead of 
         # the predictions
-        self.__use_gt = self.schedule.next(self.batch.current_epoch)
+        if hasattr(self, "seg_gts"):
+            self.__use_seg_gt = self.seg_gts.next(self.batch.current_epoch)
 
         return self
 
@@ -190,7 +210,7 @@ class Output:
 
     def add_preds(self, preds:Union[np.ndarray, Tensor], level:str,  task:str):
         
-        
+
         if level == "token":
             mask = ensure_numpy(self.batch["token"]["mask"]).astype(bool)
             self.df[task] = ensure_numpy(preds)[mask]
@@ -201,10 +221,15 @@ class Output:
             
             # we spread the predictions on segments over all tokens in the segments
             cond = ~self.df["T-seg_id"].isna()
-            self.df[task, cond] = np.repeat(seg_preds, ensure_numpy(self.batch["seg"]["lengths"]))
+
+            # repeat the segment prediction for all their tokens 
+            token_preds = np.repeat(seg_preds, ensure_numpy(self.batch["seg"]["lengths_tok"])[mask])
+
+            self.df.loc[cond, task] = token_preds
+
 
         elif level == "p_seg":
-            key = "T-seg_id" if self.__use_gt else "seg_id"
+            key = "T-seg_id" if self.__use_seg_gt else "seg_id"
             
             seg_tok_lengths = self.df.groupby(key, sort=False).size()
             token_preds = np.repeat(preds, seg_tok_lengths)
@@ -214,11 +239,22 @@ class Output:
             # it will match all the token preds and be in the correct order.
             self.df.loc[~self.df[key].isna(), task] = token_preds
 
+            # as we use ground truth segments we will leave the task predictions to NaN
+            # for any token outside a ground truth segment. To not make NaN a label taken into accounts
+            # when calculating metrics we set the  labels to 0 if its link label, or if link
+            # to the index of the predicted segment it belongs to
+            # if task == link:
+            #     self.df[task] = self.df[task].replace('NaN', 0)
+            # else:
+            # if task == "link_label":
+            #     self.df[task] = self.df[task].replace('NaN', 0)
+
 
         subtasks = task.split("+")  
 
         # if our task is complexed, e.g. "seg+label". We decouple the label ids for "seg+label"
         # so we get the labels for Seg and for Label
+        link_needs_encoding = False
         if len(subtasks) > 1:
 
             subtask_preds = self.df[task].apply(lambda x: np.array(self.__decouplers[task][x]))
@@ -226,18 +262,42 @@ class Output:
 
             for i, subtask in enumerate(subtasks):
                 self.df[subtask] = subtask_preds[:,i]
+
+                # for links we add the decoded label, i.e. value indicates number of segments plus or minus the head segment is positioned.
+                # so we need to encode these links so they refer to the specific segment index in a sample. Do do this we need to 
+                # first let the segmentation create segment ids. See below where this is done
+                if "link" == subtask:
+                    link_needs_encoding = True
+
+   
+
+        #make sure we do segmentation first
+        if "seg" in subtasks:
+            subtasks.remove("seg")
+            self.__decode_segs()
         
+    
+        # if link predictions are from a complexed label we need to 
+        # encode them.
+        if link_needs_encoding:
+            self.__encode_links(level)
+
 
         for subtask in subtasks:
 
-            if subtask == "seg":
-                self.__decode_segs()
-        
             if level == "token":
                 self.__ensure_homogeneous(subtask)
-
+            
+            
             if subtask == "link":
+
+                # if level is segment and we are not using a ground truth segment sampler  we can correct links
+                # based on the ground truth segments else we will correct based on the predicted segments
+                true_segs = level == "seg" and not hasattr(self, "seg_gts")
                 self.__correct_links(true_segs = level == "seg")    
+
+        # # assert not self.df[task].isnull().values.any(), f"Having NaN values in column {task} is not allowed"
+
 
     @_cache
     def get_pair_data(self):
@@ -292,7 +352,7 @@ class Output:
 
 
         key = "seg_id"
-        if self.__use_gt:
+        if self.__use_seg_gt:
             key = "T-seg_id"
         
         first_df = self.df.groupby(key, sort=False).first()
@@ -344,7 +404,7 @@ class Output:
         pair_df.loc[pair_df["p1"] > pair_df["p2"], "direction"] = 2 # <-
 
         # finding the matches between predicted segments and true segments
-        if not self.__use_gt:
+        if not self.__use_seg_gt:
 
             # we also have information about whether the seg_id is a true segments 
             # and if so, which TRUE segmentent id it overlaps with, and how much
@@ -427,13 +487,13 @@ class Output:
     def get_seg_data(self):
 
 
-        if self.__use_gt:
+        if self.__use_seg_gt:
             seg_data = {
                             "span_idxs": self.batch["seg"]["span_idxs"],
                             "lengths": self.batch["seg"]["lengths"],
                             }   
         else:
-            seg_lengths = self.df[~self.df["seg_id"].isna()].groupby(level=0)["seg_id"].nunique().to_numpy()
+            seg_lengths = self.df[~self.df["seg_id"].isna()].groupby(level=0, sort=False)["seg_id"].nunique().to_numpy()
 
             start = self.df.groupby("seg_id", sort=False).first()["token_id"]
             end = self.df.groupby("seg_id",  sort=False).last()["token_id"]
@@ -461,11 +521,11 @@ class Output:
 
         # if we want to use schedule sampling we select the ground truths instead of 
         # the predictions
-        if self.__use_gt:
+        if self.__use_seg_gt:
             task_key = f"T-{task}"
 
         # we take the lengths in tokens for each sample
-        tok_lengths = self.df.groupby(level=0).size().to_numpy()
+        tok_lengths = self.df.groupby(level=0, sort=False).size().to_numpy()
 
         # create the end indexes. Remove the last value as its the end and will create a faulty split
         end_idxs = np.cumsum(tok_lengths)[:-1]

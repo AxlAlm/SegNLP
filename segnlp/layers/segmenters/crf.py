@@ -50,7 +50,7 @@ class CRF(nn.Module):
         preds = [p[0] for p in preds]
     
         preds = torch.tensor(zero_pad(preds))
-        return logits, {"preds": preds}
+        return logits, preds
     
 
     def loss(self, logits:Tensor, targets:Tensor, mask:Tensor):
