@@ -7,7 +7,6 @@ from segnlp.datasets.am import PE
 from segnlp.models import JointPN
 from segnlp.features import GloveEmbeddings
 from segnlp.features import SegPos
-from segnlp.features import BOW
 
 exp = Pipeline(
                 id="jp_pe",
@@ -18,10 +17,9 @@ exp = Pipeline(
                             ),
                 model = JointPN,
                 metric = "default_segment_metric",
-                features =[
+                pretrained_features =[
                             GloveEmbeddings(),
                             SegPos(),
-                            #BOW()
                             ],
                 encodings = [
                                 "words"

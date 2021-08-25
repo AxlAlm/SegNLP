@@ -7,7 +7,7 @@ from torch import Tensor
 class Agg(nn.Module):
 
 
-    def __init__(self, input_size:int, mode:str="mean", fine_tune=False, dropout:float=0.0):
+    def __init__(self, input_size:int, mode:str="mean", dropout:float=0.0):
         super().__init__()
 
         supported_modes = set(['min', 'max','mean', 'mix'])
@@ -23,11 +23,7 @@ class Agg(nn.Module):
             self.output_size = input_size
 
         self.dropout = nn.Dropout(dropout)
-        
-        self.fine_tune = fine_tune
-        if fine_tune:
-            self.ft = nn.Linear(input_size, input_size)
-        
+
 
     def forward(self, input:Tensor, lengths:Tensor, span_idxs:Tensor):
 
@@ -64,9 +60,6 @@ class Agg(nn.Module):
                     _mean = torch.mean(input[i][ii:jj], dim=0)
 
                     agg_m[i][j] = torch.cat((_min, _max, _mean), dim=0)
-
-        if self.fine_tune:
-            agg_m = self.ft(agg_m)
 
         # if flat:
         #     mask = create_mask(lengths).view(-1)

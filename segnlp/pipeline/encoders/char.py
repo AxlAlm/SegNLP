@@ -2,7 +2,7 @@
 
 import string
 from nltk.corpus import words
-from segnlp.preprocessing.encoders.base import Encoder
+from .base import Encoder
 from typing import List, Union, Dict
 import numpy as np
 

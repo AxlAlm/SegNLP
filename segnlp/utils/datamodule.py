@@ -36,20 +36,28 @@ class DataModule(ptl.LightningDataModule):
 
     """
 
-    def __init__(self, name:str, dir_path:str, prediction_level:str):
-        self._name = name
-        self._fp = os.path.join(dir_path, f"{name}_data.hdf5")
+    def __init__(self, 
+                path_to_preprocessed_dataset:str, 
+                prediction_level:str,
+                batch_size: str,
+                split_id : int = 0
+                ):
+
+        self._fp = os.path.join(path_to_preprocessed_dataset, "data.hdf5")
 
         with h5py.File(self._fp, "r") as f:
             self._size = f["ids"].shape[0]
 
         self.prediction_level = prediction_level
 
-        self._stats = pd.read_csv(os.path.join(dir_path, f"{name}_stats.csv"))
-        self._stats.columns = ["split_id", "split", "task", "label", "count"]
+        #self._stats = pd.read_csv(os.path.join(dir_path, f"{name}_stats.csv"))
+       # self._stats.columns = ["split_id", "split", "task", "label", "count"]
 
-        with open(os.path.join(dir_path, f"{name}_splits.pkl"), "rb") as f:
+        with open(os.path.join(path_to_preprocessed_dataset, f"splits.pkl"), "rb") as f:
             self._splits = pickle.load(f)
+        
+        self.batch_size = batch_size
+        self.split_id = split_id
         
 
     def __getitem__(self, key:Union[np.ndarray, list]) -> Input:
@@ -178,8 +186,14 @@ class DataModule(ptl.LightningDataModule):
                             num_workers = segnlp.settings["dl_n_workers"]
                             )
 
+    
+    def change_split_id(self, n):
+        self.split_id = n
+
+
     def train_dataloader(self):
         return self.__get_dataloader("train")
+
 
     def val_dataloader(self):
         return self.__get_dataloader("val")

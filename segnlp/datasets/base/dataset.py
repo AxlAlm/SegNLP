@@ -64,7 +64,7 @@ class DataSet:
 
 
         data = self._process_data(self._download_data())
-        self.split_idx, data  = self._shuffle_split_data(data)
+        self._splits = self._premade_splits(data)
         self.data = pd.DataFrame(data)
         self._stats = self.__calc_label_stats()
         
@@ -142,8 +142,8 @@ class DataSet:
         raise NotImplementedError
 
 
-    def _shuffle_split_data(self):
-        raise NotImplementedError
+    def _premade_splits(self):
+        return None
 
 
     def __get_subtasks(self, tasks):

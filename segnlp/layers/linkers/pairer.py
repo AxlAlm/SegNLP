@@ -89,20 +89,17 @@ class Pairer(torch.nn.Module):
 
     def __init__(self, 
                 input_size:int, 
-                max_segments:int, 
                 mode:list=["cat", "multi"], 
-                rel_pos:bool=True,
+                n_rel_pos:int=None,
                 ):
         super().__init__()
 
         self.mode = mode
-        self.rel_pos = rel_pos
-        self.max_segments = max_segments
+        self.n_rel_pos = n_rel_pos
 
         self._input_size = 0
-
-        if rel_pos:
-            self._input_size += (max_segments*2)-1
+        if n_rel_pos:
+            self._input_size += (self.n_rel_pos*2)-1
 
         if "cat" in mode:
             self._input_size += input_size*2
@@ -147,8 +144,8 @@ class Pairer(torch.nn.Module):
         
 
         #adding one_hot encoding for the relative position
-        if self.rel_pos:
-            one_hot_dim = (self.max_segments*2)-1
+        if self.n_rel_pos:
+            one_hot_dim = (self.n_rel_pos*2)-1
             one_hots = torch.tensor(
                                         [
                                         np.diag(np.ones(one_hot_dim),i)[:dim1,:one_hot_dim] 

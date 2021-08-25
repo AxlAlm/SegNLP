@@ -2,50 +2,36 @@
 
 import sys
 sys.path.insert(1, '../../')
-f
 
 
 from segnlp import Pipeline
 from segnlp.datasets.am import PE
 from segnlp.features import ELMoEmbeddings
-from segnlp.features import UnitPos, BOW
+from segnlp.features import SegPos
+
 
 import flair, torch
 flair.device = torch.device('cpu') 
 
-import numpy as np
 exp = Pipeline(
-                project="LSTM_DIST",
+                id="lstm_dist_pe",
                 dataset=PE( 
                             tasks=["label", "link", "link_label"],
-                            prediction_level="unit",
-                            sample_level="document",
+                            prediction_level="seg",
+                            sample_level="paragraph",
                             ),
                 features =[
                             ELMoEmbeddings(),
-                            UnitPos(),
-                            BOW()
+                            SegPos(),
                             ],
+                encodings=[
+                            "words"
+                        ],
                 model = "LSTM_DIST",
-                other_levels = ["am"]
+                other_levels = ["am"],
+                metric = "default_segment_metric",
+                #override = True
             )
-            
-
-lstm_dist_hps = {
-    "optimizer": "adam",
-    "lr": 0.001,
-    "hidden_dim": 256,
-    "num_layers": 1,
-    "bidir": True,
-    "batch_size": 16,
-    "max_epochs": 500,
-    "loss_weight": 0.25,
-    "input_dropout": 0.1,
-    "lstm_dropout" : 0.1,
-    "output_dropout": 0.5,
-    "patience": 10
-
-}
 
 hps = {
         "general":{
@@ -64,14 +50,10 @@ hps = {
                     "num_layers":1,
                     "bidir":True,
                     },
-  
         "Pairer": {
-                
+                    "mode": ["cat", "multi"],
+                    "n_rel_pos": 25,
                     },
-        "DirLinkLabeler": {
-                            "hidden_size":100,
-                            "dropout": 0.5
-                        }
         }
 
 
@@ -79,14 +61,13 @@ best_hp = exp.train(
                         hyperparamaters = hps,
                         n_random_seeds=6,
                         ptl_trn_args=dict(
-                                           gpus=[1]
+                                           #gpus=[1]
                                         ),
-                        #monitor_metric="val-f1"
+                        monitor_metric="val-f1",
                         )
 
-exp1_scores, exp1_outputs = exp.test()
+#exp1_scores, exp1_outputs = exp.test()
 
 #seg_pred = pd.read_csv("/tmp/pred_segs.csv")
-
 # print(exp1_scores)
 #exp2_scores, exp2_outputs = exp.test(seg_preds=seg_pred)

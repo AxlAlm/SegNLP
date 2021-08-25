@@ -8,18 +8,12 @@ from torch import Tensor
 class MinusSpan(nn.Module):
 
 
-    def __init__(self, input_size:int, dropout:float=0.0, fine_tune:bool=False):
+    def __init__(self, input_size:int, dropout:float=0.0):
         super().__init__()
 
-        self.hidden_dim = hidden_dim
-        self.input_size = input_size
-        self.output_size = hidden_dim*4
-
+        self.input_size = int(input_size / 2)
+        self.output_size = self.input_size * 4
         self.dropout = nn.Dropout(dropout)
-
-        self.fine_tune = fine_tune
-        if fine_tune:
-            self.ft = nn.Linear(self.output_size, self.output_size)
 
 
     def forward(self, input:Tensor, span_idxs:Tensor):
@@ -66,13 +60,14 @@ class MinusSpan(nn.Module):
 
         """
         batch_size, nr_seq, _ = input.shape
+        device = input.device
 
         input = self.dropout(input)
 
         forward = input[: , :, :self.input_size]
         backward = input[: , :, self.input_size:]
 
-        minus_reps = torch.zeros((batch_size, nr_seq, self.output_size), device=self.device)
+        minus_reps = torch.zeros((batch_size, nr_seq, self.output_size), device=device)
         
         for k in range(batch_size):
             for n,(i,j) in enumerate(span_idxs[k]):
@@ -81,12 +76,12 @@ class MinusSpan(nn.Module):
                     continue
 
                 if i-1 == -1:
-                    f_pre = torch.zeros(self.hidden_dim, device=self.device)
+                    f_pre = torch.zeros(self.input_size, device=device)
                 else:
                     f_pre = forward[k][i-1]
 
                 if j+1 >= backward.shape[1]:
-                    b_post = torch.zeros(self.hidden_dim,  device=self.device)
+                    b_post = torch.zeros(self.input_size,  device=device)
                 else:
                     b_post = backward[k][j+1]
 
@@ -94,14 +89,11 @@ class MinusSpan(nn.Module):
                 b_start = backward[k][i]
 
                 minus_reps[k][n] = torch.cat((
-                                                    f_end - f_pre,
-                                                    b_start - b_post,
-                                                    f_pre, 
-                                                    b_post
-                                                    ))
-
-        if self.fine_tune:
-            minus_reps = self.ft(minus_reps)
+                                                f_end - f_pre,
+                                                b_start - b_post,
+                                                f_pre, 
+                                                b_post
+                                            ))
 
         return minus_reps
 

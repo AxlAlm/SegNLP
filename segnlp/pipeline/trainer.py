@@ -13,9 +13,6 @@ from tqdm import tqdm
 #pytorch
 import torch
 
-#pytorch lightnig
-from pytorch_lightning import Trainer
-
 #segnlp
 from segnlp import get_logger
 import segnlp.utils as utils
@@ -53,7 +50,7 @@ class ML:
                         tasks = self.config["tasks"],
                         all_tasks = self.config["all_tasks"],
                         subtasks = self.config["subtasks"],
-                        label_encoders = self._pp_label_encoders,
+                        label_encoders = self.label_encoders,
                         #task_labels = self.config["task_labels"],
                         prediction_level = self.config["prediction_level"],
                         task_dims = {t:len(l) for t,l in self.config["task_labels"].items() if t in self.config["tasks"]},
@@ -86,26 +83,13 @@ class ML:
             json.dump(config, f, indent=4)
 
 
-    # def eval(self):
-
-    #     # if self._many_models:
-    #     #     for model in self._trained_model:
-    #     #         model.eval()
-    #     # else:
-    #     self._model.eval()
-    #     self._model.freeze()
-    #     self._model.inference = True
-    #     self.preprocessor.deactivate_labeling()
-    #     self.__eval_set = True
-
-
     def _fit(    self,
                 hyperparamaters:dict,
                 ptl_trn_args:dict={},
                 save_choice:str = "best",  
                 random_seed:int = 42,
                 monitor_metric:str = "val_f1",
-                model_id:str=None
+                model_id:str=None,
                 ):
 
 
@@ -115,17 +99,15 @@ class ML:
         utils.set_random_seed(random_seed)
 
         hyperparamaters["general"]["random_seed"] = random_seed
-        self.data_module.batch_size = hyperparamaters["general"]["batch_size"]
         hyperparamaters["general"]["monitor_metric"] = monitor_metric
 
-        model = deepcopy(self.model)
-    
-        if self.exp_logger:
-            ptl_trn_args["logger"] = self.exp_logger
-        else:
-            ptl_trn_args["logger"] = None
+        #loading our preprocessed dataset
+        data_module = utils.DataModule(
+                                path_to_preprocessed_dataset = self._path_to_preprocessed_data,
+                                prediction_level = self.prediction_level,
+                                batch_size = hyperparamaters["general"]["batch_size"],
+                                )
         
-        mid_folder = "top" if not self._hp_tuning else "tmp"
         exp_model_path = os.path.join(self._path_to_models, "tmp", model_id, str(random_seed))
         
         if os.path.exists(exp_model_path):
@@ -145,15 +127,6 @@ class ML:
                                 )
 
 
-        # if self.exp_logger:
-        #     self.exp_logger.set_id(model_id)
-        #     self.exp_logger.log_hyperparams(hyperparamaters)
-
-        #     if isinstance(exp_logger, CometLogger):
-        #         self.exp_logger.experiment.add_tags([self.project, self.id])
-        #         self.exp_logger.experiment.log_others(exp_config)
-
-
         ptl_trn_args = get_ptl_trainer_args( 
                                         ptl_trn_args=ptl_trn_args,
                                         hyperparamaters=hyperparamaters, 
@@ -166,7 +139,7 @@ class ML:
         model_fp, model_score = self._eval(
                                             model_args = model_args,
                                             ptl_trn_args = ptl_trn_args,
-                                            data_module = self.data_module,
+                                            data_module = data_module,
                                             save_choice=save_choice,
                                             )
 
@@ -188,14 +161,12 @@ class ML:
                     save_choice:str="best",
                     monitor_metric:str = "val_f1",
                     ss_test:str="aso",
-                    debug:bool=False,
                     override:bool=False
                     ):
 
         # if ptl_trn_args.get("gradient_clip_val", 0.0) != 0.0:
         #     hyperparamaters["gradient_clip_val"] = ptl_trn_args["gradient_clip_val"]
         
-        self._hp_tuning = True
         keys = list(hyperparamaters.keys())
         set_hyperparamaters = self.__create_hyperparam_sets(hyperparamaters)
 
@@ -321,111 +292,3 @@ class ML:
 
 
         return best_model_info
-
-
-    def test(   self, 
-                model_folder:str=None,
-                ptl_trn_args:dict={},
-                monitor_metric:str = "val_f1",
-                seg_preds:str=None,
-                ):
-
-        self.data_module.split_id = 0
-
-
-        with open(self._path_to_model_info, "r") as f:
-            model_info = json.load(f)
-
-        models_to_test =  model_info["outputs"]
-        best_seed = model_info["best_model"]["random_seed"]
-        
-
-        best_model_scores = None
-        best_model_outputs = None
-        seed_scores = []
-        seeds = []
-
-        for seed_model in models_to_test:
-
-            seeds.append(seed_model["random_seed"])
-
-            with open(seed_model["config_path"], "r") as f:
-                model_config = json.load(f)
-
-            hyperparamaters = model_config["args"]["hyperparamaters"]
-            self.data_module.batch_size = hyperparamaters["general"]["batch_size"]
-
-            ptl_trn_args = get_ptl_trainer_args( 
-                                        ptl_trn_args=ptl_trn_args,
-                                        hyperparamaters=hyperparamaters, 
-                                        exp_model_path=None,
-                                        save_choice=None, 
-                                        )
-
-            trainer = Trainer(**ptl_trn_args)
-
-            model = deepcopy(self.model)
-            print(model_config["args"])
-            model_config["args"]["label_encoders"] = self._pp_encoders
-            model = model.load_from_checkpoint(seed_model["path"], **model_config["args"])
-            scores = trainer.test(
-                                    model=model, 
-                                    test_dataloaders=self.data_module.test_dataloader(),
-                                    verbose=0
-                                    )
-
-            test_output = pd.DataFrame(model.outputs["test"])
-
-
-            if seg_preds is not None:
-                test_output["seg"] = "O"
-
-                #first we get all the token rows
-                seg_preds = seg_preds[seg_preds["token_id"].isin(test_output["token_id"])]
-
-                # then we sort the seg_preds
-                seg_preds.index = seg_preds["token_id"]
-                seg_preds = seg_preds.reindex(test_output["token_id"])
-
-                assert np.array_equal(seg_preds.index.to_numpy(), test_output["token_id"].to_numpy())
-                
-                #print(seg_preds["seg"])
-                test_output["seg"] = seg_preds["seg"].to_numpy()
-                seg_mask = test_output["seg"] == "O"
-
-                task_scores = []
-                for task in self.config["subtasks"]:
-                    default_none =  "None" if task != "link" else 0
-                    test_output.loc[seg_mask, task] = default_none
-                    task_scores.append(base_metric(
-                                                    targets=test_output[f"T-{task}"].to_numpy(), 
-                                                    preds=test_output[task].to_numpy(), 
-                                                    task=task, 
-                                                    labels=self.config["task_labels"][task]
-                                                    ))
-
-                scores = [pd.DataFrame(task_scores).mean().to_dict()]
-              
-
-
-            if seed_model["random_seed"] == best_seed:
-                best_model_scores = pd.DataFrame(scores)
-                best_model_outputs = pd.DataFrame(test_output)
-
-            seed_scores.append(scores[0])
-    
-        df = pd.DataFrame(seed_scores, index=seeds)
-        mean = df.mean(axis=0)
-        std = df.std(axis=0)
-
-        final_df = df.T
-        final_df["mean"] = mean
-        final_df["std"] = std
-        final_df["best"] = best_model_scores.T
-        
-        with open(self._path_to_test_score, "w") as f:
-            json.dump(seed_scores, f, indent=4)
-        
-        print(final_df)
-        return final_df, best_model_outputs
-

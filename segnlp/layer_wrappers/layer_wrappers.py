@@ -201,13 +201,15 @@ class Linker(CLFlayer):
                 layer:Union[nn.Module, str], 
                 hyperparams:dict, 
                 input_size:int,
-                output_size:int,
+                output_size:int=None,
                 ):
         self.task = "link"
         self.level = "seg"
 
+
         if isinstance(layer, str):
             layer = getattr(linkers, layer)
+
 
         super().__init__(              
                         layer=layer, 

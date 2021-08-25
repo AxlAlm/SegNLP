@@ -374,7 +374,7 @@ class PE(DataSet):
         return span2label, global_seg_id
 
 
-    def _shuffle_split_data(self, data:list) -> Dict[int, Dict[str, np.ndarray]]:
+    def _premade_splits(self, data:list) -> Dict[int, Dict[str, np.ndarray]]:
         """creates a dict of split ids from the premade splits
 
         Returns
@@ -407,15 +407,16 @@ class PE(DataSet):
        			else:
        				test.append(essay_id)
         
-        #shuffle or not?
-        random.shuffle(train)
-        random.shuffle(test)
+        return {"train":train, "test":test}
+        # #shuffle or not?
+        # random.shuffle(train)
+        # random.shuffle(test)
 
-        ids = train + test
-        split_idx = len(train)
-        shuffled_data = [data[i-1] for i in ids]
+        # ids = train + test
+        # split_idx = len(train)
+        # shuffled_data = [data[i-1] for i in ids]
 
-        return split_idx, shuffled_data
+        # return split_idx, shuffled_data
   
 
     def _process_data(self, path_to_data):

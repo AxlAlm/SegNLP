@@ -6,8 +6,8 @@ from segnlp import Pipeline
 from segnlp.datasets.am import PE
 from segnlp.features import GloveEmbeddings, FlairEmbeddings, BertEmbeddings
 
-# import flair, torch
-# flair.device = torch.device('cuda:0') 
+import flair, torch
+flair.device = torch.device('cpu') 
 
 exp = Pipeline(
                 id="lstm_crf_pe_seg",

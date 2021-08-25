@@ -20,10 +20,6 @@ class Encoder:
 
     """
 
-    def _init_encoder(self):
-        self.encoders = {}
-
-
     def _create_label_encoders(self):
         
         for task in self.all_tasks:
@@ -68,7 +64,7 @@ class Encoder:
         for enc_type in self.encodings:
 
             if enc_type == "words":
-                self.encoders["words"] = WordEncoder()
+                self.encoders["words"] = WordEncoder(vocab = self.vocab)
                 #self.feature2dim["vocab"] = len(self.encoders["words"])
 
             elif enc_type == "pos":

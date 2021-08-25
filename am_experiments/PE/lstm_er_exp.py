@@ -35,10 +35,10 @@ hps = {
                 "optimizer": "Adam",
                 "lr": 0.001,
                 "batch_size": 32,
-                "max_epochs":300,
+                "max_epochs":100,
                 "patience": 10,
                 "task_weight": 0.5,
-                "sampling_k": 25,
+                "sampling_k": 10,
                 },
 
        "LSTM": {   
@@ -75,6 +75,7 @@ best_hp = exp.train(
                         n_random_seeds=6,
                         ptl_trn_args=dict(
                                             #gpus=[1]
+                                        gradient_clip_val=10.0
                                         ),
                         monitor_metric="val_f1-50%"
                         )

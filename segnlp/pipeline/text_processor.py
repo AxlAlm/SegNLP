@@ -36,42 +36,8 @@ strange_characters = {
 #     nltk.download('averaged_perceptron_tagger')
 
 
-class TextProcesser:
+class TextProcessor:
 
-    """
-    """
-
-    def _init_preprocessor(self):
-        """
-        sets up the stacks where we will add the processed units of each level,
-        also set the datset level, e.g. on what level are the samples, and corrects
-        the hierarchy thereafter.
-
-        Parameters
-        ----------
-        level : str
-            the level of the unit to be processed, e.g. "sentence", "document", "token" etc
-            as this function is called at first processing sample its assumed to be the dataset level. 
-        """
-        self.level2parents = {
-                                "token": ["sentence", "paragraph", "document"],
-                                "sentence": ["paragraph", "document"],
-                                "paragraph": ["document"],
-                                "document": []
-                                }
-
-        self.parent2children = {
-                                "document": ["paragraph","sentence", "token"],
-                                "paragraph": ["sentence", "token"],
-                                "sentence": ["token"],
-                                "token": []
-                                }
-        self.__prune_hiers()
-
-        # storing the current row for each level, used to fetch ids etc for lower lever data
-        self._level_row_cache = {}
-        self.nlp = spacy.load("en_core_web_lg", disable=["ner"])
-    
 
     def __paragraph_tokenize(self, doc:str) -> List[str]:
         """ Tokenizes document into paragraphs by splitting by new line ("\n"). 
@@ -460,7 +426,6 @@ class TextProcesser:
             self.__build_tokens(sentence)
 
 
-
     def __build_paragraphs(self):
         """
         Tokenize text int paragraphs (assumed to be a documents) and creates 
@@ -509,7 +474,7 @@ class TextProcesser:
             self.__build_sentences()
 
 
-    def __prune_hiers(self):
+    def _prune_hiers(self):
         """
         Given the dataset level we set the hierarchy. For now the heirarchy dicts, found in the Datset Class,
         are containing the full supported hierarchiy; from document to tokens. But if our datset level is for
@@ -526,7 +491,11 @@ class TextProcesser:
         self.level2parents = new_level2parents
 
 
-    def _process_doc(self, doc:str, label:str=None):
+    def _load_nlp_model(self):
+        return spacy.load("en_core_web_lg", disable=["ner"])
+
+
+    def _process_text(self, doc:str, label:str=None):
         """given a text string processes it appropriately. Meaning, if the string is a document
         we will process the document into document, paragraphs, documents and tokens. Creating 
         dataframes for each of the levels. 

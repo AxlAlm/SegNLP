@@ -15,20 +15,19 @@ from pytorch_lightning import Trainer
 
 
 
-class Evaluation:
+class Evaluator:
 
 
     def __cross_validation(self,
                             model_args:dict,
                             ptl_trn_args:dict,
                             data_module:DataModule,
-                            save_choice:str
                             ):
 
         cv_scores = []
         model_fps = []
         for i in data_module.splits.keys():
-            data_module.split_id = i
+            data_module.change_split_id(i)
 
             trainer = Trainer(**ptl_trn_args)
             
@@ -42,9 +41,9 @@ class Evaluation:
             model = self.model(**model_args)
         
             trainer.fit(    
-                        model=model, 
-                        train_dataloaders=data_module.train_dataloader(), 
-                        val_dataloaders=data_module.val_dataloader()
+                        model = model, 
+                        train_dataloaders = data_module.train_dataloader(), 
+                        val_dataloaders = data_module.val_dataloader()
                         )
 
             model_fp = checkpoint_cb.best_model_path
@@ -63,19 +62,15 @@ class Evaluation:
                 model_args:dict,
                 ptl_trn_args:dict,
                 data_module:DataModule,
-                save_choice:str,
                 ):
-
-
-        data_module.split_id = 0
 
         trainer = Trainer(**ptl_trn_args)
         model = self.model(**model_args)
 
         trainer.fit(    
-                        model=model, 
-                        train_dataloaders=data_module.train_dataloader(), 
-                        val_dataloaders=data_module.val_dataloader()
+                        model = model, 
+                        train_dataloaders = data_module.train_dataloader(), 
+                        val_dataloaders = data_module.val_dataloader()
                         )
 
         for callback in trainer.callbacks:

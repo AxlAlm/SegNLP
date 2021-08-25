@@ -1,5 +1,5 @@
 
-from segnlp.preprocessing.encoders.base import Encoder
+from .base import Encoder
 from typing import List, Union, Dict
 
 
@@ -24,13 +24,13 @@ class DepEncoder(Encoder):
                         ## ADDED:
                         "npadvmod","subtok", "predet",
                         ]
-        universal_deps = [
-                            "", "acl", "advcl", "advmod", "amod", "appos", "aux", "case",
-                            "cc","ccomp","clf","compound", "conj", "cop", "csubj", "dep",	 
-                            "det", "discourse", "dislocated", "expl", "fixed", "flat", "goeswith",
-                            "iobj", "list", "mark", "nmod", "nsubj", "nummod", "obj", "obl", "orphan",
-                            "parataxis", "punct", "reparandum", "root", "vocative","xcomp"
-                        ]
+        # universal_deps = [
+        #                     "", "acl", "advcl", "advmod", "amod", "appos", "aux", "case",
+        #                     "cc","ccomp","clf","compound", "conj", "cop", "csubj", "dep",	 
+        #                     "det", "discourse", "dislocated", "expl", "fixed", "flat", "goeswith",
+        #                     "iobj", "list", "mark", "nmod", "nsubj", "nummod", "obj", "obl", "orphan",
+        #                     "parataxis", "punct", "reparandum", "root", "vocative","xcomp"
+        #                 ]
         self.id2label = dict(enumerate(dep_labels_eng))
         self.label2id = {l:i for i,l in self.id2label.items()}
         

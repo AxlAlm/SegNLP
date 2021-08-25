@@ -3,23 +3,28 @@
 #basics
 from typing import List, Union, Dict
 
+from numpy.lib.arraysetops import isin
+
 #segnlp
-from segnlp.resources.vocab import brown_vocab
-from segnlp.preprocessing.encoders.base import Encoder
+from .base import Encoder
+from segnlp.resources import vocabs
 
 
 class WordEncoder(Encoder):
 
 
-    def __init__(self, max_sample_length:int=None, vocab:list=None):
+    def __init__(self, vocab:Union[list, str]):
         self._name = "words"
-        self._max_sample_length = max_sample_length
         self.pad_value = 0
+        self.unk_word = "<UNK>"
 
-        if vocab == None:
-            self._vocab = brown_vocab()
+        if isinstance(vocab, str):
+            self._vocab = getattr(vocabs, vocab)()
 
-        self._vocab.append("<UNK>")
+        if "<UNK>" != self._vocab[0]:
+            assert 'First word in vocab (at index 0) needs to be "<UNK>"'
+
+
         self.id2word = dict(enumerate(self._vocab))
         self.word2id = {w:i for i,w in self.id2word.items()}
 
@@ -34,7 +39,7 @@ class WordEncoder(Encoder):
 
 
     def encode(self, word):
-        return self.word2id.get(word,self.word2id["<UNK>"])
+        return self.word2id.get(word, self.word2id[self.unk_word])
 
 
     def decode(self, i):

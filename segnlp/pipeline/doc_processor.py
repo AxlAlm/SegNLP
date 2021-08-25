@@ -3,105 +3,25 @@ from typing import Union, List, Dict, Tuple
 import numpy as np
 import os
 import pandas as pd
-import shutil
-
 
 
 #segnlp
 from segnlp import get_logger
-from .encoder import Encoder
-from .textprocessor import TextProcesser
-from .labeler import Labeler
-from .dataset_preprocessor import DataPreprocessor
 from segnlp.utils import Input
 
-#pytorch lightning
-import pytorch_lightning as ptl
 
-#pytroch
-import torch
+logger = get_logger("DocProcessor")
 
 
-logger = get_logger("DATASET")
+class DocProcessor:    
 
 
-class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):    
-
-
-    def __init__(self,
-                prediction_level:str,
-                sample_level:str,
-                input_level:str,
-                tasks:list,
-                subtasks:list,
-                task_labels:dict,
-                features:list = [],
-                encodings:list = [],
-                other_levels:list = [],
-                ):
-        super().__init__()
-        self.tasks = tasks
-        self.subtasks = subtasks
-        self.all_tasks = sorted(set(tasks + self.subtasks))
-        self.task_labels = task_labels
-
-        self.prediction_level = prediction_level
-        self.sample_level = sample_level
-        self.input_level = input_level
-
-        self.argumentative_markers = False 
-        if "am" in other_levels:
-            self.argumentative_markers = True
-            self.am_extraction = "pre"
-
-        self.encodings = encodings
-
-        self.feature2model = {fm.name:fm for fm in features}
-        self.features = list(self.feature2model.keys())
-        self._feature_groups = set([fm.group for fm in features])
-        self.feature2dim = {fm.name:fm.feature_dim for fm in features}
-        self.feature2dim.update({
-                                group:sum([fm.feature_dim for fm in features if fm.group == group]) 
-                                for group in self._feature_groups
-                                })
-        #self.__word_features = [fm.name for fm in self.feature2model.values() if fm.level == "word"]
-
-        self._need_deps = False
-        if "deprel" in encodings:
-            self._need_deps = True
-
-        self.__need_bio = "seg" in subtasks
-        self.__labeling = True
-
-        self._init_preprocessor()
-        self._init_encoder()
-        self._init_DataPreprocessor()
-        self._create_data_encoders()
-        self._create_label_encoders()
-
-        self._removed = 0
-    
-    @property
-    def config(self):
-        return {
-                "tasks": self.tasks,
-                "subtasks": self.subtasks,
-                "all_tasks": self.all_tasks,
-                "task_labels": self.task_labels,
-                "prediction_level": self.prediction_level,
-                "sample_level": self.sample_level,
-                "input_level": self.input_level,
-                "feature2dim": self.feature2dim,
-                "encodings":self.encodings
-                }
-
-
-    def __call__(self, doc:dict) -> Input: #docs:List[str],token_labels:List[List[dict]] = None, span_labels:List[dict] = None):
+    def _process_doc(self, doc:dict) -> Input: #docs:List[str],token_labels:List[List[dict]] = None, span_labels:List[dict] = None):
         input = Input()
 
         span_labels = doc.get("span_labels", None)
-        token_labels = doc.get("token_labels", None)
-        doc = doc["text"]
+        #token_labels = doc.get("token_labels", None)
+        doc = doc["text"]   
 
         doc_df = self._process_doc(doc)
         doc_id = int(doc_df[f"document_id"].to_numpy()[0])
@@ -116,11 +36,12 @@ class Preprocessor(Encoder, TextProcesser, Labeler, DataPreprocessor):
             
             #everything within this block should be sped up
             if self.__labeling:
+
                 if span_labels:
                     sample = self._label_spans(sample, span_labels)
 
-                if token_labels:
-                    sample = self._label_tokens(sample, token_labels)
+                # if token_labels:
+                #     sample = self._label_tokens(sample, token_labels)
                 
                 if self.__need_bio:
                     sample = self._label_bios(sample)

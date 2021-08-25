@@ -23,7 +23,6 @@ class LSTM(nn.Module):
                     output_dropout:float=0.0,
                     #reproject:str = None, #linear reprojection of input to the hidden size dim
                     w_init:str="xavier_uniform",
-                    sorted:bool = True,
                     ):
         super().__init__()
 
@@ -43,7 +42,6 @@ class LSTM(nn.Module):
         self.bidir = bidir
         self.hidden_size = hidden_size
         self.output_size = hidden_size * (2 if bidir else 1)
-        self.sorted = sorted
     
 
     def __initialize_weights(self, w_init:str):
@@ -91,11 +89,15 @@ class LSTM(nn.Module):
             else:
                 input = torch.cat(input, dim = -1)
 
+ 
+        sorted_lengths, sorted_idxs = torch.sort(lengths, descending=True)
+        sorted = torch.equal(sorted_lengths, lengths)
 
-        if not self.sorted:
-            sorted, sorted_idxs = torch.sort(lengths, descending=True)
+        if not sorted:
+            lengths = sorted_lengths
             _ , original_idxs = torch.sort(sorted_idxs, descending=False)
             input = input[sorted_idxs]
+
 
         # dropout on input
         input = self.input_dropout(input)
@@ -111,7 +113,7 @@ class LSTM(nn.Module):
 
         output, lengths = pad_packed_sequence(lstm_packed, batch_first=True, padding_value=padding_value)
 
-        if not self.sorted:
+        if not sorted:
             output = output[original_idxs]
         
         #dropout on output

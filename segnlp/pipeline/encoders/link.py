@@ -5,7 +5,7 @@ import numpy as np
 from collections import Counter
 
 #segnlp
-from segnlp.preprocessing.encoders.base import Encoder
+from .base import Encoder
 from segnlp.utils import ensure_numpy
 
 class LinkEncoder(Encoder):

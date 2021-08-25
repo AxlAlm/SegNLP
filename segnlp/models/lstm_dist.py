@@ -66,7 +66,7 @@ class LSTM_DIST(PTLBase):
         self.am_lstm = self.add_encoder(
                                     layer = "LSTM",
                                     hyperparams = self.hps.get("LSTM", {}),
-                                    input_size = self.agg.output_size,
+                                    input_size = self.minus_span.output_size,
                                     module = "segment_module"
                                     )
 
@@ -74,7 +74,7 @@ class LSTM_DIST(PTLBase):
         self.ac_lstm = self.add_encoder(
                                     layer = "LSTM",
                                     hyperparams = self.hps.get("LSTM", {}),
-                                    input_size = self.agg.output_size,
+                                    input_size = self.minus_span.output_size,
                                     module = "segment_module"
                                     )
 
@@ -104,12 +104,15 @@ class LSTM_DIST(PTLBase):
                                         layer = "LinearCLF",
                                         hyperparams = self.hps.get("LinearCLF", {}),
                                         input_size = self.am_ac_lstm.output_size,
+                                        output_size = self.task_dims["label"],
+
                                         )
 
         self.link_labeler = self.add_link_labeler(
                                             layer = "LinearCLF",
                                             hyperparams = self.hps.get("LinearCLF", {}),
                                             input_size = self.am_ac_lstm.output_size,
+                                            output_size = self.task_dims["label"],
                                             )
 
 
@@ -134,9 +137,10 @@ class LSTM_DIST(PTLBase):
                                         input = lstm_out, 
                                         span_idxs = batch["seg"]["span_idxs"]
                                         )
-
+        
+        # pass the minus representation for each type of segment to seperate LSTMs
         am_lstm_out, _ = self.am_lstm(am_minus_embs, batch["am"]["lengths"])
-        ac_lstm_out, _ = self.ac_lstm(ac_minus_embs, batch["unit"]["lengths"])
+        ac_lstm_out, _ = self.ac_lstm(ac_minus_embs, batch["seg"]["lengths"])
 
 
         # create BOW features
@@ -147,8 +151,12 @@ class LSTM_DIST(PTLBase):
 
         # concatenate the output from Argument Component BiLSTM and Argument Marker BiLSTM with BOW and with structural features stored in "doc_embs"
         cat_emb = torch.cat((am_lstm_out, ac_lstm_out, bow, batch["seg"]["doc_embs"]), dim=-1)
-        adu_emb, _= self.am_ac_lstm(cat_emb, batch["unit"]["lengths"])
-        adu_emb_last, _ = self.last_lstm(adu_emb, batch["unit"]["lengths"])
+
+        # run concatenated features through and LSTM, output will be used to predict label and link_label
+        adu_emb, _ = self.am_ac_lstm(cat_emb, batch["seg"]["lengths"])
+
+        #then run the adu_embs through a final lstm to create features for linking.
+        adu_emb_last, _ = self.last_lstm(adu_emb, batch["seg"]["lengths"])
 
 
         return {
@@ -160,8 +168,11 @@ class LSTM_DIST(PTLBase):
     def seg_clf(self, batch:utils.Input, output:utils.Output):
 
         label_outs = self.labeler(output.stuff["adu_emb"])
-        link_outs = self.linker(output.stuff["adu_emb_last"], unit_mask=batch["unit"]["mask"])
         link_label_outs = self.link_labeler(output.stuff["adu_emb"])
+        link_outs = self.linker(
+                                input = output.stuff["adu_emb_last"], 
+                                segment_mask = batch["seg"]["mask"]
+                                )
             
         return label_outs + link_outs + link_label_outs
 
@@ -173,17 +184,17 @@ class LSTM_DIST(PTLBase):
 
         link_loss = self.linker.loss(
                                 torch.flatten(output.logits["link"], end_dim=-2), 
-                                batch["unit"]["link"].view(-1)
+                                batch["seg"]["link"].view(-1)
                                 )
 
         link_label_loss = self.link_labeler.loss(
                                     torch.flatten(output.logits["link_label"], end_dim=-2),
-                                     batch["unit"]["link_label"].view(-1)
+                                     batch["seg"]["link_label"].view(-1)
                                      )
 
         label_loss = self.labeler.loss(
                                 torch.flatten(output.logits["label"], end_dim=-2), 
-                                batch["unit"]["label"].view(-1)
+                                batch["seg"]["label"].view(-1)
                                 )
 
         ## this is the reported loss aggregation in the paper, but...

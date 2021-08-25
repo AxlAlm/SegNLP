@@ -1,5 +1,5 @@
 
-from segnlp.preprocessing.encoders.base import Encoder
+from .base import Encoder
 from typing import List, Union, Dict
 
 
