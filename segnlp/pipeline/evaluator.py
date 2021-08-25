@@ -7,11 +7,10 @@ import torch
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 #segnlp
-from segnlp.utils import get_ptl_trainer_args
 from segnlp.utils import DataModule
 
 #pytorch lightning
-from pytorch_lightning import Trainer 
+from pytorch_lightning import Trainer  as PTL_Trainer
 
 
 
@@ -29,7 +28,7 @@ class Evaluator:
         for i in data_module.splits.keys():
             data_module.change_split_id(i)
 
-            trainer = Trainer(**ptl_trn_args)
+            trainer = PTL_Trainer(**ptl_trn_args)
             
             checkpoint_cb = None
             for callback in trainer.callbacks:
@@ -64,7 +63,7 @@ class Evaluator:
                 data_module:DataModule,
                 ):
 
-        trainer = Trainer(**ptl_trn_args)
+        trainer = PTL_Trainer(**ptl_trn_args)
         model = self.model(**model_args)
 
         trainer.fit(    

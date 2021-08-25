@@ -40,8 +40,8 @@ class Pipeline(
                 Evaluator, 
                 Trainer, 
                 Tester,
-                StatSig
-                Spliter,
+                StatSig,
+                Splitter,
                 ):
     
     def __init__(self,
@@ -55,7 +55,7 @@ class Pipeline(
                 evaluation_method:str = "default",
                 root_dir:str =f"{user_dir}/.segnlp/", #".segnlp/pipelines"  
                 override: bool = False,
-                vocab : str = "bnc",
+                vocab : Union[str,list, int] = "bnc", #if int it will be the size of the vocab created from most common word from bnc
                 ):
 
         #general

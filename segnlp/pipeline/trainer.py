@@ -22,7 +22,7 @@ from segnlp.utils import get_ptl_trainer_args
 logger = get_logger("ML")
 
 
-class ML:
+class Trainer:
 
 
     def __create_hyperparam_sets(self, hyperparamaters:dict) -> List:
