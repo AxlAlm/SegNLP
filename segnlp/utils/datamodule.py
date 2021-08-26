@@ -37,13 +37,15 @@ class DataModule(ptl.LightningDataModule):
     """
 
     def __init__(self, 
-                path_to_preprocessed_dataset:str, 
+                path_to_data:str, 
                 prediction_level:str,
                 batch_size: str,
                 split_id : int = 0
                 ):
 
-        self._fp = os.path.join(path_to_preprocessed_dataset, "data.hdf5")
+        self._df_fp = os.path.join(path_to_data, "df.hdf5")
+        self._pwf_fp = os.path.join(path_to_data, "pwf.hdf5")
+        self._psf_fp = os.path.join(path_to_data, "psf.hdf5")
 
         with h5py.File(self._fp, "r") as f:
             self._size = f["ids"].shape[0]
@@ -61,51 +63,66 @@ class DataModule(ptl.LightningDataModule):
         
 
     def __getitem__(self, key:Union[np.ndarray, list]) -> Input:
+        
+        batch_df = pd.read_hdf(self._df_fp, where = f"index in {[str(k) for k in key]}")
+
+        with h5py.File(self._pwf_fp, "w") as word_embs:
+            word_embs = np.array([word_embs[i] for i in key])
+        
+        with h5py.File(self._psf_fp, "w") as seg_embs:
+            seg_embs = np.array([seg_embs[i] for i in key])
+
+        return Batch(
+                    df = batch_df,
+                    word_embs = word_embs,
+                    seg_embs = seg_embs
+                    )
+
+
+        # input = Input()
+
+        # with h5py.File(self._fp, "r") as data:
+
+        #     # its faster to index h5py with sorted keys
+        #     #sorted_key = np.sort(key)
+
+        #     #[list(group) for group in mit.consecutive_groups(iterable)]
+
+        #     # we then need to figure out the order of samples in regards
+        #     # to their lengths
+        #     #lengths = data[self.prediction_level]["lengths"][sorted_key]
+        #     lengths = np.array([data[self.prediction_level]["lengths"][i] for i in key])
+        #     desceding_order = np.argsort(lengths)[::-1]
+
+        #     #get ids and sort them by sample size order
+        #     input._ids = np.array([data["ids"][i] for i in key])[desceding_order]
+        #     #input._ids = data["ids"][sorted_key][desceding_order]
+
+
+        #     for group in data:
+
+        #         if group == "ids":
+        #             continue
+                    
+        #         # we get max batch lengths to remove unnecessary padding in the batch
+        #         #max_len = max(data[group]["lengths"][sorted_key])
+        #         max_len = max(data[group]["lengths"][i] for i in key)
+
+        #         input[group] = {}
+        #         for k, v in data[group].items():
+        #             a = np.array([v[i] for i in key])
+
+        #             #a = v[sorted_key]
+                    
+        #             if len(a.shape) > 1:
+        #                 a = a[:, :max_len]
+                    
+        #             # sort the data again based on sample lengths
+        #             input[group][k] = a[desceding_order]
                 
-        input = Input()
+        #     input.to_tensor()
 
-        with h5py.File(self._fp, "r") as data:
-
-            # its faster to index h5py with sorted keys
-            #sorted_key = np.sort(key)
-
-            #[list(group) for group in mit.consecutive_groups(iterable)]
-
-            # we then need to figure out the order of samples in regards
-            # to their lengths
-            #lengths = data[self.prediction_level]["lengths"][sorted_key]
-            lengths = np.array([data[self.prediction_level]["lengths"][i] for i in key])
-            desceding_order = np.argsort(lengths)[::-1]
-
-            #get ids and sort them by sample size order
-            input._ids = np.array([data["ids"][i] for i in key])[desceding_order]
-            #input._ids = data["ids"][sorted_key][desceding_order]
-
-
-            for group in data:
-
-                if group == "ids":
-                    continue
-                    
-                # we get max batch lengths to remove unnecessary padding in the batch
-                #max_len = max(data[group]["lengths"][sorted_key])
-                max_len = max(data[group]["lengths"][i] for i in key)
-
-                input[group] = {}
-                for k, v in data[group].items():
-                    a = np.array([v[i] for i in key])
-
-                    #a = v[sorted_key]
-                    
-                    if len(a.shape) > 1:
-                        a = a[:, :max_len]
-                    
-                    # sort the data again based on sample lengths
-                    input[group][k] = a[desceding_order]
-                
-            input.to_tensor()
-
-        return input
+        # return input
     
 
     def __len__(self):

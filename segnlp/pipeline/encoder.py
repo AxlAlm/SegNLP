@@ -63,11 +63,11 @@ class Encoder:
         #logger.info("Creating Encoders ...")
         for enc_type in self.encodings:
 
-            if enc_type == "words":
-                self.encoders["words"] = WordEncoder(vocab = self.vocab)
-                #self.feature2dim["vocab"] = len(self.encoders["words"])
+            # if enc_type == "words":
+            #     self.encoders["words"] = WordEncoder(vocab = self.vocab)
+            #     #self.feature2dim["vocab"] = len(self.encoders["words"])
 
-            elif enc_type == "pos":
+            if enc_type == "pos":
                 self.encoders["pos"] = PosEncoder()
 
             elif enc_type == "deprel":
@@ -79,8 +79,6 @@ class Encoder:
             elif enc_type == "chars":
                 self.encoders["chars"] = CharEncoder()
 
-            elif enc_type == "bert_encs":
-                self.encoders["bert_encs"] = BertTokEncoder()
             else:
                 raise KeyError(f'"{enc_type}" is not a supported encoding')
             
@@ -91,12 +89,10 @@ class Encoder:
         
         for enc in self.encodings:
             
-            if enc == "bert_encs":
-                raise NotImplementedError
-                #self.__encode_bytepairs("bert_encs")
+
             if enc == "dephead":
                 pass
-            else:
+            else:                    
                 if enc in ["words", "chars"]:
                     df[enc] = df["text"].apply(lambda x: self.encode(x, enc))
                 else:

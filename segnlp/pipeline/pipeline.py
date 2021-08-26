@@ -25,6 +25,7 @@ from segnlp import get_logger
 from segnlp.datasets.base import DataSet
 import segnlp.utils as utils
 from segnlp import models
+from segnlp.resources.vocab import Vocab, bnc_vocab
 
 
 logger = get_logger("PIPELINE")
@@ -42,6 +43,7 @@ class Pipeline(
                 Tester,
                 StatSig,
                 Splitter,
+                FeatureExtractor,
                 ):
     
     def __init__(self,
@@ -55,12 +57,10 @@ class Pipeline(
                 evaluation_method:str = "default",
                 root_dir:str =f"{user_dir}/.segnlp/", #".segnlp/pipelines"  
                 override: bool = False,
-                vocab : Union[str,list, int] = "bnc", #if int it will be the size of the vocab created from most common word from bnc
                 ):
 
         #general
         self.id = id
-        self.vocab = vocab
         self.model = getattr(models, model) if isinstance(model,str) else model
         self.evaluation_method = evaluation_method
         self.metric = metric
@@ -95,7 +95,7 @@ class Pipeline(
         self._need_deps = True if "deprel" in encodings else False
         self._create_data_encoders()
         self._create_label_encoders()
-        self.label_encoders = {k:v for k,v in self.encoders if k in self.all_tasks}
+        self.label_encoders = {k:v for k,v in self.encoders.items() if k in self.all_tasks}
 
 
         # pretrained featues
@@ -160,7 +160,12 @@ class Pipeline(
 
         if override:
             logger.info(f"Overriding all data in {self._path} by moving existing folder to /tmp/ and creating a new folder")
-            shutil.move(self._path, os.path.join("/tmp/", self.id))
+
+            new_loc = os.path.join("/tmp/", self.id)
+            if os.path.exists(new_loc):
+                shutil.rmtree(new_loc)
+
+            shutil.move(self._path, new_loc)
 
         os.makedirs(self._path, exist_ok=True)
 
@@ -190,8 +195,7 @@ class Pipeline(
 
         # create split indexes 
         self._set_splits(
-                        dataset = dataset,
-                        evaluation_method = evaluation_method
+                        premade_splits = dataset.splits,
                         )
 
         # after we have processed data we will deactivate preprocessing so we dont keep

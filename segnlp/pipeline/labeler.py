@@ -27,9 +27,21 @@ class Labeler:
         return df
 
 
+    def _fuse_subtasks(self, df):
+
+        for task in self.tasks:
+            subtasks = task.split("+")
+            
+            if len(subtasks) <= 1:
+                continue
+
+            subtask_labels  = df[subtasks].apply(lambda row: '_'.join([str(x) for x in row]), axis=1)
+            df[task] = subtask_labels
+
+
     def _label_bios(self, df):
         df["seg"] = "O"
-        segs = df.groupby("seg_id")
+        segs = df.groupby("seg_id", sort=False)
         for seg_id, seg_df in segs:
             df.loc[seg_df.index, "seg"] = ["B"] +  (["I"] * (seg_df.shape[0]-1))
         return df
@@ -51,11 +63,11 @@ class Labeler:
 
     def __ams_as_pre(self,df):
         df["am_id"] = np.nan
-        groups = df.groupby("sentence_id")
+        groups = df.groupby("sentence_id", sort=False)
 
         for sent_id, sent_df in groups:
             
-            acs = sent_df.groupby("seg_id")
+            acs = sent_df.groupby("seg_id", sort=False)
             prev_ac_end = 0
             for ac_id, ac_df in acs:
                 
@@ -83,11 +95,11 @@ class Labeler:
     def __ams_from_list(self, df):
 
         df["am_id"] = np.nan
-        groups = df.groupby("sentence_id")
+        groups = df.groupby("sentence_id", sort=False)
 
         for sent_id, sent_df in groups:
             
-            acs = sent_df.groupby("seg_id")
+            acs = sent_df.groupby("seg_id", sort=False)
 
             for ac_id, ac_df in acs:
 

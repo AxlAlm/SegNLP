@@ -495,7 +495,47 @@ class TextProcessor:
         return spacy.load("en_core_web_lg", disable=["ner"])
 
 
-    def _process_text(self, doc:str, label:str=None):
+    def __fix_deps(self, df:pd.DataFrame):
+
+        for _, sample in df.groupby(f"{self.sample_level}_id", sort=False):
+            
+            print(sample.index)
+            sentences  = sample.groupby("sentence_id", sort=False)
+
+            sent_length = 0
+            deprels = []
+            depheads = []
+            root_idx = -1
+            for _, sent_df in sentences:
+                
+                sent_deprels = sent_df["deprel"].to_numpy()
+                sent_depheads = sent_df["dephead"].to_numpy() + sent_length
+
+                sent_root_id = self.encode_list(["root"], "deprel")[0]
+                sent_root_idx_match = np.where(sent_df["deprel"].to_numpy() == sent_root_id)
+
+                # if we dont find a sentence root, we default the root to the first word
+                if not sent_root_idx_match[0]:
+                    sent_root_idx = 0
+                else:
+                    sent_root_idx = int(sent_root_idx_match[0])
+
+
+                if sent_length == 0 and root_idx == -1:
+                    root_idx = sent_root_idx
+                    sent_length = sent_df.shape[0]
+                else:
+                    sent_depheads[sent_root_idx] = sent_length-1
+                    sent_length += sent_df.shape[0]
+        
+                deprels.extend(sent_deprels)
+                depheads.extend(sent_depheads)
+            
+            df.loc[sample.index, "deprel"] = deprels
+            df.loc[sample.index, "depheads"] = depheads
+
+
+    def _process_text(self, doc:str):
         """given a text string processes it appropriately. Meaning, if the string is a document
         we will process the document into document, paragraphs, documents and tokens. Creating 
         dataframes for each of the levels. 
@@ -508,8 +548,6 @@ class TextProcessor:
             type of the given string
         text_id : str
             id for the given string
-        label : str
-            label of the given string, if there is any.
 
         Raises
         ------
@@ -538,7 +576,12 @@ class TextProcessor:
             raise NotImplementedError(f'"{self.input_level}" is not a understood type')
 
         df = pd.DataFrame(self.__data_stack)
+
+        self.__fix_deps(df)
+
         return df
+
+
 
 
 

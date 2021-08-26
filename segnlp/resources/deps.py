@@ -1,6 +1,14 @@
 
 
-dep_labels_eng = [
+
+
+"""
+Dep labels can be found here
+https://spacy.io/api/annotation#dependency-parsing
+
+"""
+
+spacy_dep = [
                           "","acl", "acomp", "advcl", "advmod", "agent", "amod", "appos", "attr", "aux",
                         "auxpass", "case", "cc", "ccomp", "compound", "conj", "cop", "csubj",
                         "csubjpass", "dative", "dep", "det","dobj", "expl", "intj", "mark", "meta",
@@ -12,7 +20,7 @@ dep_labels_eng = [
                         ]
 
 
-universal_deps = [
+universal_dep = [
                             "", "acl", "advcl", "advmod", "amod", "appos", "aux", "case",
                             "cc","ccomp","clf","compound", "conj", "cop", "csubj", "dep",	 
                             "det", "discourse", "dislocated", "expl", "fixed", "flat", "goeswith",

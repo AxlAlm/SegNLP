@@ -4,15 +4,19 @@ import torch.nn as nn
 from torch import Tensor
 import torch
 
+#segnlp
+from segnlp.resources.vocab import Vocab
+
 
 class BOW(nn.Module):
 
     def __init__(   
                 self,
+                vocab: Vocab,
                 dim:int=None,
                 ):
         super().__init__()
-        self.output_size = 10001
+        self.output_size = vocab.size
 
         self.reduce_dim = dim
         if self.reduce_dim is not None:

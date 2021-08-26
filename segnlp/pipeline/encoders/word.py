@@ -7,7 +7,7 @@ from numpy.lib.arraysetops import isin
 
 #segnlp
 from .base import Encoder
-from segnlp.resources import vocabs
+#from segnlp.resources import vocabs
 
 
 class WordEncoder(Encoder):

@@ -14,7 +14,7 @@ from torch import Tensor
 from gensim.models import KeyedVectors
 
 #segnlp
-from segnlp.resources import vocabs
+from segnlp.resources.vocab import Vocab
 
 class WordEmb(nn.Module):
 
@@ -37,8 +37,8 @@ class WordEmb(nn.Module):
 
     def __init__(   
                 self,
+                vocab: Vocab,
                 path_to_model: str = None,
-                vocab: Union[list, str] = None,
                 num_embeddings: int = None,
                 embedding_dim: int = None,
                 freeze: bool = None,
@@ -49,13 +49,9 @@ class WordEmb(nn.Module):
                 sparse = False,
                 ):
         super().__init__()
+        self.vocab = vocab
 
         if path_to_model is not None:
-            assert isinstance(vocab, list) or isinstance(vocab, str), "vocab is missing"
-
-            if isinstance(vocab, str):
-                vocab = getattr(vocabs, vocab)()
-
             # we create embedding matrix for the given vocab. in the order given
             vocab_matrix = self.__create_vocab_matrix(vocab, path_to_model)
 
@@ -93,6 +89,7 @@ class WordEmb(nn.Module):
         return vocab_matrix
             
 
-    def forward(self, word_encs:Tensor):
-        embs = self.embs(word_encs)
+    def forward(self, words:Tensor):
+        word_ids = vocab.encode[words.view(-1)].view(words)
+        embs = self.embs(word_ids)
         return embs

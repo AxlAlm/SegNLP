@@ -18,14 +18,14 @@ from segnlp.datasets.base import DataSet
 class Splitter:
 
 
-    def _set_splits(self,  dataset:DataSet):
+    def _set_splits(self,  premade_splits):
 
 
         def split(ids, premade_splits:dict=None):
 
             if premade_splits is not None:
-                train = [i for i in ids if i in dataset.splits["train"]]
-                test = [i for i in ids if i in dataset.splits["test"]]
+                train = [i for i in ids if i in premade_splits["train"]]
+                test = [i for i in ids if i in premade_splits["test"]]
             else:
                 train, test = train_test_split(ids, test_size=0.33, shuffle=True)
         
@@ -65,7 +65,7 @@ class Splitter:
             splits = split_new(ids)
 
         else:
-            splits = split(ids, premade_splits = dataset.splits)
+            splits = split(ids, premade_splits = premade_splits)
 
 
         with open(self._path_to_splits, "wb") as f:

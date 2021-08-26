@@ -9,8 +9,7 @@ import torch
 
 #segnlp 
 from segnlp.utils import dynamic_update, tensor_dtype
-from segnlp.visuals.tree_graph import arrays_to_tree
-from segnlp.utils import ensure_numpy
+
 
 class Input(dict):
 

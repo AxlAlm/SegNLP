@@ -2,6 +2,7 @@
 
 
 #basics
+from segnlp.utils.h5py_storage import H5PY_STORAGE
 from tqdm import tqdm
 import numpy as np
 from typing import Union, Sequence
@@ -18,74 +19,13 @@ from segnlp.datasets.base import DataSet
 from segnlp.utils import Input
 import segnlp.utils as utils
 from segnlp import get_logger
-
+from segnlp.utils H5PY_STORAGE
 
 logger = get_logger("DatasetPreprocessor")
 
 
+
 class DatasetPreprocessor:
-
-
-    def __setup_h5py(self, file_path:str):
-        self.h5py_f = h5py.File(file_path, 'w')
-
-
-    def __init_store(self, input:Input):
-        
-        self.h5py_f.create_dataset("ids", data=input.ids, dtype=np.int16, chunks=True, maxshape=(None,))
-
-        for level in input.levels:
-            
-            for k,v in input[level].items():
-                v = utils.ensure_numpy(v)
-                #dynamic_shape = tuple([None for v in enumerate(v.shape)])
-                #self.h5py_f.create_dataset(k, dynamic_shape, dtype=v.dtype)
-                max_shape = tuple([None for v in enumerate(v.shape)])
-
-                name = f"/{level}/{k}"
-                if "<U" in str(v.dtype):
-                    self.h5py_f.create_dataset(name, data=v.tolist(), chunks=True, maxshape=max_shape)
-                else:
-
-                    fillvalue = 0
-                    if k in self.all_tasks:
-                        fillvalue = -1
-
-                    self.h5py_f.create_dataset(name, data=v, dtype=v.dtype, chunks=True, maxshape=max_shape, fillvalue=fillvalue)
-
-        self.__init_storage_done = True
-    
-
-    def __append_store(self, input:Input):
-
-        last_sample_i = self.h5py_f["ids"].shape[0]
-        self.h5py_f["ids"].resize((self.h5py_f["ids"].shape[0] + input.ids.shape[0],))
-        self.h5py_f["ids"][last_sample_i:] = input.ids
-
-        for level in input.levels:
-            for k,v in input[level].items():
-                v = utils.ensure_numpy(v)
-                k = f"/{level}/{k}"
-
-                last_sample_i = self.h5py_f[k].shape[0]
-
-                nr_dims = len(v.shape)
-                if nr_dims == 1:
-                    new_shape = (self.h5py_f[k].shape[0] + v.shape[0],)
-                else:
-                    nr_rows = self.h5py_f[k].shape[0] + v.shape[0]
-                    max_shape = np.maximum(self.h5py_f[k].shape[1:], v.shape[1:])
-                    new_shape = (nr_rows, *max_shape)
-                
-            
-                self.h5py_f[k].resize(new_shape)
-
-                if nr_dims > 2:
-                    self.h5py_f[k][last_sample_i:,:v.shape[1], :v.shape[2]] = v
-                elif nr_dims == 2:
-                    self.h5py_f[k][last_sample_i:,:v.shape[1]] = v
-                else:
-                    self.h5py_f[k][last_sample_i:] = v
 
 
     def _preprocess_dataset(self, dataset:DataSet):
@@ -93,21 +33,83 @@ class DatasetPreprocessor:
         if os.path.exists(self._path_to_preprocessed_data):
             return None
 
-        self.__setup_h5py(file_path=self._path_to_preprocessed_data) 
+        #self.__setup_h5py(file_path=self._path_to_preprocessed_data) 
 
-        self._nr_sample = 0
+        self._df_storage = pd.HDFStore(file)
+        self._pwf_storage = H5PY_STORAGE(
+                                            name = "word_embs", 
+                                            fp = str, 
+                                            n_dims = 3, 
+                                            dtype =  np.float64, 
+                                            )
+
+        self._psf_storage = H5PY_STORAGE(
+                                            name = "seg_embs", 
+                                            fp = str, 
+                                            n_dims = 3, 
+                                            dtype =  np.float64, 
+                                            )
+
+        self._n_samples = 0
         for i in tqdm(range(len(dataset)), desc="Processing and Storing Dataset"):
-            input = self._process_text(dataset[i])
+            self._process_and_store_doc(doc = dataset[i])
+            
 
-            if not self.__init_storage_done:
-                self.__init_store(input)
-            else:
-                self.__append_store(input)
+        self._pwf_storage.close()
+        self._psf_storage.close()
+        self._df_storage.close()
 
-            self._nr_sample += len(input)
-
-        self.h5py_f.close()
         
+
+    def _process_and_store_doc(self, doc:dict): #docs:List[str],token_labels:List[List[dict]] = None, span_labels:List[dict] = None):
+        #input = Input()
+
+        span_labels = doc.get("span_labels", None)
+        doc = doc["text"]   
+
+        doc_df = self._process_text(doc)
+
+        if self.input_level != self.sample_level:
+            samples = doc_df.groupby(f"{self.sample_level}_id", sort=False)
+        else:
+            samples = [(None, doc_df)]
+
+        for _, sample in samples:
+
+            if span_labels:
+                sample = self._label_spans(sample, span_labels)
+            
+            if self._need_bio:
+                sample = self._label_bios(sample)
+            
+            self._fuse_subtasks(sample)
+            self._encode_labels(sample)
+        
+            if self.argumentative_markers:
+                sample = self._label_ams(sample, mode=self.am_extraction)
+
+                
+            seg_length = len(sample.groupby("seg_id", sort = False))
+            if self.prediction_level == "seg" and seg_length == 0:
+                continue
+   
+            pretrained_features = self.__get_pretrained_features()
+
+            if "seg_embs" in pretrained_features:
+                self._psf_storage.append(pretrained_features["seg_embs"])
+
+            if "word_embs" in pretrained_features:
+                self._pwf_storage.append(pretrained_features["word_embs"])
+
+            sample.index = [i]*len(sample.index)
+            self._df_storage.append("df", sample)
+
+
+            self._n_samples += 1
+        
+
+
+
 
 
 

@@ -21,8 +21,8 @@ exp = Pipeline(
                 ),
                 metric = "overlap_metric",
                 model = "LSTM_ER",
-                encodings = ["pos", "deprel", "dephead"],
-                features = [
+                encodings = ["deprel", "dephead"],
+                pretrained_features = [
                                 GloveEmbeddings(),
                                 OneHots("pos"),
                                 OneHots("deprel")

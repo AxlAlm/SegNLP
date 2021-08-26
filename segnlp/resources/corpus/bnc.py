@@ -1,9 +1,11 @@
 
 #basic
 import xml.etree.ElementTree as ET
+from nltk.probability import FreqDist
 from tqdm import tqdm
 from glob import glob
 import os
+
 
 #segnlp
 from segnlp.utils import download, unzip
@@ -22,6 +24,7 @@ class BNC:
         self.__download()
         self.files, self.n, self.max = self.__get_files()
 
+
     def __len__(self):
         return self.max
 
@@ -38,6 +41,16 @@ class BNC:
         path_to_text = os.path.join(self.data_path,"download", "Texts")
         files = glob(path_to_text+"/**/*.xml", recursive=True)
         return files, 0 ,len(files)-1
+
+
+    def words(self):
+        for doc in tqdm(self, total=len(self), desc="BNC docs"):
+            for word in doc.lower().split():
+                yield word
+    
+    
+    def word_freqs(self):
+        return FreqDist(self.words())
 
 
     def __iter__(self):
