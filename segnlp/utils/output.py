@@ -68,8 +68,8 @@ class Output:
         
 
     def _cache(f):
-        @wraps(f)
-        def wrapped(self, *args, **kwargs):
+        @wraps(f) #needed to accurately perserve the function name and doc of the function it decorates
+        def manage_cache(self, *args, **kwargs):
             v_name =  f.__name__.split("_",1)[1]
             if hasattr(self, v_name):
                 return getattr(self, v_name)
@@ -77,7 +77,7 @@ class Output:
                 return_value = f(self, *args, **kwargs)
                 setattr(self, v_name, return_value)
                 return return_value
-        return wrapped
+        return manage_cache
 
 
     def __create_decouplers(self, label_encoders, tasks):

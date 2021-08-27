@@ -23,6 +23,7 @@ import pytorch_lightning as ptl
 import segnlp
 from .input import Input
 from segnlp import utils
+from .batch import Batch
 
 
 class DataModule(ptl.LightningDataModule):
@@ -38,7 +39,6 @@ class DataModule(ptl.LightningDataModule):
 
     def __init__(self, 
                 path_to_data:str, 
-                prediction_level:str,
                 batch_size: str,
                 split_id : int = 0
                 ):
@@ -47,15 +47,7 @@ class DataModule(ptl.LightningDataModule):
         self._pwf_fp = os.path.join(path_to_data, "pwf.hdf5")
         self._psf_fp = os.path.join(path_to_data, "psf.hdf5")
 
-        with h5py.File(self._fp, "r") as f:
-            self._size = f["ids"].shape[0]
-
-        self.prediction_level = prediction_level
-
-        #self._stats = pd.read_csv(os.path.join(dir_path, f"{name}_stats.csv"))
-       # self._stats.columns = ["split_id", "split", "task", "label", "count"]
-
-        with open(os.path.join(path_to_preprocessed_dataset, f"splits.pkl"), "rb") as f:
+        with open(os.path.join(path_to_data, f"splits.pkl"), "rb") as f:
             self._splits = pickle.load(f)
         
         self.batch_size = batch_size
@@ -75,98 +67,9 @@ class DataModule(ptl.LightningDataModule):
         return Batch(
                     df = batch_df,
                     word_embs = word_embs,
-                    seg_embs = seg_embs
+                    seg_embs = seg_embs,
+                    batch_size = self.batch_size
                     )
-
-
-        # input = Input()
-
-        # with h5py.File(self._fp, "r") as data:
-
-        #     # its faster to index h5py with sorted keys
-        #     #sorted_key = np.sort(key)
-
-        #     #[list(group) for group in mit.consecutive_groups(iterable)]
-
-        #     # we then need to figure out the order of samples in regards
-        #     # to their lengths
-        #     #lengths = data[self.prediction_level]["lengths"][sorted_key]
-        #     lengths = np.array([data[self.prediction_level]["lengths"][i] for i in key])
-        #     desceding_order = np.argsort(lengths)[::-1]
-
-        #     #get ids and sort them by sample size order
-        #     input._ids = np.array([data["ids"][i] for i in key])[desceding_order]
-        #     #input._ids = data["ids"][sorted_key][desceding_order]
-
-
-        #     for group in data:
-
-        #         if group == "ids":
-        #             continue
-                    
-        #         # we get max batch lengths to remove unnecessary padding in the batch
-        #         #max_len = max(data[group]["lengths"][sorted_key])
-        #         max_len = max(data[group]["lengths"][i] for i in key)
-
-        #         input[group] = {}
-        #         for k, v in data[group].items():
-        #             a = np.array([v[i] for i in key])
-
-        #             #a = v[sorted_key]
-                    
-        #             if len(a.shape) > 1:
-        #                 a = a[:, :max_len]
-                    
-        #             # sort the data again based on sample lengths
-        #             input[group][k] = a[desceding_order]
-                
-        #     input.to_tensor()
-
-        # return input
-    
-
-    def __len__(self):
-        return self._size
-
-
-    def name(self):
-        return self._name
-
-    @property
-    def info(self):
-        
-        structure = { }
-
-        with h5py.File(self._fp, "r") as data:
-            for group in data.keys():
-
-                if group == "ids":
-                    structure["ids"] = f'dtype={str(data["ids"].dtype)}, shape={data["ids"].shape}'
-                    continue
-
-                structure[group] = {}
-                for k, v in data[group].items():
-                    structure[group][k] = f"dtype={str(v.dtype)}, shape={v.shape}"
-
-
-        s = f"""
-            Structure:        
-            
-            {json.dumps(structure, indent=4)}
-
-            Size            = {self._size}
-            File Size (MBs) = {str(round(os.path.getsize(self._fp) / (1024 * 1024), 3))}
-            Filepath       = {self._fp}
-            """
-        print(s)
-
-    @property
-    def stats(self):
-        return self._stats
-
-    @property
-    def splits(self):
-        return self._splits
 
 
     def __get_dataloader(self, split):

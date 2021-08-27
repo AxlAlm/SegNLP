@@ -107,6 +107,9 @@ class Pipeline(
                                 group:sum([fm.feature_dim for fm in pretrained_features if fm.group == group]) 
                                 for group in self._feature_groups
                                 })
+        self._use_pwf = ["word_embs"] in self._feature_groups
+        self._use_psf = ["seg_embs"] in self._feature_groups
+
 
         # preprocessing
         self._need_bio = "seg" in self.subtasks
@@ -179,7 +182,9 @@ class Pipeline(
         self._path_to_data = os.path.join(self._path, "data")
         os.makedirs(self._path_to_models, exist_ok=True)
         os.makedirs(self._path_to_data, exist_ok=True)
-        self._path_to_preprocessed_data = os.path.join(self._path_to_data, "data.hdf5")
+        self._path_to_df = os.path.join(self._path_to_data, "df.hdf5")
+        self._path_to_pwf = os.path.join(self._path_to_data, "pwf.hdf5")
+        self._path_to_psf = os.path.join(self._path_to_data, "psf.hdf5")
         self._path_to_splits = os.path.join(self._path_to_data, "splits.pkl")
         self._path_to_top_models = os.path.join(self._path_to_models, "top")
         self._path_to_tmp_models = os.path.join(self._path_to_models, "tmp")

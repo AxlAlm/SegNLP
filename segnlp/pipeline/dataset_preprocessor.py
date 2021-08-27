@@ -35,24 +35,27 @@ class DatasetPreprocessor:
 
         #self.__setup_h5py(file_path=self._path_to_preprocessed_data) 
 
-        self._df_storage = pd.HDFStore(file)
-        self._pwf_storage = H5PY_STORAGE(
-                                            name = "word_embs", 
-                                            fp = str, 
-                                            n_dims = 3, 
-                                            dtype =  np.float64, 
-                                            )
+        self._df_storage = pd.HDFStore(self._path_to_df)
 
-        self._psf_storage = H5PY_STORAGE(
-                                            name = "seg_embs", 
-                                            fp = str, 
-                                            n_dims = 3, 
-                                            dtype =  np.float64, 
-                                            )
+        if self._use_pwf:
+            self._pwf_storage = H5PY_STORAGE(
+                                                name = "word_embs", 
+                                                fp = self._path_to_pwf, 
+                                                n_dims = 3, 
+                                                dtype =  np.float64, 
+                                                )
+
+        if self._use_psf:
+            self._psf_storage = H5PY_STORAGE(
+                                                name = "seg_embs", 
+                                                fp = self._path_to_psf, 
+                                                n_dims = 3, 
+                                                dtype =  np.float64, 
+                                                )
 
         self._n_samples = 0
         for i in tqdm(range(len(dataset)), desc="Processing and Storing Dataset"):
-            self._process_and_store_doc(doc = dataset[i])
+            self._process_and_store_samples(doc = dataset[i])
             
 
         self._pwf_storage.close()
@@ -61,8 +64,7 @@ class DatasetPreprocessor:
 
         
 
-    def _process_and_store_doc(self, doc:dict): #docs:List[str],token_labels:List[List[dict]] = None, span_labels:List[dict] = None):
-        #input = Input()
+    def _process_and_store_samples(self, doc:dict):
 
         span_labels = doc.get("span_labels", None)
         doc = doc["text"]   
@@ -101,10 +103,8 @@ class DatasetPreprocessor:
             if "word_embs" in pretrained_features:
                 self._pwf_storage.append(pretrained_features["word_embs"])
 
-            sample.index = [i]*len(sample.index)
+            sample.index = sample["sample_id"].to_numpy()
             self._df_storage.append("df", sample)
-
-
             self._n_samples += 1
         
 
