@@ -32,7 +32,7 @@ class CharEmb(nn.Module):
         self.output_size = n_filters
                                     
 
-    def forward(self, char_encs:Tensor):
+    def forward(self, input:Tensor):
         batch_size, seq_length, char_length = char_encs.shape
 
         char_embs = self.char_emb_layer(char_encs)

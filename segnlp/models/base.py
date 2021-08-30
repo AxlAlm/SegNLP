@@ -24,7 +24,6 @@ from transformers import get_constant_schedule_with_warmup
 #segnlp
 from segnlp import get_logger
 from segnlp import utils
-from .bio_decoder import BIODecoder
 from segnlp.utils import LabelEncoder
 from segnlp.layer_wrappers.layer_wrappers import Layer
 from segnlp.layer_wrappers import Embedder
@@ -57,10 +56,10 @@ class PTLBase(ptl.LightningModule):
         self.task_dims = {task: len(labels) for task, labels in label_encoder.task_labels.items()}
         self.inference = inference
 
-
+        seg_decoder = None
         if "seg" in label_encoder.task_labels.keys():
             self.seg_task = sorted([task for task in label_encoder.tasks if "seg" in task], key = lambda x: len(x))[0]
-            seg_decoder = BIODecoder()
+            seg_decoder = utils.BIODecoder()
 
 
         # setting up metric container which takes care of metric calculation, aggregation and storing

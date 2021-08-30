@@ -15,22 +15,24 @@ from time import time
 from functools import wraps
 from functools import lru_cache
 
-
-#segnlp
-from .array import ensure_flat, ensure_numpy, flatten
-from .schedule_sample import ScheduleSampling
-from segnlp import utils
-from segnlp.utils import BatchInput
-
 #pytorch
 import torch
 from torch import Tensor
 
 
+
+#segnlp
+from .array import ensure_flat, ensure_numpy, flatten
+from .schedule_sample import ScheduleSampling
+from segnlp import utils
+from .batch_input import BatchInput
+from .label_encoder import LabelEncoder
+
+
 class BatchOutput:
 
     def __init__(self, 
-                label_encoder : utils.LabelEncoder,
+                label_encoder : LabelEncoder,
                 seg_decoder = None,
                 seg_gts_k: int = None,
                 ):
@@ -139,7 +141,7 @@ class BatchOutput:
             mask = ensure_numpy(self.batch["token"]["mask"]).astype(bool)
             self.df[task] = ensure_numpy(preds)[mask]
         
-        
+
         elif level == "seg":
             mask = ensure_numpy(self.batch["seg"]["mask"]).astype(bool)
             seg_preds = ensure_numpy(preds)[mask]

@@ -120,7 +120,6 @@ class Trainer:
                                             model_args = model_args,
                                             ptl_trn_args = ptl_trn_args,
                                             data_module = data_module,
-                                            save_choice=save_choice,
                                             )
 
         return {
