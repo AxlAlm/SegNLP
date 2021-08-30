@@ -32,11 +32,11 @@ def space_tok(string):
 
 class BOW(FeatureModel):
 
-    def __init__(self, corpus:Union[dict,str]="BNC",  dim:int=200, group:str="doc_embs"):
+    def __init__(self, corpus:Union[dict,str]="BNC",  dim:int=200, group:str="seg_embs"):
 
         #self.vocab = vocab
         self._name = "tfidf"
-        self._level = "doc"
+        self._level = "seg"
         self._feature_dim = dim
         self._dtype = np.float32
         self._group = self._name if group is None else group
@@ -133,7 +133,7 @@ class BOW(FeatureModel):
 
     #@feature_memory
     def extract(self, df):
-        text = " ".join(df["text"].to_numpy())
+        text = " ".join(df["token"].to_numpy())
         x = self._svd.transform(self._tfidf.transform([text]))
         return x[0]
 

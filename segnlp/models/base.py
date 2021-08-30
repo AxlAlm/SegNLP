@@ -24,8 +24,8 @@ from transformers import get_constant_schedule_with_warmup
 #segnlp
 from segnlp import get_logger
 from segnlp import utils
-from segnlp.utils.output import Output
-from segnlp.utils.input import Input
+from .bio_decoder import BIODecoder
+from segnlp.utils import LabelEncoder
 from segnlp.layer_wrappers.layer_wrappers import Layer
 from segnlp.layer_wrappers import Embedder
 from segnlp.layer_wrappers import Encoder
@@ -45,12 +45,7 @@ class PTLBase(ptl.LightningModule):
 
     def __init__(   self,  
                     hyperparamaters:dict,
-                    tasks:list,
-                    all_tasks:list,
-                    subtasks:list,
-                    label_encoders:dict,
-                    prediction_level:str,
-                    task_dims:dict,
+                    label_encoder: LabelEncoder,
                     feature_dims:dict,
                     metric:Union[Callable,str],
                     inference:bool=False
@@ -59,29 +54,27 @@ class PTLBase(ptl.LightningModule):
         self.hps = hyperparamaters
         self.monitor_metric = hyperparamaters["general"].get("monitor_metric", "loss")
         self.feature_dims = feature_dims
-        self.task_dims = task_dims
+        self.task_dims = {task: len(labels) for task, labels in label_encoder.task_labels.items()}
         self.inference = inference
-        self.tasks = tasks
 
-        if "seg" in subtasks:
-            self.seg_task = sorted([task for task in tasks if "seg" in task], key = lambda x: len(x))[0]
+
+        if "seg" in label_encoder.task_labels.keys():
+            self.seg_task = sorted([task for task in label_encoder.tasks if "seg" in task], key = lambda x: len(x))[0]
+            seg_decoder = BIODecoder()
+
 
         # setting up metric container which takes care of metric calculation, aggregation and storing
         self.metrics = utils.MetricContainer(
                                             metric = metric,
-                                            label_encoders = label_encoders,
+                                            task_labels = label_encoder.task_labels,
                                             )
 
         # setting up an output object which will format and store outputs for each batch.
         # using .step() will create a batch specific output container which will be used to store information 
         # throughout the step
-        self.output = utils.Output(
-                                        label_encoders = label_encoders, 
-                                        tasks = tasks,
-                                        all_tasks = all_tasks,
-                                        subtasks = subtasks,
-                                        prediction_level = prediction_level,
-                                        inference = inference,
+        self.output = utils.BatchOutput(
+                                        label_encoder = label_encoder, 
+                                        seg_decoder = seg_decoder,
                                         seg_gts_k = self.hps["general"].get("seg_gts_k", None)
                                         )
 
@@ -119,7 +112,7 @@ class PTLBase(ptl.LightningModule):
         return self.__name__
 
 
-    def __rep(self, batch:utils.Input, output:dict, f_name:str):
+    def __rep(self, batch:utils.BatchInput, output:utils.BatchOutput, f_name:str):
         
         if not hasattr(self,  f_name):
             return 
@@ -130,7 +123,7 @@ class PTLBase(ptl.LightningModule):
         output.add_stuff(stuff)
 
 
-    def __clf(self, batch:utils.Input, output:dict, f_name:str):
+    def __clf(self, batch:utils.BatchInput, output:utils.BatchOutput, f_name:str):
         
         if not hasattr(self,  f_name):
             return 
@@ -155,7 +148,7 @@ class PTLBase(ptl.LightningModule):
                                     )
 
 
-    def __token_rep(self, batch:utils.Input, output:dict):
+    def __token_rep(self, batch:utils.BatchInput, output:utils.BatchOutput):
         self.__rep(
                     batch=batch, 
                     output=output, 
@@ -163,7 +156,7 @@ class PTLBase(ptl.LightningModule):
                     )
     
 
-    def __token_clf(self, batch:utils.Input, output:dict):
+    def __token_clf(self, batch:utils.BatchInput, output:utils.BatchOutput):
         self.__clf(
                     batch = batch, 
                     output = output, 
@@ -171,7 +164,7 @@ class PTLBase(ptl.LightningModule):
                     )
         
 
-    def __seg_rep(self, batch:utils.Input, output:dict):
+    def __seg_rep(self, batch:utils.BatchInput, output:utils.BatchOutput):
         self.__rep(
                     batch=batch, 
                     output=output, 
@@ -179,7 +172,7 @@ class PTLBase(ptl.LightningModule):
                     )
     
 
-    def __seg_clf(self, batch:utils.Input, output:dict):
+    def __seg_clf(self, batch:utils.BatchInput, output:utils.BatchOutput):
         self.__clf(
                     batch=batch, 
                     output=output, 
@@ -187,7 +180,7 @@ class PTLBase(ptl.LightningModule):
                     )
 
 
-    def forward(self, batch:Input, output:Output):
+    def forward(self, batch:utils.BatchInput, output:utils.BatchOutput):
 
         ## will run every module and add stuff to output.
 
@@ -210,7 +203,7 @@ class PTLBase(ptl.LightningModule):
             self.__seg_clf(batch, output)
 
 
-    def _step(self, batch:utils.Input, split:str):
+    def _step(self, batch:utils.BatchInput, split:str):
         batch.current_epoch = self.current_epoch
 
         # creates a batch specific output container which will be filled

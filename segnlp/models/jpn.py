@@ -106,7 +106,7 @@ class JointPN(PTLBase):
         return "JointPN"
     
 
-    def seg_rep(self, batch, output):
+    def seg_rep(self, batch: utils.BatchInput, output: utils.BatchOutput):
         seg_embs = self.agg(
                             input = batch["token"]["word_embs"], 
                             lengths = batch["seg"]["lengths"],
@@ -140,7 +140,7 @@ class JointPN(PTLBase):
                 }
         
 
-    def seg_clf(self, batch:utils.Input, output:utils.Output):
+    def seg_clf(self, batch:utils.BatchInput, output:utils.BatchOutput):
 
         label_outs = self.labeler(
                                     input = output.stuff["encoder_out"],
@@ -155,7 +155,7 @@ class JointPN(PTLBase):
         return label_outs + link_outs
 
 
-    def loss(self, batch, output:dict):
+    def loss(self, batch: utils.BatchInput, output: utils.BatchOutput):
         
         label_loss = self.labeler.loss(
                                         logits = output.logits["label"],

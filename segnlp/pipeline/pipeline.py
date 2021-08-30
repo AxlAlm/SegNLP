@@ -16,16 +16,14 @@ from .trainer import Trainer
 from .tester import Tester
 from .stat_sig import StatSig
 from .dataset_preprocessor import DatasetPreprocessor
-from .encoder import Encoder
 from .labeler import Labeler
-from .doc_processor import DocProcessor
 from .text_processor import TextProcessor
 from .splitter import Splitter
+from .feature_extractor import FeatureExtractor
 from segnlp import get_logger
 from segnlp.datasets.base import DataSet
 import segnlp.utils as utils
 from segnlp import models
-from segnlp.resources.vocab import Vocab, bnc_vocab
 
 
 logger = get_logger("PIPELINE")
@@ -33,11 +31,9 @@ user_dir = pwd.getpwuid(os.getuid()).pw_dir
 
 
 class Pipeline(
-                DocProcessor, 
                 TextProcessor, 
                 Labeler, 
                 DatasetPreprocessor,
-                Encoder,
                 Evaluator, 
                 Trainer, 
                 Tester,
@@ -52,7 +48,6 @@ class Pipeline(
                 model:Union[torch.nn.Module, str],
                 metric:str,
                 pretrained_features:list = [],
-                encodings:list = [],
                 other_levels:list = [],
                 evaluation_method:str = "default",
                 root_dir:str =f"{user_dir}/.segnlp/", #".segnlp/pipelines"  
@@ -72,7 +67,9 @@ class Pipeline(
         self.tasks = dataset.tasks
         self.subtasks = dataset.subtasks
         self.task_labels = dataset.task_labels
+        self.dataset_level = dataset.level
         self.all_tasks = sorted(set(self.tasks + self.subtasks))
+        self.label_encoder = utils.LabelEncoder(task_labels = self.task_labels)
    
 
         # data storing / dataset preprocessing
@@ -88,16 +85,6 @@ class Pipeline(
             else:
                 self.am_extraction = "pre"
 
-
-        #encodings
-        self.encoders = {}
-        self.encodings = encodings
-        self._need_deps = True if "deprel" in encodings else False
-        self._create_data_encoders()
-        self._create_label_encoders()
-        self.label_encoders = {k:v for k,v in self.encoders.items() if k in self.all_tasks}
-
-
         # pretrained featues
         self.feature2model = {fm.name:fm for fm in pretrained_features}
         self.features = list(self.feature2model.keys())
@@ -107,8 +94,8 @@ class Pipeline(
                                 group:sum([fm.feature_dim for fm in pretrained_features if fm.group == group]) 
                                 for group in self._feature_groups
                                 })
-        self._use_pwf = ["word_embs"] in self._feature_groups
-        self._use_psf = ["seg_embs"] in self._feature_groups
+        self._use_pwf = "word_embs" in self._feature_groups
+        self._use_psf = "seg_embs" in self._feature_groups
 
 
         # preprocessing
@@ -143,7 +130,6 @@ class Pipeline(
                             dataset = dataset.name(),
                             model = self.model.name(),
                             features = {f.name:f.params for f in pretrained_features}, 
-                            encodings = encodings,
                             other_levels = other_levels,
                             root_dir = root_dir,
                             evaluation_method = evaluation_method,
@@ -155,7 +141,6 @@ class Pipeline(
                             sample_level = self.sample_level,
                             input_level = self.input_level,
                             feature2dim = self.feature2dim,
-                            encoding = self.encodings
                             )
 
         #setup pipeline  root folder

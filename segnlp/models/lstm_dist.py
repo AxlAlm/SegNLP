@@ -121,7 +121,7 @@ class LSTM_DIST(PTLBase):
         return "LSTM_DIST"
 
 
-    def seg_rep(self, batch:utils.Input, output:utils.Output):
+    def seg_rep(self, batch: utils.BatchInput, output: utils.BatchOutput):
 
         lstm_out, _ = self.word_lstm(
                                         input = batch["token"]["word_embs"], 
@@ -165,7 +165,7 @@ class LSTM_DIST(PTLBase):
                 }
 
 
-    def seg_clf(self, batch:utils.Input, output:utils.Output):
+    def seg_clf(self, batch: utils.BatchInput, output: utils.BatchOutput):
 
         label_outs = self.labeler(output.stuff["adu_emb"])
         link_label_outs = self.link_labeler(output.stuff["adu_emb"])
@@ -179,7 +179,7 @@ class LSTM_DIST(PTLBase):
 
 
 
-    def loss(self,  batch:utils.Input, output:utils.Output):
+    def loss(self, batch: utils.BatchInput, output: utils.BatchOutput):
 
 
         link_loss = self.linker.loss(

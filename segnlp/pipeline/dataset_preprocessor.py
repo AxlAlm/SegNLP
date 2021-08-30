@@ -2,7 +2,6 @@
 
 
 #basics
-from segnlp.utils.h5py_storage import H5PY_STORAGE
 from tqdm import tqdm
 import numpy as np
 from typing import Union, Sequence
@@ -16,10 +15,9 @@ import h5py
 
 # segnlp
 from segnlp.datasets.base import DataSet
-from segnlp.utils import Input
 import segnlp.utils as utils
 from segnlp import get_logger
-from segnlp.utils H5PY_STORAGE
+from segnlp.utils import H5PY_STORAGE
 
 logger = get_logger("DatasetPreprocessor")
 
@@ -28,12 +26,18 @@ logger = get_logger("DatasetPreprocessor")
 class DatasetPreprocessor:
 
 
-    def _preprocess_dataset(self, dataset:DataSet):
-        
-        if os.path.exists(self._path_to_preprocessed_data):
-            return None
+    def _check_data(self):
+        return all([
+                    os.path.exists(self._path_to_df),
+                    True if not self._use_psf else os.path.exists(self._path_to_psf),
+                    True if not self._use_pwf else os.path.exists(self._path_to_psf)
+                    ])
 
-        #self.__setup_h5py(file_path=self._path_to_preprocessed_data) 
+
+    def _preprocess_dataset(self, dataset:DataSet):
+    
+        if self._check_data():
+            return None
 
         self._df_storage = pd.HDFStore(self._path_to_df)
 
@@ -53,10 +57,15 @@ class DatasetPreprocessor:
                                                 dtype =  np.float64, 
                                                 )
 
-        self._n_samples = 0
-        for i in tqdm(range(len(dataset)), desc="Processing and Storing Dataset"):
-            self._process_and_store_samples(doc = dataset[i])
-            
+        try:
+            self._n_samples = 0
+            for i in tqdm(range(len(dataset)), desc="Processing and Storing Dataset"):
+                self._process_and_store_samples(doc = dataset[i])
+
+        #for keyboard interrupt
+        except BaseException as e:
+            shutil.rmtree(self._path_to_data)
+            raise e
 
         self._pwf_storage.close()
         self._psf_storage.close()
@@ -78,6 +87,9 @@ class DatasetPreprocessor:
 
         for _, sample in samples:
 
+            tok_sample_id = np.full(sample.index.shape, fill_value = self._n_samples)
+            sample["sample_id"] = tok_sample_id
+
             if span_labels:
                 sample = self._label_spans(sample, span_labels)
             
@@ -89,13 +101,12 @@ class DatasetPreprocessor:
         
             if self.argumentative_markers:
                 sample = self._label_ams(sample, mode=self.am_extraction)
-
                 
             seg_length = len(sample.groupby("seg_id", sort = False))
             if self.prediction_level == "seg" and seg_length == 0:
                 continue
-   
-            pretrained_features = self.__get_pretrained_features()
+            
+            pretrained_features = self._extract_pretrained_features(sample)
 
             if "seg_embs" in pretrained_features:
                 self._psf_storage.append(pretrained_features["seg_embs"])
@@ -103,8 +114,8 @@ class DatasetPreprocessor:
             if "word_embs" in pretrained_features:
                 self._pwf_storage.append(pretrained_features["word_embs"])
 
-            sample.index = sample["sample_id"].to_numpy()
-            self._df_storage.append("df", sample)
+            sample.index = tok_sample_id
+            self._df_storage.append(f"df_{self._n_samples}", sample)
             self._n_samples += 1
         
 

@@ -9,10 +9,12 @@ from segnlp import metrics
 
 class MetricContainer(dict):
 
-    def __init__(self, metric:Union[Callable,str], label_encoders:dict):
+    def __init__(self, 
+                metric:Union[Callable,str], 
+                task_labels: dict,
+                ):
 
-        self.task_labels = {task: list(enc.id2label.values()) if task != "link" else [] for task, enc in label_encoders.items() }
-        self.task_label_ids = {task: list(enc.id2label.keys()) if task != "link" else [] for task, enc in label_encoders.items() }
+        self.task_labels = task_labels
 
         if isinstance(metric, str):
             metric = getattr(metrics, metric)
@@ -27,12 +29,7 @@ class MetricContainer(dict):
         """
         metrics = {"metic1": 0.3, "metric2": 0.5, ...., "metricn": 0.9 }
         """
-
-        if self._metric_fn.__name__ == "overlap_metric":
-            metrics = self._metric_fn(df, self.task_labels)
-        else:
-            metrics = self._metric_fn(df, self.task_labels, self.task_label_ids)
-
+        metrics = self._metric_fn(df, self.task_labels)
         self[split].append(metrics)
 
         

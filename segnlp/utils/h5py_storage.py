@@ -18,7 +18,7 @@ class H5PY_STORAGE:
                                     data = np.zeros(tuple([0]*n_dims)), 
                                     dtype = dtype, 
                                     chunks = True, 
-                                    maxshape = tuple([None for v in enumerate(n_dims)]), 
+                                    maxshape = tuple([None for v in range(n_dims)]), 
                                     fillvalue = fillvalue
                                     )
 
@@ -40,3 +40,7 @@ class H5PY_STORAGE:
 
         else:
             raise NotImplementedError()
+
+        
+    def close(self):
+        self.h5py_f.close()

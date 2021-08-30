@@ -56,7 +56,7 @@ class FlairEmbWrapper(FeatureModel):
 
 
     def extract(self, df) -> np.ndarray:
-        tokens = df["text"].to_numpy()
+        tokens = df["token"].to_numpy()
         item_string = " ".join(tokens)
         flair_obj = Sentence(item_string, use_tokenizer=lambda x:x.split(" "))
         self.embedder.embed(flair_obj)

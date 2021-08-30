@@ -8,14 +8,27 @@ from tqdm import tqdm
 
 
 #segnlp
-from segnlp.utils import RangeDict
-from segnlp.utils import timer
+from segnlp import utils
 from segnlp import get_logger
 from segnlp.resources.am import find_am
 
 logger = get_logger("LABELER")
 
 class Labeler:
+
+
+    def _encode_labels(self, df):
+
+        for task in self.all_tasks:
+            df = self.label_encoder.encode( 
+                                        task = task,
+                                        df = df
+                                        )
+        
+        return df
+
+    def _decode_labels(self, df: pd.DataFrame):
+        raise NotImplementedError
 
 
     def _label_spans(self, df:pd.DataFrame, span_labels:dict):
@@ -27,7 +40,7 @@ class Labeler:
         return df
 
 
-    def _fuse_subtasks(self, df):
+    def _fuse_subtasks(self, df: pd.DataFrame):
 
         for task in self.tasks:
             subtasks = task.split("+")
@@ -39,7 +52,7 @@ class Labeler:
             df[task] = subtask_labels
 
 
-    def _label_bios(self, df):
+    def _label_bios(self, df: pd.DataFrame):
         df["seg"] = "O"
         segs = df.groupby("seg_id", sort=False)
         for seg_id, seg_df in segs:
@@ -47,7 +60,7 @@ class Labeler:
         return df
 
 
-    def _label_ams(self, df, mode="pre"):
+    def _label_ams(self, df: pd.DataFrame, mode="pre"):
 
         if mode == "pre":
             df = self.__ams_as_pre(df)
@@ -61,7 +74,7 @@ class Labeler:
         return df
 
 
-    def __ams_as_pre(self,df):
+    def __ams_as_pre(self, df: pd.DataFrame):
         df["am_id"] = np.nan
         groups = df.groupby("sentence_id", sort=False)
 
@@ -92,7 +105,7 @@ class Labeler:
         return df
 
 
-    def __ams_from_list(self, df):
+    def __ams_from_list(self, df: pd.DataFrame):
 
         df["am_id"] = np.nan
         groups = df.groupby("sentence_id", sort=False)
@@ -114,4 +127,3 @@ class Labeler:
                 df.loc[idx, "ac_id"] = None
 
         return df
-

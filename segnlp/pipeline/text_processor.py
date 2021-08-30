@@ -319,7 +319,7 @@ class TextProcessor:
                     "sentence_token_id": normalized_indexes[i],
                     "char_start": start,
                     "char_end": end,
-                    "text": token.lower(),
+                    "token": token.lower(),
                     "pos": tok.tag_,
                     "dephead": normalized_indexes[dephead],
                     "deprel": tok.dep_
@@ -497,42 +497,42 @@ class TextProcessor:
 
     def __fix_deps(self, df:pd.DataFrame):
 
+        """
+
+        If sample level is not sentences we need to correct the Dependecy Parsing as its
+        done on sentence level. What we do is that we set the ROOT in in sentence except the first
+        to point at the ROOT of the previous sentence. 
+        
+        """
+
         for _, sample in df.groupby(f"{self.sample_level}_id", sort=False):
             
-            print(sample.index)
             sentences  = sample.groupby("sentence_id", sort=False)
 
             sent_length = 0
-            deprels = []
             depheads = []
-            root_idx = -1
+            sent_roots = []
             for _, sent_df in sentences:
                 
-                sent_deprels = sent_df["deprel"].to_numpy()
                 sent_depheads = sent_df["dephead"].to_numpy() + sent_length
 
-                sent_root_id = self.encode_list(["root"], "deprel")[0]
-                sent_root_idx_match = np.where(sent_df["deprel"].to_numpy() == sent_root_id)
-
-                # if we dont find a sentence root, we default the root to the first word
-                if not sent_root_idx_match[0]:
-                    sent_root_idx = 0
+                try:
+                    sent_root_idx = sent_df["deprel"].to_list().index("ROOT")
+                except ValueError as e:
+                    pass
                 else:
-                    sent_root_idx = int(sent_root_idx_match[0])
+                    # we change the index of the HEAD of the root be the idx of the previous ROOT
+                    if sent_roots:
+                        sent_depheads[sent_root_idx] = sent_roots[-1] 
+                        sent_length += sent_df.shape[0]
 
+                    sent_roots.append(sent_root_idx)
 
-                if sent_length == 0 and root_idx == -1:
-                    root_idx = sent_root_idx
-                    sent_length = sent_df.shape[0]
-                else:
-                    sent_depheads[sent_root_idx] = sent_length-1
-                    sent_length += sent_df.shape[0]
-        
-                deprels.extend(sent_deprels)
                 depheads.extend(sent_depheads)
             
-            df.loc[sample.index, "deprel"] = deprels
             df.loc[sample.index, "depheads"] = depheads
+        
+        return df
 
 
     def _process_text(self, doc:str):
@@ -577,7 +577,8 @@ class TextProcessor:
 
         df = pd.DataFrame(self.__data_stack)
 
-        self.__fix_deps(df)
+        if self.sample_level != "sentence":
+            df = self.__fix_deps(df)
 
         return df
 

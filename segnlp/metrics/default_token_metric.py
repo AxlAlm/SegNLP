@@ -7,7 +7,7 @@ import pandas as pd
 from .metric_utils import f1_precision_recall
 
 
-def default_token_metric(df:pd.DataFrame, task_labels:dict, task_label_ids:dict):
+def default_token_metric(df:pd.DataFrame, task_labels:dict):
 
     collected_scores = {}
     for task in task_labels.keys():
@@ -20,7 +20,6 @@ def default_token_metric(df:pd.DataFrame, task_labels:dict, task_label_ids:dict)
                             preds = preds,
                             task = task,
                             labels = task_labels[task],
-                            label_ids = task_label_ids[task]
                             )
         collected_scores.update(scores)
     

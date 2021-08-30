@@ -4,7 +4,7 @@ sys.path.insert(1, '../../')
 
 from segnlp import Pipeline
 from segnlp.datasets.am import PE
-from segnlp.features import GloveEmbeddings, FlairEmbeddings, BertEmbeddings
+from segnlp.pretrained_features import GloveEmbeddings, FlairEmbeddings, BertEmbeddings
 
 import flair, torch
 flair.device = torch.device('cpu') 
@@ -12,11 +12,11 @@ flair.device = torch.device('cpu')
 exp = Pipeline(
                 id="lstm_crf_pe_seg",
                 dataset=PE( 
-                            tasks=["seg"],
+                            tasks=["seg+label"],
                             prediction_level="token",
                             sample_level="sentence",
                             ),
-                features =[
+                pretrained_features =[
                             GloveEmbeddings(),
                             FlairEmbeddings(),
                             BertEmbeddings(),

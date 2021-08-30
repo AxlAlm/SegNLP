@@ -24,10 +24,10 @@ class SegPos(FeatureModel):
     we represent this info as a one hot encodings of dim==4
     """
 
-    def __init__(self, group:str="doc_embs"):
+    def __init__(self, group:str="seg_embs"):
         self._feature_dim = 4
         self._name = "docpos"
-        self._level = "doc"
+        self._level = "seg"
         self._group = self._name if group is None else group
         self._dtype = np.uint8
 

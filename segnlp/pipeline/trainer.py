@@ -41,25 +41,6 @@ class Trainer:
         return hp_sets
 
 
-    def __get_model_args(self,
-                        hyperparamaters:dict,
-                        ):
-
-        model_args = dict(
-                        hyperparamaters = hyperparamaters,
-                        tasks = self.config["tasks"],
-                        all_tasks = self.config["all_tasks"],
-                        subtasks = self.config["subtasks"],
-                        label_encoders = self.label_encoders,
-                        #task_labels = self.config["task_labels"],
-                        prediction_level = self.config["prediction_level"],
-                        task_dims = {t:len(l) for t,l in self.config["task_labels"].items() if t in self.config["tasks"]},
-                        feature_dims = self.config["feature2dim"],
-                        metric= self.metric
-                        )
-        return model_args
-
-
     def __save_model_config(  self,
                             model_args:str,
                             save_choice:str, 
@@ -69,7 +50,7 @@ class Trainer:
 
         #dumping the arguments
         model_args_c = deepcopy(model_args)
-        model_args_c.pop("label_encoders")
+        model_args_c.pop("label_encoder")
         time = utils.get_time()
         config = {
                     "time": str(time),
@@ -92,7 +73,6 @@ class Trainer:
                 model_id:str=None,
                 ):
 
-
         if model_id is None:
             model_id = utils.create_uid("".join(list(map(str, hyperparamaters.keys())) + list(map(str, hyperparamaters.values()))))
 
@@ -103,8 +83,7 @@ class Trainer:
 
         #loading our preprocessed dataset
         data_module = utils.DataModule(
-                                path_to_preprocessed_dataset = self._path_to_preprocessed_data,
-                                prediction_level = self.prediction_level,
+                                path_to_data = self._path_to_data,
                                 batch_size = hyperparamaters["general"]["batch_size"],
                                 )
         
@@ -115,9 +94,12 @@ class Trainer:
             
         os.makedirs(exp_model_path, exist_ok=True) 
 
-        model_args = self.__get_model_args(
-                                            hyperparamaters=hyperparamaters, 
-                                            )
+        model_args = dict(
+                        hyperparamaters = hyperparamaters,
+                        label_encoder = self.label_encoder,
+                        feature_dims = self.config["feature2dim"],
+                        metric = self.metric
+                        )
 
         self.__save_model_config(
                                 model_args=model_args,
@@ -128,13 +110,11 @@ class Trainer:
 
 
         ptl_trn_args = get_ptl_trainer_args( 
-                                        ptl_trn_args=ptl_trn_args,
-                                        hyperparamaters=hyperparamaters, 
-                                        exp_model_path=exp_model_path,
-                                        save_choice=save_choice, 
-                                        #prefix=model_id,
+                                        ptl_trn_args = ptl_trn_args,
+                                        hyperparamaters = hyperparamaters, 
+                                        exp_model_path = exp_model_path,
+                                        save_choice = save_choice, 
                                         )
-
 
         model_fp, model_score = self._eval(
                                             model_args = model_args,

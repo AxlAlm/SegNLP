@@ -22,7 +22,7 @@ exp = Pipeline(
                             GloveEmbeddings(),
                             SegPos(),
                             ],
-                override=True,
+                #override=True,
             )
 
 hps = {

@@ -21,9 +21,8 @@ import pytorch_lightning as ptl
 
 #segnlp
 import segnlp
-from .input import Input
+from .batch_input import BatchInput
 from segnlp import utils
-from .batch import Batch
 
 
 class DataModule(ptl.LightningDataModule):
@@ -54,7 +53,7 @@ class DataModule(ptl.LightningDataModule):
         self.split_id = split_id
         
 
-    def __getitem__(self, key:Union[np.ndarray, list]) -> Input:
+    def __getitem__(self, key:Union[np.ndarray, list]) -> BatchInput:
         
         batch_df = pd.read_hdf(self._df_fp, where = f"index in {[str(k) for k in key]}")
 
@@ -64,7 +63,7 @@ class DataModule(ptl.LightningDataModule):
         with h5py.File(self._psf_fp, "w") as seg_embs:
             seg_embs = np.array([seg_embs[i] for i in key])
 
-        return Batch(
+        return BatchInput(
                     df = batch_df,
                     word_embs = word_embs,
                     seg_embs = seg_embs,

@@ -64,7 +64,7 @@ class LSTM_CNN_CRF(PTLBase):
         return "LSTM_CNN_CRF"
 
 
-    def token_rep(self, batch: utils.Input, output: utils.Output):
+    def token_rep(self, batch: utils.BatchInput, output: utils.BatchOutput):
         word_embs = self.finetuner(batch["token"]["word_embs"])
         char_embs = self.char_embedder(batch["token"]["chars"])
         cat_emb = torch.cat((word_embs, char_embs), dim=-1)
@@ -78,14 +78,14 @@ class LSTM_CNN_CRF(PTLBase):
                 "lstm_out":lstm_out
                 }
 
-    def token_clf(self, batch: utils.Input, output: utils.Output):
+    def token_clf(self, batch: utils.BatchInput, output: utils.BatchOutput):
         return self.segmenter(
                                     input=output.stuff["lstm_out"],
                                     mask=batch["token"]["mask"],
                                     )
 
 
-    def loss(self, batch: utils.Input, output: utils.Output):
+    def loss(self, batch: utils.BatchInput, output: utils.BatchOutput):
         return self.segmenter.loss(
                                         logits = output.logits[self.task],
                                         targets = batch["token"][self.task],

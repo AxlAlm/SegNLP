@@ -58,7 +58,7 @@ class LSTM_ER(PTLBase):
 
 
     # SEGMENTATION
-    def token_rep(self, batch:utils.Input, output:utils.Output):
+    def token_rep(self, batch: utils.BatchInput, output: utils.BatchOutput):
         # lstm_out = (batch_size, max_nr_tokens, lstm_hidden)
         lstm_out, _ = self.word_lstm(
                                 input = [
@@ -73,14 +73,14 @@ class LSTM_ER(PTLBase):
                 }
 
 
-    def token_clf(self, batch:utils.Input, output:utils.Output):
+    def token_clf(self, batch: utils.BatchInput, output: utils.BatchOutput):
         return self.segmenter(
                                         input = output.stuff["lstm_out"],
                                         )
 
 
     # LINK LABELING
-    def seg_rep(self, batch:utils.Input, output:utils.Output):
+    def seg_rep(self, batch: utils.BatchInput, output: utils.BatchOutput):
 
         # get the average embedding for each segments 
         seg_embs = self.agg(
@@ -124,7 +124,7 @@ class LSTM_ER(PTLBase):
                 }
 
 
-    def seg_clf(self, batch:utils.Input, output:utils.Output):
+    def seg_clf(self, batch: utils.BatchInput, output: utils.BatchOutput):
 
         pair_data = output.get_pair_data()
 
@@ -138,7 +138,7 @@ class LSTM_ER(PTLBase):
 
 
     # LOSS
-    def loss(self, batch, output):
+    def loss(self, batch: utils.BatchInput, output: utils.BatchOutput):
 
         seg_label_loss = self.segmenter.loss(
                                             targets =  batch["token"]["seg+label"],

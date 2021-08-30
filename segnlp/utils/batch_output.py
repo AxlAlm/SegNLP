@@ -7,45 +7,35 @@ from typing import Union, List, DefaultDict, Tuple
 from unittest import result
 from networkx.algorithms.assortativity import pairs
 import numpy as np
-from numpy.lib import utils
 import pandas as pd
 from collections import Counter, defaultdict
 from itertools import product
 from itertools import combinations
 from time import time
 from functools import wraps
+from functools import lru_cache
 
 
 #segnlp
-from .input import Input
 from .array import ensure_flat, ensure_numpy, flatten
-from .bio_decoder import BIODecoder
 from .schedule_sample import ScheduleSampling
 from segnlp import utils
+from segnlp.utils import BatchInput
 
 #pytorch
 import torch
 from torch import Tensor
 
 
-class Output:
+class BatchOutput:
 
     def __init__(self, 
-                label_encoders:dict,
-                tasks:list,
-                all_tasks:list,
-                subtasks:list,
-                prediction_level:str,
-                inference:bool,
-                seg_gts_k:int=None,
+                label_encoder : utils.LabelEncoder,
+                seg_decoder = None,
+                seg_gts_k: int = None,
                 ):
 
-        self.inference = inference
-        self.label_encoders = label_encoders
-        self.tasks = tasks
-        self.all_tasks = all_tasks
-        self.prediction_level = prediction_level
-        self.subtasks = subtasks
+        self.label_encoder = label_encoder
 
         # if we want to use ground truth in segmentation during training we can use
         # the following variable value to based on epoch use ground truth segmentation
@@ -55,56 +45,14 @@ class Output:
                                             k=seg_gts_k
                                             )
 
-        seg_task = [task for task in self.tasks if "seg" in task]
-        if seg_task:
-            #id2label = label_encoders[seg_task[0]].id2label
-            self.seg_decoder = BIODecoder()
-                                        # B = [i for i,l in id2label.items() if "B-" in l],
-                                        # I = [i for i,l in id2label.items() if "I-" in l],
-                                        # O = [i for i,l in id2label.items() if "O-" in l],
-                                        # )
-
-        self.__decouplers = self.__create_decouplers(label_encoders, tasks)
+        if seg_decoder is not None:
+            self.seg_decoder = seg_decoder
         
-
-    def _cache(f):
-        @wraps(f) #needed to accurately perserve the function name and doc of the function it decorates
-        def manage_cache(self, *args, **kwargs):
-            v_name =  f.__name__.split("_",1)[1]
-            if hasattr(self, v_name):
-                return getattr(self, v_name)
-            else:
-                return_value = f(self, *args, **kwargs)
-                setattr(self, v_name, return_value)
-                return return_value
-        return manage_cache
-
-
-    def __create_decouplers(self, label_encoders, tasks):
-        
-        decouplers = {}
-        for task in tasks:
-
-            if "+" not in task:
-                continue
-            
-            decouplers[task] = {}
-
-            labels = label_encoders[task].label2id.keys()
-            subtasks = task.split("+")
-
-            for i,label in enumerate(labels):
-
-                sublabels = label.split("_")
-                decouplers[task][i] = [label_encoders[st].encode(sl) if st != "link" else int(sl) for st, sl in zip(subtasks, sublabels)]
-
-        return decouplers
-    
 
     def __decode_segs(self):
     
         # we get the sample start indexes from sample lengths. We need this to tell de decoder where samples start
-        sample_sizes = self.df.groupby(level=0, sort=False).size().to_numpy()
+        sample_sizes = ensure_numpy(self.batch["token"]["lengths"]) #self.df.groupby(level=0, sort=False).size().to_numpy()
         sample_end_idxs = np.cumsum(sample_sizes)
         sample_start_idxs = np.concatenate((np.zeros(1), sample_end_idxs))[:-1]
 
@@ -146,51 +94,27 @@ class Output:
         self.df.loc[~self.df["seg_id"].isna(), subtask] = most_common
 
 
-    def __encode_links(self, level):
+    def step(self, batch: BatchInput):
 
-        key = "T-seg_id" if level == "seg" else "seg_id"
 
-        #get the nr of segments per sample
-        seg_per_sample = self.df.groupby(level=0, sort=False)[key].nunique().to_numpy()
+        self.df = batch._df
+        self.df.rename()
 
-        # get the indexes of each segments per sample
-        seg_sample_idxes = np.hstack([np.arange(a) for a in seg_per_sample])
-        
-        #repeat the indexes of each segment id per sample for number of tokens in each segment
-        index_per_token = np.repeat(seg_sample_idxes, self.df.groupby(key, sort=False).size().to_numpy())
-        
-        # make the link labels encoded to be pointing instead of being difference in nr segments
-        self.df.loc[~self.df[key].isna(), "link"] += index_per_token
-    
-     
-    def step(self, batch):
-
-        if hasattr(self, "pair_data"):
-            del self.pair_data
-
-        if hasattr(self, "seg_data"):
-            del self.seg_data
-
-        index = np.repeat(range(len(batch)), batch["token"]["lengths"])
-        ids = np.repeat(batch.ids, batch["token"]["lengths"])
-
-        to_fill_columns = ["seg_id"] + self.subtasks 
-
-        self.df = pd.DataFrame([], index = index,  columns=to_fill_columns)
         self.stuff = {}
         self.logits = {}
         self.batch = batch
 
-        mask = ensure_numpy(self.batch["token"]["mask"]).astype(bool)
 
-        self.df["sample_id"] = ids
-        self.df["text"] = ensure_numpy(batch["token"]["text"])[mask]
-        self.df["token_id"] = np.hstack([np.arange(l) for l in ensure_numpy(batch["token"]["lengths"])])
-        self.df["original_token_id"] = ensure_numpy(batch["token"]["token_ids"])[mask]
-        self.df["T-seg_id"] = ensure_numpy(batch["token"]["seg_id"])[mask]
+        # mask = ensure_numpy(self.batch["token"]["mask"]).astype(bool)
 
-        for s in self.all_tasks:
-            self.df[f"T-{s}"] = ensure_numpy(batch["token"][s])[mask]
+        # self.df["sample_id"] = ids
+        # self.df["text"] = ensure_numpy(batch["token"]["text"])[mask]
+        # self.df["token_id"] = np.hstack([np.arange(l) for l in ensure_numpy(batch["token"]["lengths"])])
+        # self.df["original_token_id"] = ensure_numpy(batch["token"]["token_ids"])[mask]
+        # self.df["T-seg_id"] = ensure_numpy(batch["token"]["seg_id"])[mask]
+
+        # for s in self.all_tasks:
+        #     self.df[f"T-{s}"] = ensure_numpy(batch["token"][s])[mask]
 
         # if we want to use schedule sampling we select the ground truths instead of 
         # the predictions
@@ -214,6 +138,7 @@ class Output:
         if level == "token":
             mask = ensure_numpy(self.batch["token"]["mask"]).astype(bool)
             self.df[task] = ensure_numpy(preds)[mask]
+        
         
         elif level == "seg":
             mask = ensure_numpy(self.batch["seg"]["mask"]).astype(bool)
@@ -239,67 +164,38 @@ class Output:
             # it will match all the token preds and be in the correct order.
             self.df.loc[~self.df[key].isna(), task] = token_preds
 
-            # as we use ground truth segments we will leave the task predictions to NaN
-            # for any token outside a ground truth segment. To not make NaN a label taken into accounts
-            # when calculating metrics we set the  labels to 0 if its link label, or if link
-            # to the index of the predicted segment it belongs to
-            # if task == link:
-            #     self.df[task] = self.df[task].replace('NaN', 0)
-            # else:
-            # if task == "link_label":
-            #     self.df[task] = self.df[task].replace('NaN', 0)
-
 
         subtasks = task.split("+")  
-
-        # if our task is complexed, e.g. "seg+label". We decouple the label ids for "seg+label"
-        # so we get the labels for Seg and for Label
-        link_needs_encoding = False
-        if len(subtasks) > 1:
-
-            subtask_preds = self.df[task].apply(lambda x: np.array(self.__decouplers[task][x]))
-            subtask_preds = np.stack(subtask_preds.to_numpy())
-
-            for i, subtask in enumerate(subtasks):
-                self.df[subtask] = subtask_preds[:,i]
-
-                # for links we add the decoded label, i.e. value indicates number of segments plus or minus the head segment is positioned.
-                # so we need to encode these links so they refer to the specific segment index in a sample. Do do this we need to 
-                # first let the segmentation create segment ids. See below where this is done
-                if "link" == subtask:
-                    link_needs_encoding = True
-
-   
 
         #make sure we do segmentation first
         if "seg" in subtasks:
             subtasks.remove("seg")
             self.__decode_segs()
-        
-    
-        # if link predictions are from a complexed label we need to 
-        # encode them.
-        if link_needs_encoding:
-            self.__encode_links(level)
 
+        if len(subtasks) > 1:
+            # break tasks such as seg+label into seg and label, e.g. 1 -> I + Premise -> [1, 2]
+            self.df = self.label_encoder.decouple(
+                                        task = task, 
+                                        subtasks = subtasks, 
+                                        df = self.df, 
+                                        level = level
+                                        )
 
         for subtask in subtasks:
 
             if level == "token":
                 self.__ensure_homogeneous(subtask)
-            
-            
+        
+    
             if subtask == "link":
-
                 # if level is segment and we are not using a ground truth segment sampler  we can correct links
                 # based on the ground truth segments else we will correct based on the predicted segments
                 true_segs = level == "seg" and not hasattr(self, "seg_gts")
                 self.__correct_links(true_segs = level == "seg")    
 
-        # # assert not self.df[task].isnull().values.any(), f"Having NaN values in column {task} is not allowed"
 
 
-    @_cache
+    @lru_cache(maxsize=None)
     def get_pair_data(self):
 
         def set_id_fn():
@@ -483,7 +379,8 @@ class Output:
 
         return pair_dict
 
-    @_cache
+
+    @lru_cache(maxsize=None)
     def get_seg_data(self):
 
 

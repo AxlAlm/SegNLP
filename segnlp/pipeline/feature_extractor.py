@@ -1,9 +1,13 @@
    
+# basics
+import pandas as pd
+import numpy as np
 
 
-   
+ 
 class FeatureExtractor:
    
+
     def _extract_pretrained_features(self, sample:pd.DataFrame):
             
         feature_dict = {}

@@ -9,9 +9,11 @@ from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 
 
-def f1_precision_recall(targets:np.ndarray, preds:np.ndarray, task:str, labels:list, label_ids:list):
+def f1_precision_recall(targets:np.ndarray, preds:np.ndarray, task:str, labels:list):
 
     assert targets.shape == preds.shape, f"shape missmatch for {task}: Targets:{targets.shape} | Preds: {preds.shape}"
+
+    label_ids = list(range(len(labels)))
 
     label_counts = Counter({l:0 for l in label_ids})
     label_counts += Counter(preds.tolist()+targets.tolist())
@@ -21,10 +23,10 @@ def f1_precision_recall(targets:np.ndarray, preds:np.ndarray, task:str, labels:l
     
     
     label_metrics = []
-    for i, (label_id, label) in enumerate(zip(label_ids, labels)):
+    for i , label in enumerate(labels):
 
         # if a label is not present in the targets or the predictions we ignore is so it doesn count towards the average
-        if label_counts[label_id] == 0:
+        if label_counts[i] == 0:
             continue
 
         p = ps[i]

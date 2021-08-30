@@ -2,8 +2,7 @@
 #basics
 import numpy as np
 import pandas as pd
-from functools import wraps
-
+from functools import lru_cache
 
 # pytorch
 import torch
@@ -17,44 +16,46 @@ class Level:
     def ___init__(self, 
                 df: pd.DataFrame, 
                 batch_size : int, 
+                tasks : list,
                 embs: np.ndarray =  None,
                 device = None
                 ):
         self._df = df
         self._device = device
-        self._cache = {}
         self._embs = embs
         self.batch_size = batch_size
+        self.tasks = set(tasks)
 
 
-    def cache(f):
-        @wraps(f) #needed to accurately perserve the function name and doc of the function it decorates
-        def tensor_cache(self, *args):
+    # def cache(f):
+    #     @wraps(f) #needed to accurately perserve the function name and doc of the function it decorates
+    #     def tensor_cache(self, *args):
 
-            if f.__name__ == "any_key":
-                key = args[0]
-            else:
-                key = f.__name__
+    #         if f.__name__ == "any_key":
+    #             key = args[0]
+    #         else:
+    #             key = f.__name__
 
-            if key not in self._cache:
+    #         if key not in self._cache:
                 
-                data  = f(self)
+    #             data  = f(self)
                 
-                if key != "token":
-                    data = torch.LongTensor(data, device = self.device)
+    #             if key != "token":
+    #                 data = torch.LongTensor(data, device = self.device)
                 
-                self.cache[key] =data
+    #             self.cache[key] =data
 
-            return self.cache[key]
+    #         return self.cache[key]
 
-        return tensor_cache
+    #     return tensor_cache
 
 
-    @cache
+    @lru_cache(maxsize=None)
     def any_key(self, key):
         flat_values = self._df.loc[:, key].to_numpy()
         splits = np.split(flat_values, self.lengths())
-        return utils.pad(splits, pad_value = -1 if key in tasks else 0)
+        data = utils.pad(splits, pad_value = -1 if key in self.tasks else 0)
+        return torch.LongTensor(data, device = self.device)
 
 
     def embs(self):
@@ -79,13 +80,16 @@ class TokenLevel(Level):
         super().__init__(*args, **kwargs)
         
 
-    @cache
+    @lru_cache(maxsize=None)
     def lengths(self):
-        return self._df.groupby(level=0, sort = False).size()
+        data = self._df.groupby(level=0, sort = False).size()
+        return torch.LongTensor(data, device = self.device)
 
-    @cache
+    @lru_cache(maxsize=None)
     def mask(self):
-        return utils.create_mask(self.lengths(), as_bool = True) 
+        data = utils.create_mask(self.lengths(), as_bool = True) 
+        return torch.BoolTensor(data, device = self.device)
+
 
 
 class SegLevel(Level):
@@ -95,18 +99,20 @@ class SegLevel(Level):
         self.key = "seg_id"
 
 
-    @cache
+    @lru_cache(maxsize=None)
     def lengths(self):
-        return self._df.groupby(level=0, sort=False)["seg_id"].nunique().to_numpy()
+        data = self._df.groupby(level=0, sort=False)["seg_id"].nunique().to_numpy()
+        return torch.LongTensor(data, device = self.device)
 
-    @cache
+    @lru_cache(maxsize=None)
     def lengths_tok(self):
         seg_tok_lengths_flat = self._df.groupby("seg_id", sort=False).to_numpy()
         seg_tok_lengths = np.split(seg_tok_lengths_flat, self.lengths())
-        return utils.pad(seg_tok_lengths, 0)
+        data = utils.pad(seg_tok_lengths, 0)
+        return torch.LongTensor(data, device = self.device)
 
         
-    @cache
+    @lru_cache(maxsize=None)
     def span_idxs(self):
 
         start_tok_ids = self._df.groupby(self.key, sort=False).first()["token_id"].to_numpy()
@@ -121,7 +127,7 @@ class SegLevel(Level):
             span_idxs[i][:l] = span_idxs_flat[floor:floor+l]
             floor += l
 
-        return span_idxs
+        return torch.LongTensor(span_idxs, device = self.device)
 
 
 
@@ -140,11 +146,18 @@ class AMLevel(SegLevel):
 
 
 
-class Batch(dict):
+class TSegLevel(Level):
+    
+    def ___init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.key = "T-seg_id"
+
+
+class BatchInput(dict):
 
 
     def __init__(self, 
-                df: pd.Dataframe, 
+                df: pd.DataFrame, 
                 batch_size: int,
                 word_embs: np.ndarray = None,
                 seg_embs: np.ndarray = None,
