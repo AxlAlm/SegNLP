@@ -51,7 +51,7 @@ class Pipeline(
                 other_levels:list = [],
                 evaluation_method:str = "default",
                 root_dir:str =f"{user_dir}/.segnlp/", #".segnlp/pipelines"  
-                override: bool = False,
+                overwrite: bool = False,
                 ):
 
         #general
@@ -146,7 +146,7 @@ class Pipeline(
         #setup pipeline  root folder
         self._path = os.path.join(root_dir, self.id)
 
-        if override:
+        if overwrite:
             logger.info(f"Overriding all data in {self._path} by moving existing folder to /tmp/ and creating a new folder")
 
             new_loc = os.path.join("/tmp/", self.id)

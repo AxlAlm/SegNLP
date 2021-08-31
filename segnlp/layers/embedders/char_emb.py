@@ -2,10 +2,16 @@
 
 #basics
 import string
+from typing import Sequence
 
 #pytroch
 import torch.nn as nn
 from torch import Tensor
+import torch
+from torch.nn.utils.rnn import pad_sequence
+
+# segnlp
+from segnlp.resources.chars import CharVocab
 
 
 class CharEmb(nn.Module):
@@ -18,8 +24,9 @@ class CharEmb(nn.Module):
                 dropout:float=0.0,
                 ):
         super().__init__()
+        self.vocab = CharVocab()
         self.char_emb_layer = nn.Embedding( 
-                                            num_embeddings=len(string.printable)+1,
+                                            num_embeddings=len(self.vocab),
                                             embedding_dim=emb_size, 
                                             padding_idx=0
                                             )
@@ -32,7 +39,11 @@ class CharEmb(nn.Module):
         self.output_size = n_filters
                                     
 
-    def forward(self, input:Tensor):
+    def forward(self, input:Sequence, lengths:str,):
+        
+        char_encs_flat = pad_sequence(self.vocab[input], batch_first = True)
+        char_encs = pad_sequence(torch.split(char_encs_flat, lengths), batch_first = True)
+
         batch_size, seq_length, char_length = char_encs.shape
 
         char_embs = self.char_emb_layer(char_encs)

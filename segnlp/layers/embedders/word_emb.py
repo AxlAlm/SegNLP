@@ -6,9 +6,9 @@ from typing import Union
 
 #pytroch
 import torch
-from torch._C import dtype
 import torch.nn as nn
 from torch import Tensor
+from torch.nn.utils.rnn import pad_sequence
 
 #gensim
 from gensim.models import KeyedVectors
@@ -61,14 +61,14 @@ class WordEmb(nn.Module):
                                                         )
         else:
             self.embs = nn.Embedding( 
-                                            num_embeddings = num_embeddings, 
-                                            embedding_dim = embedding_dim, 
-                                            padding_idx = padding_idx, 
-                                            max_norm = max_norm, 
-                                            norm_type = norm_type, 
-                                            scale_grad_by_freq = scale_grad_by_freq, 
-                                            sparse = sparse, 
-                                                )
+                                    num_embeddings = num_embeddings, 
+                                    embedding_dim = embedding_dim, 
+                                    padding_idx = padding_idx, 
+                                    max_norm = max_norm, 
+                                    norm_type = norm_type, 
+                                    scale_grad_by_freq = scale_grad_by_freq, 
+                                    sparse = sparse, 
+                                    )
 
 
     def __create_vocab_matrix(self, vocab:list, path_to_model:str):
@@ -76,7 +76,7 @@ class WordEmb(nn.Module):
         model = KeyedVectors.load_word2vec_format(path_to_model, binary=True)
         vocab_matrix = torch.zeros((len(vocab), model.vector_size))
 
-        for i,word in enumerate(vocab):
+        for i, word in vocab.vocab.items():
 
             if word == "<UNK>":
                 vocab_matrix[i] = torch.rand(model.vector_size, dtype=torch.float)
@@ -89,7 +89,15 @@ class WordEmb(nn.Module):
         return vocab_matrix
             
 
-    def forward(self, words:Tensor):
-        word_ids = vocab.encode[words.view(-1)].view(words)
-        embs = self.embs(word_ids)
+    def forward(self, input:list, lengths: list):
+        
+        # encode tokens, assumes input is a list of all tokens in the batch
+        token_id_flat = self.vocab[input]
+
+        # formats the encoded tokens to (Batch size, max token length)
+        token_ids = pad_sequence(torch.split(token_id_flat, lengths), batch_first = True)
+
+        # gets embeddings
+        embs = self.embs(token_ids)
+        
         return embs

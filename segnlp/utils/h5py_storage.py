@@ -12,6 +12,7 @@ import h5py
 class H5PY_STORAGE:
 
     def __init__(self, fp: Union[str, h5py.File], name:str, n_dims:int, dtype: np.dtype, fillvalue:int = 0):
+        self.name = name
         self.h5py_f = h5py.File(fp, "w")
         self.h5py_f.create_dataset(
                                     name, 
@@ -23,23 +24,18 @@ class H5PY_STORAGE:
                                     )
 
     def append(self, input: np.ndarray):
+
+        c_n_samples, current_dim1, feature_dim = self.h5py_f[self.name].shape
+        dim1, feature_dim = input.shape   
         
-        i = self.h5py_f.shape[0]
-        n_dims = len(input.shape)
-        nr_rows = self.h5py_f.shape[0] + input.shape[0]
-        max_shape = np.maximum(self.h5py_f.shape[1:], input.shape[1:])
-        new_shape = (nr_rows, *max_shape)
-        
-        self.h5py_f.resize(new_shape)
+        # figure out the new shape
+        new_shape = (c_n_samples+1, max(current_dim1, dim1), feature_dim)
 
-        if n_dims == 2:
-            self.h5py_f[i:,:input.shape[1]] = input
-
-        elif n_dims > 2:
-            self.h5py_f[i:,:input.shape[1], :input.shape[2]] = input
-
-        else:
-            raise NotImplementedError()
+        # resize to the new shape
+        self.h5py_f[self.name].resize(new_shape)
+    
+        #add sample
+        self.h5py_f[self.name][c_n_samples, :dim1] = input
 
         
     def close(self):

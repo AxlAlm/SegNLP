@@ -50,6 +50,13 @@ class Trainer:
 
         #dumping the arguments
         model_args_c = deepcopy(model_args)
+
+        # fix objects
+        for t, hps in model_args_c["hyperparamaters"].items():
+                for k,v in hps.items():
+                    if not isinstance(v, (str, int, float)):
+                        model_args_c["hyperparamaters"][t][k] = str(model_args_c["hyperparamaters"][t][k])
+            
         model_args_c.pop("label_encoder")
         time = utils.get_time()
         config = {
@@ -94,6 +101,7 @@ class Trainer:
             
         os.makedirs(exp_model_path, exist_ok=True) 
 
+   
         model_args = dict(
                         hyperparamaters = hyperparamaters,
                         label_encoder = self.label_encoder,

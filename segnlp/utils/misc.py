@@ -34,6 +34,13 @@ from segnlp import get_logger
 logger = get_logger("MISC-UTILS")
 
 
+
+def check_file(path):
+    
+    if os.path.exists(path):
+        return path
+
+
 def check_gpu(self, gpu:int, verbose=1) -> Tuple[bool, torch.device]:
     """checks if there is a gpu device available
 

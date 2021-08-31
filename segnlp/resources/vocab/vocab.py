@@ -6,6 +6,9 @@ from collections import Counter
 #NLTK
 from nltk import FreqDist
 
+#pytorch
+import torch
+
 #segnlp 
 from segnlp.resources.stopwords import stopwords
 
@@ -13,11 +16,15 @@ from segnlp.resources.stopwords import stopwords
 class Vocab:
 
     def __init__(self, 
+                name: str, 
                 freq_dist: Union[FreqDist, dict], 
                 size: int = 30000, 
                 unk_word: str = "<UNK>",
-                remove_stopwords:bool=False
+                remove_stopwords:bool = False,
+                #return_as_tensor: bool = True
                 ):
+        #self.return_as_tensor = True
+        self._name = name
         self.unk_word = unk_word
         self._vocab = FreqDist(freq_dist) if isinstance(freq_dist, dict) else freq_dist
 
@@ -50,12 +57,23 @@ class Vocab:
                 remove_stopwords = remove_stopwords,
                 )
 
-    def __len__(self):
-       return self.size
+    @property
+    def vocab(self):
+        return self._id2word
 
+    @property
+    def name(self):
+        return self._name
+
+    def __str__(self) -> str:
+        return self._name
+
+    def __len__(self):
+        return len(self._vocab)
+    
 
     def __getitem__(self, words: List[str]):
-        return [self._word2id.get(word, 0) for word in words]
+        return torch.LongTensor([self._word2id.get(word, 0) for word in words])
 
 
     def decode(self, word_ids: List[str]):

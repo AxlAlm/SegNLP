@@ -21,13 +21,13 @@ class Splitter:
     def _set_splits(self,  premade_splits):
 
 
-        def split(ids, premade_splits:dict=None):
+        def split(indexes, premade_splits:dict=None):
 
             if premade_splits is not None:
-                train = [i for i in ids if i in premade_splits["train"]]
-                test = [i for i in ids if i in premade_splits["test"]]
+                train = [i for i in indexes if i in premade_splits["train"]]
+                test = [i for i in indexes if i in premade_splits["test"]]
             else:
-                train, test = train_test_split(ids, test_size=0.33, shuffle=True)
+                train, test = train_test_split(idxs, test_size=0.33, shuffle=True)
         
             train, val  = train_test_split(train, test_size=0.1, shuffle=True)
             return {0:{
@@ -37,8 +37,8 @@ class Splitter:
                         }
                     }    
 
-        def split_new(ids):
-            train, test  = train_test_split(ids, test_size=0.3, shuffle=True)
+        def split_new(idxs):
+            train, test  = train_test_split(idxs, test_size=0.3, shuffle=True)
             train, val  = train_test_split(train, test_size=0.1, shuffle=True)
             return {0:{
                         "train": train,
@@ -47,25 +47,25 @@ class Splitter:
                         }
                     }
 
-        def cv_split(ids):
+        def cv_split(idxs):
             kf = KFold(n_splits=10, shuffle=True)
-            splits = {i:{"train": train_index,  "val":test_index} for i, (train_index, test_index) in enumerate(kf.split(ids))}
+            splits = {i:{"train": train_index,  "val":test_index} for i, (train_index, test_index) in enumerate(kf.split(idxs))}
             return splits
 
 
         if os.path.exists(self._path_to_splits):
             return
 
-        ids = np.arange(self._n_samples)
+        idxs = np.arange(self._n_samples)
 
         if self.evaluation_method == "cross_validation":
-            splits = cv_split(ids)
+            splits = cv_split(idxs)
 
         elif self.sample_level != self.dataset_level:
-            splits = split_new(ids)
+            splits = split_new(idxs)
 
         else:
-            splits = split(ids, premade_splits = premade_splits)
+            splits = split(idxs, premade_splits = premade_splits)
 
 
         with open(self._path_to_splits, "wb") as f:

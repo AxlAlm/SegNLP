@@ -30,7 +30,7 @@ class DatasetPreprocessor:
         return all([
                     os.path.exists(self._path_to_df),
                     True if not self._use_psf else os.path.exists(self._path_to_psf),
-                    True if not self._use_pwf else os.path.exists(self._path_to_psf)
+                    True if not self._use_pwf else os.path.exists(self._path_to_pwf)
                     ])
 
 
@@ -67,8 +67,12 @@ class DatasetPreprocessor:
             shutil.rmtree(self._path_to_data)
             raise e
 
-        self._pwf_storage.close()
-        self._psf_storage.close()
+        if self._use_pwf:
+            self._pwf_storage.close()
+
+        if self._use_psf:
+            self._psf_storage.close()
+
         self._df_storage.close()
 
         
@@ -115,7 +119,7 @@ class DatasetPreprocessor:
                 self._pwf_storage.append(pretrained_features["word_embs"])
 
             sample.index = tok_sample_id
-            self._df_storage.append(f"df_{self._n_samples}", sample)
+            self._df_storage.append(f"df", sample, min_itemsize={'token': 50})
             self._n_samples += 1
         
 

@@ -7,7 +7,9 @@ from segnlp.datasets.am import PE
 from segnlp.models import JointPN
 from segnlp.pretrained_features import GloveEmbeddings
 from segnlp.pretrained_features import SegPos
-#from segnlp.features import SegPos
+from segnlp.resources.vocab import bnc_vocab
+
+
 
 exp = Pipeline(
                 id="jp_pe",
@@ -19,10 +21,9 @@ exp = Pipeline(
                 model = JointPN,
                 metric = "default_segment_metric",
                 pretrained_features =[
-                            GloveEmbeddings(),
-                            SegPos(),
-                            ],
-                #override=True,
+                                        GloveEmbeddings(),
+                                        ],
+                #overwrite = True
             )
 
 hps = {
@@ -36,6 +37,9 @@ hps = {
                 },
         "Agg":{
                 "mode":"mix",
+                },
+        "BOW":{
+                "vocab": bnc_vocab(size = 10000),
                 },
         "LinearRP": {
                         "hidden_size": 512,

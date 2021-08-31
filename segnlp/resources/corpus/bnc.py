@@ -30,17 +30,27 @@ class BNC:
 
 
     def __download(self):
-        if not os.path.exists(self.save_path):
-            download(url=self.url, save_path=self.save_path, desc="Downloading BNC-Corpus")
+        
+        zipped_data_exist = os.path.exists(self.save_path)
+        unzipped_data_exist = os.path.exists(self.data_path)
 
-        if not os.path.exists(self.data_path):
+        if unzipped_data_exist:
+            return
+
+        if not unzipped_data_exist and zipped_data_exist:
             unzip(self.save_path, self.data_path)
+            return
+
+        download(url=self.url, save_path=self.save_path, desc="Downloading BNC-Corpus")
+        unzip(self.save_path, self.data_path)
+
+  
 
 
     def __get_files(self):
         path_to_text = os.path.join(self.data_path,"download", "Texts")
         files = glob(path_to_text+"/**/*.xml", recursive=True)
-        return files, 0 ,len(files)-1
+        return files, 0, len(files)-1
 
 
     def words(self):

@@ -400,23 +400,16 @@ class PE(DataSet):
        				continue
 
        			essay, split = line.replace('"',"").strip().split(";")
-       			essay_id = int(re.findall(r"(?!0)\d+", essay)[0])
+       			essay_idx = int(re.findall(r"(?!0)\d+", essay)[0]) - 1
 
        			if split == "TRAIN":
-       				train.append(essay_id)
+       				train.append(essay_idx)
        			else:
-       				test.append(essay_id)
-        
+       				test.append(essay_idx)
+
+     
         return {"train":train, "test":test}
-        # #shuffle or not?
-        # random.shuffle(train)
-        # random.shuffle(test)
-
-        # ids = train + test
-        # split_idx = len(train)
-        # shuffled_data = [data[i-1] for i in ids]
-
-        # return split_idx, shuffled_data
+      
   
 
     def _process_data(self, path_to_data):
@@ -457,7 +450,7 @@ class PE(DataSet):
                                                             )
                         
             data.append({
-                            "sample_id":file_id,
+                            #"sample_id":file_id,
                             "text":text, 
                             "text_type":"document",
                             "span_labels": span2label

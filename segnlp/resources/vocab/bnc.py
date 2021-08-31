@@ -30,7 +30,7 @@ def bnc_vocab(**kwargs):
         with open(save_path, "r") as f:
             freqs = json.load(f)
 
-
+    kwargs["name"] = f"BNC, size = {kwargs['size']}"
     kwargs["freq_dist"] = freqs
     return Vocab(**kwargs)
 

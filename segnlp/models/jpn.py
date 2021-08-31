@@ -48,12 +48,19 @@ class JointPN(PTLBase):
                             )
 
 
-        self.fc1 = self.add_encoder(
+        self.seg_pos = self.add_embedder(
+                                        layer = "SegPos",
+                                        hyperparams = {},
+                                        module = "segment_module"
+                                        )
+
+
+        self.fc1 = self.add_encoder(    
                                     layer = "LinearRP", 
                                     hyperparams = self.hps.get("LinearRP", {}),
                                     input_size  =   self.bow.output_size + 
-                                                    self.agg.output_size + 
-                                                    self.feature_dims["doc_embs"],
+                                                    self.agg.output_size +
+                                                    self.seg_pos.output_size,
                                     module = "segment_module"
                                     )
 
@@ -63,7 +70,7 @@ class JointPN(PTLBase):
                                     hyperparams = self.hps.get("LinearRP", {}),
                                     input_size  =   self.bow.output_size + 
                                                     self.agg.output_size + 
-                                                    self.feature_dims["doc_embs"],
+                                                    self.seg_pos.output_size,
                                     module = "segment_module"
 
                                 )
@@ -118,7 +125,12 @@ class JointPN(PTLBase):
                         span_idxs = batch["seg"]["span_idxs"]
                         )
 
-        seg_embs = torch.cat((seg_embs, bow, batch["seg"]["doc_embs"]), dim=-1)
+        segpos = self.seg_pos(
+                            document_paragraph_ids = batch["seg"]["document_paragraph_ids"], 
+                            max_paragraphs = batch["seg"]["max_paragraph"]
+                            )
+
+        seg_embs = torch.cat((seg_embs, bow, segpos), dim=-1)
 
         f1c_out = self.fc1(seg_embs)
         f2c_out = self.fc2(seg_embs)

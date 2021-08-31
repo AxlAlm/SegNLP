@@ -25,6 +25,7 @@ from .batch_input import BatchInput
 from segnlp import utils
 
 
+
 class DataModule(ptl.LightningDataModule):
 
     """
@@ -43,8 +44,8 @@ class DataModule(ptl.LightningDataModule):
                 ):
 
         self._df_fp = os.path.join(path_to_data, "df.hdf5")
-        self._pwf_fp = os.path.join(path_to_data, "pwf.hdf5")
-        self._psf_fp = os.path.join(path_to_data, "psf.hdf5")
+        self._pwf_fp = utils.check_file(os.path.join(path_to_data, "pwf.hdf5"))
+        self._psf_fp = utils.check_file(os.path.join(path_to_data, "psf.hdf5"))
 
         with open(os.path.join(path_to_data, f"splits.pkl"), "rb") as f:
             self._splits = pickle.load(f)
@@ -53,29 +54,43 @@ class DataModule(ptl.LightningDataModule):
         self.split_id = split_id
         
 
+    def __get_df(self, key):
+        return pd.read_hdf(self._df_fp, where = f"index in {[str(k) for k in key]}")
+
+
+    def __get_pwf(self, key):
+
+        if self._pwf_fp is None:
+            return
+
+        with h5py.File(self._pwf_fp, "r") as f:
+            return np.array([f["word_embs"][i] for i in key])
+
+
+    def __get_psf(self, key):
+
+        if self._psf_fp is None:
+            return
+
+        with h5py.File(self._psf_fp, "r") as f:
+            return np.array([f["seg_embs"][i] for i in key])
+
+
+
     def __getitem__(self, key:Union[np.ndarray, list]) -> BatchInput:
-        
-        batch_df = pd.read_hdf(self._df_fp, where = f"index in {[str(k) for k in key]}")
-
-        with h5py.File(self._pwf_fp, "w") as word_embs:
-            word_embs = np.array([word_embs[i] for i in key])
-        
-        with h5py.File(self._psf_fp, "w") as seg_embs:
-            seg_embs = np.array([seg_embs[i] for i in key])
-
         return BatchInput(
-                    df = batch_df,
-                    word_embs = word_embs,
-                    seg_embs = seg_embs,
+                    df = self.__get_df(key),
+                    word_embs = self.__get_pwf(key),
+                    seg_embs = self.__get_psf(key),
                     batch_size = self.batch_size
                     )
 
 
-    def __get_dataloader(self, split):
+    def __get_dataloader(self, split:str): #split = {"train", "test", "val"}
 
         # we get the ids for the split, these are the indexes we use to 
         # retrieve the sample for the h5py file
-        split_ids = self.splits[self.split_id][split]
+        split_ids = self._splits[self.split_id][split]
 
         # we shuffle the splits
         np.random.shuffle(split_ids)
