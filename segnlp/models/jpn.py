@@ -120,8 +120,13 @@ class JointPN(PTLBase):
                             span_idxs = batch["seg"]["span_idxs"],
                             )
 
+        batch["token"]["token"]
+        batch["token"]["token"]
+        batch["token"]["token"]
+
+
         bow = self.bow(
-                        word_encs = batch["token"]["words"], 
+                        input = batch["token"]["token"], 
                         span_idxs = batch["seg"]["span_idxs"]
                         )
 

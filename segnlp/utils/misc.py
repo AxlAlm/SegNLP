@@ -237,3 +237,31 @@ def random_ints(n):
     rs = RandomState(MT19937(SeedSequence(ts)))
     return rs.randint(10**6,size=(n,)).tolist()
 
+
+
+
+class Memorize:
+
+    def __init__(self, func):
+        self.func = func
+        self.cache = {}
+
+
+    def __call__(self, *args):
+
+        #print(args[1], self.cache)
+        print(args)
+        if args[0] in self.cache:
+            return self.cache[args[0]]
+        else:
+            value = self.func(*args)
+            self.cache[args[0]] = value
+            return value
+
+
+    def __repr__(self):
+        return self.func.__doc__
+
+
+    # def __get__(self, obj, objtype):
+    #     return functools.partial(self.__call__, obj)

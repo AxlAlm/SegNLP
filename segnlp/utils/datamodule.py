@@ -57,32 +57,33 @@ class DataModule(ptl.LightningDataModule):
     def __get_df(self, key):
         return pd.read_hdf(self._df_fp, where = f"index in {[str(k) for k in key]}")
 
+    
 
-    def __get_pwf(self, key):
+    def __get_pretrained_features(self, key):
 
-        if self._pwf_fp is None:
-            return
+        pretrained_features = {}
 
-        with h5py.File(self._pwf_fp, "r") as f:
-            return np.array([f["word_embs"][i] for i in key])
+        if self._pwf_fp is not None:
+        
+            with h5py.File(self._pwf_fp, "r") as f:
+                pretrained_features["word_embs"] = np.array([f["word_embs"][i] for i in key])
 
 
-    def __get_psf(self, key):
+        if self._psf_fp is not None:
 
-        if self._psf_fp is None:
-            return
+            with h5py.File(self._psf_fp, "r") as f:
+                pretrained_features["seg_embs"] =  np.array([f["seg_embs"][i] for i in key])
 
-        with h5py.File(self._psf_fp, "r") as f:
-            return np.array([f["seg_embs"][i] for i in key])
-
+        return pretrained_features
 
 
     def __getitem__(self, key:Union[np.ndarray, list]) -> BatchInput:
+
+
         return BatchInput(
                     df = self.__get_df(key),
-                    word_embs = self.__get_pwf(key),
-                    seg_embs = self.__get_psf(key),
-                    batch_size = self.batch_size
+                    batch_size = self.batch_size,
+                    pretrained_features = self.__get_pretrained_features(key)
                     )
 
 

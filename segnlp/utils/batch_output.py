@@ -58,25 +58,25 @@ class BatchOutput:
         sample_end_idxs = np.cumsum(sample_sizes)
         sample_start_idxs = np.concatenate((np.zeros(1), sample_end_idxs))[:-1]
 
-        self.df["seg_id"] = self.seg_decoder(
-                                                self.df["seg"].to_numpy(), 
+        self.df["PRED", "seg_id"] = self.seg_decoder(
+                                                self.df["PRED", "seg"].to_numpy(), 
                                                 sample_start_idxs=sample_start_idxs.astype(int)
                                                 )
 
 
-    def __correct_links(self, true_segs:bool=False):
+    def __correct_links(self):
         """
         This function perform correction 3 mentioned in https://arxiv.org/pdf/1704.06104.pdf  (Appendix)
         Any link that is outside of the actuall text, e.g. when predicted link > max_idx, is set to predicted_link== max_idx
         """
 
-        max_segs = self.df.groupby(level=0, sort=False)["T-seg_id" if true_segs else "seg_id"].nunique().to_numpy()
-        self.df["max_seg"] = np.repeat(max_segs, self.df.groupby(level=0, sort=False).size().to_numpy())
+        max_segs = self.df["PRED"].groupby(level=0, sort=False)["seg_id"].nunique().to_numpy()
+        self.df.loc["PRED", "max_seg"] = np.repeat(max_segs, self.df["PRED"].groupby(level=0, sort=False).size().to_numpy())
 
-        above = self.df["link"] > self.df["max_seg"]
-        below = self.df["link"] < 0
+        above = self.df.loc["PRED", "link"] > self.df["PRED", "max_seg"]
+        below =self.df.loc["PRED", "link"] < 0
 
-        self.df.loc[above | below,"link"] = self.df.loc[above | below, "max_seg"]
+        self.df["PRED"].loc[above | below, "link"] = self.df["PRED"].loc[above | below, "max_seg"]
 
 
     def __ensure_homogeneous(self, subtask):
@@ -85,43 +85,45 @@ class BatchOutput:
         ensures that the labels inside a segments are the same. For each segment we take the majority label 
         and use it for the whole span.
         """
-        df = self.df.loc[:,["seg_id", subtask]].value_counts(sort=False).to_frame()
+        df = self.df.loc["PRED",["seg_id", subtask]].value_counts(sort=False).to_frame()
         df.reset_index(inplace=True)
         df.rename(columns={0:"counts"}, inplace=True)
         df.drop_duplicates(subset=['seg_id'], inplace=True)
 
-        seg_lengths = self.df.groupby("seg_id", sort=False).size()
+        seg_lengths = self.df["PRED"].groupby("seg_id", sort=False).size()
         most_common = np.repeat(df[subtask].to_numpy(), seg_lengths)
 
-        self.df.loc[~self.df["seg_id"].isna(), subtask] = most_common
+        self.df["PRED"].loc[~self.df["PRED", "seg_id"].isna(), subtask] = most_common
 
 
-    def step(self, batch: BatchInput):
+    def step(self, batch: BatchInput, step_type : str):
+
+        # create a copy of the original dataframe for all predictions
+        pred_df = batch._df.copy(deep=True)
+        for task in self.label_encoder.task_labels.keys():
+            pred_df[task] = None  
+
+        #we will use the TARGET segment ids if the prediction level is on segment level
+        if  "seg" not in self.label_encoder.task_labels:
+            pred_df["seg_id"] = batch._df["seg_id"].to_numpy()
+        else:
+            pred_df["seg_id"] = None
 
 
-        self.df = batch._df
-        self.df.rename()
+        # we made a multi-index dict to keep the TARGET and PRED labels seperate
+        self.df  = pd.concat((batch._df, pred_df), keys= ['TARGET', 'PRED'], axis=0)
+
 
         self.stuff = {}
         self.logits = {}
         self.batch = batch
 
-
-        # mask = ensure_numpy(self.batch["token"]["mask"]).astype(bool)
-
-        # self.df["sample_id"] = ids
-        # self.df["text"] = ensure_numpy(batch["token"]["text"])[mask]
-        # self.df["token_id"] = np.hstack([np.arange(l) for l in ensure_numpy(batch["token"]["lengths"])])
-        # self.df["original_token_id"] = ensure_numpy(batch["token"]["token_ids"])[mask]
-        # self.df["T-seg_id"] = ensure_numpy(batch["token"]["seg_id"])[mask]
-
-        # for s in self.all_tasks:
-        #     self.df[f"T-{s}"] = ensure_numpy(batch["token"][s])[mask]
-
-        # if we want to use schedule sampling we select the ground truths instead of 
-        # the predictions
-        if hasattr(self, "seg_gts"):
-            self.__use_seg_gt = self.seg_gts.next(self.batch.current_epoch)
+        # if we want to use schedule sampling we select the ground truths segmentation instead of 
+        # the predictions. Only for Training steps
+        try:
+            self.__use_gt_seg = getattr(self, "seg_gts")(self.batch.current_epoch) and step_type == "train"
+        except AttributeError:
+            self.__use_gt_seg = False
 
         return self
 
@@ -136,10 +138,21 @@ class BatchOutput:
 
     def add_preds(self, preds:Union[np.ndarray, Tensor], level:str,  task:str):
         
+        # if we are using the segmentation ground truths we overwrite the segmentation labels
+        # aswell as segment ids
+        if self.__use_gt_seg and "seg" in task:
+            
+            for subtask in task.split("+"):
+                self.loc["PRED", subtask] = self.loc["TARGET", subtask].to_numpy()
+
+            self.loc["PRED", "seg_id"] = self.loc["TARGET", "seg_id"].to_numpy()
+            return
+            
+
 
         if level == "token":
             mask = ensure_numpy(self.batch["token"]["mask"]).astype(bool)
-            self.df[task] = ensure_numpy(preds)[mask]
+            self.df["PRED", task] = ensure_numpy(preds)[mask]
         
 
         elif level == "seg":
@@ -147,24 +160,22 @@ class BatchOutput:
             seg_preds = ensure_numpy(preds)[mask]
             
             # we spread the predictions on segments over all tokens in the segments
-            cond = ~self.df["T-seg_id"].isna()
+            cond = ~self.df["PRED", "seg_id"].isna()
 
             # repeat the segment prediction for all their tokens 
             token_preds = np.repeat(seg_preds, ensure_numpy(self.batch["seg"]["lengths_tok"])[mask])
 
-            self.df.loc[cond, task] = token_preds
+            self.df["PRED"].loc[cond, task] = token_preds
 
 
         elif level == "p_seg":
-            key = "T-seg_id" if self.__use_seg_gt else "seg_id"
-            
-            seg_tok_lengths = self.df.groupby(key, sort=False).size()
+            seg_tok_lengths = self.df["PRED"].groupby("seg_id", sort=False).size()
             token_preds = np.repeat(preds, seg_tok_lengths)
 
             # as predicts are given in seg ids ordered from 0 to nr predicted segments
             # we can just remove all rows which doesnt belong to a predicted segments and 
             # it will match all the token preds and be in the correct order.
-            self.df.loc[~self.df[key].isna(), task] = token_preds
+            self.df["PRED"].loc[~self.df["PRED", "seg_id"].isna(), task] = token_preds
 
 
         subtasks = task.split("+")  
@@ -176,10 +187,10 @@ class BatchOutput:
 
         if len(subtasks) > 1:
             # break tasks such as seg+label into seg and label, e.g. 1 -> I + Premise -> [1, 2]
-            self.df = self.label_encoder.decouple(
+            self.df["PRED"] = self.label_encoder.decouple(
                                         task = task, 
                                         subtasks = subtasks, 
-                                        df = self.df, 
+                                        df = self.df["PRED"], 
                                         level = level
                                         )
 
@@ -192,12 +203,11 @@ class BatchOutput:
             if subtask == "link":
                 # if level is segment and we are not using a ground truth segment sampler  we can correct links
                 # based on the ground truth segments else we will correct based on the predicted segments
-                true_segs = level == "seg" and not hasattr(self, "seg_gts")
-                self.__correct_links(true_segs = level == "seg")    
+                #true_segs = level == "seg" and not hasattr(self, "seg_gts")
+                self.__correct_links()    
 
 
-
-    @lru_cache(maxsize=None)
+    @utils.Memorize
     def get_pair_data(self):
 
         def set_id_fn():
@@ -218,16 +228,16 @@ class BatchOutput:
             
 
             def overlap(target, pdf):
-                j = target["T-seg_id"].to_list()[0]
-                seg_ids = target["seg_id"].dropna().to_list()
+                j = target["seg_id"].to_list()[0]
+                seg_ids = target["P-seg_id"].dropna().to_list()
 
                 if not seg_ids:
                     return np.array([None, None, None])
 
                 i = Counter(seg_ids).most_common(1)[0][0]
 
-                p_index = set(pdf.loc[[i], "token_id"]) #slowest part
-                t_index = set(target["token_id"])
+                p_index = set(pdf.loc[[i], "sample_token_id"]) #slowest part
+                t_index = set(target["sample_token_id"])
 
                 ratio = len(t_index.intersection(p_index)) / max(len(p_index), len(t_index))
                 return np.array([i, j, ratio])
@@ -240,7 +250,7 @@ class BatchOutput:
 
             # we extract matching information. Which predicted segments are overlapping with which 
             # ground truth segments
-            match_info = np.vstack(df.groupby("T-seg_id", sort=False).apply(overlap, (pdf)))
+            match_info = np.vstack(df.groupby("seg_id", sort=False).apply(overlap, (pdf)))
             
             i = match_info[:,0].astype(int) #predicted segment id
             j = match_info[:,1].astype(int) # ground truth segment id
@@ -249,14 +259,12 @@ class BatchOutput:
             return i, j, ratio
 
 
-        key = "seg_id"
-        if self.__use_seg_gt:
-            key = "T-seg_id"
+        df = self.df["TARGET" if self.__use_gt else "PRED"]
         
-        first_df = self.df.groupby(key, sort=False).first()
+        first_df = df.groupby("seg_id", sort=False).first()
         first_df.reset_index(inplace=True)
 
-        last_df = self.df.groupby(key, sort=False).last()
+        last_df = df.groupby("seg_id", sort=False).last()
         last_df.reset_index(inplace=True)
 
         # we create ids for each memeber of the pairs
@@ -265,7 +273,7 @@ class BatchOutput:
         p1, p2 = [], []
         j = 0
         for i in range(len(self.batch)):
-            n = len(self.df.loc[i,key].dropna().unique())
+            n = len(df.loc[i,"seg_id"].dropna().unique())
             sample_seg_ids = np.arange(
                                         start= j,
                                         stop = j+n
@@ -287,14 +295,14 @@ class BatchOutput:
         pair_df["sample_id"] = first_df.loc[pair_df["p1"], "sample_id"].to_numpy()
 
         #set true the link_label
-        pair_df["T-link_label"] = first_df.loc[pair_df["p1"], "T-link_label"].to_numpy()
+        pair_df["link_label"] = first_df.loc[pair_df["p1"], "link_label"].to_numpy()
 
         #set start and end token indexes for p1 and p2
-        pair_df["p1_start"] = first_df.loc[pair_df["p1"], "token_id"].to_numpy()
-        pair_df["p1_end"] = last_df.loc[pair_df["p1"], "token_id"].to_numpy()
+        pair_df["p1_start"] = first_df.loc[pair_df["p1"], "sample_token_id"].to_numpy()
+        pair_df["p1_end"] = last_df.loc[pair_df["p1"], "sample_token_id"].to_numpy()
 
-        pair_df["p2_start"] = first_df.loc[pair_df["p2"], "token_id"].to_numpy()
-        pair_df["p2_end"] = last_df.loc[pair_df["p2"], "token_id"].to_numpy()
+        pair_df["p2_start"] = first_df.loc[pair_df["p2"], "sample_token_id"].to_numpy()
+        pair_df["p2_end"] = last_df.loc[pair_df["p2"], "sample_token_id"].to_numpy()
 
         # set directions
         pair_df["direction"] = 0  #self
@@ -306,7 +314,7 @@ class BatchOutput:
 
             # we also have information about whether the seg_id is a true segments 
             # and if so, which TRUE segmentent id it overlaps with, and how much
-            seg_id, T_seg_id, ratio = extract_match_info(self.df)
+            seg_id, T_seg_id, ratio = extract_match_info(df)
 
             p1_matches = np.isin(pair_df["p1"], seg_id)
             p2_matches = np.isin(pair_df["p2"], seg_id)
@@ -320,10 +328,10 @@ class BatchOutput:
             p2_v = np.array(p2, dtype=np.float)
             p2_v[~p2_matches] =  np.nan
 
-            pair_df["T-p1"] = p1_v
-            pair_df["T-p2"] = p2_v
-            pair_df["T-p1"] = pair_df["T-p1"].map(i2j)
-            pair_df["T-p2"] = pair_df["T-p2"].map(i2j)
+            pair_df["p1"] = p1_v
+            pair_df["p2"] = p2_v
+            pair_df["p1"] = pair_df["p1"].map(i2j)
+            pair_df["p2"] = pair_df["p2"].map(i2j)
 
             # adding ratio for true seg ids for each p1,p2
             i2ratio = dict(zip(seg_id, ratio))
@@ -334,16 +342,16 @@ class BatchOutput:
             p2_ratio_default = np.array(p2, dtype=np.float)
             p2_ratio_default[~p2_matches] = float("-inf")
 
-            pair_df["T-p1-ratio"] = p1_ratio_default
-            pair_df["T-p2-ratio"] = p2_ratio_default
-            pair_df["T-p1-ratio"] = pair_df["T-p1-ratio"].map(i2ratio)
-            pair_df["T-p2-ratio"] = pair_df["T-p2-ratio"].map(i2ratio)
+            pair_df["p1-ratio"] = p1_ratio_default
+            pair_df["p2-ratio"] = p2_ratio_default
+            pair_df["p1-ratio"] = pair_df["p1-ratio"].map(i2ratio)
+            pair_df["p2-ratio"] = pair_df["p2-ratio"].map(i2ratio)
         
         else:
-            pair_df["T-p1"] = p1
-            pair_df["T-p2"] = p2
-            pair_df["T-p1-ratio"] = 1
-            pair_df["T-p2-ratio"] = 1
+            pair_df["p1"] = p1
+            pair_df["p2"] = p2
+            pair_df["p1-ratio"] = 1
+            pair_df["p2-ratio"] = 1
         
 
         # We also need to create mask which tells us which pairs either:
@@ -352,7 +360,7 @@ class BatchOutput:
         # ground truth segment
 
         # 1 find which pairs are "false", i.e. the members whould not be linked
-        links = first_df.loc[pair_df["p1"], "T-link"].to_numpy()
+        links = first_df.loc[pair_df["p1"], "link"].to_numpy()
         pairs_per_sample = pair_df.groupby("sample_id", sort=False).size().to_numpy()
         seg_per_sample = utils.np_cumsum_zero(first_df.groupby("sample_id", sort=False).size().to_numpy())
         normalized_links  = links + np.repeat(seg_per_sample, pairs_per_sample)
@@ -363,8 +371,8 @@ class BatchOutput:
         # configurable extend.
         #if self.threshohold == "first":
         #else:
-        p1_cond = pair_df["T-p1-ratio"] >= 0.5
-        p2_cond = pair_df["T-p2-ratio"] >= 0.5
+        p1_cond = pair_df["p1-ratio"] >= 0.5
+        p2_cond = pair_df["p2-ratio"] >= 0.5
         contain_false_segs = np.logical_and(p1_cond.to_numpy(), p2_cond.to_numpy())
     
         pair_df["false_pairs"] = np.logical_and(false_linked_pairs, contain_false_segs)
@@ -382,20 +390,24 @@ class BatchOutput:
         return pair_dict
 
 
-    @lru_cache(maxsize=None)
+    @utils.Memorize
     def get_seg_data(self):
 
 
-        if self.__use_seg_gt:
+        if self.__use_gt_seg:
             seg_data = {
                             "span_idxs": self.batch["seg"]["span_idxs"],
                             "lengths": self.batch["seg"]["lengths"],
                             }   
         else:
-            seg_lengths = self.df[~self.df["seg_id"].isna()].groupby(level=0, sort=False)["seg_id"].nunique().to_numpy()
 
-            start = self.df.groupby("seg_id", sort=False).first()["token_id"]
-            end = self.df.groupby("seg_id",  sort=False).last()["token_id"]
+            df = self.df["PRED"]
+
+
+            seg_lengths = df[~df["seg_id"].isna()].groupby(level=0, sort=False)["seg_id"].nunique().to_numpy()
+
+            start = df.groupby("seg_id", sort=False).first()["sample_token_id"]
+            end = df.groupby("seg_id",  sort=False).last()["sample_token_id"]
 
             span_idxs_flat = list(zip(start, end))
 
@@ -415,32 +427,33 @@ class BatchOutput:
 
 
     def get_preds(self, task:str, one_hot:bool = False):
+        pass
         
-        task_key = task
+        # task_key = task
 
-        # if we want to use schedule sampling we select the ground truths instead of 
-        # the predictions
-        if self.__use_seg_gt:
-            task_key = f"T-{task}"
+        # # if we want to use schedule sampling we select the ground truths instead of 
+        # # the predictions
+        # if self.__use_seg_gt:
+        #     task_key = f"T-{task}"
 
-        # we take the lengths in tokens for each sample
-        tok_lengths = self.df.groupby(level=0, sort=False).size().to_numpy()
+        # # we take the lengths in tokens for each sample
+        # tok_lengths = self.df.groupby(level=0, sort=False).size().to_numpy()
 
-        # create the end indexes. Remove the last value as its the end and will create a faulty split
-        end_idxs = np.cumsum(tok_lengths)[:-1]
+        # # create the end indexes. Remove the last value as its the end and will create a faulty split
+        # end_idxs = np.cumsum(tok_lengths)[:-1]
 
-        # split and then pad
-        preds = utils.zero_pad(np.hsplit(self.df[task_key].to_numpy(), end_idxs))
+        # # split and then pad
+        # preds = utils.zero_pad(np.hsplit(self.df[task_key].to_numpy(), end_idxs))
 
-        #then we create one_hots from the preds if thats needed
-        if one_hot:
-            return utils.one_hot(
-                                    matrix = torch.LongTensor(preds),
-                                    mask = self.batch["token"]["mask"],
-                                    num_classes = len(self.label_encoders[task])
-                                    )
-        else:
-            return preds
+        # #then we create one_hots from the preds if thats needed
+        # if one_hot:
+        #     return utils.one_hot(
+        #                             matrix = torch.LongTensor(preds),
+        #                             mask = self.batch["token"]["mask"],
+        #                             num_classes = len(self.label_encoders[task])
+        #                             )
+        # else:
+        #return preds
         
 
 

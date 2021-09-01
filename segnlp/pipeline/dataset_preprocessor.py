@@ -93,6 +93,7 @@ class DatasetPreprocessor:
 
             tok_sample_id = np.full(sample.index.shape, fill_value = self._n_samples)
             sample["sample_id"] = tok_sample_id
+            sample["sample_token_id"] = sample[f"{self.sample_level}_token_id"].to_numpy()
 
             if span_labels:
                 sample = self._label_spans(sample, span_labels)

@@ -74,7 +74,7 @@ class PTLBase(ptl.LightningModule):
         self.output = utils.BatchOutput(
                                         label_encoder = label_encoder, 
                                         seg_decoder = seg_decoder,
-                                        seg_gts_k = self.hps["general"].get("seg_gts_k", None)
+                                        seg_gts_k = self.hps["general"].get("seg_gts_k", None),
                                         )
 
         # the batch outputs can be collected and stored to get outputs over a complete split. E.g. returning 
@@ -207,7 +207,7 @@ class PTLBase(ptl.LightningModule):
 
         # creates a batch specific output container which will be filled
         # with predictions, logits and outputs of modules and submodules
-        output = self.output.step(batch)
+        output = self.output.step(batch, step_type = split)
 
         # pass the batch and output through the modules
         self.forward(batch, output)

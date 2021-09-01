@@ -2,10 +2,12 @@
 #basics
 import numpy as np
 import pandas as pd
-from functools import lru_cache
+from cached_property import cached_property
+import re
 
 # pytorch
 import torch
+from torch.nn.functional import batch_norm
 from torch.nn.utils.rnn import pad_sequence
 
 
@@ -15,19 +17,18 @@ from segnlp import utils
 
 class Level:
 
-    def ___init__(self, 
+    def __init__(self, 
                 df: pd.DataFrame, 
                 batch_size : int, 
-                tasks : list,
-                embs: np.ndarray =  None,
+                pretrained_features:dict = {},
                 device = None
                 ):
         self._df = df
-        self._device = device
-        self._embs = embs
+        self._pretrained_features = pretrained_features
+        self.device = device
         self.batch_size = batch_size
-        self.tasks = set(tasks)
-
+        self.task_regexp = re.compile("seg|link|label|link_label")
+        self.max_len = torch.max(self.lengths())
 
     #@lru_cache(maxsize=None)
     def any_key(self, key:str):
@@ -39,35 +40,37 @@ class Level:
             return torch.LongTensor(flat_values, device = self.device)
 
 
-    def embs(self):
-
-        if self._embs is None:
-            raise KeyError
-
-        return torch.FloatTensor(self._embs, device = self.device)
-
-    @lru_cache(maxsize=None)
+    @utils.Memorize
     def __getitem__(self, key:str):
 
-        if getattr(self, key):
+        print("HELLLOLOLOLOLOLO")
+
+        if hasattr(self, key):
             return getattr(self, key)()
+
+        elif "emb" in key:
+            embs = torch.FloatTensor(self._pretrained_features[key], device = self.device)
+            return embs[:, :self.max_len, :]
+        
+        elif "token" == key:
+            return self.any_key(key)
+
         else:
-            return torch.pad_sequence(
+            return pad_sequence(
                                 torch.split(self.any_key(key), self.lengths()), 
                                 batch_first = True,
-                                pad_value = -1 if key in self.tasks else 0
+                                pad_value = -1 if self.task_regexp.search(key) else 0
                                 )
 
   
 class TokenLevel(Level):
 
-    def ___init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)        
 
     #@lru_cache(maxsize=None)
     def lengths(self):
-        data = self._df.groupby(level=0, sort = False).size()
+        data = self._df.groupby(level=0, sort = False).size().to_numpy()
         return torch.LongTensor(data, device = self.device)
 
     #@lru_cache(maxsize=None)
@@ -79,7 +82,7 @@ class TokenLevel(Level):
 
 class SegLevel(Level):
     
-    def ___init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.key = "seg_id"
 
@@ -93,7 +96,7 @@ class SegLevel(Level):
     #@lru_cache(maxsize=None)
     def lengths_tok(self):
         seg_tok_lengths_flat = torch.LongTensor(self._df.groupby("seg_id", sort=False).to_numpy(), device = self.device)
-        return torch.pad_sequence(
+        return pad_sequence(
                             torch.split(seg_tok_lengths_flat, self.lengths()), 
                             batch_first = True,
                             pad_value = 0
@@ -102,42 +105,30 @@ class SegLevel(Level):
     #@lru_cache(maxsize=None)
     def span_idxs(self):
 
-        start_tok_ids = self._df.groupby(self.key, sort=False).first()["token_id"].to_numpy()
-        end_tok_ids = self._df.groupby(self.key, sort=False).last()["token_id"].to_numpy()
+        start_tok_ids = self._df.groupby(self.key, sort=False).first()["sample_token_id"].to_numpy()
+        end_tok_ids = self._df.groupby(self.key, sort=False).last()["sample_token_id"].to_numpy()
 
-        span_idxs_flat = np.concatenate(start_tok_ids,end_tok_ids, axis = 1)
-        
-        span_idxs = np.zeros((len(self.batch_size), np.max(self.lengths()), 2))
-        
-        floor = 0
-        for i,l in enumerate(self.lengths()):
-            span_idxs[i][:l] = span_idxs_flat[floor:floor+l]
-            floor += l
+        span_idxs_flat = torch.LongTensor(np.column_stack((start_tok_ids, end_tok_ids)) ,device = self.device)
 
-        return torch.LongTensor(span_idxs, device = self.device)
+        sample_span_idxs = torch.split(span_idxs_flat, utils.ensure_numpy(self.lengths()).tolist())
 
+        return pad_sequence(sample_span_idxs, batch_first=True)
+    
 
 
 class SpanLevel(SegLevel):
 
-   def ___init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.key = "span_id"
 
 
 class AMLevel(SegLevel):
 
-   def ___init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.key = "am_id"
 
-
-
-# class TSegLevel(Level):
-    
-#     def ___init__(self, *args, **kwargs):
-#         super().__init__(*args, **kwargs)
-#         self.key = "T-seg_id"
 
 
 class BatchInput(dict):
@@ -146,8 +137,7 @@ class BatchInput(dict):
     def __init__(self, 
                 df: pd.DataFrame, 
                 batch_size: int,
-                word_embs: np.ndarray = None,
-                seg_embs: np.ndarray = None,
+                pretrained_features: dict = {},
                 device = None
                 ):
         
@@ -157,13 +147,13 @@ class BatchInput(dict):
         self["token"] = TokenLevel(
                                     self._df, 
                                     batch_size = batch_size,
-                                    word_embs = word_embs,
+                                    pretrained_features = pretrained_features,
                                     device = device,
                                     )
         self["seg"] = SegLevel(
                                 self._df, 
                                 batch_size = batch_size,
-                                seg_embs = seg_embs,
+                                pretrained_features = pretrained_features,
                                 device = device,
                                 )
 
