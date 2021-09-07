@@ -24,7 +24,7 @@ class CharVocab():
         return self._id2char    
 
     def __getitem__(self, tokens):
-        return [torch.LongTensor([self._char2id.get(c, "*") for c in token]) for token in tokens]
+        return [torch.LongTensor([self._char2id.get(c, 0) for c in token]) for token in tokens]
         
 
 

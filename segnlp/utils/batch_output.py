@@ -33,7 +33,6 @@ class BatchOutput:
 
     def __init__(self, 
                 label_encoder : LabelEncoder,
-                seg_decoder = None,
                 seg_gts_k: int = None,
                 ):
 
@@ -46,54 +45,6 @@ class BatchOutput:
                                             schedule="inverse_sig",
                                             k=seg_gts_k
                                             )
-
-        if seg_decoder is not None:
-            self.seg_decoder = seg_decoder
-        
-
-    def __decode_segs(self):
-    
-        # we get the sample start indexes from sample lengths. We need this to tell de decoder where samples start
-        sample_sizes = ensure_numpy(self.batch["token"]["lengths"]) #self.df.groupby(level=0, sort=False).size().to_numpy()
-        sample_end_idxs = np.cumsum(sample_sizes)
-        sample_start_idxs = np.concatenate((np.zeros(1), sample_end_idxs))[:-1]
-
-        self.df["PRED", "seg_id"] = self.seg_decoder(
-                                                self.df["PRED", "seg"].to_numpy(), 
-                                                sample_start_idxs=sample_start_idxs.astype(int)
-                                                )
-
-
-    def __correct_links(self):
-        """
-        This function perform correction 3 mentioned in https://arxiv.org/pdf/1704.06104.pdf  (Appendix)
-        Any link that is outside of the actuall text, e.g. when predicted link > max_idx, is set to predicted_link== max_idx
-        """
-
-        max_segs = self.df["PRED"].groupby(level=0, sort=False)["seg_id"].nunique().to_numpy()
-        self.df.loc["PRED", "max_seg"] = np.repeat(max_segs, self.df["PRED"].groupby(level=0, sort=False).size().to_numpy())
-
-        above = self.df.loc["PRED", "link"] > self.df["PRED", "max_seg"]
-        below =self.df.loc["PRED", "link"] < 0
-
-        self.df["PRED"].loc[above | below, "link"] = self.df["PRED"].loc[above | below, "max_seg"]
-
-
-    def __ensure_homogeneous(self, subtask):
-
-        """
-        ensures that the labels inside a segments are the same. For each segment we take the majority label 
-        and use it for the whole span.
-        """
-        df = self.df.loc["PRED",["seg_id", subtask]].value_counts(sort=False).to_frame()
-        df.reset_index(inplace=True)
-        df.rename(columns={0:"counts"}, inplace=True)
-        df.drop_duplicates(subset=['seg_id'], inplace=True)
-
-        seg_lengths = self.df["PRED"].groupby("seg_id", sort=False).size()
-        most_common = np.repeat(df[subtask].to_numpy(), seg_lengths)
-
-        self.df["PRED"].loc[~self.df["PRED", "seg_id"].isna(), subtask] = most_common
 
 
     def step(self, batch: BatchInput, step_type : str):
@@ -137,7 +88,11 @@ class BatchOutput:
 
 
     def add_preds(self, preds:Union[np.ndarray, Tensor], level:str,  task:str):
-        
+    
+
+
+        print(task)
+
         # if we are using the segmentation ground truths we overwrite the segmentation labels
         # aswell as segment ids
         if self.__use_gt_seg and "seg" in task:
@@ -147,12 +102,11 @@ class BatchOutput:
 
             self.loc["PRED", "seg_id"] = self.loc["TARGET", "seg_id"].to_numpy()
             return
-            
-
+        
 
         if level == "token":
             mask = ensure_numpy(self.batch["token"]["mask"]).astype(bool)
-            self.df["PRED", task] = ensure_numpy(preds)[mask]
+            self.df.loc["PRED", task] = ensure_numpy(preds)[mask]
         
 
         elif level == "seg":
@@ -160,51 +114,33 @@ class BatchOutput:
             seg_preds = ensure_numpy(preds)[mask]
             
             # we spread the predictions on segments over all tokens in the segments
-            cond = ~self.df["PRED", "seg_id"].isna()
+            cond = ~self.df.loc["PRED", "seg_id"].isna()
 
             # repeat the segment prediction for all their tokens 
             token_preds = np.repeat(seg_preds, ensure_numpy(self.batch["seg"]["lengths_tok"])[mask])
 
-            self.df["PRED"].loc[cond, task] = token_preds
+            self.df.loc["PRED"].loc[cond, task] = token_preds
 
 
         elif level == "p_seg":
-            seg_tok_lengths = self.df["PRED"].groupby("seg_id", sort=False).size()
+            seg_tok_lengths = self.df.loc["PRED"].groupby("seg_id", sort=False).size()
             token_preds = np.repeat(preds, seg_tok_lengths)
 
             # as predicts are given in seg ids ordered from 0 to nr predicted segments
             # we can just remove all rows which doesnt belong to a predicted segments and 
             # it will match all the token preds and be in the correct order.
-            self.df["PRED"].loc[~self.df["PRED", "seg_id"].isna(), task] = token_preds
+            self.df.loc["PRED"].loc[~self.df["PRED", "seg_id"].isna(), task] = token_preds
 
 
-        subtasks = task.split("+")  
-
-        #make sure we do segmentation first
-        if "seg" in subtasks:
-            subtasks.remove("seg")
-            self.__decode_segs()
-
-        if len(subtasks) > 1:
-            # break tasks such as seg+label into seg and label, e.g. 1 -> I + Premise -> [1, 2]
-            self.df["PRED"] = self.label_encoder.decouple(
-                                        task = task, 
-                                        subtasks = subtasks, 
-                                        df = self.df["PRED"], 
-                                        level = level
-                                        )
-
-        for subtask in subtasks:
-
-            if level == "token":
-                self.__ensure_homogeneous(subtask)
+        self.label_encoder.validate(
+                                    task = task,
+                                    df = self.df.loc["PRED"],
+                                    level = level,
+                                    )
         
-    
-            if subtask == "link":
-                # if level is segment and we are not using a ground truth segment sampler  we can correct links
-                # based on the ground truth segments else we will correct based on the predicted segments
-                #true_segs = level == "seg" and not hasattr(self, "seg_gts")
-                self.__correct_links()    
+        print(self.df)
+
+
 
 
     @utils.Memorize
@@ -454,244 +390,3 @@ class BatchOutput:
         #                             )
         # else:
         #return preds
-        
-
-
-
-
-
-
-
-    # def extract_match_info(df):
-        
-
-    #     def overlap(target, pdf):
-    #         j = target["T-seg_id"].to_list()[0]
-    #         seg_ids = target["seg_id"].dropna().to_list()
-
-    #         if not seg_ids:
-    #             return [0, 0, -1, -1]
-
-    #         i = Counter(seg_ids).most_common(1)[0][0]
-
-    #         p_index = set(pdf.loc[[i], "index"]) #slowest part
-    #         t_index = set(target.index)
-
-    #         ratio = len(t_index.intersection(p_index)) / max(len(p_index), len(t_index))
-
-    #         return ratio, i, j
-
-
-    #     # create pdf with predicted segments ids as index to be able
-    #     # to select rows faster
-    #     pdf = df.copy()
-    #     pdf["index"] = pdf.index 
-    #     pdf.index = pdf["seg_id"]
-
-    #     # we extract matching information. Which predicted segments are overlapping with which 
-    #     # ground truth segments
-    #     match_info = np.vstack(df.groupby("T-seg_id").apply(overlap, (pdf)))
-    #     ratio = match_info[:,0]
-    #     i = match_info[:,2] #predicted segment id
-    #     j = match_info[:,3] # ground truth segment id
-        
-    #     # #contains mapping between i j where i is an exact/approx match for j
-    #     # i2j_exact = dict(zip(i[exact],j[exact]))
-    #     # i2j_approx = dict(zip(i[approx],j[approx]))
-
-    #     return exact, approx, i2j_exact, i2j_approx, i
-
-
-
-
-
-
-    # def _add_segs(self, ):
-
-    #     if level == "seg":
-
-    #         span_indexes = ensure_numpy(self.batch["seg"]["span_idxs"])
-    #         data = self.__unfold_span_labels(
-    #                                         span_labels=data,
-    #                                         span_indexes=span_indexes,
-    #                                         max_nr_token=max(ensure_numpy(self.batch["token"]["lengths"])),
-    #                                         fill_value= 0 if task == "link" else -1
-    #                                         )
-
-    #         if not self._pred_span_set:
-    #             self.pred_seg_info["seg"]["lengths"] = self.batch["seg"]["lengths"]
-    #             self.pred_seg_info["span"]["lengths"] = self.batch["span"]["lengths"]
-    #             self.pred_seg_info["span"]["lengths_tok"] = self.batch["span"]["lengths_tok"]
-    #             self.pred_seg_info["span"]["none_span_mask"] = self.batch["span"]["none_span_mask"]
-    #             self._pred_span_set = True
-
-    #         level = "token"
-
-
-    # def __add_to_df(self, data, level, task):
-
-    #     if level == "seg":
-    #         data = self.__unfold_span_labels(
-    #                                         span_labels=data,
-    #                                         span_indexes=ensure_numpy(self.batch["seg"]["span_idxs"]),
-    #                                         max_nr_token=max(ensure_numpy(self.batch["token"]["lengths"])),
-    #                                         fill_value= 0 if task == "link" else -1
-    #                                         )
-
-    #     mask = ensure_numpy(self.batch[level]["mask"])
-    #     preds_flat = ensure_flat(ensure_numpy(preds), mask=mask)
-    #     targets_flat = ensure_flat(ensure_numpy(targets), mask=mask)
-
-    #     self._outputs[task] = preds_flat
-    #     self._outputs[f"T-{task}"] = targets_flat
-
-
- 
-
-
-
-
-    # def add_preds(self, task:str, level:str, data:torch.tensor, decoded:bool=False):
-
-    #     #assert task in set(self.tasks), f"{task} is not a supported task. Supported tasks are: {self.tasks}"
-    #     assert level in set(["token", "seg"]), f"{level} is not a supported level. Only 'token' or 'seg' are supported levels"
-    #     assert torch.is_tensor(data) or isinstance(data, np.ndarray), f"{task} preds need to be a tensor or numpy.ndarray"
-    #     assert len(data.shape) == 2, f"{task} preds need to be a 2D tensor"
-
-    #     data = ensure_numpy(data)
-
-    
-    #     if level == "seg":
-    #         if not self._pred_span_set:
-    #             self.pred_seg_info["seg"]["lengths"] = self.batch["seg"]["lengths"]
-    #             self.pred_seg_info["span"]["lengths"] = self.batch["span"]["lengths"]
-    #             self.pred_seg_info["span"]["lengths_tok"] = self.batch["span"]["lengths_tok"]
-    #             self.pred_seg_info["span"]["none_span_mask"] = self.batch["span"]["none_span_mask"]
-    #             self._pred_span_set = True
-
-
-    #     if "+" in task:
-    #         self.__handle_complex_tasks(
-    #                                     data=data,
-    #                                     level=level,
-    #                                     lengths=ensure_numpy(self.batch[level]["lengths"]),
-    #                                     task=task
-    #                                     )
-    #         return
-
-
-
-
-        # if level == "seg":
-
-        #     span_indexes = ensure_numpy(self.batch["seg"]["span_idxs"])
-        #     data = self.__unfold_span_labels(
-        #                                     span_labels=data,
-        #                                     span_indexes=ensure_numpy(self.batch["seg"]["span_idxs"]),
-        #                                     max_nr_token=max(ensure_numpy(self.batch["token"]["lengths"])),
-        #                                     fill_value= 0 if task == "link" else -1
-        #                                     )
-
-        #     if not self._pred_span_set:
-        #         self.pred_seg_info["seg"]["lengths"] = self.batch["seg"]["lengths"]
-        #         self.pred_seg_info["span"]["lengths"] = self.batch["span"]["lengths"]
-        #         self.pred_seg_info["span"]["lengths_tok"] = self.batch["span"]["lengths_tok"]
-        #         self.pred_seg_info["span"]["none_span_mask"] = self.batch["span"]["none_span_mask"]
-        #         self._pred_span_set = True
-
-        #     level = "token"
-
-
-        # if task == "link":
-        #     preds = self.__correct_token_links(
-        #                                                 data,
-        #                                                 lengths_segs=ensure_numpy(self.pred_seg_info["seg"]["lengths"]),
-        #                                                 span_token_lengths=ensure_numpy(self.pred_seg_info["span"]["lengths_tok"]),
-        #                                                 none_spans=ensure_numpy(self.pred_seg_info["span"]["none_span_mask"]),
-        #                                                 decoded=decoded,
-        #                                                 )
-     
-
-        # if task == "seg":
-
-        #     self.pred_seg_info["seg"]["lengths"] = seg_data["seg"]["lengths"]
-        #     self.pred_seg_info["span"]["lengths"] = seg_data["span"]["lengths"]
-        #     self.pred_seg_info["span"]["lengths_tok"] = seg_data["span"]["lengths_tok"]
-        #     self.pred_seg_info["span"]["none_span_mask"] = seg_data["span"]["none_span_mask"]
-            
-
-        #     token_seg_ids, token_span_ids = self.__get_token_seg_ids(
-        #                                                     span_token_lengths = self.pred_seg_info["span"]["lengths_tok"],
-        #                                                     none_span_masks = self.pred_seg_info["span"]["none_span_mask"],
-        #                                                     seg_lengths = self.pred_seg_info["seg"]["lengths"],
-        #                                                     span_lengths = self.pred_seg_info["span"]["lengths"],
-        #                                                     )
-        #     self._outputs["seg_id"] = token_seg_ids
-        #     self._outputs["span_id"] = token_span_ids
-
-
-
-    #     mask = ensure_numpy(self.batch[level]["mask"])
-    #     preds_flat = ensure_flat(ensure_numpy(preds), mask=mask)
-    #     targets_flat = ensure_flat(ensure_numpy(targets), mask=mask)
-
-    #     self._outputs[task] = preds_flat
-    #     self._outputs[f"T-{task}"] = targets_flat
-
-
-    # def __init__output(self, batch):
-
-    #     # INIT
-    #     self.batch = batch
-    #     self._outputs = {}
-    #     self.pred_seg_info = {
-    #                             "seg":{},
-    #                             "span":{},
-    #                             }
-    #     self._pred_span_set = False
-    #     self.max_tok = int(torch.max(batch["token"]["lengths"], dim=-1).values)
-    #     self.max_seg = int(torch.max(batch["seg"]["lengths"], dim=-1).values)
-
-
-    #     self._outputs["sample_id"] = np.concatenate([np.full(int(l),int(i)) for l,i in zip(self.batch["token"]["lengths"],self.batch.ids)])
-    #     self._outputs["text"] = ensure_flat(ensure_numpy(self.batch["token"]["text"]), mask=ensure_numpy(self.batch["token"]["mask"]))
-
-    #     token_ids = [self.batch["token"]["token_ids"][i,:self.batch["token"]["lengths"][i]] for i in range(len(self.batch))]
-    #     self._outputs["token_id"] = ensure_numpy([int(t) for sub in token_ids for t in sub])
-
-    #     if not self.inference:  
-    #         token_seg_ids, token_span_ids, = self.__get_token_seg_ids(
-    #                                                             span_token_lengths = self.batch["span"]["lengths_tok"],
-    #                                                             none_span_masks = self.batch["span"]["none_span_mask"],
-    #                                                             seg_lengths = self.batch["seg"]["lengths"],
-    #                                                             span_lengths = self.batch["span"]["lengths"],
-    #                                                         )
-
-    #         self._outputs["T-seg_id"] = token_seg_ids
-    #         self._outputs["seg_id"] = token_seg_ids
-
-    #         self._outputs["T-span_id"] = token_span_ids
-    #         self._outputs["span_id"] = token_span_ids
-
-
-    # #@utils.timer
-    # def format(self, batch:dict, preds:dict):
-
-        # self.__init__output(batch)
-
-        # for task, data in preds.items():
-
-        #     if data.shape[-1] == self.max_seg:
-        #         level = "seg"
-        #     elif data.shape[-1] == self.max_tok:
-        #         level = "token"
-        #     else:
-        #         raise RuntimeError(f"data was given in shape {data.shape[0]} but {self.max_seg} (segment level) or {self.max_tok} (token level) was expected")
-
-        #     self.__add_preds(
-        #                     task=task, 
-        #                     level=level,
-        #                     data=data,
-        #                     )
-         
-        # return pd.DataFrame(self._outputs)

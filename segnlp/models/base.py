@@ -55,12 +55,7 @@ class PTLBase(ptl.LightningModule):
         self.feature_dims = feature_dims
         self.task_dims = {task: len(labels) for task, labels in label_encoder.task_labels.items()}
         self.inference = inference
-
-        seg_decoder = None
-        if "seg" in label_encoder.task_labels.keys():
-            self.seg_task = sorted([task for task in label_encoder.tasks if "seg" in task], key = lambda x: len(x))[0]
-            seg_decoder = utils.BIODecoder()
-
+        self.seg_task = label_encoder.seg_task
 
         # setting up metric container which takes care of metric calculation, aggregation and storing
         self.metrics = utils.MetricContainer(
@@ -73,7 +68,6 @@ class PTLBase(ptl.LightningModule):
         # throughout the step
         self.output = utils.BatchOutput(
                                         label_encoder = label_encoder, 
-                                        seg_decoder = seg_decoder,
                                         seg_gts_k = self.hps["general"].get("seg_gts_k", None),
                                         )
 

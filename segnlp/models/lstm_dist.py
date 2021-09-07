@@ -42,11 +42,19 @@ class LSTM_DIST(PTLBase):
     def __init__(self,  *args, **kwargs):   
         super().__init__(*args, **kwargs)
 
-        self.bow = self.add_embedder(
-                                layer = "BOW",
-                                hyperparams = self.hps.get("BOW", {}),
-                                module = "segment_module"
+
+        self.seg_bow = self.add_embedder(
+                            layer = "SegBOW",
+                            hyperparams = self.hps.get("SegBOW", {}),
+                            module = "segment_module"
                             )
+
+
+        self.seg_pos = self.add_embedder(
+                                        layer = "SegPos",
+                                        hyperparams = {},
+                                        module = "segment_module"
+                                        )
 
 
         self.word_lstm = self.add_encoder(
@@ -143,14 +151,26 @@ class LSTM_DIST(PTLBase):
         ac_lstm_out, _ = self.ac_lstm(ac_minus_embs, batch["seg"]["lengths"])
 
 
-        # create BOW features
-        bow = self.bow(
-                        word_encs = batch["token"]["words"], 
+        seg_bow = self.seg_bow(
+                        input = batch["token"]["str"], 
+                        lengths = batch["token"]["lengths"],
                         span_idxs = batch["seg"]["span_idxs"]
                         )
 
+        segpos = self.seg_pos(
+                            document_paragraph_id = batch["seg"]["document_paragraph_id"], 
+                            nr_paragraphs_doc = batch["seg"]["nr_paragraphs_doc"],
+                            lengths = batch["seg"]["lengths"],
+                            )
+
+
         # concatenate the output from Argument Component BiLSTM and Argument Marker BiLSTM with BOW and with structural features stored in "doc_embs"
-        cat_emb = torch.cat((am_lstm_out, ac_lstm_out, bow, batch["seg"]["doc_embs"]), dim=-1)
+        cat_emb = torch.cat((
+                                am_lstm_out, 
+                                ac_lstm_out, 
+                                seg_bow, 
+                                segpos,
+                                ), dim=-1)
 
         # run concatenated features through and LSTM, output will be used to predict label and link_label
         adu_emb, _ = self.am_ac_lstm(cat_emb, batch["seg"]["lengths"])

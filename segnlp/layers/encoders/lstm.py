@@ -1,13 +1,19 @@
 
 
-#pytorch
+#basics
 from typing import Sequence, Union
-from numpy.lib.arraysetops import isin
+
+
+#pytorch
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence
 from torch.nn.utils.rnn import pad_packed_sequence
 from torch import Tensor
+
+
+#segnlp 
+from segnlp import utils
 
 
 class LSTM(nn.Module):
@@ -21,8 +27,8 @@ class LSTM(nn.Module):
                     dropout:float=0.0,
                     input_dropout:float=0.0,
                     output_dropout:float=0.0,
-                    #reproject:str = None, #linear reprojection of input to the hidden size dim
-                    w_init:str="xavier_uniform",
+                    weight_init:str = "xavier_uniform",
+                    weight_init_kwargs: dict = {}
                     ):
         super().__init__()
 
@@ -38,28 +44,12 @@ class LSTM(nn.Module):
         self.input_dropout = nn.Dropout(input_dropout)
         self.output_dropout = nn.Dropout(output_dropout)
 
-        self.__initialize_weights(w_init)
         self.bidir = bidir
         self.hidden_size = hidden_size
         self.output_size = hidden_size * (2 if bidir else 1)
-    
 
-    def __initialize_weights(self, w_init:str):
-        for name, param in self.lstm.named_parameters():
-            
-            if 'bias' in name:
-                nn.init.constant(param, 0.0)
+        self.apply(utils.get_weight_init_fn(weight_init, weight_init_kwargs))
 
-            elif 'weight' in name:
-
-                if w_init == "orthogonal":
-                    nn.init.orthogonal_(param)
-
-                elif w_init == "xavier_uniform":
-                    nn.init.xavier_uniform_(param)
-
-                else:
-                    raise RuntimeError()
 
 
     def forward(self, input:Union[Tensor, Sequence[Tensor]], lengths:Tensor, padding_value=0.0):

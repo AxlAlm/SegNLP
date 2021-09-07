@@ -1,6 +1,6 @@
 
 from .char_emb import CharEmb
-from .bow import BOW
+from .seg_bow import SegBOW
 from .word_emb import WordEmb
 from .one_hots import DepOneHots
 from .one_hots import PosOneHots

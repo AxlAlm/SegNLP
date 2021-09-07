@@ -9,21 +9,22 @@ from .metric_utils import link_f1
 
 def default_segment_metric(df:pd.DataFrame, task_labels:dict):
     
-    df = df.groupby("T-seg_id").first()
+    target_df = df.loc["TARGET"].groupby("seg_id").first()
+    pred_df = df.loc["PRED"].groupby("seg_id").first()
 
     collected_scores = {}
     for task in task_labels.keys():
 
         if task == "link":            
             scores = link_f1(
-                            targets = [s[f"T-{task}"].tolist() for _, s in df.groupby("sample_id")],
-                            preds = [s[task].tolist() for _, s in df.groupby("sample_id")],
+                            targets = [s[task].tolist() for _, s in target_df.groupby("sample_id", sort = False)],
+                            preds = [s[task].tolist() for _, s in pred_df.groupby("sample_id", sort = False)],
                             )
             collected_scores.update(scores)
 
         else:
-            targets = df[f"T-{task}"].to_numpy()
-            preds = df[task].to_numpy()
+            targets = target_df[task].to_numpy()
+            preds = pred_df[task].to_numpy()
 
             scores = f1_precision_recall(
                                         targets = targets,

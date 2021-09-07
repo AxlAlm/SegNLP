@@ -5,7 +5,8 @@ import torch.nn as nn
 from torch import Tensor
 import torch.nn.functional as F
 
-
+#segnlp
+from segnlp import utils
 
 class LinearCLF(nn.Module):
 
@@ -15,24 +16,17 @@ class LinearCLF(nn.Module):
                 dropout:float=0.0,
                 loss_reduction = "mean",
                 ignore_index = -1,
-                weight_init = None,
+                weight_init = "normal",
+                weight_init_kwargs : dict = {}
                 ):
         super().__init__()
-        self.loss_reduction = loss_reduction
-        self.ignore_index = ignore_index
+
         self.dropout = nn.Dropout(dropout)
         self.clf = nn.Linear(input_size, output_size)
 
-        self.__weight_init(weight_init = weight_init)
-
-    
-    def __weight_init(self, weight_init:str):
-        
-        if weight_init is None:
-            torch.nn.init.uniform_(self.clf.weight.data,  a=-0.05, b=0.05)
-            torch.nn.init.uniform_(self.clf.bias.data,  a=-0.05, b=0.05)
-        else:
-            raise NotImplementedError()
+        self.loss_reduction = loss_reduction
+        self.ignore_index = ignore_index
+        self.apply(utils.get_weight_init_fn(weight_init, weight_init_kwargs))
 
 
     def forward(self, input:Tensor):

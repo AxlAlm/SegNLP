@@ -6,8 +6,8 @@ sys.path.insert(1, '../../')
 
 from segnlp import Pipeline
 from segnlp.datasets.am import PE
-from segnlp.features import ELMoEmbeddings
-from segnlp.features import SegPos
+from segnlp.pretrained_features import ELMoEmbeddings
+from segnlp.pretrained_features import SegPos
 
 
 import flair, torch
@@ -22,11 +22,7 @@ exp = Pipeline(
                             ),
                 features =[
                             ELMoEmbeddings(),
-                            SegPos(),
                             ],
-                encodings=[
-                            "words"
-                        ],
                 model = "LSTM_DIST",
                 other_levels = ["am"],
                 metric = "default_segment_metric",

@@ -4,7 +4,7 @@ sys.path.insert(1, '../../')
 
 from segnlp import Pipeline
 from segnlp.datasets.am import PE
-from segnlp.features import GloveEmbeddings
+from segnlp.pretrained_features import GloveEmbeddings
 
 import flair, torch
 flair.device = torch.device('cpu') 
@@ -17,12 +17,9 @@ exp = Pipeline(
                             prediction_level="token",
                             sample_level="document",
                             ),
-                features =[
+                pretrained_features =[
                             GloveEmbeddings(),
                             ],
-                encodings=[
-                        "chars"
-                        ],
                 model = "LSTM_CNN_CRF",
                 metric = "overlap_metric",
             )

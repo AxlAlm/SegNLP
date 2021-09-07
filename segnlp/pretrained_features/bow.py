@@ -133,7 +133,7 @@ class BOW(FeatureModel):
 
     #@feature_memory
     def extract(self, df):
-        text = " ".join(df["token"].to_numpy())
+        text = " ".join(df["str"].to_numpy())
         x = self._svd.transform(self._tfidf.transform([text]))
         return x[0]
 

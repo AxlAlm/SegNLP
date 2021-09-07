@@ -28,8 +28,6 @@ class LSTM_CNN_CRF(PTLBase):
     def __init__(self,  *args, **kwargs):   
         super().__init__(*args, **kwargs)
 
-        self.task = self.tasks[0]
-
         self.finetuner = self.add_encoder(
                                     layer = "LinearRP", 
                                     hyperparams = self.hps.get("LinearRP", {}),
@@ -54,7 +52,7 @@ class LSTM_CNN_CRF(PTLBase):
                                 layer = "CRF",
                                 hyperparams = self.hps.get("CRF", {}),
                                 input_size = self.encoder.output_size,
-                                output_size = self.task_dims[self.task],
+                                output_size = self.task_dims[self.seg_task],
                                 task = self.seg_task
                                 )
 
@@ -65,18 +63,26 @@ class LSTM_CNN_CRF(PTLBase):
 
 
     def token_rep(self, batch: utils.BatchInput, output: utils.BatchOutput):
+
+        #fine-tune word embeddings by reprojecting them with a linear layer
         word_embs = self.finetuner(batch["token"]["word_embs"])
-        char_embs = self.char_embedder(batch["token"]["chars"])
-        cat_emb = torch.cat((word_embs, char_embs), dim=-1)
+
+        #getting character embeddings
+        char_embs = self.char_embedder(
+                                        batch["token"]["str"],
+                                        batch["token"]["lengths"]
+                                        )
     
+        # passing features to lstm (it will concatenate features)
         lstm_out, _ = self.encoder(
-                                    input = cat_emb, 
+                                    input = (word_embs, char_embs), 
                                     lengths = batch["token"]["lengths"]
                                 )
 
         return {
                 "lstm_out":lstm_out
                 }
+
 
     def token_clf(self, batch: utils.BatchInput, output: utils.BatchOutput):
         return self.segmenter(

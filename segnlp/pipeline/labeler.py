@@ -24,8 +24,11 @@ class Labeler:
                                         task = task,
                                         df = df
                                         )
+
+                
         
         return df
+
 
     def _decode_labels(self, df: pd.DataFrame):
         raise NotImplementedError
@@ -50,6 +53,8 @@ class Labeler:
 
             subtask_labels  = df[subtasks].apply(lambda row: '_'.join([str(x) for x in row]), axis=1)
             df[task] = subtask_labels
+        
+        return df
 
 
     def _label_bios(self, df: pd.DataFrame):

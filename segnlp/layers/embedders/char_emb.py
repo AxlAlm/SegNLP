@@ -12,7 +12,7 @@ from torch.nn.utils.rnn import pad_sequence
 
 # segnlp
 from segnlp.resources.chars import CharVocab
-
+from segnlp import utils
 
 class CharEmb(nn.Module):
 
@@ -41,8 +41,17 @@ class CharEmb(nn.Module):
 
     def forward(self, input:Sequence, lengths:str,):
         
+        #encode tokens and padd to longest word
         char_encs_flat = pad_sequence(self.vocab[input], batch_first = True)
-        char_encs = pad_sequence(torch.split(char_encs_flat, lengths), batch_first = True)
+
+        # split all words into samples and padd to longest sample
+        char_encs = pad_sequence(
+                                torch.split(
+                                            char_encs_flat, 
+                                            utils.ensure_list(lengths)
+                                            ), 
+                                batch_first = True
+                                )
 
         batch_size, seq_length, char_length = char_encs.shape
 
@@ -63,4 +72,5 @@ class CharEmb(nn.Module):
         # that has batchsize, seq_length and n_filters, 
         word_embs = values.view(batch_size, seq_length, values.shape[-1])
 
+        print(word_embs)
         return word_embs

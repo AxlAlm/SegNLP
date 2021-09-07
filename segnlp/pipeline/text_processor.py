@@ -131,10 +131,8 @@ class TextProcessor:
             
         """
         parents = self.level2parents[level]
-        #closest_parent_text = self.stack_level_data[parents[0]][-1]["text"]
-        #top_parent_text = self.stack_level_data[parents[-1]][-1]["text"]
-        closest_parent_text = self._level_row_cache[parents[0]]["text"]
-        top_parent_text = self._level_row_cache[parents[-1]]["text"]
+        closest_parent_text = self._level_row_cache[parents[0]]["str"]
+        top_parent_text = self._level_row_cache[parents[-1]]["str"]
         return top_parent_text, closest_parent_text
 
 
@@ -255,7 +253,7 @@ class TextProcessor:
                     "sentence_token_id": 2, <--- which token in the sentence
                     "char_start": 10,
                     "char_end": 16,
-                    "text": "giraff",
+                    "str": "giraff",
                     "label": None,
                     "pos": "NN",
                     "sentence_id": 150,
@@ -319,7 +317,7 @@ class TextProcessor:
                     "sentence_token_id": normalized_indexes[i],
                     "char_start": start,
                     "char_end": end,
-                    "token": token.lower(),
+                    "str": token.lower(),
                     "pos": tok.tag_,
                     "dephead": normalized_indexes[dephead],
                     "deprel": tok.dep_
@@ -359,7 +357,7 @@ class TextProcessor:
         #             "sentence_token_id": i,
         #             "char_start": start,
         #             "char_end": end,
-        #             "text": token.lower(),
+        #             "str": token.lower(),
         #             #"pos": token_dict["xpos"],
         #             #"dephead": token_dict["head"],
         #             #"deprel": token_dict["deprel"]
@@ -411,7 +409,7 @@ class TextProcessor:
             row =  {
                     "id": self.__get_global_id("sentence"),
                     "paragraph_sentence_id": i - removed_sents,
-                    "text":str(sentence),
+                    "str":str(sentence),
                     "char_start": start_idx,
                     "char_end": end_idx,
                     }
@@ -456,7 +454,7 @@ class TextProcessor:
             row =  {
                     "id": self.__get_global_id("paragraph"),
                     "document_paragraph_id": i,
-                    "text": para,
+                    "str": para,
                     "char_start": start,
                     "char_end": end,
                     "nr_paragraphs_doc":nr_paras,
@@ -563,7 +561,7 @@ class TextProcessor:
 
         self._level_row_cache[self.input_level] = {
                                                     "id":text_id,
-                                                    "text":doc
+                                                    "str":doc
                                                     }
         self.__data_stack = []
         if self.input_level == "document":
@@ -580,6 +578,7 @@ class TextProcessor:
         if self.sample_level != "sentence":
             df = self.__fix_deps(df)
 
+        df.rename(columns = {"text": "str"}, inplace = True)
         return df
 
 

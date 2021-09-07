@@ -101,9 +101,9 @@ class DatasetPreprocessor:
             if self._need_bio:
                 sample = self._label_bios(sample)
             
-            self._fuse_subtasks(sample)
-            self._encode_labels(sample)
-        
+            sample = self._fuse_subtasks(sample)
+            sample = self._encode_labels(sample)
+
             if self.argumentative_markers:
                 sample = self._label_ams(sample, mode=self.am_extraction)
                 
@@ -120,7 +120,7 @@ class DatasetPreprocessor:
                 self._pwf_storage.append(pretrained_features["word_embs"])
 
             sample.index = tok_sample_id
-            self._df_storage.append(f"df", sample, min_itemsize={'token': 50})
+            self._df_storage.append(f"df", sample, min_itemsize={'str': 50})
             self._n_samples += 1
         
 

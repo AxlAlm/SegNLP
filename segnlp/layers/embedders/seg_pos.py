@@ -3,9 +3,11 @@
 import torch
 import torch.nn as nn
 from torch import Tensor
+from torch.nn.utils.rnn import pad_sequence
 
 #segnlp
 from segnlp import utils 
+
 
 
 class SegPos(nn.Module):
@@ -30,8 +32,9 @@ class SegPos(nn.Module):
 
 
     def forward(self,
-                paragraph_doc_ids: Tensor, 
-                max_paragraphs: Tensor
+                document_paragraph_id: Tensor, 
+                nr_paragraphs_doc: Tensor,
+                lengths: Tensor,
                 ):
         """
         Extracts positional features for segments in samples from:
@@ -47,24 +50,37 @@ class SegPos(nn.Module):
 
         """
 
-        vec = torch.zeros((len(paragraph_doc_ids), 4))
+        mask = utils.create_mask(lengths)
+
+        #flatten and remove padding
+        document_paragraph_id = document_paragraph_id[mask]
+        nr_paragraphs_doc = nr_paragraphs_doc[mask]
+
+        vec = torch.zeros((len(document_paragraph_id), 4))
 
         # if the segment is the first segment in the paragraph
-        _, para_seg_lengths = torch.unique_consecutive(paragraph_doc_ids, return_counts = True)
+        _, para_seg_lengths = torch.unique_consecutive(document_paragraph_id, return_counts = True)
         idxs = utils.cumsum_zero(para_seg_lengths)
         vec[:,0][idxs] = 1
 
         # so its not len() but index
-        max_paragraphs -= 1 
+        nr_paragraphs_doc -= 1 
 
         # if the segment is in  the opening paragraph
-        vec[:,1][paragraph_doc_ids == 0]
+        vec[document_paragraph_id == 0, 1] += 1
 
         # if the segment is in the body paragraphs
-        vec[:,2][paragraph_doc_ids > 0 and paragraph_doc_ids < max_paragraphs]
+        cond = torch.logical_and(document_paragraph_id > 0, document_paragraph_id < nr_paragraphs_doc)
+        vec[cond, 2] += 1
 
         # if the segment is in the closing paragraph
-        vec[:,3][paragraph_doc_ids == max_paragraphs]
+        vec[document_paragraph_id == nr_paragraphs_doc, 3] += 1
 
 
-        return torch.LongTensor(vec, device = paragraph_doc_ids.device)
+        vec = pad_sequence(
+                            torch.split(vec, utils.ensure_list(lengths)), 
+                            batch_first=True,
+                            padding_value=0
+                            ).type(dtype=torch.float)
+
+        return vec

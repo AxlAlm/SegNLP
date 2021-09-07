@@ -1,9 +1,11 @@
 
 
 #basics 
-from logging import warn
 import numpy as np
 import pandas as pd
+
+#segnlp
+from segnlp import utils
 
 
 class LabelEncoder:
@@ -14,6 +16,32 @@ class LabelEncoder:
         self.__create_label_id_mappings()
         self.__create_decouple_mapping()
 
+
+        if "seg" in self.task_labels.keys():
+            self.seg_task = sorted([task for task in self.task_labels.keys() if "seg" in task], key = lambda x: len(x))[-1]
+            self.seg_decoder = utils.BIODecoder()
+
+
+    def validate(self, task :str, df:pd.DataFrame, level:str):
+        
+        if task == "seg":
+            self.__decode_segs(df)
+
+        if level == "token":
+            self.__ensure_homogeneous(task, df)
+
+        if task == "link":
+            self.__correct_links(df)
+
+        subtasks = task.split("+")  
+        if len(subtasks) > 1:
+            self.decouple(
+                            task = task,
+                            subtasks = subtasks, 
+                            df = df,
+                            level = level
+                            )
+        
 
     def __create_decouple_mapping(self):
         
@@ -61,64 +89,118 @@ class LabelEncoder:
             self.label2id[task] = {l:i for i,l in self.id2label[task].items()}
     
 
+    def __decode_segs(self, df:pd.DataFrame):
+    
+        # we get the sample start indexes from sample lengths. We need this to tell de decoder where samples start
+        sample_sizes = df.groupby("sample_id", sort = False).size().to_numpy()
+        sample_end_idxs = np.cumsum(sample_sizes)
+        sample_start_idxs = np.concatenate((np.zeros(1), sample_end_idxs))[:-1]
+
+        df.loc[:, "seg_id"] = self.seg_decoder(
+                                        df["seg"].to_numpy(), 
+                                        sample_start_idxs=sample_start_idxs.astype(int)
+                                        )
+
+
+    def __correct_links(self, df:pd.DataFrame):
+        """
+        This function perform correction 3 mentioned in https://arxiv.org/pdf/1704.06104.pdf  (Appendix)
+        Any link that is outside of the actuall text, e.g. when predicted link > max_idx, is set to predicted_link== max_idx
+        """
+
+        max_segs = df.groupby(level=0, sort=False)["seg_id"].nunique().to_numpy()
+        df.loc[:, "max_seg"] = np.repeat(max_segs, df.groupby(level=0, sort=False).size().to_numpy())
+
+        above = df["link"] > df["max_seg"]
+        below = df["link"] < 0
+
+        df.loc[above | below, "link"] = df.loc[above | below, "max_seg"] -1
+
+
+    def __ensure_homogeneous(self, task:str, df:pd.DataFrame):
+
+        """
+        ensures that the labels inside a segments are the same. For each segment we take the majority label 
+        and use it for the whole span.
+        """
+        count_df = df.loc[:, ["seg_id", task]].value_counts(sort=False).to_frame()
+        count_df.reset_index(inplace=True)
+        count_df.rename(columns={0:"counts"}, inplace=True)
+        count_df.drop_duplicates(subset=['seg_id'], inplace=True)
+
+        seg_lengths = df.groupby("seg_id", sort=False).size()
+        most_common = np.repeat(count_df[task].to_numpy(), seg_lengths)
+
+        df.loc[~df["seg_id"].isna(), task] = most_common
+
+
+
     def encode(self, task: str, df: pd.DataFrame, level: str = None):
         
-        if task in ["link", "T-link"]:
-            
-            key = "T-seg_id" if level == "seg" else "seg_id"
-
-            # linkis = df.groupby(key, sort=False).first()["link"].to_numpy()
-            # linkis_ENC = np.arange(len(linkis)) + linkis
+        if task  == "link":
 
             #get the nr of segments per sample
-            seg_per_sample = df.groupby("sample_id", sort=False)[key].nunique().to_numpy()
+            seg_per_sample = df.groupby("sample_id", sort=False)["seg_id"].nunique().to_numpy()
 
             # get the indexes of each segments per sample
             seg_sample_idxes = np.hstack([np.arange(a) for a in seg_per_sample])
             
             #repeat the indexes of each segment id per sample for number of tokens in each segment
-            seg_sample_idxes_per_token = np.repeat(seg_sample_idxes, df.groupby(key, sort=False).size().to_numpy())
+            seg_sample_idxes_per_token = np.repeat(seg_sample_idxes, df.groupby("seg_id", sort=False).size().to_numpy())
             
             # make the link labels encoded to be pointing instead of being difference in nr segments
-            enc_tok_links = seg_sample_idxes_per_token + df.loc[~df[key].isna(), "link"].to_numpy()
+            enc_tok_links = seg_sample_idxes_per_token + df.loc[~df["seg_id"].isna(), "link"].to_numpy()
 
-            df.loc[~df[key].isna(), "link"] = enc_tok_links
-
-            #print(linkis_ENC, df.groupby(key, sort=False).first()["link"].to_numpy())
-            #assert np.array_equal(linkis_ENC, df.groupby(key, sort=False).first()["link"].to_numpy())
+            df.loc[~df["seg_id"].isna(), "link"] = enc_tok_links
 
         else:
             encode_fn = lambda x: self.label2id[task].get(str(x), -1)
-            df[task].apply(encode_fn)
+            df.loc[:,task] = df[task].apply(encode_fn)
         
-        return df
 
 
     def decode(self):
         raise NotImplementedError
 
     
-    def decouple(self, task:str, subtasks: list, df: pd.DataFrame, level: str):
+    def decouple(self, task:str, subtasks:list, df: pd.DataFrame, level: str):
 
-        # if our task is complexed, e.g. "seg+label". We decouple the label ids for "seg+label"
-        # so we get the labels for Seg and for Label
-
-        subtask_preds = df[task].apply(lambda x: np.array(self.label_decoupler[task][x]))
+        print(task)
+        subtask_preds = df[task].apply(lambda x: np.array(self._decouple_mapping[task][x]))
+        print(subtask_preds)
         subtask_preds = np.stack(subtask_preds.to_numpy())
 
+
+        if "seg" in subtasks:
+            df.loc[:,"seg"] = subtask_preds[:, subtasks.index("seg")]
+            self.__decode_segs(df)
+
+
         for i, subtask in enumerate(subtasks):
+
+            if subtask == "seg":
+                continue
+
+            df.loc[:,subtask] = subtask_preds[:,i]
+
+            if level == "token":
+                self.__ensure_homogeneous(subtask, df)
+                
 
             # for links we add the decoded label, i.e. value indicates number of segments plus or minus the head segment is positioned.
             # so we need to encode these links so they refer to the specific segment index in a sample. Do do this we need to 
             # first let the segmentation create segment ids. See below where this is done
             if "link" == subtask:
-                df = self.encode(
+
+                df.loc[:,subtask] = subtask_preds[:,i]
+                self.encode(
                             task = task, 
                             df = df, 
                             level = level
                             )
-            else:
-                df[subtask] = subtask_preds[:,i]
+
+                self.__correct_links(df) 
 
 
-        return df
+        print(df)
+

@@ -11,19 +11,25 @@ from sklearn.metrics import confusion_matrix
 def extract_match_info(df):
     
 
-    def overlap(target, pdf):
-        j = target["T-seg_id"].to_list()[0]
-        seg_ids = target["seg_id"].dropna().to_list()
+    def overlap(target, preds):
 
-        if not seg_ids:
+        # target segment id
+        j = target["seg_id"].to_list()[0]
+
+        pred_seg_ids = preds["seg_id"].dropna().to_list()
+
+        if not pred_seg_ids:
             return [0, 0, -1, -1]
+        
+        #best pred segment id
+        i = Counter(pred_seg_ids).most_common(1)[0][0]
 
-        i = Counter(seg_ids).most_common(1)[0][0]
+        #get token indexes
+        pred_seg_token_idx = set(preds.loc[[i], "index"]) #slowest part
+        target_seg_token_idx = set(target.index)
 
-        p_index = set(pdf.loc[[i], "index"]) #slowest part
-        t_index = set(target.index)
-
-        overlap = len(t_index.intersection(p_index)) / max(len(p_index), len(t_index))
+        #calculate the overlap
+        overlap = len(target_seg_token_idx.intersection(pred_seg_token_idx)) / max(len(pred_seg_token_idx), len(target_seg_token_idx))
 
         approx = 1 if overlap > 0.5 else 0
         exact =  1 if overlap > 0.99 else 0
@@ -33,13 +39,17 @@ def extract_match_info(df):
 
     # create pdf with predicted segments ids as index to be able
     # to select rows faster
-    pdf = df.copy()
-    pdf["index"] = pdf.index 
-    pdf.index = pdf["seg_id"]
+    pdf = pd.DataFrame({
+                        "seg_id": df.loc["PRED", "seg_id"].to_numpy(),
+                        "index": df.loc["PRED"].index.to_numpy(),
+                        }, 
+                        index = df.loc["PRED", "seg_id"].to_numpy(),
+                        )
 
     # we extract matching information. Which predicted segments are overlapping with which 
     # ground truth segments
-    match_info = np.vstack(df.groupby("T-seg_id", sort=False).apply(overlap, (pdf)))
+    match_info = np.vstack(df["TARGET"].groupby("seg_id", sort=False).apply(overlap, (pdf)))
+
     exact = match_info[:,0].astype(bool)
     approx = match_info[:,1].astype(bool)
     i = match_info[:,2] #predicted segment id

@@ -248,14 +248,12 @@ class Memorize:
 
 
     def __call__(self, *args):
-
-        #print(args[1], self.cache)
-        print(args)
-        if args[0] in self.cache:
-            return self.cache[args[0]]
+        
+        if args in self.cache:
+            return self.cache[args]
         else:
             value = self.func(*args)
-            self.cache[args[0]] = value
+            self.cache[args] = value
             return value
 
 
@@ -263,5 +261,8 @@ class Memorize:
         return self.func.__doc__
 
 
-    # def __get__(self, obj, objtype):
-    #     return functools.partial(self.__call__, obj)
+    def __get__(self, obj, objtype):
+        # As we self.func will be a callable form another class we need to get the instance
+        # of the class self.func is fetched from. __get__ is then called and then we can modify self.func 
+        # so its passed with its instansiated object
+        return functools.partial(self.__call__, obj)

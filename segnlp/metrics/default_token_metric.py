@@ -12,8 +12,8 @@ def default_token_metric(df:pd.DataFrame, task_labels:dict):
     collected_scores = {}
     for task in task_labels.keys():
 
-        targets = df[f"T-{task}"].to_numpy()
-        preds = df[task].to_numpy()
+        targets = df.loc["TARGET", task].to_numpy()
+        preds = df.loc["PRED", task].to_numpy()
 
         scores = f1_precision_recall(
                             targets = targets,

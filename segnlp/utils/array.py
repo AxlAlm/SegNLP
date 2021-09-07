@@ -49,10 +49,22 @@ def ensure_numpy(item):
     if torch.is_tensor(item):
         item = item.cpu().detach().numpy()
 
-    if type(item) is not np.ndarray:
+    if not isinstance(item, np.ndarray):
         item = np.array(item)
 
     return item
+
+
+def ensure_list(item):
+
+    if torch.is_tensor(item):
+        item = item.cpu().detach().numpy().tolist()
+
+    if not isinstance(item, list):
+        item = list(item)
+
+    return item
+
 
 
 def to_tensor(item, dtype=torch.float):
