@@ -37,7 +37,7 @@ class Level:
         if isinstance(self, TokenLevel):
             flat_values = self._df.loc[:, key].to_numpy()
         else:
-            flat_values = self._df.groupby("seg_id", sort = False).first().loc[:, key].to_numpy()
+            flat_values = self._df.groupby(self.key, sort = False).first().loc[:, key].to_numpy()
 
         if isinstance(flat_values[0], str):
             return flat_values
@@ -85,21 +85,17 @@ class TokenLevel(Level):
         return torch.LongTensor(data, device = self.device)
 
 
-class SegLevel(Level):
-    
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.key = "seg_id"
+class NonTokenLevel(Level):
 
 
     def lengths(self):
-        data = self._df.groupby(level=0, sort=False)["seg_id"].nunique().to_numpy()
+        data = self._df.groupby(level=0, sort=False)[self.key].nunique().to_numpy()
         return torch.LongTensor(data, device = self.device)
 
 
     def lengths_tok(self):
 
-        seg_tok_lens = self._df.groupby("seg_id", sort=False).size().to_numpy()
+        seg_tok_lens = self._df.groupby(self.key, sort=False).size().to_numpy()
         seg_tok_lens = torch.LongTensor(seg_tok_lens, device = self.device)
         return pad_sequence(
                             torch.split(
@@ -110,13 +106,13 @@ class SegLevel(Level):
                             padding_value = 0
                             )
         
-    #@lru_cache(maxsize=None)
+
     def span_idxs(self):
 
         start_tok_ids = self._df.groupby(self.key, sort=False).first()["sample_token_id"].to_numpy()
         end_tok_ids = self._df.groupby(self.key, sort=False).last()["sample_token_id"].to_numpy()
 
-        span_idxs_flat = torch.LongTensor(np.column_stack((start_tok_ids, end_tok_ids)) ,device = self.device)
+        span_idxs_flat = torch.LongTensor(np.column_stack((start_tok_ids, end_tok_ids)), device = self.device)
 
         sample_span_idxs = torch.split(span_idxs_flat, utils.ensure_list(self.lengths()))
 
@@ -124,18 +120,25 @@ class SegLevel(Level):
     
 
 
-class SpanLevel(SegLevel):
+class SegLevel(NonTokenLevel):
+    
+    def __init__(self, *args, **kwargs):
+        self.key = "seg_id"
+        super().__init__(*args, **kwargs)
+
+
+class SpanLevel(NonTokenLevel):
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
         self.key = "span_id"
+        super().__init__(*args, **kwargs)
 
 
-class AMLevel(SegLevel):
+class AMLevel(NonTokenLevel):
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
         self.key = "am_id"
+        super().__init__(*args, **kwargs)
 
 
 
@@ -171,7 +174,7 @@ class BatchInput(dict):
                                 device = device,
                                 )
 
-        self["am"] = SpanLevel(
+        self["am"] = AMLevel(
                                 self._df,
                                 batch_size = batch_size,
                                 device = device,

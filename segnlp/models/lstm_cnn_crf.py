@@ -93,7 +93,7 @@ class LSTM_CNN_CRF(PTLBase):
 
     def loss(self, batch: utils.BatchInput, output: utils.BatchOutput):
         return self.segmenter.loss(
-                                        logits = output.logits[self.task],
-                                        targets = batch["token"][self.task],
+                                        logits = output.logits[self.seg_task],
+                                        targets = batch["token"][self.seg_task],
                                         mask = batch["token"]["mask"],
                                     )

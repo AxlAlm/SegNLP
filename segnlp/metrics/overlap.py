@@ -48,7 +48,7 @@ def extract_match_info(df):
 
     # we extract matching information. Which predicted segments are overlapping with which 
     # ground truth segments
-    match_info = np.vstack(df["TARGET"].groupby("seg_id", sort=False).apply(overlap, (pdf)))
+    match_info = np.vstack(df.loc["TARGET"].groupby("seg_id", sort=False).apply(overlap, (pdf)))
 
     exact = match_info[:,0].astype(bool)
     approx = match_info[:,1].astype(bool)
@@ -63,7 +63,7 @@ def extract_match_info(df):
 
 
 def get_missing_counts(df, exact, approx, task_labels):
-    target_df = df.groupby("T-seg_id").first()
+    target_df = df.loc["TARGET"].groupby("seg_id", sort = False).first()
 
     #we add 1 for NO MATCH
     n_labels = len(task_labels["label"])+1
@@ -82,17 +82,17 @@ def get_missing_counts(df, exact, approx, task_labels):
        # create zero counts for all labels and add them to the counts we find. we do this to 
         # make sure we have counts for all labels (make it easier to add to lcm)
         zeros = pd.Series(data=[0]*(n_labels-1), index=task_labels["label"])
-        lc = (target_df.loc[~bool_mask,"T-label"].value_counts() + zeros).fillna(0)
+        lc = (target_df.loc[~bool_mask,"label"].value_counts() + zeros).fillna(0)
 
         lcm[:-1,-1] = lc[task_labels["label"]].to_numpy()
         label_cms.append(lcm)
 
 
-        # We check if 1) source matches then 2) if j-link-PORTION match with T-link (j's).
+        # We check if 1) source matches then 2) if j-link-PORTION match with target link (j's).
         # if 2) is true it means both that the predicted link is pointing to the correct 
         # target segment and that the segment is a approx/exact match.
         cond1 =  bool_mask
-        cond2 = target_df[f"link-j-{k}"] == target_df["T-link"]
+        cond2 = target_df[f"link-j-{k}"] == target_df["link"]
         cond = cond1 & cond2
 
         #empty confusion matrix
@@ -100,8 +100,8 @@ def get_missing_counts(df, exact, approx, task_labels):
 
         # create zero counts for all labels and add them to the counts we find. we do this to 
         # make sure we have counts for all labels (make it easier to add to llcm)
-        zeros = pd.Series(data=[0]*(n_link_labels-1), index=task_labels["link_label"])
-        llc = (target_df.loc[~cond, "T-link_label"].value_counts() + zeros).fillna(0)
+        zeros = pd.Series(data=[0]*(n_link_labels-1), index = task_labels["link_label"])
+        llc = (target_df.loc[~cond, "link_label"].value_counts() + zeros).fillna(0)
 
         llcm[:-1,-1] = llc[task_labels["link_label"]].to_numpy()
 
@@ -113,8 +113,8 @@ def get_missing_counts(df, exact, approx, task_labels):
 
 def get_pred_counts(df, exact, approx, task_labels, i):
 
-    pred_df =  df.groupby("seg_id").first()
-    #pred_df.loc[pred_df["T-label"] == "None", "T-label"] = "NO_MATCH"
+    pred_df =  df.loc["PRED"].groupby("seg_id", sort = False).first()
+    target_df =  df.loc["PRED"].groupby("seg_id", sort = False).first()
 
     #we add 1 for NO MATCH
     n_labels = len(task_labels["label"])+1
@@ -132,8 +132,8 @@ def get_pred_counts(df, exact, approx, task_labels, i):
         #will create confusion matrix for all segments which are matches.
         try:
             lcm[:-1, :-1] +=  confusion_matrix(
-                                pred_df.loc[cond1,"T-label"].to_numpy(),
-                                pred_df.loc[cond1,"label"].to_numpy(),
+                                target_df.loc[cond1, "label"].to_numpy(),
+                                pred_df.loc[cond1, "label"].to_numpy(),
                                 labels = task_labels["label"]
                                 )
         except ValueError as e:
@@ -149,17 +149,16 @@ def get_pred_counts(df, exact, approx, task_labels, i):
 
         label_cms.append(lcm)
 
-
         llcm = np.zeros((n_link_labels, n_link_labels))
 
         # # will create a confusion matrix for all link labels which 
         # # match and the relation is true
-        cond2 = pred_df[f"link-j-{k}"] == pred_df["T-link"]
+        cond2 = pred_df[f"link-j-{k}"] == target_df["link"]
         cond_1_2 = cond1 & cond2
 
         try:
             llcm[:-1, :-1] = confusion_matrix(
-                                pred_df.loc[cond_1_2,"T-link_label"].to_numpy(),
+                                target_df.loc[cond_1_2,"link_label"].to_numpy(),
                                 pred_df.loc[cond_1_2,"link_label"].to_numpy(),
                                 labels = task_labels["link_label"]
                                 )
@@ -256,8 +255,8 @@ def overlap_metric(df:pd.DataFrame, task_labels:dict):
     
     # we remap all i to j, if we dont find any i that maps to a j
     # we swap j to -1 (map defults to NaN but we change to -1)
-    df["link-j-100%"] = df['link'].map(i2j_exact).fillna(-1)
-    df["link-j-50%"] = df['link'].map(i2j_approx).fillna(-1)
+    df.loc["PRED", "link-j-100%"] = df.loc["PRED", "link"].map(i2j_exact).fillna(-1).to_numpy()
+    df.loc["PRED", "link-j-50%"] = df.loc["PRED", "link"].map(i2j_approx).fillna(-1).to_numpy()
 
     # we create confusion matrixes for each task and for each overlap ratio (100%, 50%)
     # get_missing_counts() will fill the part of the cm where predictions are missing.

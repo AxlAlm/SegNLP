@@ -23,6 +23,7 @@ def default_segment_metric(df:pd.DataFrame, task_labels:dict):
             collected_scores.update(scores)
 
         else:
+
             targets = target_df[task].to_numpy()
             preds = pred_df[task].to_numpy()
 

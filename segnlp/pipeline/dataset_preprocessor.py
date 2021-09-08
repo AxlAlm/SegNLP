@@ -120,9 +120,10 @@ class DatasetPreprocessor:
                 self._pwf_storage.append(pretrained_features["word_embs"])
 
             sample.index = tok_sample_id
+
             self._df_storage.append(f"df", sample, min_itemsize={'str': 50})
             self._n_samples += 1
-        
+            
 
 
 

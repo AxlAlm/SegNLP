@@ -67,9 +67,9 @@ class FeatureExtractor:
 
         outputs = {}
         for group_name, group_dict in feature_dict.items():
-            
+
             if len(group_dict["data"]) > 1:
-                outputs[group_name] =  np.concatenate(group_dict["data"], axis=-1), 
+                outputs[group_name] =  np.concatenate(group_dict["data"], axis=-1)
             else:
                 outputs[group_name] = group_dict["data"][0]
 

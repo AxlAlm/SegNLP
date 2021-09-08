@@ -7,11 +7,8 @@ sys.path.insert(1, '../../')
 from segnlp import Pipeline
 from segnlp.datasets.am import PE
 from segnlp.pretrained_features import ELMoEmbeddings
-from segnlp.pretrained_features import SegPos
+from segnlp.resources.vocab import bnc_vocab
 
-
-import flair, torch
-flair.device = torch.device('cpu') 
 
 exp = Pipeline(
                 id="lstm_dist_pe",
@@ -20,14 +17,23 @@ exp = Pipeline(
                             prediction_level="seg",
                             sample_level="paragraph",
                             ),
-                features =[
-                            ELMoEmbeddings(),
-                            ],
+                pretrained_features = [
+                                ELMoEmbeddings(),
+                                ],
                 model = "LSTM_DIST",
                 other_levels = ["am"],
                 metric = "default_segment_metric",
                 #override = True
             )
+
+
+lstm_hps = {   
+        "input_dropout": 0.1,
+        "dropout":0.1,
+        "hidden_size": 256,
+        "num_layers":1,
+        "bidir":True,
+        }
 
 hps = {
         "general":{
@@ -38,14 +44,15 @@ hps = {
                 "patience": 10,
                 "task_weight": 0.5,
                 },
-       "LSTM": {   
-                    "input_dropout": 0.1,
-                    "dropout":0.1,
-                    "output_dropout": 0.5, 
-                    "hidden_size": 256,
-                    "num_layers":1,
-                    "bidir":True,
-                    },
+        "SegBOW":{
+                "vocab": bnc_vocab(size = 10000),
+                "out_dim": 300
+                },
+        "Word_LSTM": lstm_hps,
+        "AM_LSTM": lstm_hps,
+        "AC_LSTM": lstm_hps,
+        "ADU_LSTM": {**{"output_dropout": 0.5}, **lstm_hps},
+        "Link_LSTM": {**{"output_dropout": 0.5}, **lstm_hps},
         "Pairer": {
                     "mode": ["cat", "multi"],
                     "n_rel_pos": 25,

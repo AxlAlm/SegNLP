@@ -355,7 +355,7 @@ class PE(DataSet):
             stance = self._stance2new_stance.get(ac_id2stance.get(ac_id,"None"), "None")
 
             if "None" in ac_id:
-                seg_id = np.nan 
+                seg_id = np.nan
             else:
                 seg_id = global_seg_id
                 global_seg_id += 1

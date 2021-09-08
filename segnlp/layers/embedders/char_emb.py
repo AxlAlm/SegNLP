@@ -72,5 +72,4 @@ class CharEmb(nn.Module):
         # that has batchsize, seq_length and n_filters, 
         word_embs = values.view(batch_size, seq_length, values.shape[-1])
 
-        print(word_embs)
         return word_embs

@@ -20,13 +20,10 @@ class Labeler:
     def _encode_labels(self, df):
 
         for task in self.all_tasks:
-            df = self.label_encoder.encode( 
+            self.label_encoder.encode( 
                                         task = task,
                                         df = df
                                         )
-
-                
-        
         return df
 
 
@@ -40,6 +37,7 @@ class Labeler:
             return span_labels.get(int(row["char_end"]),{})
 
         df = pd.concat([df,df.apply(label_f, axis=1, result_type="expand", args=(span_labels,))], axis=1)
+        df = df.astype({'seg_id': 'float64'})
         return df
 
 

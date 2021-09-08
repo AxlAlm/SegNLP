@@ -16,14 +16,14 @@ class LabelEncoder:
         self.__create_label_id_mappings()
         self.__create_decouple_mapping()
 
-
+        self.seg_task = None
         if "seg" in self.task_labels.keys():
             self.seg_task = sorted([task for task in self.task_labels.keys() if "seg" in task], key = lambda x: len(x))[-1]
             self.seg_decoder = utils.BIODecoder()
 
 
     def validate(self, task :str, df:pd.DataFrame, level:str):
-        
+            
         if task == "seg":
             self.__decode_segs(df)
 
@@ -41,6 +41,8 @@ class LabelEncoder:
                             df = df,
                             level = level
                             )
+
+        return df
         
 
     def __create_decouple_mapping(self):
@@ -115,6 +117,7 @@ class LabelEncoder:
         below = df["link"] < 0
 
         df.loc[above | below, "link"] = df.loc[above | below, "max_seg"] -1
+        df.pop("max_seg")
 
 
     def __ensure_homogeneous(self, task:str, df:pd.DataFrame):
@@ -132,7 +135,6 @@ class LabelEncoder:
         most_common = np.repeat(count_df[task].to_numpy(), seg_lengths)
 
         df.loc[~df["seg_id"].isna(), task] = most_common
-
 
 
     def encode(self, task: str, df: pd.DataFrame, level: str = None):
@@ -158,21 +160,18 @@ class LabelEncoder:
             df.loc[:,task] = df[task].apply(encode_fn)
         
 
-
     def decode(self):
         raise NotImplementedError
 
     
     def decouple(self, task:str, subtasks:list, df: pd.DataFrame, level: str):
-
-        print(task)
+        
         subtask_preds = df[task].apply(lambda x: np.array(self._decouple_mapping[task][x]))
-        print(subtask_preds)
         subtask_preds = np.stack(subtask_preds.to_numpy())
 
 
         if "seg" in subtasks:
-            df.loc[:,"seg"] = subtask_preds[:, subtasks.index("seg")]
+            df.loc[:, "seg"] = subtask_preds[:, subtasks.index("seg")]
             self.__decode_segs(df)
 
 
@@ -181,7 +180,7 @@ class LabelEncoder:
             if subtask == "seg":
                 continue
 
-            df.loc[:,subtask] = subtask_preds[:,i]
+            df.loc[:, subtask] = subtask_preds[:, i]
 
             if level == "token":
                 self.__ensure_homogeneous(subtask, df)
@@ -194,13 +193,11 @@ class LabelEncoder:
 
                 df.loc[:,subtask] = subtask_preds[:,i]
                 self.encode(
-                            task = task, 
+                            task = "link", 
                             df = df, 
                             level = level
                             )
 
                 self.__correct_links(df) 
 
-
-        print(df)
 

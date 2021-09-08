@@ -7,10 +7,15 @@ from torch import Tensor
 class Agg(nn.Module):
 
 
-    def __init__(self, input_size:int, mode:str="mean", dropout:float=0.0):
+    def __init__(self, 
+                input_size:int, 
+                out_dim: int = None,
+                mode:str="mean", 
+                dropout:float=0.0
+                ):
         super().__init__()
 
-        supported_modes = set(['min', 'max','mean', 'mix'])
+        supported_modes = set(['min', 'max', 'mean', 'mix'])
 
         if mode not in supported_modes:
             raise RuntimeError(f"'{mode}' is not a supported mode, chose 'min', 'max','mean' or 'mix'")
@@ -18,9 +23,14 @@ class Agg(nn.Module):
         self.mode = mode
 
         if self.mode == "mix":
-            self.output_size = input_size*3
+            self._agg_size = input_size*3
         else:
-            self.output_size = input_size
+            self._agg_size = input_size
+
+        self.output_size = self._agg_size if out_dim is None else out_dim
+
+        if out_dim is not None:
+            self.reduce_dim =  nn.Linear(self._agg_size, self.output_size)
 
         self.dropout = nn.Dropout(dropout)
 
@@ -29,7 +39,7 @@ class Agg(nn.Module):
 
         batch_size = input.shape[0]
         device = input.device
-        agg_m = torch.zeros(batch_size, max(lengths), self.output_size, device=device)
+        agg_m = torch.zeros(batch_size, max(lengths), self._agg_size, device=device)
 
         input = self.dropout(input)
 
@@ -61,10 +71,10 @@ class Agg(nn.Module):
 
                     agg_m[i][j] = torch.cat((_min, _max, _mean), dim=0)
 
-        # if flat:
-        #     mask = create_mask(lengths).view(-1)
-        #     agg_m_f = torch.flatten(agg_m, end_dim=-2)
-        #     return agg_m_f[mask]
 
-        return agg_m
+        if hasattr(self, "reduce_dim"):
+            return self.reduce_dim(agg_m)
+        else:
+            return agg_m
+
 

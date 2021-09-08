@@ -8,6 +8,7 @@ from nltk import FreqDist
 
 #pytorch
 import torch
+from torch._C import dtype
 
 #segnlp 
 from segnlp.resources.stopwords import stopwords
@@ -73,7 +74,7 @@ class Vocab:
     
 
     def __getitem__(self, words: List[str]):
-        return torch.LongTensor([self._word2id.get(word, 0) for word in words])
+        return torch.tensor([self._word2id.get(word, 0) for word in words], dtype=torch.int64)
 
 
     def decode(self, word_ids: List[str]):

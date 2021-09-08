@@ -89,10 +89,6 @@ class BatchOutput:
 
     def add_preds(self, preds:Union[np.ndarray, Tensor], level:str,  task:str):
     
-
-
-        print(task)
-
         # if we are using the segmentation ground truths we overwrite the segmentation labels
         # aswell as segment ids
         if self.__use_gt_seg and "seg" in task:
@@ -132,16 +128,12 @@ class BatchOutput:
             self.df.loc["PRED"].loc[~self.df["PRED", "seg_id"].isna(), task] = token_preds
 
 
-        self.label_encoder.validate(
-                                    task = task,
-                                    df = self.df.loc["PRED"],
-                                    level = level,
-                                    )
-        
-        print(self.df)
-
-
-
+        self.df.loc["PRED"] = self.label_encoder.validate(
+                                                            task = task,
+                                                            df = self.df.loc["PRED"].copy(deep = True),
+                                                            level = level,
+                                                            ).values
+                
 
     @utils.Memorize
     def get_pair_data(self):

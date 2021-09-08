@@ -24,8 +24,6 @@ class LSTM_CRF(PTLBase):
     def __init__(self,  *args, **kwargs):   
         super().__init__(*args, **kwargs)
 
-        self.task = self.tasks[0]
-
         self.finetuner = self.add_encoder(
                                     layer = "LinearRP", 
                                     hyperparams = self.hps.get("LinearRP", {}),
@@ -36,7 +34,7 @@ class LSTM_CRF(PTLBase):
         self.encoder = self.add_encoder(    
                                 layer = "LSTM", 
                                 hyperparams = self.hps.get("LSTM", {}),
-                                input_size = self.finetuner.output_size + self.char_embedder.output_size,
+                                input_size = self.finetuner.output_size,
                                 module = "token_module"
                                 )
 
@@ -44,8 +42,8 @@ class LSTM_CRF(PTLBase):
                                 layer = "CRF",
                                 hyperparams = self.hps.get("CRF", {}),
                                 input_size = self.encoder.output_size,
-                                output_size = self.task_dims[self.task],
-                                task = self.task,
+                                output_size = self.task_dims[self.seg_task],
+                                task = self.seg_task,
                                 )
 
 
@@ -55,8 +53,11 @@ class LSTM_CRF(PTLBase):
 
 
     def token_rep(self, batch: utils.BatchInput, output: utils.BatchOutput):
+
+        #fine tune embedding via a linear layer
         word_embs = self.finetuner(batch["token"]["word_embs"])
-    
+
+        # lstm encoder
         lstm_out, _ = self.encoder(
                                     input = word_embs, 
                                     lengths = batch["token"]["lengths"]
@@ -74,10 +75,9 @@ class LSTM_CRF(PTLBase):
                                     )
 
 
-
     def loss(self, batch: utils.BatchInput, output: utils.BatchOutput):
         return self.segmenter.loss(
-                                        logits = output.logits[self.task],
-                                        targets = batch["token"][self.task],
+                                        logits = output.logits[self.seg_task],
+                                        targets = batch["token"][self.seg_task],
                                         mask = batch["token"]["mask"],
                                     )

@@ -6,7 +6,6 @@ from segnlp import Pipeline
 from segnlp.datasets.am import PE
 from segnlp.models import JointPN
 from segnlp.pretrained_features import GloveEmbeddings
-from segnlp.pretrained_features import SegPos
 from segnlp.resources.vocab import bnc_vocab
 
 
