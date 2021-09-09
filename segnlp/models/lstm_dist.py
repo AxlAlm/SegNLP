@@ -131,6 +131,7 @@ class LSTM_DIST(PTLBase):
 
     def seg_rep(self, batch: utils.BatchInput, output: utils.BatchOutput):
 
+
         lstm_out, _ = self.word_lstm(
                                         input = batch["token"]["word_embs"], 
                                         lengths =  batch["token"]["lengths"]
@@ -159,7 +160,7 @@ class LSTM_DIST(PTLBase):
         seg_bow = self.seg_bow(
                         input = batch["token"]["str"], 
                         lengths = batch["token"]["lengths"],
-                        span_idxs = batch["seg"]["span_idxs"]
+                        span_idxs = batch["adu"]["span_idxs"]
                         )
 
         # positional features for segments
@@ -168,7 +169,13 @@ class LSTM_DIST(PTLBase):
                             nr_paragraphs_doc = batch["seg"]["nr_paragraphs_doc"],
                             lengths = batch["seg"]["lengths"],
                             )
-                            
+        
+
+        print(am_lstm_out.shape)
+        print(ac_lstm_out.shape)
+        print(seg_bow.shape)
+        print(segpos.shape)
+
         # concatenate the output from Argument Component BiLSTM and Argument Marker BiLSTM with BOW and with structural features stored in "doc_embs"
         cat_emb = torch.cat((
                                 am_lstm_out, 

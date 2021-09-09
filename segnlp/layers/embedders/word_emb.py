@@ -95,9 +95,9 @@ class WordEmb(nn.Module):
         token_id_flat = self.vocab[input]
 
         # formats the encoded tokens to (Batch size, max token length)
-        token_ids = pad_sequence(torch.split(token_id_flat, lengths), batch_first = True)
+        token_ids = pad_sequence(torch.split(token_id_flat, utils.ensure_list(lengths)), batch_first = True)
 
         # gets embeddings
         embs = self.embs(token_ids)
-        
+
         return embs

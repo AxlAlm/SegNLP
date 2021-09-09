@@ -79,6 +79,7 @@ class Labeler:
 
     def __ams_as_pre(self, df: pd.DataFrame):
         df["am_id"] = np.nan
+        df["adu_id"] = df["seg_id"].to_numpy()
         groups = df.groupby("sentence_id", sort=False)
 
         for sent_id, sent_df in groups:
@@ -96,7 +97,7 @@ class Labeler:
                 idxs = sent_df[cond1 & cond2].index
 
                 #set the id to ac_id
-                df.loc[idxs,"am_id"] = ac_id
+                df.loc[idxs,["am_id", "adu_id"]] = ac_id
 
                 # text = " ".join(df.loc[idxs, "text"].to_numpy())
                 # if text:

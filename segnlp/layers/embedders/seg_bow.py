@@ -36,30 +36,32 @@ class SegBOW(nn.Module):
 
         self.dropout = nn.Dropout(dropout)
 
+
     def forward(self, input:Sequence[str], lengths:Tensor, span_idxs:Tensor):
         
         batch_size, seg_size, *_ = span_idxs.shape
-        sample_tokens = np.split(input, utils.ensure_numpy(lengths))
+
+        sample_tokens = np.split(input, utils.ensure_numpy(torch.cumsum(lengths, dim = 0)))[:-1] # np.split creates a empty tail
         
+        assert len(sample_tokens) == len(lengths)
+   
         # one hots
-        bow = torch.tensor(
+        bow = torch.zeros(
                             (batch_size, seg_size, self.vocab_size),
                             device = span_idxs.device,
                             dtype = torch.int64,
                             )
-        
-        print(bow)
-
+    
         # k = sample idx, s = segment index, i = segment start index, j = segment end index,
         for k in range(batch_size):
+
             for s, (i,j) in enumerate(span_idxs[k]):
-                
+
+                if i == 0 and j == 0:
+                    continue
+
                 # encode words
                 token_ids = self.vocab[sample_tokens[k][i:j]] 
-
-                print(token_ids)
-                print(token_ids.dtype)
-                print(bow[k][s][token_ids])
 
                 if self.mode == "one_hot":
                     # fill one hots
@@ -67,10 +69,9 @@ class SegBOW(nn.Module):
                 else:
                     bow[k][s][token_ids] += 1
 
-        print(bow.dtype, bow)
 
         if hasattr(self, "reduce_dim"):
-            bow = self.reduce_dim(bow)
+            bow = self.reduce_dim(bow.type(torch.float))
         
         bow = self.dropout(bow)
 

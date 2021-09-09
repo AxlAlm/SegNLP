@@ -54,6 +54,8 @@ class LSTM(nn.Module):
 
     def forward(self, input:Union[Tensor, Sequence[Tensor]], lengths:Tensor, padding_value=0.0):
         
+        input_shape = input.shape
+
         # if input in a sequence we concatentate the tensors
         # if the second input element is a tuple its assumed its the states (h0,c0)
         pass_states = False
@@ -88,12 +90,18 @@ class LSTM(nn.Module):
             _ , original_idxs = torch.sort(sorted_idxs, descending=False)
             input = input[sorted_idxs]
 
-
         # dropout on input
         input = self.input_dropout(input)
-        
 
-        packed_embs = nn.utils.rnn.pack_padded_sequence(input, lengths, batch_first=True)
+        # if a sample is length == 0, we assume its filled with zeros. So, we remove the sample,
+        # and then extend the dims later
+        non_zero_lens = lengths != 0
+        input = input[non_zero_lens]
+        lengths = lengths[non_zero_lens]
+
+        print(input.shape, lengths)
+
+        packed_embs = pack_padded_sequence(input, lengths, batch_first=True)
 
         #if we are given states this are also passed
         if pass_states:
@@ -101,7 +109,21 @@ class LSTM(nn.Module):
         else:
             lstm_packed, states = self.lstm(packed_embs)
 
-        output, lengths = pad_packed_sequence(lstm_packed, batch_first=True, padding_value=padding_value)
+        output, _ = pad_packed_sequence(
+                                            lstm_packed, 
+                                            batch_first=True, 
+                                            padding_value=padding_value,
+                                            # total_length = torch.max(lengths)
+                                            )
+
+        print("OUTPUT SHAPE", output.shape)
+
+        # if sample lengths are 0, we have removed the samples, hence we add these back
+        output_pad = torch.zeros((input_shape[0], input_shape[1], output.size(2)))
+        output_pad[non_zero_lens] = output
+        output = output_pad
+
+        print("OUTPUT SHAPE 2", output.shape)
 
         if not sorted:
             output = output[original_idxs]

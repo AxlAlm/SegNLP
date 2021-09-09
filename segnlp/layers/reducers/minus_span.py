@@ -59,7 +59,7 @@ class MinusSpan(nn.Module):
         a representation that include information about previous and next segments :D
 
         """
-        batch_size, nr_seq, _ = input.shape
+        batch_size, nr_seq, _ = span_idxs.shape
         device = input.device
 
         input = self.dropout(input)

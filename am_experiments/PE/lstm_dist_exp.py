@@ -23,7 +23,7 @@ exp = Pipeline(
                 model = "LSTM_DIST",
                 other_levels = ["am"],
                 metric = "default_segment_metric",
-                #override = True
+                #overwrite = True
             )
 
 

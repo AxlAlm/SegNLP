@@ -70,8 +70,7 @@ class Level:
                                             ), 
                                 batch_first = True,
                                 padding_value = -1 if self.task_regexp.search(key) else 0
-                                ) 
-
+                                )
         
 
 class TokenLevel(Level):
@@ -119,7 +118,6 @@ class NonTokenLevel(Level):
         return pad_sequence(sample_span_idxs, batch_first=True)
     
 
-
 class SegLevel(NonTokenLevel):
     
     def __init__(self, *args, **kwargs):
@@ -140,6 +138,12 @@ class AMLevel(NonTokenLevel):
         self.key = "am_id"
         super().__init__(*args, **kwargs)
 
+
+class ADULevel(NonTokenLevel):
+
+    def __init__(self, *args, **kwargs):
+        self.key = "adu_id"
+        super().__init__(*args, **kwargs)
 
 
 class BatchInput(dict):
@@ -175,6 +179,12 @@ class BatchInput(dict):
                                 )
 
         self["am"] = AMLevel(
+                                self._df,
+                                batch_size = batch_size,
+                                device = device,
+                                )
+
+        self["adu"] = ADULevel(
                                 self._df,
                                 batch_size = batch_size,
                                 device = device,
