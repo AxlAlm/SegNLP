@@ -40,7 +40,7 @@ hps = {
         "SegBOW":{
                 "vocab": bnc_vocab(size = 10000),
                 },
-        "LinearRP": {
+        "Linear_fc": {
                 "hidden_size": 512,
                 #"activation": "Sigmoid"
 

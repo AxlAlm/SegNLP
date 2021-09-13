@@ -15,6 +15,8 @@ from gensim.models import KeyedVectors
 
 #segnlp
 from segnlp.resources.vocab import Vocab
+from segnlp import utils
+
 
 class WordEmb(nn.Module):
 

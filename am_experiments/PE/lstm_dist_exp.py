@@ -33,7 +33,13 @@ lstm_hps = {
         "hidden_size": 256,
         "num_layers":1,
         "bidir":True,
+        "weight_init": "orthogonal_",
         }
+
+linear_clf_hps = {
+                "weight_init": "uniform_",
+                "weight_init_kwargs": {"a": -0.05, "b": 0.05},
+                }
 
 hps = {
         "general":{
@@ -46,17 +52,24 @@ hps = {
                 },
         "SegBOW":{
                 "vocab": bnc_vocab(size = 10000),
-                "out_dim": 300
                 },
+        "BOW_DimRedu":{
+                        "out_dim": 300,
+                        "weight_init": "uniform_",
+                        "weight_init_kwargs": {"a": -0.05, "b": 0.05}
+                        },
         "Word_LSTM": lstm_hps,
         "AM_LSTM": lstm_hps,
         "AC_LSTM": lstm_hps,
         "ADU_LSTM": {**{"output_dropout": 0.5}, **lstm_hps},
         "Link_LSTM": {**{"output_dropout": 0.5}, **lstm_hps},
+        "Link_label_LinearCLF": linear_clf_hps,
+        "Label_LinearCLF": linear_clf_hps,
         "Pairer": {
                     "mode": ["cat", "multi"],
                     "n_rel_pos": 25,
                     },
+                
         }
 
 

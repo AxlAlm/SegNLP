@@ -7,9 +7,6 @@ from torch.functional import Tensor
 import torch.nn.functional as F
 import torch.nn as nn
 
-#segnlp
-from segnlp.layers.general import LinearCLF
-
 
 class Pairer(torch.nn.Module):
 
@@ -76,15 +73,8 @@ class Pairer(torch.nn.Module):
     4) then we create the relattive positional one-hot-encodings. These encodings will follow a strict diagonal
        pattern as we can seen in the example above. 
        
-    
     5) concatenate output from steps 2,3 and 4, along with the multiplication of output of step 2 and 3 which 
        creates the columns 2 (h*2:(h*2)).
-
-    6)  at this step we have S and can pass it to our linear layer
-
-    7) lastly, we set the values for all pairs which are not possible and which we dont want to be counted for in our
-        loss function  to -inf. All pairs across padded segments are set to -inf
-
     """
 
     def __init__(self, 
@@ -97,29 +87,24 @@ class Pairer(torch.nn.Module):
         self.mode = mode
         self.n_rel_pos = n_rel_pos
 
-        self._input_size = 0
+        self.output_size = 0
         if n_rel_pos:
-            self._input_size += (self.n_rel_pos*2)-1
+            self.output_size += (self.n_rel_pos*2)-1
 
         if "cat" in mode:
-            self._input_size += input_size*2
+            self.output_size += input_size*2
 
         if "multi" in mode:
-            self._input_size += input_size
+            self.output_size += input_size
 
         if "sum" in mode:
-            self._input_size += input_size
+            self.output_size += input_size
 
         if "mean" in mode:
-            self._input_size += input_size
-
-        self.link_clf = LinearCLF(
-                                    input_size = self._input_size, 
-                                    output_size = 1
-                                    )
+            self.output_size += input_size
 
 
-    def __create_matrix(self, input:Tensor) -> Tensor:        
+    def forward(self, input:Tensor) -> Tensor:        
         device = input.device
         batch_size = input.shape[0]
         dim1 = input.shape[1]
@@ -143,46 +128,23 @@ class Pairer(torch.nn.Module):
             to_cat.append(m+mT)
         
 
-        #adding one_hot encoding for the relative position
+        #adding one hot encodings for the relative position
         if self.n_rel_pos:
-            one_hot_dim = (self.n_rel_pos*2)-1
-            one_hots = torch.tensor(
+            rel_one_hot_dim = (self.n_rel_pos*2)-1
+            rel_one_hots = torch.tensor(
                                         [
-                                        np.diag(np.ones(one_hot_dim),i)[:dim1,:one_hot_dim] 
+                                        np.diag(np.ones(rel_one_hot_dim),i)[:dim1,:rel_one_hot_dim] 
                                         for i in range(dim1-1, -1, -1)
                                         ], 
                                         dtype=torch.uint8,
                                         device=device
                                         )
-            one_hots = one_hots.repeat_interleave(batch_size, dim=0)
-            one_hots = one_hots.view((batch_size, dim1, dim1, one_hot_dim))
+            rel_one_hots = rel_one_hots.repeat_interleave(batch_size, dim=0)
+            rel_one_hots = rel_one_hots.view((batch_size, dim1, dim1, rel_one_hot_dim))
             
-            to_cat.append(one_hots)
+            to_cat.append(rel_one_hots)
 
         pair_matrix = torch.cat(to_cat, axis=-1)
         
         return pair_matrix
 
-
-    def forward(self, 
-                input_tensor:torch.tensor, 
-                segment_mask:torch.tensor, 
-                ):
-
-        pm = self.__create_matrix(input_tensor)
-
-        #predict links
-        pair_logits, _ = self.link_clf(pm)
-        pair_logits = pair_logits.squeeze(-1)
-
-        # for all samples we set the probs for non existing segments to inf and the prob for all
-        # segments pointing to an non existing segment to -inf.
-        segment_mask = segment_mask.type(torch.bool)
-        pair_logits[~segment_mask]  =  float("-inf")
-        pf = torch.flatten(pair_logits, end_dim=-2)
-        mf = torch.repeat_interleave(segment_mask, segment_mask.shape[1], dim=0)
-        pf[~mf] = float("-inf")
-        logits = pf.view(pair_logits.shape)
-        preds = torch.argmax(logits, dim=-1)
-
-        return logits, preds 

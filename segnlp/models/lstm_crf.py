@@ -26,7 +26,7 @@ class LSTM_CRF(PTLBase):
 
         self.finetuner = self.add_encoder(
                                     layer = "LinearRP", 
-                                    hyperparams = self.hps.get("LinearRP", {}),
+                                    hyperparams = {},
                                     input_size = self.feature_dims["word_embs"],
                                     module = "token_module"
                                 )

@@ -1,4 +1,4 @@
 
 
 from .pointer import Pointer
-from .pairer import Pairer
+from .pair_clf import PairCLF

@@ -29,17 +29,16 @@ class LSTM_CNN_CRF(PTLBase):
         super().__init__(*args, **kwargs)
 
         self.finetuner = self.add_encoder(
-                                    layer = "LinearRP", 
-                                    hyperparams = self.hps.get("LinearRP", {}),
+                                    layer = "Linear", 
+                                    hyperparams = {},
                                     input_size = self.feature_dims["word_embs"],
                                     module = "token_module"
                                 )
 
-        self.char_embedder = self.add_embedder(
-                                        layer = "CharEmb", 
-                                        hyperparams = self.hps.get("CharEmb", {}),
-                                        module = "token_module"
-                                    )
+        self.char_embedder = self.add_token_embedder(
+                                                layer = "CharEmb", 
+                                                hyperparams = self.hps.get("CharEmb", {}),
+                                                )
 
         self.encoder = self.add_encoder(    
                                 layer = "LSTM", 

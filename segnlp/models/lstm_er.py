@@ -93,8 +93,7 @@ class LSTM_ER(PTLBase):
 
 
         # We create Non-Directional Pair Embeddings using DepTreeLSTM
-        # if we follow the example above we get the embedings for all combination of A,B,C. E.g. embeddings for 
-        # (A,A), (A,B), (A,C), (B,B), (B,C)
+        # If we have the segments A,B,C. E.g. embeddings for the pairs (A,A), (A,B), (A,C), (B,B), (B,C)
         tree_pair_embs = self.deptreelstm(    
                                             input = (
                                                         output.stuff["lstm_out"],
@@ -106,18 +105,20 @@ class LSTM_ER(PTLBase):
                                             token_mask = batch["token"]["mask"],
                                             starts = pair_data["nodir"]["p1_end"],
                                             ends = pair_data["nodir"]["p2_end"], #the last token indexes in each seg
-                                            lengths = pair_data["nodir"]["lengths"]
+                                            lengths = pair_data["nodir"]["lengths"],
                                             )
 
         # We then add the non directional pair embeddings to the directional pair representations
-        # creating dp´ = [dp; s1,s2] (see paper, page 1109)
+        # creating dp´ = [dp; s1, s2] (see paper above, page 1109)
         seg_embs_flat = seg_embs[batch["seg"]["mask"].type(torch.bool)]
 
-        p1_embs = seg_embs_flat[pair_data["bidir"]["p1"]]
-        p2_embs = seg_embs_flat[pair_data["bidir"]["p2"]]
-        tree_pair_embs_bidir = tree_pair_embs[pair_data["bidir"]["id"]]
-
-        pair_embs = torch.cat((p1_embs, p2_embs, tree_pair_embs_bidir), dim=-1)
+        pair_embs = torch.cat((
+                                seg_embs_flat[pair_data["bidir"]["p1"]], 
+                                seg_embs_flat[pair_data["bidir"]["p2"]],
+                                tree_pair_embs[pair_data["bidir"]["id"]]
+                                ),
+                                dim=-1
+                                )
 
         return {
                 "pair_embs":pair_embs

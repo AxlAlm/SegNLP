@@ -12,7 +12,7 @@ from torch import Tensor
 from segnlp import utils
 
 
-class LinearRP(nn.Module):
+class Linear(nn.Module):
 
     """
     Reprojects input via linear layer. Its simply a wrapper around a linear layer

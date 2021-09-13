@@ -26,10 +26,12 @@ from segnlp import get_logger
 from segnlp import utils
 from segnlp.utils import LabelEncoder
 from segnlp.layer_wrappers.layer_wrappers import Layer
-from segnlp.layer_wrappers import Embedder
+from segnlp.layer_wrappers import TokenEmbedder
+from segnlp.layer_wrappers import SegEmbedder
 from segnlp.layer_wrappers import Encoder
 from segnlp.layer_wrappers import Segmenter
-from segnlp.layer_wrappers import Reducer
+from segnlp.layer_wrappers import PairRep
+from segnlp.layer_wrappers import SegRep
 from segnlp.layer_wrappers import Labeler
 from segnlp.layer_wrappers import LinkLabeler
 from segnlp.layer_wrappers import Linker
@@ -315,16 +317,28 @@ class PTLBase(ptl.LightningModule):
         return layer(*args, **kwargs)
 
 
-    def add_embedder(self, *args, **kwargs):
-        return self.__add_layer(Embedder, args=args, kwargs=kwargs)
+    def add_token_embedder(self, *args, **kwargs):
+        kwargs["module"] = "token_module"
+        return self.__add_layer(TokenEmbedder, args=args, kwargs=kwargs)
+
+
+    def add_seg_embedder(self, *args, **kwargs):
+        kwargs["module"] = "segment_module"
+        return self.__add_layer(SegEmbedder, args=args, kwargs=kwargs)
 
 
     def add_encoder(self, *args, **kwargs):
         return self.__add_layer(Encoder, args=args, kwargs=kwargs)
 
 
-    def add_reducer(self, *args, **kwargs):
-        return self.__add_layer(Reducer, args=args, kwargs=kwargs)
+    def add_pair_rep(self, *args, **kwargs):
+        kwargs["module"] = "segment_module"
+        return self.__add_layer(PairRep, args=args, kwargs=kwargs)
+
+
+    def add_seg_rep(self, *args, **kwargs):
+        kwargs["module"] = "segment_module"
+        return self.__add_layer(SegRep, args=args, kwargs=kwargs)
 
 
     def add_segmenter(self, *args, **kwargs):

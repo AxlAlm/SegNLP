@@ -18,7 +18,7 @@ class SegBOW(nn.Module):
     def __init__(   
                 self,
                 vocab: Vocab,
-                out_dim : int = None,
+                #out_dim : int = None,
                 dropout: float = 0.0,
                 mode: str = "one_hot",
                 ):
@@ -28,11 +28,11 @@ class SegBOW(nn.Module):
 
         self.vocab = vocab
         self.vocab_size = len(self.vocab)
-        self.output_size = out_dim if out_dim is not None else self.vocab_size
+        self.output_size = self.vocab_size #out_dim if out_dim is not None else self.vocab_size
         self.mode = mode
 
-        if out_dim is not None:
-            self.reduce_dim = nn.Linear(len(self.vocab), self.output_size)
+        # if out_dim is not None:
+        #     self.reduce_dim = nn.Linear(len(self.vocab), self.output_size)
 
         self.dropout = nn.Dropout(dropout)
 
@@ -70,8 +70,8 @@ class SegBOW(nn.Module):
                     bow[k][s][token_ids] += 1
 
 
-        if hasattr(self, "reduce_dim"):
-            bow = self.reduce_dim(bow.type(torch.float))
+        # if hasattr(self, "reduce_dim"):
+        #     bow = self.reduce_dim(bow.type(torch.float))
         
         bow = self.dropout(bow)
 

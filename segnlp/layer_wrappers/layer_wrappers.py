@@ -10,12 +10,15 @@ import torch.nn.functional as F
 
 #segnlp
 from segnlp.layers import encoders 
-from segnlp.layers import embedders
-from segnlp.layers import reducers
+from segnlp.layers import token_embedders
+from segnlp.layers import seg_embedders
+from segnlp.layers import seg_reps
+from segnlp.layers import pair_reps
 from segnlp.layers import linkers
 from segnlp.layers import segmenters
 from segnlp.layers import general
 from segnlp.layers import link_labelers
+
 
 class Layer(nn.Module):
 
@@ -32,7 +35,10 @@ class Layer(nn.Module):
         params["input_size"] = input_size
         params["output_size"] = output_size
 
+        print(params)
         params = self.__filter_paramaters(layer, params)
+
+        print(params)
 
         self.layer = layer(**params)
 
@@ -58,6 +64,9 @@ class Layer(nn.Module):
     def __filter_paramaters(self, layer, params):
         sig = inspect.signature(layer)
 
+        if "args" in sig.parameters  or "kwargs" in sig.parameters:
+            return params
+
         filtered_params = {}
         for para in sig.parameters:
 
@@ -72,12 +81,22 @@ class Layer(nn.Module):
         return self.layer(*args, **kwargs)
 
 
-class Embedder(Layer):
+class SegEmbedder(Layer):
 
     def __init__(self, layer:nn.Module, hyperparams:dict):
         
         if isinstance(layer, str):
-            layer = getattr(embedders, layer)
+            layer = getattr(seg_embedders, layer)
+
+        super().__init__(layer=layer, hyperparams=hyperparams)
+        
+
+class TokenEmbedder(Layer):
+
+    def __init__(self, layer:nn.Module, hyperparams:dict):
+        
+        if isinstance(layer, str):
+            layer = getattr(token_embedders, layer)
 
         super().__init__(layer=layer, hyperparams=hyperparams)
         
@@ -92,15 +111,25 @@ class Encoder(Layer):
         super().__init__(layer=layer, hyperparams=hyperparams, input_size=input_size)
         
 
-class Reducer(Layer):
+class SegRep(Layer):
     
     def __init__(self, layer:nn.Module, hyperparams:dict, input_size:int):
         
         if isinstance(layer, str):
-            layer = getattr(reducers, layer)
+            layer = getattr(seg_reps, layer)
 
         super().__init__(layer=layer, hyperparams=hyperparams, input_size=input_size)
+
+
+class PairRep(Layer):
+    
+    def __init__(self, layer:nn.Module, hyperparams:dict, input_size:int):
         
+        if isinstance(layer, str):
+            layer = getattr(pair_reps, layer)
+
+        super().__init__(layer=layer, hyperparams=hyperparams, input_size=input_size)
+
 
 class CLFlayer(Layer):
     """
@@ -210,6 +239,7 @@ class Linker(CLFlayer):
         if isinstance(layer, str):
             layer = getattr(linkers, layer)
 
+        print(input_size, output_size)
 
         super().__init__(              
                         layer=layer, 

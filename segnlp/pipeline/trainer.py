@@ -31,7 +31,7 @@ class Trainer:
         paramater values are list of values.
         """
         group_variations = []
-        for group, gdict in hyperparamaters.items():
+        for _, gdict in hyperparamaters.items():
             vs = [[v] if not isinstance(v, list) else v for v in gdict.values()]
             group_sets = [dict(zip(gdict.keys(),v)) for v in itertools.product(*vs)]
             group_variations.append(group_sets)

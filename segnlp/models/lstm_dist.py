@@ -5,8 +5,6 @@
 
 
 #basics
-from torch.nn.modules import module
-from segnlp.layer_wrappers.layer_wrappers import Embedder, Reducer
 import numpy as np
 import time
 
@@ -43,20 +41,6 @@ class LSTM_DIST(PTLBase):
         super().__init__(*args, **kwargs)
 
 
-        self.seg_bow = self.add_embedder(
-                            layer = "SegBOW",
-                            hyperparams = self.hps.get("SegBOW", {}),
-                            module = "segment_module"
-                            )
-
-
-        self.seg_pos = self.add_embedder(
-                                        layer = "SegPos",
-                                        hyperparams = {},
-                                        module = "segment_module"
-                                        )
-
-
         self.word_lstm = self.add_encoder(
                                     layer = "LSTM",
                                     hyperparams = self.hps.get("Word_LSTM", {}),
@@ -64,12 +48,11 @@ class LSTM_DIST(PTLBase):
                                     module = "segment_module"
                                     )
 
-        self.minus_span = self.add_reducer(
-                                layer = "MinusSpan",
-                                hyperparams = self.hps.get("MinusSPan", {}),
-                                input_size = self.word_lstm.output_size,
-                                module = "segment_module"
-                            )
+        self.minus_span = self.add_seg_rep(
+                                        layer = "MinusSpan",
+                                        hyperparams = self.hps.get("MinusSPan", {}),
+                                        input_size = self.word_lstm.output_size,
+                                    )
 
         self.am_lstm = self.add_encoder(
                                     layer = "LSTM",
@@ -78,16 +61,32 @@ class LSTM_DIST(PTLBase):
                                     module = "segment_module"
                                     )
 
-
         self.ac_lstm = self.add_encoder(
                                     layer = "LSTM",
                                     hyperparams = self.hps.get("AC_LSTM", {}),
                                     input_size = self.minus_span.output_size,
                                     module = "segment_module"
                                     )
+                                
+        self.seg_bow = self.add_seg_embedder(
+                                        layer = "SegBOW",
+                                        hyperparams = self.hps.get("SegBOW", {}),
+                                        )
+
+        self.seg_pos = self.add_seg_embedder(
+                                        layer = "SegPos",
+                                        hyperparams = {},
+                                        )
+
+        self.bow_dim_redu  = self.add_encoder(
+                                                layer = "Linear",
+                                                hyperparams = self.hps.get("BOW_dim_redu", {}),
+                                                input_size = self.seg_bow.output_size,
+                                                module = "segment_module"
+        )
 
 
-        input_size = (self.am_lstm.output_size * 2) + self.seg_bow.output_size
+        input_size = (self.am_lstm.output_size * 2) + self.seg_bow.output_size + self.seg_pos.output_size
         self.adu_lstm =  self.add_encoder(
                                     layer = "LSTM",
                                     hyperparams = self.hps.get("ADU_LSTM", {}),
@@ -102,10 +101,21 @@ class LSTM_DIST(PTLBase):
                                     module = "segment_module"
                                     )
 
-        self.linker = self.add_linker(
+
+        self.pairer = self.add_pair_rep(
                                 layer = "Pairer",
                                 hyperparams = self.hps.get("Pairer", {}),
                                 input_size = self.link_lstm.output_size,
+                                
+                                )
+
+
+        print("ELIAIFMNDIFA", self.task_dims["link"])
+        self.linker = self.add_linker(
+                                layer = "PairCLF",
+                                hyperparams = self.hps.get("PairCLF", {}),
+                                input_size = self.pairer.output_size,
+                                output_size = 25
                                 )
 
         self.labeler = self.add_labeler(
@@ -157,11 +167,15 @@ class LSTM_DIST(PTLBase):
         # span; (number_spans, max_tokens, vocab_size) -> (number_spans, max_tokens * vocab_size)
         # as this transformation will create huge parse representation for each segment we create one-hot encodings
         # for each segment by adding them instead of concatenating (see segnlp.layers.embedders.seg_bow.SegBOW)
+        # i.e. a vector of word counts
         seg_bow = self.seg_bow(
                         input = batch["token"]["str"], 
                         lengths = batch["token"]["lengths"],
                         span_idxs = batch["adu"]["span_idxs"]
                         )
+        
+        #we reduce the dim
+        seg_bow = self.bow_dim_redu(seg_bow)
 
         # positional features for segments
         segpos = self.seg_pos(
@@ -169,12 +183,7 @@ class LSTM_DIST(PTLBase):
                             nr_paragraphs_doc = batch["seg"]["nr_paragraphs_doc"],
                             lengths = batch["seg"]["lengths"],
                             )
-        
-
-        print(am_lstm_out.shape)
-        print(ac_lstm_out.shape)
-        print(seg_bow.shape)
-        print(segpos.shape)
+    
 
         # concatenate the output from Argument Component BiLSTM and Argument Marker BiLSTM with BOW and with structural features stored in "doc_embs"
         cat_emb = torch.cat((
@@ -190,10 +199,12 @@ class LSTM_DIST(PTLBase):
         #then run the adu_embs through a final lstm to create features for linking.
         adu_emb_link, _ = self.link_lstm(adu_emb, batch["seg"]["lengths"])
 
+        # create embeddings for all pairs
+        pair_embs = self.pairer(adu_emb_link)
 
         return {
                 "adu_emb": adu_emb,
-                "adu_emb_last": adu_emb_link
+                "pair_embs": pair_embs
                 }
 
 
@@ -204,7 +215,7 @@ class LSTM_DIST(PTLBase):
         link_label_outs = self.link_labeler(output.stuff["adu_emb"])
 
         link_outs = self.linker(
-                                input = output.stuff["adu_emb_link"], 
+                                input = output.stuff["pair_embs"], 
                                 segment_mask = batch["seg"]["mask"]
                                 )
             

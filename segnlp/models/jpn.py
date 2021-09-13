@@ -28,7 +28,7 @@ class JointPN(PTLBase):
     def __init__(self,  *args, **kwargs):   
         super().__init__(*args, **kwargs)
 
-        self.agg = self.add_reducer(
+        self.agg = self.add_seg_rep(
                             layer = "Agg", 
                             hyperparams = self.hps.get("Agg", {}),
                             input_size = self.feature_dims["word_embs"],
@@ -36,23 +36,21 @@ class JointPN(PTLBase):
                             )
 
 
-        self.bow = self.add_embedder(
+        self.bow = self.add_seg_embedder(
                             layer = "SegBOW",
                             hyperparams = self.hps.get("SegBOW", {}),
-                            module = "segment_module"
                             )
 
 
-        self.seg_pos = self.add_embedder(
+        self.seg_pos = self.add_seg_embedder(
                                         layer = "SegPos",
                                         hyperparams = {},
-                                        module = "segment_module"
                                         )
 
 
         self.fc1 = self.add_encoder(    
-                                    layer = "LinearRP", 
-                                    hyperparams = self.hps.get("LinearRP", {}),
+                                    layer = "Linear", 
+                                    hyperparams = self.hps.get("Linear_fc", {}),
                                     input_size  =   self.agg.output_size
                                                     + self.bow.output_size
                                                     + self.seg_pos.output_size,
@@ -61,8 +59,8 @@ class JointPN(PTLBase):
 
 
         self.fc2 = self.add_encoder(
-                                    layer = "LinearRP", 
-                                    hyperparams = self.hps.get("LinearRP", {}),
+                                    layer = "Linear", 
+                                    hyperparams = self.hps.get("Linear_fc", {}),
                                     input_size  =   self.agg.output_size
                                                     + self.bow.output_size
                                                     + self.seg_pos.output_size,

@@ -109,7 +109,7 @@ class NonTokenLevel(Level):
     def span_idxs(self):
 
         start_tok_ids = self._df.groupby(self.key, sort=False).first()["sample_token_id"].to_numpy()
-        end_tok_ids = self._df.groupby(self.key, sort=False).last()["sample_token_id"].to_numpy()
+        end_tok_ids = self._df.groupby(self.key, sort=False).last()["sample_token_id"].to_numpy() + 1
 
         span_idxs_flat = torch.LongTensor(np.column_stack((start_tok_ids, end_tok_ids)), device = self.device)
 
@@ -132,12 +132,49 @@ class SpanLevel(NonTokenLevel):
         super().__init__(*args, **kwargs)
 
 
-class AMLevel(NonTokenLevel):
+class AMLevel(Level):
 
     def __init__(self, *args, **kwargs):
-        self.key = "am_id"
         super().__init__(*args, **kwargs)
 
+
+    def lengths(self):
+        data = self._df.groupby(level=0, sort=False)["am_id"].nunique().to_numpy()
+        return torch.LongTensor(data, device = self.device)
+
+
+    # def lengths_tok(self):
+    #     seg_tok_lens = self._df.groupby(self.key, sort=False).size().to_numpy()
+    #     seg_tok_lens = torch.LongTensor(seg_tok_lens, device = self.device)
+    #     return pad_sequence(
+    #                         torch.split(
+    #                                     seg_tok_lens, 
+    #                                     utils.ensure_list(self.lengths())
+    #                                     ), 
+    #                         batch_first = True,
+    #                         padding_value = 0
+    #                         )
+        
+
+    def span_idxs(self):
+
+        ADU_start = self._df.groupby("adu_id", sort=False).first()["sample_token_id"].to_numpy()
+        ADU_end = self._df.groupby("adu_id", sort=False).last()["sample_token_id"].to_numpy() + 1 
+
+        AC_lens = self._df.groupby("seg_id", sort=False).size().to_numpy()
+
+        AM_start = ADU_start
+        AM_end = ADU_end - AC_lens
+
+        span_idxs_flat = torch.LongTensor(np.column_stack((AM_start, AM_end)), device = self.device)
+
+        sample_span_idxs = torch.split(
+                                        span_idxs_flat, 
+                                        self._df.groupby(level=0, sort=False)["adu_id"].nunique().to_list()
+                                        )
+
+        return pad_sequence(sample_span_idxs, batch_first=True)
+    
 
 class ADULevel(NonTokenLevel):
 

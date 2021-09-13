@@ -129,9 +129,6 @@ class DirLinkLabeler(nn.Module):
                                     pair_p2 = pair_p2
                                     )
 
-        
-        print(link_labels, link_labels.shape, torch.unique(pair_p1).shape)
-
         return logits, link_labels, links
 
 

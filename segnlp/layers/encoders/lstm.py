@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence
 from torch.nn.utils.rnn import pad_packed_sequence
+from torch.nn.functional import pad
 from torch import Tensor
 
 
@@ -54,7 +55,7 @@ class LSTM(nn.Module):
 
     def forward(self, input:Union[Tensor, Sequence[Tensor]], lengths:Tensor, padding_value=0.0):
         
-        input_shape = input.shape
+        #input_ts = input.shape
 
         # if input in a sequence we concatentate the tensors
         # if the second input element is a tuple its assumed its the states (h0,c0)
@@ -96,12 +97,12 @@ class LSTM(nn.Module):
         # if a sample is length == 0, we assume its filled with zeros. So, we remove the sample,
         # and then extend the dims later
         non_zero_lens = lengths != 0
-        input = input[non_zero_lens]
-        lengths = lengths[non_zero_lens]
 
-        print(input.shape, lengths)
-
-        packed_embs = pack_padded_sequence(input, lengths, batch_first=True)
+        packed_embs = pack_padded_sequence(
+                                            input[non_zero_lens], 
+                                            lengths[non_zero_lens],
+                                            batch_first=True
+                                            )
 
         #if we are given states this are also passed
         if pass_states:
@@ -116,14 +117,14 @@ class LSTM(nn.Module):
                                             # total_length = torch.max(lengths)
                                             )
 
-        print("OUTPUT SHAPE", output.shape)
+        # we pad on the ends of dim 0 and dim 1
+        output = pad(   
+                    output, 
+                    (0, 0, 0, abs(output.size(1) - input.size(1)), 0, abs(output.size(0) - input.size(0))), 
+                    mode = 'constant', 
+                    value = 0
+                    )
 
-        # if sample lengths are 0, we have removed the samples, hence we add these back
-        output_pad = torch.zeros((input_shape[0], input_shape[1], output.size(2)))
-        output_pad[non_zero_lens] = output
-        output = output_pad
-
-        print("OUTPUT SHAPE 2", output.shape)
 
         if not sorted:
             output = output[original_idxs]
