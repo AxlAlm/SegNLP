@@ -63,8 +63,14 @@ class Evaluator:
                 data_module:DataModule,
                 ):
 
+
+        print(ptl_trn_args)
+
+
         trainer = PTL_Trainer(**ptl_trn_args)
         model = self.model(**model_args)
+
+        print(data_module.train_dataloader())
 
         trainer.fit(    
                         model = model, 

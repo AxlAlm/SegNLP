@@ -42,21 +42,23 @@ class Level:
         if isinstance(flat_values[0], str):
             return flat_values
         else:
-            return torch.LongTensor(flat_values, device = self.device)
+            return torch.LongTensor(flat_values)
 
 
     def mask(self):
-        return utils.create_mask(self.lengths(), as_bool = True).to(self.device)
+        return utils.create_mask(self.lengths(), as_bool = True)
 
 
     @utils.Memorize
     def __getitem__(self, key:str):
 
+        is_task = self.task_regexp.search(key)
+
         if hasattr(self, key):
             return getattr(self, key)()
 
         elif "emb" in key:
-            embs = torch.FloatTensor(self._pretrained_features[key], device = self.device)
+            embs = torch.FloatTensor(self._pretrained_features[key]).to(self.device)
             return embs[:, :self.max_len, :]
         
         elif "str" == key:
@@ -69,8 +71,8 @@ class Level:
                                             utils.ensure_list(self.lengths())
                                             ), 
                                 batch_first = True,
-                                padding_value = -1 if self.task_regexp.search(key) else 0
-                                )
+                                padding_value = -1 if is_task else 0,
+                                ).to(self.device if is_task else "cpu")
         
 
 class TokenLevel(Level):
@@ -81,7 +83,7 @@ class TokenLevel(Level):
 
     def lengths(self):
         data = self._df.groupby(level=0, sort = False).size().to_numpy()
-        return torch.LongTensor(data, device = self.device)
+        return torch.LongTensor(data)
 
 
 class NonTokenLevel(Level):
@@ -89,13 +91,13 @@ class NonTokenLevel(Level):
 
     def lengths(self):
         data = self._df.groupby(level=0, sort=False)[self.key].nunique().to_numpy()
-        return torch.LongTensor(data, device = self.device)
+        return torch.LongTensor(data)
 
 
     def lengths_tok(self):
 
         seg_tok_lens = self._df.groupby(self.key, sort=False).size().to_numpy()
-        seg_tok_lens = torch.LongTensor(seg_tok_lens, device = self.device)
+        seg_tok_lens = torch.LongTensor(seg_tok_lens)
         return pad_sequence(
                             torch.split(
                                         seg_tok_lens, 
@@ -111,7 +113,7 @@ class NonTokenLevel(Level):
         start_tok_ids = self._df.groupby(self.key, sort=False).first()["sample_token_id"].to_numpy()
         end_tok_ids = self._df.groupby(self.key, sort=False).last()["sample_token_id"].to_numpy() + 1
 
-        span_idxs_flat = torch.LongTensor(np.column_stack((start_tok_ids, end_tok_ids)), device = self.device)
+        span_idxs_flat = torch.LongTensor(np.column_stack((start_tok_ids, end_tok_ids)))
 
         sample_span_idxs = torch.split(span_idxs_flat, utils.ensure_list(self.lengths()))
 
@@ -140,7 +142,7 @@ class AMLevel(Level):
 
     def lengths(self):
         data = self._df.groupby(level=0, sort=False)["am_id"].nunique().to_numpy()
-        return torch.LongTensor(data, device = self.device)
+        return torch.LongTensor(data)
 
 
     # def lengths_tok(self):
@@ -166,7 +168,7 @@ class AMLevel(Level):
         AM_start = ADU_start
         AM_end = ADU_end - AC_lens
 
-        span_idxs_flat = torch.LongTensor(np.column_stack((AM_start, AM_end)), device = self.device)
+        span_idxs_flat = torch.LongTensor(np.column_stack((AM_start, AM_end)))
 
         sample_span_idxs = torch.split(
                                         span_idxs_flat, 
@@ -230,4 +232,7 @@ class BatchInput(dict):
 
     def to(self, device):
         self.device = device
+
+        for k, level_class in self.items():
+            level_class.device = device
 

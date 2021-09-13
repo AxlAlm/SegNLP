@@ -54,8 +54,6 @@ class LSTM(nn.Module):
 
 
     def forward(self, input:Union[Tensor, Sequence[Tensor]], lengths:Tensor, padding_value=0.0):
-        
-        #input_ts = input.shape
 
         # if input in a sequence we concatentate the tensors
         # if the second input element is a tuple its assumed its the states (h0,c0)

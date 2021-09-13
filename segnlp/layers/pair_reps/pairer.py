@@ -1,4 +1,6 @@
 
+#basics
+from typing import Union
 import numpy as np
 
 #pytorch
@@ -104,8 +106,11 @@ class Pairer(torch.nn.Module):
             self.output_size += input_size
 
 
-    def forward(self, input:Tensor) -> Tensor:        
-        device = input.device
+    def forward(self,
+                input:Tensor,
+                device : Union[str, torch.device] = "cpu",
+                ) -> Tensor:    
+
         batch_size = input.shape[0]
         dim1 = input.shape[1]
 

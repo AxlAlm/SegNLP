@@ -1,6 +1,6 @@
 
 #basics
-from typing import Sequence
+from typing import Sequence, Union
 
 # pytorch
 import torch.nn.functional as F
@@ -22,10 +22,13 @@ class OneHots(nn.Module):
         return [self.vocab[x] for x in input]
 
 
-    def forward(self, input:Sequence):
+    def forward(self, 
+                input:Sequence,
+                device : Union[str, torch.device] = "cpu"
+                ):
         ids = self._encode(input)
         one_hots = F.one_hot(ids, num_classes=self.output_size)
-        return one_hots
+        return one_hots.to(device)
 
 
 class PosOneHots(OneHots):

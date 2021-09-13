@@ -1,4 +1,8 @@
 
+#basics
+from typing import Union
+
+
 #pytorch
 import torch
 import torch.nn as nn
@@ -57,10 +61,13 @@ class MinusSpan(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
 
-    def forward(self, input:Tensor, span_idxs:Tensor):
+    def forward(self, 
+                input:Tensor, 
+                span_idxs:Tensor,
+                device : Union[str, torch.device] = "cpu"
+                ):
 
         batch_size, nr_seq, _ = span_idxs.shape
-        device = input.device
 
         input = self.dropout(input)
 

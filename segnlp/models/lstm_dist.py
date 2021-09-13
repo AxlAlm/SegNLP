@@ -109,13 +109,10 @@ class LSTM_DIST(PTLBase):
                                 
                                 )
 
-
-        print("ELIAIFMNDIFA", self.task_dims["link"])
         self.linker = self.add_linker(
                                 layer = "PairCLF",
                                 hyperparams = self.hps.get("PairCLF", {}),
                                 input_size = self.pairer.output_size,
-                                output_size = 25
                                 )
 
         self.labeler = self.add_labeler(
@@ -144,22 +141,31 @@ class LSTM_DIST(PTLBase):
 
         lstm_out, _ = self.word_lstm(
                                         input = batch["token"]["word_embs"], 
-                                        lengths =  batch["token"]["lengths"]
+                                        lengths =  batch["token"]["lengths"],
                                     )
+
 
         # create span representation for Argument Components and Argumentative Markers
         am_minus_embs = self.minus_span(
                                         input = lstm_out, 
-                                        span_idxs = batch["am"]["span_idxs"]
+                                        span_idxs = batch["am"]["span_idxs"],
+                                        device = batch.device
                                         )
         ac_minus_embs = self.minus_span(
                                         input = lstm_out, 
-                                        span_idxs = batch["seg"]["span_idxs"]
+                                        span_idxs = batch["seg"]["span_idxs"],
+                                        device = batch.device
                                         )
         
         # pass the minus representation for each type of segment to seperate LSTMs
-        am_lstm_out, _ = self.am_lstm(am_minus_embs, batch["am"]["lengths"])
-        ac_lstm_out, _ = self.ac_lstm(ac_minus_embs, batch["seg"]["lengths"])
+        am_lstm_out, _ = self.am_lstm(
+                                    am_minus_embs, 
+                                    batch["am"]["lengths"],
+                                    )
+        ac_lstm_out, _ = self.ac_lstm(
+                                    ac_minus_embs,
+                                    batch["seg"]["lengths"],
+                                    )
 
         # The BOW features, φ(wi:j), are create from one hot encodings + positional features (see below). 
         # As we are replicating the ELMO version it doesnt include the aggregated word embeddings.
@@ -171,7 +177,8 @@ class LSTM_DIST(PTLBase):
         seg_bow = self.seg_bow(
                         input = batch["token"]["str"], 
                         lengths = batch["token"]["lengths"],
-                        span_idxs = batch["adu"]["span_idxs"]
+                        span_idxs = batch["adu"]["span_idxs"],
+                        device = batch.device
                         )
         
         #we reduce the dim
@@ -182,6 +189,8 @@ class LSTM_DIST(PTLBase):
                             document_paragraph_id = batch["seg"]["document_paragraph_id"], 
                             nr_paragraphs_doc = batch["seg"]["nr_paragraphs_doc"],
                             lengths = batch["seg"]["lengths"],
+                            device = batch.device
+
                             )
     
 
@@ -192,7 +201,8 @@ class LSTM_DIST(PTLBase):
                                 seg_bow, 
                                 segpos,
                                 ), dim=-1)
-
+            
+    
         # run concatenated features through and LSTM, output will be used to predict label and link_label
         adu_emb, _ = self.adu_lstm(cat_emb, batch["seg"]["lengths"])
 
@@ -200,7 +210,10 @@ class LSTM_DIST(PTLBase):
         adu_emb_link, _ = self.link_lstm(adu_emb, batch["seg"]["lengths"])
 
         # create embeddings for all pairs
-        pair_embs = self.pairer(adu_emb_link)
+        pair_embs = self.pairer(
+                                adu_emb_link,
+                                device = batch.device
+                                )
 
         return {
                 "adu_emb": adu_emb,
@@ -210,10 +223,13 @@ class LSTM_DIST(PTLBase):
 
     def seg_clf(self, batch: utils.BatchInput, output: utils.BatchOutput):
 
+        # classify the label of the segments
         label_outs = self.labeler(output.stuff["adu_emb"])
 
+        # classify the label of the links
         link_label_outs = self.link_labeler(output.stuff["adu_emb"])
 
+        # classify links
         link_outs = self.linker(
                                 input = output.stuff["pair_embs"], 
                                 segment_mask = batch["seg"]["mask"]
@@ -223,7 +239,6 @@ class LSTM_DIST(PTLBase):
 
 
     def loss(self, batch: utils.BatchInput, output: utils.BatchOutput):
-
 
         link_loss = self.linker.loss(
                                 torch.flatten(output.logits["link"], end_dim=-2), 
@@ -245,6 +260,6 @@ class LSTM_DIST(PTLBase):
         ## in the code the loss is different
         ## https://github.com/kuribayashi4/span_based_argumentation_parser/blob/614343b18e7d98293a2b020f9ab05b86355e18df/src/classifier/parsing_loss.py#L88-L91
         tw = self.hps["general"]["task_weight"]
-        total_loss = ((1 - tw - tw) * link_loss) - (tw * label_loss) + (tw * link_label_loss)
+        total_loss = ((1 - tw - tw) * link_loss) + (tw * label_loss) + (tw * link_label_loss)
 
-
+        return total_loss

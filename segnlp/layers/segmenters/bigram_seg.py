@@ -1,4 +1,7 @@
 
+#basics
+from typing import Union
+
 #pytroch
 import torch
 from torch.functional import Tensor 
@@ -41,13 +44,13 @@ class BigramSeg(nn.Module):
     def forward(
                 self,
                 input: Tensor,
+                device : Union[str, torch.device] = "cpu"
                 ):
 
         # sizes
         batch_size = input.size(0)
         max_lenght = input.size(1)
         size = [batch_size, max_lenght, self.output_size]
-        device = input.device
 
         # construct tensors
         logits = torch.zeros(size, device=device)

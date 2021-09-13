@@ -54,10 +54,17 @@ class DataModule(ptl.LightningDataModule):
         self.split_id = split_id
         
 
+    def __getitem__(self, key:Union[np.ndarray, list]) -> BatchInput:
+        return BatchInput(
+                    df = self.__get_df(key),
+                    batch_size = self.batch_size,
+                    pretrained_features = self.__get_pretrained_features(key)
+                    )
+
+
     def __get_df(self, key):
         return pd.read_hdf(self._df_fp, where = f"index in {[str(k) for k in key]}")
 
-    
 
     def __get_pretrained_features(self, key):
 
@@ -77,14 +84,8 @@ class DataModule(ptl.LightningDataModule):
         return pretrained_features
 
 
-    def __getitem__(self, key:Union[np.ndarray, list]) -> BatchInput:
-
-
-        return BatchInput(
-                    df = self.__get_df(key),
-                    batch_size = self.batch_size,
-                    pretrained_features = self.__get_pretrained_features(key)
-                    )
+    def __collate_fn(self, x):
+        return x[0]
 
 
     def __get_dataloader(self, split:str): #split = {"train", "test", "val"}
@@ -117,8 +118,8 @@ class DataModule(ptl.LightningDataModule):
         return DataLoader( 
                             self,
                             sampler=batch_sampler,
-                            collate_fn=lambda x:x[0], 
-                            num_workers = segnlp.settings["dl_n_workers"]
+                            collate_fn=self.__collate_fn, 
+                            num_workers = segnlp.settings["dl_n_workers"],
                             )
 
     

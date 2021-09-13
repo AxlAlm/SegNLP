@@ -1,4 +1,8 @@
 
+#basics
+from typing import Union
+
+
 #pytorch
 import torch
 import torch.nn as nn
@@ -35,6 +39,7 @@ class SegPos(nn.Module):
                 document_paragraph_id: Tensor, 
                 nr_paragraphs_doc: Tensor,
                 lengths: Tensor,
+                device : Union[str, torch.device] = "cpu"
                 ):
         """
         Extracts positional features for segments in samples from:
@@ -83,4 +88,4 @@ class SegPos(nn.Module):
                             padding_value=0
                             ).type(dtype=torch.float)
 
-        return vec
+        return vec.to(device)

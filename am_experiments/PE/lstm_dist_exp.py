@@ -52,6 +52,7 @@ hps = {
                 },
         "SegBOW":{
                 "vocab": bnc_vocab(size = 10000),
+                "mode": "counts",
                 },
         "BOW_DimRedu":{
                         "out_dim": 300,
@@ -77,9 +78,14 @@ best_hp = exp.train(
                         hyperparamaters = hps,
                         n_random_seeds=6,
                         ptl_trn_args=dict(
-                                           #gpus=[1]
+                                            gpus=[1,2],
+                                            accelerator='ddp',
+                                            replace_sampler_ddp = False
+                                           #overfit_batches = 0.1
+
                                         ),
-                        monitor_metric="val-f1",
+                        monitor_metric="val_f1",
+
                         )
 
 #exp1_scores, exp1_outputs = exp.test()

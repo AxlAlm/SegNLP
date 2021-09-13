@@ -590,14 +590,12 @@ class DepTreeLSTM(nn.Module):
                 starts: Tensor,
                 ends: Tensor,
                 lengths: Tensor,
+                device : Union[str, torch.device] = "cpu",
                 assertion: bool = False
                 ):
 
-
         if not isinstance(input, Tensor):
             input = torch.cat(input, dim=-1)
-        
-        device = input.device
 
         # 1) Build graph from dependecy data
         G = DepGraph(

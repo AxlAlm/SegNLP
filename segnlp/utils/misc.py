@@ -238,6 +238,8 @@ def random_ints(n):
     return rs.randint(10**6,size=(n,)).tolist()
 
 
+def get_device(module):
+    return next(module.parameters()).device
 
 
 class Memorize:

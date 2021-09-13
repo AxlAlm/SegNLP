@@ -1,6 +1,6 @@
 
 # basics
-from typing import Sequence
+from typing import Sequence, Union
 import numpy as np
 
 #pytroch
@@ -18,37 +18,37 @@ class SegBOW(nn.Module):
     def __init__(   
                 self,
                 vocab: Vocab,
-                #out_dim : int = None,
                 dropout: float = 0.0,
-                mode: str = "one_hot",
+                mode: str = "one_hots",
                 ):
         super().__init__()
 
-        assert mode in ["one_hot", "count"]
+        assert mode in ["one_hots", "counts"]
 
         self.vocab = vocab
         self.vocab_size = len(self.vocab)
         self.output_size = self.vocab_size #out_dim if out_dim is not None else self.vocab_size
         self.mode = mode
 
-        # if out_dim is not None:
-        #     self.reduce_dim = nn.Linear(len(self.vocab), self.output_size)
-
         self.dropout = nn.Dropout(dropout)
 
 
-    def forward(self, input:Sequence[str], lengths:Tensor, span_idxs:Tensor):
+    def forward(self, 
+                input:Sequence[str], 
+                lengths:Tensor, 
+                span_idxs:Tensor,
+                device : Union[str, torch.device] = "cpu"
+                ):
         
         batch_size, seg_size, *_ = span_idxs.shape
 
         sample_tokens = np.split(input, utils.ensure_numpy(torch.cumsum(lengths, dim = 0)))[:-1] # np.split creates a empty tail
         
-        assert len(sample_tokens) == len(lengths)
+        #assert len(sample_tokens) == len(lengths)
    
         # one hots
         bow = torch.zeros(
                             (batch_size, seg_size, self.vocab_size),
-                            device = span_idxs.device,
                             dtype = torch.int64,
                             )
     
@@ -63,18 +63,15 @@ class SegBOW(nn.Module):
                 # encode words
                 token_ids = self.vocab[sample_tokens[k][i:j]] 
 
-                if self.mode == "one_hot":
+                if self.mode == "one_hots":
                     # fill one hots
                     bow[k][s][token_ids] = 1
                 else:
                     bow[k][s][token_ids] += 1
 
+        bow = self.dropout(bow.type(torch.float))
 
-        # if hasattr(self, "reduce_dim"):
-        #     bow = self.reduce_dim(bow.type(torch.float))
-        
-        bow = self.dropout(bow)
 
-        return bow
+        return bow.to(device)
         
         

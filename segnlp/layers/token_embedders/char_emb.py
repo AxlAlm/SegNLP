@@ -39,7 +39,10 @@ class CharEmb(nn.Module):
         self.output_size = n_filters
                                     
 
-    def forward(self, input:Sequence, lengths:str,):
+    def forward(self, 
+                input:Sequence, 
+                lengths:Sequence,
+                ):
         
         #encode tokens and padd to longest word
         char_encs_flat = pad_sequence(self.vocab[input], batch_first = True)

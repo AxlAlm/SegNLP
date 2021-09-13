@@ -23,9 +23,22 @@ class PairCLF(LinearCLF):
 
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
+    def __init__(self,
+                input_size:int, 
+                dropout:float=0.0,
+                loss_reduction = "mean",
+                ignore_index = -1,
+                weight_init = "normal",
+                weight_init_kwargs : dict = {}):
+        super().__init__(
+                        input_size = input_size, 
+                        output_size = 1, 
+                        dropout = dropout,
+                        loss_reduction = loss_reduction,
+                        ignore_index = ignore_index,
+                        weight_init = weight_init,
+                        weight_init_kwargs = weight_init_kwargs
+                        )
 
     def forward(self, 
                 input:torch.tensor, 
@@ -33,13 +46,12 @@ class PairCLF(LinearCLF):
                 ):
 
         #predict links
-        pair_logits, _ = self.clf(input)
-
+        pair_logits = self.clf(input)
+    
         pair_logits = pair_logits.squeeze(-1)
 
         # for all samples we set the probs for non existing segments to inf and the prob for all
         # segments pointing to an non existing segment to -inf.
-        segment_mask = segment_mask.type(torch.bool)
         pair_logits[~segment_mask]  =  float("-inf")
         pf = torch.flatten(pair_logits, end_dim=-2)
         mf = torch.repeat_interleave(segment_mask, segment_mask.shape[1], dim=0)

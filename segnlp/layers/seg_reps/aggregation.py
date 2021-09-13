@@ -1,4 +1,8 @@
 
+#basics
+from typing import Union
+
+
 #pytroch
 import torch
 import torch.nn as nn
@@ -9,7 +13,6 @@ class Agg(nn.Module):
 
     def __init__(self, 
                 input_size:int, 
-                out_dim: int = None,
                 mode:str="mean", 
                 dropout:float=0.0
                 ):
@@ -23,23 +26,22 @@ class Agg(nn.Module):
         self.mode = mode
 
         if self.mode == "mix":
-            self._agg_size = input_size*3
+            self.output_size = input_size*3
         else:
-            self._agg_size = input_size
-
-        self.output_size = self._agg_size if out_dim is None else out_dim
-
-        if out_dim is not None:
-            self.reduce_dim =  nn.Linear(self._agg_size, self.output_size)
+            self.output_size = input_size
 
         self.dropout = nn.Dropout(dropout)
 
 
-    def forward(self, input:Tensor, lengths:Tensor, span_idxs:Tensor):
+    def forward(self, 
+                input:Tensor, 
+                lengths:Tensor, 
+                span_idxs:Tensor,
+                device : Union[str, torch.device] = "cpu"
+                ):
 
         batch_size = input.shape[0]
-        device = input.device
-        agg_m = torch.zeros(batch_size, max(lengths), self._agg_size, device=device)
+        agg_m = torch.zeros(batch_size, max(lengths), self.output_size, device=device)
 
         input = self.dropout(input)
 

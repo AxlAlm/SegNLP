@@ -205,6 +205,7 @@ class PTLBase(ptl.LightningModule):
         # with predictions, logits and outputs of modules and submodules
         output = self.output.step(batch, step_type = split)
 
+        
         # pass the batch and output through the modules
         self.forward(batch, output)
 
@@ -234,8 +235,10 @@ class PTLBase(ptl.LightningModule):
         loss, df = self._step(batch, "val")
         self.log('val_loss', loss, prog_bar=True)
 
+
         if self.monitor_metric != "val_loss":
-            self.log(f'val_{self.monitor_metric}', self.metrics["val"][-1][self.monitor_metric.replace("val_","")], prog_bar=True)
+            score = self.metrics["val"][-1][self.monitor_metric.replace("val_","")]
+            self.log(self.monitor_metric, score, prog_bar=True)
 
         return {"val_loss": loss}
 

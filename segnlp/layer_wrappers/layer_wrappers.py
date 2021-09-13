@@ -35,10 +35,7 @@ class Layer(nn.Module):
         params["input_size"] = input_size
         params["output_size"] = output_size
 
-        print(params)
         params = self.__filter_paramaters(layer, params)
-
-        print(params)
 
         self.layer = layer(**params)
 
@@ -239,7 +236,6 @@ class Linker(CLFlayer):
         if isinstance(layer, str):
             layer = getattr(linkers, layer)
 
-        print(input_size, output_size)
 
         super().__init__(              
                         layer=layer, 
