@@ -271,45 +271,13 @@ class PTLBase(ptl.LightningModule):
                         hyperparamater_id =  "SOMETHING",
                         epoch_metrics = epoch_metrics,
                         )
-                        
+
         self.log_dict(
                         epoch_metrics,
                         on_step=False,
                         on_epoch=True,
                         )
 
-
-    def configure_optimizers(self):
-
-        opt_class = getattr(torch.optim, self.hps["general"]["optimizer"])
-        opt = opt_class(self.parameters(), lr = self.hps["general"]["lr"])
-
-
-        if "scheduler" in self.hps["general"]:
-            if self.hps["general"]["scheduler"].lower() == "rop":
-                scheduler = {
-                                'scheduler': ReduceLROnPlateau(
-                                                                opt,
-                                                                patience=5,
-                                                                factor=0.001
-                                                                ),
-                                'monitor': "val_loss",
-                                'interval': 'epoch',
-                            }
-            elif self.hps["general"]["scheduler"].lower() == "constant_warmup":
-                scheduler = get_constant_schedule_with_warmup(
-                                                                optimizer=opt,
-                                                                num_warmup_steps=self.hps["general"]["num_warmup_steps"],
-                                                                last_epoch=self.hps["general"].get("schedular_last_epoch", -1)
-
-                                                                )
-            else:
-                raise KeyError(f'"{self.hps["general"]["scheduler"]} is not a supported learning shedular')
-
-        if "scheduler" in self.hps["general"]:
-            return [opt], [scheduler]
-        else:
-            return opt
 
 
     def __add_layer(self, layer:Layer, args:tuple, kwargs:dict):
