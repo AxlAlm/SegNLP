@@ -107,7 +107,7 @@ class Loop:
                 self._val_steps(model)
 
     
-    
+
     def _cv_loop(self):
 
         for i in range(n_cvs):
@@ -115,7 +115,7 @@ class Loop:
             
 
 
-    def fit(self,)
+    def fit(self,) -> None:
 
         model_save_path = os.path.join(self._path_to_models, model_id, str(random_seed))
 

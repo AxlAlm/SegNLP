@@ -19,7 +19,7 @@ import segnlp.utils as utils
 from segnlp.utils import get_ptl_trainer_args
 
 
-logger = get_logger("ML")
+logger = get_logger("LOOP HP TUNING")
 
 
 class TrainingUtils:
@@ -40,7 +40,7 @@ class TrainingUtils:
         hp_sets = [dict(zip(hyperparamaters.keys(),v)) for v in itertools.product(*group_variations)]
 
         #give each hp an unique id
-        create_hp_uid = lambda x: utils.create_uid("".join(list(map(str, x.keys()))+ list(map(str, x.values()))))
+        create_hp_uid = lambda x: utils.create_uid("".join(list(map(str, x.keys())) + list(map(str, x.values()))))
         hp_uids = [create_hp_uid(hp) for hp in hp_sets]
 
 
@@ -62,94 +62,49 @@ class TrainingUtils:
         return hp_dicts
 
 
-    def __save_model_config(  self,
-                            model_args:str,
-                            save_choice:str, 
-                            monitor_metric:str,
-                            exp_model_path:str,
-                            ):
+    def __dump_hp_uid(self, hp_uid):
 
-        #dumping the arguments
-        model_args_c = deepcopy(model_args)
+        #### check if the hp_uids are already tested and logged
+        with open(self._path_to_hp_hist, "a") as f:
+            f.write(hp_uid + "\n")
 
-        # fix objects
-        for t, hps in model_args_c["hyperparamaters"].items():
+
+    def __dump_hps( self,
+                    hp_uid:str,
+                    hyperparamaters: dict, 
+                    ):
+
+        hyperparamaters = deepcopy(hyperparamaters)
+
+        #fix objects
+        for t, hps in hyperparamaters.items():
                 for k,v in hps.items():
                     if not isinstance(v, (str, int, float)):
-                        model_args_c["hyperparamaters"][t][k] = str(model_args_c["hyperparamaters"][t][k])
+                        hyperparamaters[t][k] = str(hyperparamaters[t][k])
             
+   
         model_args_c.pop("label_encoder")
         time = utils.get_time()
         config = {
+                    "hp_uid": model_id,
                     "time": str(time),
                     "timestamp": str(time.timestamp()),
-                    "save_choice":save_choice,
-                    "monitor_metric":monitor_metric,
-                    "args":model_args_c,
+                    "hyperparamaters": hyperparamaters,
                     }
 
-        with open(os.path.join(exp_model_path, "model_config.json"), "w") as f:
-            json.dump(config, f, indent=4)
-
-
-    def _fit(    self,
-                model_id :str,
-                hyperparamaters:dict,
-                random_seed:int = 42,
-                monitor_metric:str = "val_f1",
-                ):
-
-        # if model_id is None:
-        #     model_id = utils.create_uid("".join(list(map(str, hyperparamaters.keys())) + list(map(str, hyperparamaters.values()))))
-
-        utils.set_random_seed(random_seed)
-
-        # hyperparamaters["general"]["random_seed"] = random_seed
-        # hyperparamaters["general"]["monitor_metric"] = monitor_metric
-
-        #loading our preprocessed dataset
-        data_module = utils.DataModule(
-                                path_to_data = self._path_to_data,
-                                batch_size = hyperparamaters["general"]["batch_size"],
-                                )
-        
-        model_save_path = os.path.join(self._path_to_models, model_id, str(random_seed))
-
-
-   
-        # model_args = dict(
-        #                 hyperparamaters = hyperparamaters,
-        #                 label_encoder = self.label_encoder,
-        #                 feature_dims = self.config["feature2dim"],
-        #                 metric = self.metric
-        #                 )
-
-        self.__save_model_config(
-                                model_args=model_args,
-                                save_choice=save_choice,
-                                monitor_metric=monitor_metric,
-                                exp_model_path=exp_model_path
-                                )
-
-
-        model_fp, model_score = self._eval(
-                                            model_args = model_args,
-                                            ptl_trn_args = ptl_trn_args,
-                                            data_module = data_module,
-                                            )
+        #### check if the hp_uids are already tested and logged
+        with open(self._path_to_hps, "a") as f:
+            f.write(json.dumps(config, indent=4) + "\n")
 
 
 
     def train(self,
-                    hyperparamaters:dict,
-                    ptl_trn_args:dict={},
-                    n_random_seeds:int=6,
-                    random_seed:int=None,
-                    save_choice:str="best",
-                    monitor_metric:str = "val_f1",
-                    ss_test:str="aso",
-                    override:bool=False
-                    ):
+                hyperparamaters:dict,
+                n_random_seeds:int=6,
+                random_seed:int=None,
+                monitor_metric:str = "val_f1",
+                override:bool=False
+                ):
 
         hp_dicts = self.__create_hyperparam_sets(hyperparamaters)
         
@@ -166,18 +121,18 @@ class TrainingUtils:
                 
                 utils.set_random_seed(random_seed)
 
+
                 self.fit(
-                            hyperparamaters = hp_dict["hyperparamaters"],
-                            random_seed = random_seed,
-                            monitor_metric = monitor_metric,
-                            model_id = hp_uid,
+                        model_id = f"{hp_uid}_random_seed",
+                        hyperparamaters = hp_dict["hyperparamaters"],
+                        random_seed = random_seed,
+                        monitor_metric = monitor_metric,
+                        )
+
+
+            self.__dump_hp_uid()
+
+            self.__dump_hps(
+                            hp_uid,
+                            hp_dict
                             )
-
-
-            #### check if the hp_uids are already tested and logged
-            with open(self._path_to_hp_hist, "a") as f:
-                f.write(hp_uid + "\n")
-
-            #### check if the hp_uids are already tested and logged
-            with open(self._path_to_hps, "a") as f:
-                f.write(json.dumps(hp_dict) + "\n")
