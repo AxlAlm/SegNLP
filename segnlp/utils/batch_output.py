@@ -101,19 +101,19 @@ class BatchOutput:
         
 
         if level == "token":
-            mask = ensure_numpy(self.batch["token"]["mask"]).astype(bool)
+            mask = ensure_numpy(self.batch.get("token", "mask")).astype(bool)
             self.df.loc["PRED", task] = ensure_numpy(preds)[mask]
         
 
         elif level == "seg":
-            mask = ensure_numpy(self.batch["seg"]["mask"]).astype(bool)
+            mask = ensure_numpy(self.batch.get("seg", "mask")).astype(bool)
             seg_preds = ensure_numpy(preds)[mask]
             
             # we spread the predictions on segments over all tokens in the segments
             cond = ~self.df.loc["PRED", "seg_id"].isna()
 
             # repeat the segment prediction for all their tokens 
-            token_preds = np.repeat(seg_preds, ensure_numpy(self.batch["seg"]["lengths_tok"])[mask])
+            token_preds = np.repeat(seg_preds, ensure_numpy(self.batch.get("seg","lengths_tok"))[mask])
 
             self.df.loc["PRED"].loc[cond, task] = token_preds
 
@@ -187,8 +187,11 @@ class BatchOutput:
             return i, j, ratio
 
 
-        df = self.df["TARGET" if self.__use_gt else "PRED"]
-        
+        df = self.df.loc["PRED"] #if self.__use_gt_seg else "PRED"]
+
+        df.loc[:, "TARGET-link_label"] = self.df.loc["TARGET","link_label"]
+        df.loc[:, "TARGET-link"] = self.df.loc["TARGET","link"]
+
         first_df = df.groupby("seg_id", sort=False).first()
         first_df.reset_index(inplace=True)
 
@@ -200,8 +203,8 @@ class BatchOutput:
         # the total mumber of segments
         p1, p2 = [], []
         j = 0
-        for i in range(len(self.batch)):
-            n = len(df.loc[i,"seg_id"].dropna().unique())
+        for _, gdf in df.groupby(level = 0, sort = False):
+            n = len(gdf.loc[:, "seg_id"].dropna().unique())
             sample_seg_ids = np.arange(
                                         start= j,
                                         stop = j+n
@@ -223,7 +226,7 @@ class BatchOutput:
         pair_df["sample_id"] = first_df.loc[pair_df["p1"], "sample_id"].to_numpy()
 
         #set true the link_label
-        pair_df["link_label"] = first_df.loc[pair_df["p1"], "link_label"].to_numpy()
+        pair_df["TARGET-link_label"] = first_df.loc[pair_df["p1"], "TARGET-link_label"].to_numpy()
 
         #set start and end token indexes for p1 and p2
         pair_df["p1_start"] = first_df.loc[pair_df["p1"], "sample_token_id"].to_numpy()
@@ -288,22 +291,11 @@ class BatchOutput:
         # ground truth segment
 
         # 1 find which pairs are "false", i.e. the members whould not be linked
-        links = first_df.loc[pair_df["p1"], "link"].to_numpy()
+        links = first_df.loc[pair_df["p1"], "TARGET-link"].to_numpy()
         pairs_per_sample = pair_df.groupby("sample_id", sort=False).size().to_numpy()
         seg_per_sample = utils.np_cumsum_zero(first_df.groupby("sample_id", sort=False).size().to_numpy())
         normalized_links  = links + np.repeat(seg_per_sample, pairs_per_sample)
-        false_linked_pairs = first_df.iloc[normalized_links].index.to_numpy() == p2
-
-        # creating a mask over all pairs which tells us which pairs include a segmnets
-        # which is not a TRUE segment, i.e. overlaps with a ground truth segments to a certain
-        # configurable extend.
-        #if self.threshohold == "first":
-        #else:
-        p1_cond = pair_df["p1-ratio"] >= 0.5
-        p2_cond = pair_df["p2-ratio"] >= 0.5
-        contain_false_segs = np.logical_and(p1_cond.to_numpy(), p2_cond.to_numpy())
-    
-        pair_df["false_pairs"] = np.logical_and(false_linked_pairs, contain_false_segs)
+        pair_df["true_link"] = first_df.iloc[normalized_links].index.to_numpy() == p2
 
         nodir_pair_df = pair_df[pair_df["direction"].isin([0,1]).to_numpy()]
 
@@ -324,12 +316,12 @@ class BatchOutput:
 
         if self.__use_gt_seg:
             seg_data = {
-                            "span_idxs": self.batch["seg"]["span_idxs"],
-                            "lengths": self.batch["seg"]["lengths"],
+                            "span_idxs": self.batch.get("seg", "span_idxs"),
+                            "lengths": self.batch.get("seg", "lengths"),
                             }   
         else:
 
-            df = self.df["PRED"]
+            df = self.df.loc["PRED"]
 
 
             seg_lengths = df[~df["seg_id"].isna()].groupby(level=0, sort=False)["seg_id"].nunique().to_numpy()

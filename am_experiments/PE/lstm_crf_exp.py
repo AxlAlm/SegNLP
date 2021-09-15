@@ -51,13 +51,14 @@ hps = {
 
 
 best_hp = exp.train(
-                        hyperparamaters = hps,
-                        n_random_seeds=6,
-                        ptl_trn_args=dict(
-                                            #gpus=[1],
-                                            gradient_clip_val=5.0
-                                        ),
-                        )
+                    hyperparamaters = hps,
+                    n_random_seeds=6,
+                    ptl_trn_args=dict(
+                                    gpus = [1],
+                                    gradient_clip_val = 5.0,
+                                    overfit_batches = 0.1
+                                    ),
+                    )
 
 # score, output = exp.test()
 # output.to_csv("/tmp/pred_segs.csv")

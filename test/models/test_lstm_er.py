@@ -4,7 +4,8 @@ sys.path.insert(1, '../../')
 
 from segnlp import Pipeline
 from segnlp.datasets.am import PE
-from segnlp.pretrained_features import GloveEmbeddings
+from segnlp.features import GloveEmbeddings
+from segnlp.features import OneHots
 
 import flair, torch
 flair.device = torch.device('cpu') 
@@ -20,10 +21,12 @@ exp = Pipeline(
                 ),
                 metric = "overlap_metric",
                 model = "LSTM_ER",
+                encodings = ["deprel", "dephead"],
                 pretrained_features = [
                                 GloveEmbeddings(),
-                            ],
-                #overwrite = True,
+                                OneHots("pos"),
+                                OneHots("deprel")
+                            ]
                 )
 
 
@@ -35,7 +38,7 @@ hps = {
                 "max_epochs":100,
                 "patience": 10,
                 "task_weight": 0.5,
-                "seg_gts_k": 10,
+                "sampling_k": 10,
                 },
 
        "LSTM": {   
@@ -59,14 +62,9 @@ hps = {
                         "graph_buid_type": 0,
                         "sub_graph_type": 0,
                         },
-
-        "LinearPair": {
-                        "hidden_size":100,
-                        "activation": "Tanh",
-                        },
         "DirLinkLabeler": {
-                            "dropout": 0.5,
-                            "match_threshold": 0.5,
+                            "hidden_size":100,
+                            "dropout": 0.5
                         }
         }
 
@@ -76,7 +74,7 @@ best_hp = exp.train(
                         hyperparamaters = hps,
                         n_random_seeds=6,
                         ptl_trn_args=dict(
-                                            #gpus=[1],
+                                            gpus=[1],
                                             overfit_batches = 0.1,
                                             gradient_clip_val=10.0
                                         ),

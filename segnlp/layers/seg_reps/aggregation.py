@@ -73,10 +73,6 @@ class Agg(nn.Module):
 
                     agg_m[i][j] = torch.cat((_min, _max, _mean), dim=0)
 
-
-        if hasattr(self, "reduce_dim"):
-            return self.reduce_dim(agg_m)
-        else:
-            return agg_m
-
+        
+        return agg_m
 

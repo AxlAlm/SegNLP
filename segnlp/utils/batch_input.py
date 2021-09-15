@@ -1,43 +1,49 @@
 
 #basics
 import numpy as np
-from numpy.lib.arraysetops import isin
 import pandas as pd
-from cached_property import cached_property
 import re
 
 # pytorch
 import torch
+from torch import Tensor
+from torch._C import dtype
 from torch.nn.utils.rnn import pad_sequence
-
 
 # segnlp
 from segnlp import utils
 
+class BatchInput:
 
-class Level:
 
     def __init__(self, 
                 df: pd.DataFrame, 
-                batch_size : int, 
-                pretrained_features:dict = {},
+                pretrained_features: dict = {},
                 device = None
                 ):
         self._df = df
+        self._task_regexp = re.compile("seg|link|label|link_label")
         self._pretrained_features = pretrained_features
         self.device = device
-        self.batch_size = batch_size
-        self.task_regexp = re.compile("seg|link|label|link_label")
-        self.max_len = torch.max(self.lengths())
+        self.__ok_levels = set(["seg", "token", "span"])
+
+        if "am_id" in self._df.columns:
+            self.__ok_levels.update(["am_id", "adu_id"])
+
+        self._size = self._df["sample_id"].nunique()
 
 
-    def any_key(self, key:str):
+    def __len__(self):
+        return self._size
+ 
 
+    def _get_column_values(self, level: str, key:str):
 
-        if isinstance(self, TokenLevel):
+        if level == "token":
             flat_values = self._df.loc[:, key].to_numpy()
         else:
-            flat_values = self._df.groupby(self.key, sort = False).first().loc[:, key].to_numpy()
+
+            flat_values = self._df.groupby(f"{level}_id", sort = False).first().loc[:, key].to_numpy()
 
         if isinstance(flat_values[0], str):
             return flat_values
@@ -45,194 +51,109 @@ class Level:
             return torch.LongTensor(flat_values)
 
 
-    def mask(self):
-        return utils.create_mask(self.lengths(), as_bool = True)
+    def _get_span_idxs(self, level):
+
+        if level == "am":
+            ADU_start = self._df.groupby("adu_id", sort=False).first()["sample_token_id"].to_numpy()
+            ADU_end = self._df.groupby("adu_id", sort=False).last()["sample_token_id"].to_numpy() + 1 
+
+            AC_lens = self._df.groupby("seg_id", sort=False).size().to_numpy()
+
+            AM_start = ADU_start
+            AM_end = ADU_end - AC_lens
+
+            return torch.LongTensor(np.column_stack((AM_start, AM_end)))
+
+        else:
+
+            start_tok_ids = self._df.groupby(f"{level}_id", sort=False).first()["sample_token_id"].to_numpy()
+            end_tok_ids = self._df.groupby(f"{level}_id", sort=False).last()["sample_token_id"].to_numpy() + 1
+
+            return torch.LongTensor(np.column_stack((start_tok_ids, end_tok_ids)))
+
+
+    def _get_mask(self, level):
+        return utils.create_mask(self.get(level, "lengths"), as_bool = True)
+
+
+    def _get_lengths(self, level):
+
+        if level == "token":
+            return torch.LongTensor(self._df.groupby(level=0, sort = False).size().to_numpy())
+        else:
+            return torch.LongTensor(self._df.groupby(level=0, sort=False)[f"{level}_id"].nunique().to_numpy())
+
+
+    def _get_pretrained_embeddings(self, level:str, flat:bool):
+
+        if level == "token":
+            embs = self._pretrained_features["word_embs"]
+        else:
+            embs = self._pretrained_features["seg_embs"]
+
+        embs = embs[:, :max(self._get_lengths(level)), :]
+
+        if flat:
+            embs = embs[self._get_mask("level")]
+
+        return torch.tensor(embs, dtype = torch.float)
 
 
     @utils.Memorize
-    def __getitem__(self, key:str):
+    def get(self, 
+            level:str, 
+            key:str, 
+            flat:bool = False, 
+            ):
 
-        is_task = self.task_regexp.search(key)
+        if level not in self.__ok_levels:
+            raise KeyError
 
-        if hasattr(self, key):
-            return getattr(self, key)()
 
-        elif "emb" in key:
-            embs = torch.FloatTensor(self._pretrained_features[key]).to(self.device)
-            return embs[:, :self.max_len, :]
-        
-        elif "str" == key:
-            return self.any_key(key)
+        if key == "lengths":
+            data =  self._get_lengths(level)
+
+        elif key == "embs":
+            data =  self._get_pretrained_embeddings(level, flat=flat)
+
+        elif key == "mask":
+            data = self._get_mask(level)
 
         else:
-            return pad_sequence(
-                                torch.split(
-                                            self.any_key(key), 
-                                            utils.ensure_list(self.lengths())
-                                            ), 
-                                batch_first = True,
-                                padding_value = -1 if is_task else 0,
-                                ).to(self.device if is_task else "cpu")
-        
-
-class TokenLevel(Level):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)        
+            if key == "span_idxs":
+                data = self._get_span_idxs(level)
+            else:
+                data = self._get_column_values(level, key)
 
 
-    def lengths(self):
-        data = self._df.groupby(level=0, sort = False).size().to_numpy()
-        return torch.LongTensor(data)
+            if isinstance(data[0], str):
+                return data
 
+            if not flat:
 
-class NonTokenLevel(Level):
-
-
-    def lengths(self):
-        data = self._df.groupby(level=0, sort=False)[self.key].nunique().to_numpy()
-        return torch.LongTensor(data)
-
-
-    def lengths_tok(self):
-
-        seg_tok_lens = self._df.groupby(self.key, sort=False).size().to_numpy()
-        seg_tok_lens = torch.LongTensor(seg_tok_lens)
-        return pad_sequence(
-                            torch.split(
-                                        seg_tok_lens, 
-                                        utils.ensure_list(self.lengths())
-                                        ), 
-                            batch_first = True,
-                            padding_value = 0
-                            )
-        
-
-    def span_idxs(self):
-
-        start_tok_ids = self._df.groupby(self.key, sort=False).first()["sample_token_id"].to_numpy()
-        end_tok_ids = self._df.groupby(self.key, sort=False).last()["sample_token_id"].to_numpy() + 1
-
-        span_idxs_flat = torch.LongTensor(np.column_stack((start_tok_ids, end_tok_ids)))
-
-        sample_span_idxs = torch.split(span_idxs_flat, utils.ensure_list(self.lengths()))
-
-        return pad_sequence(sample_span_idxs, batch_first=True)
-    
-
-class SegLevel(NonTokenLevel):
-    
-    def __init__(self, *args, **kwargs):
-        self.key = "seg_id"
-        super().__init__(*args, **kwargs)
-
-
-class SpanLevel(NonTokenLevel):
-
-    def __init__(self, *args, **kwargs):
-        self.key = "span_id"
-        super().__init__(*args, **kwargs)
-
-
-class AMLevel(Level):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-
-    def lengths(self):
-        data = self._df.groupby(level=0, sort=False)["am_id"].nunique().to_numpy()
-        return torch.LongTensor(data)
-
-
-    # def lengths_tok(self):
-    #     seg_tok_lens = self._df.groupby(self.key, sort=False).size().to_numpy()
-    #     seg_tok_lens = torch.LongTensor(seg_tok_lens, device = self.device)
-    #     return pad_sequence(
-    #                         torch.split(
-    #                                     seg_tok_lens, 
-    #                                     utils.ensure_list(self.lengths())
-    #                                     ), 
-    #                         batch_first = True,
-    #                         padding_value = 0
-    #                         )
-        
-
-    def span_idxs(self):
-
-        ADU_start = self._df.groupby("adu_id", sort=False).first()["sample_token_id"].to_numpy()
-        ADU_end = self._df.groupby("adu_id", sort=False).last()["sample_token_id"].to_numpy() + 1 
-
-        AC_lens = self._df.groupby("seg_id", sort=False).size().to_numpy()
-
-        AM_start = ADU_start
-        AM_end = ADU_end - AC_lens
-
-        span_idxs_flat = torch.LongTensor(np.column_stack((AM_start, AM_end)))
-
-        sample_span_idxs = torch.split(
-                                        span_idxs_flat, 
-                                        self._df.groupby(level=0, sort=False)["adu_id"].nunique().to_list()
-                                        )
-
-        return pad_sequence(sample_span_idxs, batch_first=True)
-    
-
-class ADULevel(NonTokenLevel):
-
-    def __init__(self, *args, **kwargs):
-        self.key = "adu_id"
-        super().__init__(*args, **kwargs)
-
-
-class BatchInput(dict):
-
-
-    def __init__(self, 
-                df: pd.DataFrame, 
-                batch_size: int,
-                pretrained_features: dict = {},
-                device = None
-                ):
-        
-        self._df = df
-        self.device = device
- 
-        self["token"] = TokenLevel(
-                                    self._df, 
-                                    batch_size = batch_size,
-                                    pretrained_features = pretrained_features,
-                                    device = device,
+                if level == "am" and key == "span_idxs":
+                    level = "adu"
+            
+                lengths = utils.ensure_list(self.get(level, "lenghts"))
+                    
+                data =  pad_sequence(
+                                    torch.split(
+                                                data, 
+                                                lengths
+                                                ), 
+                                    batch_first = True,
+                                    padding_value = -1 if self.task_regexp.search(key) else 0,
                                     )
-        self["seg"] = SegLevel(
-                                self._df, 
-                                batch_size = batch_size,
-                                pretrained_features = pretrained_features,
-                                device = device,
-                                )
+        
+        if isinstance(data, Tensor):
+            data = data.to(self.device)
 
-        self["span"] = SpanLevel(
-                                self._df,
-                                batch_size = batch_size,
-                                device = device,
-                                )
-
-        self["am"] = AMLevel(
-                                self._df,
-                                batch_size = batch_size,
-                                device = device,
-                                )
-
-        self["adu"] = ADULevel(
-                                self._df,
-                                batch_size = batch_size,
-                                device = device,
-                                )
+        return data
 
 
     def to(self, device):
         self.device = device
 
-        for k, level_class in self.items():
-            level_class.device = device
+        # for k, level_class in self.items():
+        #     level_class.device = device
 

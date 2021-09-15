@@ -176,23 +176,24 @@ class Trainer:
         else:
             hp_hist = {}
     
+
         create_hp_uid = lambda x: utils.create_uid("".join(list(map(str, x.keys()))+ list(map(str, x.values()))))
         hp_dicts = {create_hp_uid(hp):{"hyperparamaters":hp} for hp in set_hyperparamaters}
         hp_dicts.update(hp_hist)
 
-
-        print("_" * (os.get_terminal_size().columns -1))
+        print("_" * (os.get_terminal_size().columns - 3))
 
         for hp_uid, hp_dict in tqdm(hp_dicts.items(), desc="Hyperparamaters",  position=0):    
             
+
             if hp_uid in hp_hist and not override:
                 logger.info(f"Following hyperparamaters {hp_uid} has already been tested over n seed. Will skip this set.")
                 continue
 
-            best_model_score = None
-            best_model = None
-            model_scores = []
-            model_outputs = []
+            # best_model_score = None
+            # best_model = None
+            # model_scores = []
+            # model_outputs = []
 
             if random_seed is not None and isinstance(random_seed, int):
                 random_seeds = [random_seed]
@@ -201,81 +202,84 @@ class Trainer:
 
             for ri, random_seed in tqdm(list(enumerate(random_seeds, start=1)), desc = "Random Seeds", position=1):
 
-                output = self._fit(
-                                    hyperparamaters=hp_dict["hyperparamaters"],
-                                    ptl_trn_args = ptl_trn_args,
-                                    save_choice=save_choice,
-                                    random_seed=random_seed,
-                                    monitor_metric=monitor_metric,
-                                    model_id=hp_uid,
-                                    )
+                self._fit(
+                            hyperparamaters = hp_dict["hyperparamaters"],
+                            ptl_trn_args = ptl_trn_args,
+                            save_choice = save_choice,
+                            random_seed = random_seed,
+                            monitor_metric = monitor_metric,
+                            model_id = hp_uid,
+                            )
 
-                score = output["score"]
 
-                if best_model_score is None:
-                    best_model_score = score
-                    best_model = output
-                else:
-                    if score > best_model_score:
-                        best_model_score = score
-                        best_model = output
+
+
+            #     score = output["score"]
+
+            #     if best_model_score is None:
+            #         best_model_score = score
+            #         best_model = output
+            #     else:
+            #         if score > best_model_score:
+            #             best_model_score = score
+            #             best_model = output
                 
-                model_outputs.append(output)
-                model_scores.append(score)
+            #     model_outputs.append(output)
+            #     model_scores.append(score)
 
 
-            hp_dicts[hp_uid]["uid"] = hp_uid
-            hp_dicts[hp_uid]["scores"] = model_scores
-            hp_dicts[hp_uid]["score_mean"] = np.mean(model_scores)
-            hp_dicts[hp_uid]["score_median"] = np.median(model_scores)
-            hp_dicts[hp_uid]["score_max"] = np.max(model_scores)
-            hp_dicts[hp_uid]["score_min"] = np.min(model_scores)
-            hp_dicts[hp_uid]["monitor_metric"] = monitor_metric
-            hp_dicts[hp_uid]["std"] = np.std(model_scores)
-            hp_dicts[hp_uid]["ss_test"] = ss_test
-            hp_dicts[hp_uid]["n_random_seeds"] = n_random_seeds
-            hp_dicts[hp_uid]["hyperparamaters"] = hp_dict["hyperparamaters"]
-            hp_dicts[hp_uid]["outputs"] = model_outputs
-            hp_dicts[hp_uid]["best_model"] = best_model
-            hp_dicts[hp_uid]["best_model_score"] = best_model_score
-            hp_dicts[hp_uid]["progress"] = n_random_seeds
+            # hp_dicts[hp_uid]["uid"] = hp_uid
+            # hp_dicts[hp_uid]["scores"] = model_scores
+            # hp_dicts[hp_uid]["score_mean"] = np.mean(model_scores)
+            # hp_dicts[hp_uid]["score_median"] = np.median(model_scores)
+            # hp_dicts[hp_uid]["score_max"] = np.max(model_scores)
+            # hp_dicts[hp_uid]["score_min"] = np.min(model_scores)
+            # hp_dicts[hp_uid]["monitor_metric"] = monitor_metric
+            # hp_dicts[hp_uid]["std"] = np.std(model_scores)
+            # hp_dicts[hp_uid]["ss_test"] = ss_test
+            # hp_dicts[hp_uid]["n_random_seeds"] = n_random_seeds
+            # hp_dicts[hp_uid]["hyperparamaters"] = hp_dict["hyperparamaters"]
+            # hp_dicts[hp_uid]["outputs"] = model_outputs
+            # hp_dicts[hp_uid]["best_model"] = best_model
+            # hp_dicts[hp_uid]["best_model_score"] = best_model_score
+            # hp_dicts[hp_uid]["progress"] = n_random_seeds
 
 
-            if best_scores is not None:
-                is_better, p, v = self.model_comparison(model_scores, best_scores, ss_test=ss_test)
-                hp_dicts[hp_uid]["p"] = p
-                hp_dicts[hp_uid]["v"] = v
+            # if best_scores is not None:
+            #     is_better, p, v = self.model_comparison(model_scores, best_scores, ss_test=ss_test)
+            #     hp_dicts[hp_uid]["p"] = p
+            #     hp_dicts[hp_uid]["v"] = v
 
-            if best_scores is None or is_better:
-                best_scores = model_scores
+            # if best_scores is None or is_better:
+            #     best_scores = model_scores
 
-                hp_dicts[hp_uid]["best_model"]["path"] = hp_dicts[hp_uid]["best_model"]["path"].replace("tmp","top")
-                hp_dicts[hp_uid]["best_model"]["config_path"] = hp_dicts[hp_uid]["best_model"]["config_path"].replace("tmp","top")
+            #     hp_dicts[hp_uid]["best_model"]["path"] = hp_dicts[hp_uid]["best_model"]["path"].replace("tmp","top")
+            #     hp_dicts[hp_uid]["best_model"]["config_path"] = hp_dicts[hp_uid]["best_model"]["config_path"].replace("tmp","top")
 
-                updated_outputs = []
-                for d in hp_dicts[hp_uid]["outputs"]:
-                    d["path"] = d["path"].replace("tmp","top")
-                    d["config_path"] = d["config_path"].replace("tmp","top")
-                    updated_outputs.append(d)
+            #     updated_outputs = []
+            #     for d in hp_dicts[hp_uid]["outputs"]:
+            #         d["path"] = d["path"].replace("tmp","top")
+            #         d["config_path"] = d["config_path"].replace("tmp","top")
+            #         updated_outputs.append(d)
                 
-                hp_dicts[hp_uid]["outputs"] = updated_outputs
-                best_model_info = hp_dicts[hp_uid]
+            #     hp_dicts[hp_uid]["outputs"] = updated_outputs
+            #     best_model_info = hp_dicts[hp_uid]
 
-                if os.path.exists(self._path_to_top_models):
-                    shutil.rmtree(self._path_to_top_models)
+            #     if os.path.exists(self._path_to_top_models):
+            #         shutil.rmtree(self._path_to_top_models)
                     
-                shutil.move(self._path_to_tmp_models, self._path_to_top_models)
+            #     shutil.move(self._path_to_tmp_models, self._path_to_top_models)
 
 
-            if os.path.exists(self._path_to_tmp_models):
-                shutil.rmtree(self._path_to_tmp_models)
+            # if os.path.exists(self._path_to_tmp_models):
+            #     shutil.rmtree(self._path_to_tmp_models)
 
                     
-            with open(self._path_to_hp_hist, "w") as f:
-                json.dump(hp_dicts, f, indent=4)
+            # with open(self._path_to_hp_hist, "w") as f:
+            #     json.dump(hp_dicts, f, indent=4)
     
-            with open(self._path_to_model_info, "w") as f:
-                json.dump(best_model_info, f, indent=4)
+            # with open(self._path_to_model_info, "w") as f:
+            #     json.dump(best_model_info, f, indent=4)
 
 
         return best_model_info

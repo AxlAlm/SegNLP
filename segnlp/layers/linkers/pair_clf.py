@@ -46,10 +46,9 @@ class PairCLF(LinearCLF):
                 ):
 
         #predict links
-        pair_logits = self.clf(input)
+        pair_logits = self.clf(self.dropout(input)).squeeze(-1)
     
-        pair_logits = pair_logits.squeeze(-1)
-
+    
         # for all samples we set the probs for non existing segments to inf and the prob for all
         # segments pointing to an non existing segment to -inf.
         pair_logits[~segment_mask]  =  float("-inf")

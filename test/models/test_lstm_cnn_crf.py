@@ -1,13 +1,9 @@
 
-import sys
-sys.path.insert(1, '../../')
 
 from segnlp import Pipeline
 from segnlp.datasets.am import PE
 from segnlp.pretrained_features import GloveEmbeddings
 
-import flair, torch
-flair.device = torch.device('cpu') 
 
 
 exp = Pipeline(
@@ -29,7 +25,7 @@ hps = {
                 "optimizer": "SGD",
                 "lr": 0.1,
                 "batch_size": 10,
-                "max_epochs":200,
+                "max_epochs":2,
                 "patience": 5,
                 },
         "CharEmb": {  

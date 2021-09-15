@@ -250,6 +250,7 @@ class Memorize:
 
 
     def __call__(self, *args):
+
         
         if args in self.cache:
             return self.cache[args]

@@ -57,13 +57,12 @@ class DataModule(ptl.LightningDataModule):
     def __getitem__(self, key:Union[np.ndarray, list]) -> BatchInput:
         return BatchInput(
                     df = self.__get_df(key),
-                    batch_size = self.batch_size,
                     pretrained_features = self.__get_pretrained_features(key)
                     )
 
 
     def __get_df(self, key):
-        return pd.read_hdf(self._df_fp, where = f"index in {[str(k) for k in key]}")
+        return pd.read_hdf(self._df_fp, mode = "r", where = f"index in {[k for k in key]}")
 
 
     def __get_pretrained_features(self, key):

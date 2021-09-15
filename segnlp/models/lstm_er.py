@@ -13,17 +13,37 @@ from segnlp import utils
 
 class LSTM_ER(PTLBase):
 
-    #https://www.aclweb.org/anthology/P16-1105.pdf
+    """
+    
+    Paper:
+    https://www.aclweb.org/anthology/P16-1105.pdf
+
+    original code (links on bottom page):
+    https://github.com/UKPLab/acl2017-neural_end2end_AM
+
+    """
 
     def __init__(self,  *args, **kwargs):   
         super().__init__(*args, **kwargs)
 
+
+        self.pos_onehot = self.add_token_embedder(
+                                    layer  = "PosOneHots",
+                                    hyperparams = {},
+        )
+
         self.word_lstm = self.add_encoder(    
                                 layer = "LSTM", 
                                 hyperparams = self.hps.get("LSTM", {}),
-                                input_size = self.feature_dims["word_embs"] + self.feature_dims["pos_embs"],
+                                input_size = self.feature_dims["word_embs"] + 
+                                             self.pos_onehot.output_size,
                                 module = "token_module"
                                 )
+
+        self.dep_onehot = self.add_token_embedder(                                  
+                                    layer  = "DepOneHots",
+                                    hyperparams = {},
+        )
 
         self.segmenter = self.add_segmenter(
                                 layer = "BigramSeg",
@@ -32,22 +52,26 @@ class LSTM_ER(PTLBase):
                                 output_size = self.task_dims["seg+label"],
                                 )
 
-        self.agg = self.add_reducer(
+        self.agg = self.add_seg_rep(
                             layer = "Agg",
                             hyperparams = self.hps.get("Agg", {}),
                             input_size = self.word_lstm.output_size,
-                            module = "segment_module"
                         )
 
-        self.deptreelstm = self.add_reducer(
+        self.deptreelstm = self.add_pair_rep(
                                     layer = "DepTreeLSTM",
                                     hyperparams = self.hps.get("DepTreeLSTM", {}),
-                                    input_size =    self.agg.output_size 
-                                                    + self.feature_dims["deprel_embs"]
+                                    input_size =    self.agg.output_size
+                                                    + self.dep_onehot.output_size
                                                     + self.task_dims["seg+label"],
-                                    module = "segment_module"
                                 )
 
+        self.pair_enc = self.add_encoder(
+                                layer = "Linear",
+                                hyperparams = self.hps.get("LinearPair", {}),
+                                input_size = (self.word_lstm.output_size * 2) + self.deptreelstm.output_size,
+                                module = "segment_module"
+        )
 
         self.link_labeler = self.add_link_labeler(
                                     layer = "DirLinkLabeler",
@@ -59,13 +83,21 @@ class LSTM_ER(PTLBase):
 
     # SEGMENTATION
     def token_rep(self, batch: utils.BatchInput, output: utils.BatchOutput):
+
+        #create pos onehots
+        pos_one_hots = self.pos_onehot(
+                        batch.get("token", "pos"),
+                        batch.get("token", "lengths"),
+                        device = batch.device
+        )
+
         # lstm_out = (batch_size, max_nr_tokens, lstm_hidden)
         lstm_out, _ = self.word_lstm(
                                 input = [
-                                            batch["token"]["word_embs"],
-                                            batch["token"]["pos_embs"],
+                                            batch.get("token", "embs"),
+                                            pos_one_hots,
                                             ],
-                                lengths = batch["token"]["lengths"]
+                                lengths = batch.get("token", "lengths")
                                 )
 
         return {
@@ -75,42 +107,51 @@ class LSTM_ER(PTLBase):
 
     def token_clf(self, batch: utils.BatchInput, output: utils.BatchOutput):
         return self.segmenter(
-                                        input = output.stuff["lstm_out"],
-                                        )
+                                input = output.stuff["lstm_out"],
+                                )
 
 
     # LINK LABELING
     def seg_rep(self, batch: utils.BatchInput, output: utils.BatchOutput):
 
+
         # get the average embedding for each segments 
         seg_embs = self.agg(
-                            input = batch["token"]["word_embs"], 
+                            input = batch.get("token", "embs"),
                             lengths = output.get_seg_data()["lengths"], 
                             span_idxs = output.get_seg_data()["span_idxs"],
+                            device = batch.device
                             )
 
         pair_data = output.get_pair_data()
 
+
+        #create dependecy relation onehots
+        dep_one_hots = self.dep_onehot(
+                        batch.get("token", "deprel"),
+                        device = batch.device
+        )
 
         # We create Non-Directional Pair Embeddings using DepTreeLSTM
         # If we have the segments A,B,C. E.g. embeddings for the pairs (A,A), (A,B), (A,C), (B,B), (B,C)
         tree_pair_embs = self.deptreelstm(    
                                             input = (
                                                         output.stuff["lstm_out"],
-                                                        batch["token"]["deprel_embs"],
+                                                        dep_one_hots,
                                                         output.get_preds("seg+label", one_hot = True),
                                                         ),
-                                            roots = batch["token"]["root_idxs"],
-                                            deplinks = batch["token"]["dephead"],
-                                            token_mask = batch["token"]["mask"],
+                                            roots = batch.get("token", "root_idxs"),
+                                            deplinks = batch.get("token", "dephead"),
+                                            token_mask = batch.get("token", "mask"),
                                             starts = pair_data["nodir"]["p1_end"],
                                             ends = pair_data["nodir"]["p2_end"], #the last token indexes in each seg
                                             lengths = pair_data["nodir"]["lengths"],
+                                            device = batch.device
                                             )
 
         # We then add the non directional pair embeddings to the directional pair representations
         # creating dp´ = [dp; s1, s2] (see paper above, page 1109)
-        seg_embs_flat = seg_embs[batch["seg"]["mask"].type(torch.bool)]
+        seg_embs_flat = seg_embs[batch.get("seg", "mask").type(torch.bool)]
 
         pair_embs = torch.cat((
                                 seg_embs_flat[pair_data["bidir"]["p1"]], 
@@ -119,6 +160,8 @@ class LSTM_ER(PTLBase):
                                 ),
                                 dim=-1
                                 )
+
+        pair_embs = self.pair_enc(pair_embs)
 
         return {
                 "pair_embs":pair_embs
@@ -142,7 +185,7 @@ class LSTM_ER(PTLBase):
     def loss(self, batch: utils.BatchInput, output: utils.BatchOutput):
 
         seg_label_loss = self.segmenter.loss(
-                                            targets =  batch["token"]["seg+label"],
+                                            targets =  batch.get("token", "seg+label"),
                                             logits = output.logits["seg+label"],
                                             )
 
@@ -150,10 +193,12 @@ class LSTM_ER(PTLBase):
         pair_data = output.get_pair_data()
 
         link_label_loss = self.link_labeler.loss(
-                                                targets = pair_data["bidir"]["T-link_label"],
+                                                targets = pair_data["bidir"]["TARGET-link_label"],
                                                 logits = output.logits["link_label"],
                                                 directions = pair_data["bidir"]["direction"],
-                                                neg_mask = ~pair_data["bidir"]["false_pairs"],
+                                                true_link = pair_data["bidir"]["true_link"], 
+                                                p1_match_ratio = pair_data["bidir"]["p1-ratio"],
+                                                p2_match_ratio = pair_data["bidir"]["p2-ratio"]
                                                 )
 
         total_loss = seg_label_loss + link_label_loss

@@ -32,31 +32,28 @@ class DirLinkLabeler(nn.Module):
 
     def __init__(self, 
                 input_size:int, 
-                hidden_size:int, 
                 output_size:int, 
+                match_threshold : float = 0.5,
                 dropout:float=0.0,
                 loss_reduction = "mean",
-                ignore_index = -1
+                ignore_index = -1,
                 ):
         super().__init__()
         self.loss_reduction = loss_reduction
         self.ignore_index = ignore_index
+        self.match_ratio = match_threshold
 
         # if we have link labels {root, REL1, REL2} we will predict the folowing labels
         # {None, root, REL1, REL2, REL1-rev, REL2-rev}
         #  0      1      2    3        4        5 
-        # 
-
+    
         self.link_labels_wo_root = output_size -1
         self.rev_label_treshhold = output_size
         output_size = ((output_size -1) * 2 ) + 2
 
-        self.link_label_clf_layer = nn.Sequential(
-                                                    nn.Linear(input_size, hidden_size),
-                                                    nn.Tanh(),
-                                                    nn.Dropout(dropout),
-                                                    nn.Linear(hidden_size, output_size),
-                                                )
+        self.dropout = nn.Dropout(dropout)
+        self.clf = nn.Linear(input_size, output_size)
+
 
     def __get_preds(self, 
                     logits: Tensor,  
@@ -122,7 +119,7 @@ class DirLinkLabeler(nn.Module):
                 pair_p2 : Tensor,
                 ):
 
-        logits = self.link_label_clf_layer(input)
+        logits = self.clf(self.dropout(input))
         link_labels, links = self.__get_preds(
                                     logits = logits,
                                     pair_p1 = pair_p1,
@@ -136,8 +133,27 @@ class DirLinkLabeler(nn.Module):
             targets: Tensor, 
             logits: Tensor, 
             directions: Tensor,
-            neg_mask: Tensor, 
+            true_link: Tensor, 
+            p1_match_ratio: Tensor,
+            p2_match_ratio: Tensor
             ):
+
+        # creating a mask over all pairs which tells us which pairs include a segments
+        # which is not a TRUE segment, i.e. overlaps with a ground truth segments to a certain
+        # configurable extent
+        cond1 = p1_match_ratio >= self.match_threshold
+        cond2 = p2_match_ratio >= self.match_threshold
+        true_segs = torch.logical_and(
+                                    cond1, 
+                                    cond2,
+                                    )
+
+        # then we combine the true_seg mask with true link mask and  negate it so we have a mask
+        # which is True on each position the pair should be a NEGATIVE SAMPLE
+        neg_mask = ~torch.logical_and(
+                                        true_segs, 
+                                        true_link
+                                        )
 
         # target labels are not directional so we need to make them so. Targets also lack
         # label for no link. So, we first add 1 too all labels moving them up freeing 0 for None label for no links.

@@ -19,6 +19,9 @@ class LSTM_CNN_CRF(PTLBase):
     paper1:
     https://arxiv.org/pdf/1704.06104.pdf
 
+    original code:
+    https://github.com/UKPLab/acl2017-neural_end2end_AM
+
     ORIGINAL PAPER INTRODUCING NETWORK
     paper2:
     https://www.aclweb.org/anthology/P16-1101.pdf

@@ -1,12 +1,8 @@
 
 
-import sys
-sys.path.insert(1, '../../')
-
-
 from segnlp import Pipeline
 from segnlp.datasets.am import PE
-from segnlp.pretrained_features import ELMoEmbeddings
+from segnlp.pretrained_features import DummyFeature
 from segnlp.resources.vocab import bnc_vocab
 
 
@@ -18,12 +14,12 @@ exp = Pipeline(
                             sample_level="paragraph",
                             ),
                 pretrained_features = [
-                                ELMoEmbeddings(),
+                                DummyFeature(),
                                 ],
                 model = "LSTM_DIST",
                 other_levels = ["am"],
                 metric = "default_segment_metric",
-                #overwrite = True
+                overwrite = True
             )
 
 
@@ -46,7 +42,7 @@ hps = {
                 "optimizer": "Adam",
                 "lr": 0.001,
                 "batch_size": 16,
-                "max_epochs":500,
+                "max_epochs":2,
                 "patience": 10,
                 "task_weight": 0.5,
                 },
@@ -79,7 +75,7 @@ best_hp = exp.train(
                         n_random_seeds=6,
                         ptl_trn_args=dict(
                                             gpus=[1],
-                                            overfit_batches = 0.1
+                                            overfit_batches = 0.1,
                                         ),
                         monitor_metric="val_f1",
 

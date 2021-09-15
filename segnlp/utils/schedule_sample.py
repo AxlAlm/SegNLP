@@ -51,7 +51,7 @@ class ScheduleSampling():
 
         self.calc_sampling_prob = epsilon
 
-    def next(self, epoch):
+    def __call__(self, epoch):
         epsilon = self.calc_sampling_prob(epoch)
         coin_flip = floor(random() * 10) / 10
 
@@ -63,5 +63,5 @@ if __name__ == "__main__":
     if test:
         schedule = ScheduleSampling(.5, "exponential")
         for i in range(10):
-            print(schedule.next(i))
+            print(schedule(i))
             print()

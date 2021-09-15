@@ -93,7 +93,7 @@ class PE(DataSet):
                             # However, Against and attacks are functional equivalent so will use CON for both
                             # and for For and supports we will use PRO
                             #"stance":["For", "Against", "supports", "attacks"],
-                            "link_label": ["support", "attack", "None"],
+                            "link_label": ["support", "attack", "root"],
                             "link": list(range(-11,12,1))
                             }
 
@@ -102,6 +102,7 @@ class PE(DataSet):
                                     "For": "support", 
                                     "Against": "attack", 
                                     "attacks": "attack",
+                                    "root": "root"
                                     }
         super().__init__(
                         name="pe",
@@ -352,7 +353,7 @@ class PE(DataSet):
             relation = ac_id2relation.get(ac_id, 0)
 
             ac = ac_id2ac.get(ac_id,"None")
-            stance = self._stance2new_stance.get(ac_id2stance.get(ac_id,"None"), "None")
+            stance = self._stance2new_stance.get(ac_id2stance.get(ac_id,"root"), "root")
 
             if "None" in ac_id:
                 seg_id = np.nan
@@ -362,7 +363,7 @@ class PE(DataSet):
             
             label = {   
                         "label": ac_id2ac.get(ac_id,"None"), 
-                        "link_label": self._stance2new_stance.get(ac_id2stance.get(ac_id,"None"), "None"), 
+                        "link_label": stance,
                         "link": relation,
                         "span_id": i,
                         "seg_id": seg_id,

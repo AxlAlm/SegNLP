@@ -1,35 +1,31 @@
 
-import sys
-sys.path.insert(1, '../../')
 
 from segnlp import Pipeline
 from segnlp.datasets.am import PE
-from segnlp.pretrained_features import GloveEmbeddings
-
-import flair, torch
-flair.device = torch.device('cpu') 
+from segnlp.pretrained_features import DummyFeature
 
 
 exp = Pipeline(
-                id="pe_lstm_cnn_crf",
+                id="pe_lstm_crf_seg+label",
                 dataset=PE( 
-                            tasks=["seg+label+link+link_label"],
+                            tasks=["seg+label"],
                             prediction_level="token",
-                            sample_level="document",
+                            sample_level="sentence",
                             ),
                 pretrained_features =[
-                            GloveEmbeddings(),
+                            DummyFeature()
                             ],
-                model = "LSTM_CNN_CRF",
-                metric = "overlap_metric",
+                model = "LSTM_CRF",
+                metric = "default_token_metric"
             )
+
 
 hps = {
         "general":{
                 "optimizer": "SGD",
                 "lr": 0.1,
                 "batch_size": 10,
-                "max_epochs":200,
+                "max_epochs":2,
                 "patience": 5,
                 },
         "CharEmb": {  
@@ -48,14 +44,17 @@ hps = {
                 }
         }
 
-best_hp = exp.train(
-                        hyperparamaters = hps,
-                        n_random_seeds=1,
-                        ptl_trn_args=dict(
-                                        gpus=[1],
-                                        overfit_batches = 0.1
-                                        ),
-                        monitor_metric="val_f1-50%-micro"
-                        )
 
-exp1_scores, exp1_outputs = exp.test()
+best_hp = exp.train(
+                    hyperparamaters = hps,
+                    n_random_seeds=6,
+                    ptl_trn_args=dict(
+                                    gpus = [1],
+                                    gradient_clip_val = 5.0,
+                                    overfit_batches = 0.1
+                                    ),
+                    )
+
+# score, output = exp.test()
+# output.to_csv("/tmp/pred_segs.csv")
+

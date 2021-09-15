@@ -165,6 +165,7 @@ class Pipeline(
         #setup all all folder and file names
         self._path_to_models  = os.path.join(self._path, "models")
         self._path_to_data = os.path.join(self._path, "data")
+        self._path_to_logs = os.path.join(self._path, "logs")
         os.makedirs(self._path_to_models, exist_ok=True)
         os.makedirs(self._path_to_data, exist_ok=True)
         self._path_to_df = os.path.join(self._path_to_data, "df.hdf5")
@@ -176,6 +177,9 @@ class Pipeline(
         self._path_to_model_info = os.path.join(self._path_to_models, "model_info.json")
         self._path_to_hp_hist = os.path.join(self._path_to_models, "hp_hist.json")
         self._path_to_test_score = os.path.join(self._path_to_models, "test_scores.json")
+
+
+        self.logger = utils.CSVLogger(self._path_to_logs)
 
         #dump config
         self.__dump_config()

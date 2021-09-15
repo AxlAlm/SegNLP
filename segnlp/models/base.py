@@ -49,6 +49,7 @@ class PTLBase(ptl.LightningModule):
                     label_encoder: LabelEncoder,
                     feature_dims:dict,
                     metric:Union[Callable,str],
+                    logger=None,
                     inference:bool=False
                     ):
         super().__init__()
@@ -58,6 +59,7 @@ class PTLBase(ptl.LightningModule):
         self.task_dims = {task: len(labels) for task, labels in label_encoder.task_labels.items()}
         self.inference = inference
         self.seg_task = label_encoder.seg_task
+        self.logger = logger
 
         # setting up metric container which takes care of metric calculation, aggregation and storing
         self.metrics = utils.MetricContainer(
@@ -205,7 +207,7 @@ class PTLBase(ptl.LightningModule):
         # with predictions, logits and outputs of modules and submodules
         output = self.output.step(batch, step_type = split)
 
-        
+
         # pass the batch and output through the modules
         self.forward(batch, output)
 
@@ -263,6 +265,13 @@ class PTLBase(ptl.LightningModule):
 
     def _end_of_epoch(self, split):
         epoch_metrics = self.metrics.calc_epoch_metrics(split)
+
+        logger.log_epoch(
+                        random_seed = "RANDOM SEED",
+                        hyperparamater_id =  "SOMETHING",
+                        epoch_metrics = epoch_metrics,
+                        )
+                        
         self.log_dict(
                         epoch_metrics,
                         on_step=False,

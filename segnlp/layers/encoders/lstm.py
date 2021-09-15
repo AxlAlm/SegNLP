@@ -2,7 +2,7 @@
 
 #basics
 from typing import Sequence, Union
-
+import numpy as np
 
 #pytorch
 import torch
@@ -80,7 +80,6 @@ class LSTM(nn.Module):
             else:
                 input = torch.cat(input, dim = -1)
 
- 
         sorted_lengths, sorted_idxs = torch.sort(lengths, descending=True)
         sorted = torch.equal(sorted_lengths, lengths)
 
@@ -112,7 +111,6 @@ class LSTM(nn.Module):
                                             lstm_packed, 
                                             batch_first=True, 
                                             padding_value=padding_value,
-                                            # total_length = torch.max(lengths)
                                             )
 
         # we pad on the ends of dim 0 and dim 1
