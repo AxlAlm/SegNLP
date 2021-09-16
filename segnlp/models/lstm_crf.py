@@ -11,11 +11,11 @@ import torch.nn.functional as F
 from torch.nn.modules import module
 
 #segnlp
-from .base import PTLBase
+from .base import BaseModel
 from segnlp import utils
 
 
-class LSTM_CRF(PTLBase):
+class LSTM_CRF(BaseModel):
 
     """
 

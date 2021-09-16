@@ -15,10 +15,10 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 #segnlp
-from .base import PTLBase
+from .base import BaseModel
 from segnlp import utils
 
-class LSTM_DIST(PTLBase):
+class LSTM_DIST(BaseModel):
 
     """
 

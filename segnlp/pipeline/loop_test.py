@@ -1,33 +1,54 @@
 
 #basics
 from typing import List, Dict, Tuple, Union
-import numpy as np
-import json
-from copy import deepcopy
-import pandas as pd
 from tqdm import tqdm
-
-#pytorch lightnig
-from pytorch_lightning import Trainer
 
 #segnlp
 from segnlp import get_logger
 import segnlp.utils as utils
-from segnlp.utils import get_ptl_trainer_args
 
 
-
-class Tester:
+class TestLoop:
 
 
     def test(self):
 
-        models_to_test = {}
+        #loading our preprocessed dataset
+        datamodule  = utils.DataModule(
+                                path_to_data = self._path_to_data,
+                                batch_size = batch_size,
+                                cv = cv
+                                )
 
-        for seed_model in models_to_test:
-            self._loop(
-                        model_path : str
-                        )
+        # create a dataset generator
+        test_dataset = datamodule.step("test")
+
+        # get all the paths to all models
+        models_to_test = []
+
+        for path_to_model in models_to_test:
+
+            model_info = "LOAD MODEL INFO"
+            model = model.load(path_to_model)
+
+            model.eval()
+            torch.zero_grad()
+
+            for test_batch in tqdm(test_dataset, desc = "Test Steps", position=3, total = len(test_dataset)):
+                
+                model(test_batch)
+
+
+            # Log val epoch metrics
+            test_epoch_metrics = model.metrics.calc_epoch_metrics("val")
+            self.logger.log_epoch(  
+                                epoch = 0,
+                                split = "test",
+                                model_id = model_id,
+                                epoch_metrics = test_epoch_metrics,
+                                cv = 0
+                                )
+
 
 
             # seeds.append(seed_model["random_seed"])

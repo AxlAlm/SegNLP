@@ -40,7 +40,7 @@ class DataModule(ptl.LightningDataModule):
     def __init__(self, 
                 path_to_data:str, 
                 batch_size: str,
-                split_id : int = 0
+                cv : int = 0
                 ):
 
         self._df_fp = os.path.join(path_to_data, "df.hdf5")
@@ -51,7 +51,7 @@ class DataModule(ptl.LightningDataModule):
             self._splits = pickle.load(f)
         
         self.batch_size = batch_size
-        self.split_id = split_id
+        self.split_id = cv
         
 
     def __getitem__(self, key:Union[np.ndarray, list]) -> BatchInput:
@@ -87,7 +87,7 @@ class DataModule(ptl.LightningDataModule):
         return x[0]
 
 
-    def __get_dataloader(self, split:str): #split = {"train", "test", "val"}
+    def step(self, split:str): #split = {"train", "test", "val"}
 
         # we get the ids for the split, these are the indexes we use to 
         # retrieve the sample for the h5py file
@@ -120,19 +120,3 @@ class DataModule(ptl.LightningDataModule):
                             collate_fn=self.__collate_fn, 
                             num_workers = segnlp.settings["dl_n_workers"],
                             )
-
-    
-    def change_split_id(self, n):
-        self.split_id = n
-
-
-    def train_dataloader(self):
-        return self.__get_dataloader("train")
-
-
-    def val_dataloader(self):
-        return self.__get_dataloader("val")
-
-
-    def test_dataloader(self):
-        return self.__get_dataloader("test")

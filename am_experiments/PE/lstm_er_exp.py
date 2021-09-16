@@ -75,12 +75,6 @@ hps = {
 best_hp = exp.train(
                         hyperparamaters = hps,
                         n_random_seeds=6,
-                        ptl_trn_args=dict(
-                                            #gpus=[1],
-                                            overfit_batches = 0.1,
-                                            gradient_clip_val=10.0
-                                        ),
-
                         monitor_metric="val_f1-50%"
                         )
 

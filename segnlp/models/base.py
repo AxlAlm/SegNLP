@@ -1,25 +1,14 @@
 
-
-from torch.nn.modules import module
-from segnlp.layer_wrappers.layer_wrappers import Layer
+#basics
 import numpy as np
 import os
-from numpy.lib.arraysetops import isin
-import pandas as pd
 from typing import List, Dict, Union, Tuple, Callable
-import re
 
-#pytorch lightning
-import pytorch_lightning as ptl
 
 #pytroch
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-
-#hugginface
-from transformers import get_constant_schedule_with_warmup
 
 #segnlp
 from segnlp import get_logger
@@ -37,11 +26,11 @@ from segnlp.layer_wrappers import LinkLabeler
 from segnlp.layer_wrappers import Linker
 
 
-logger = get_logger("PTLBase (ptl.LightningModule)")
+logger = get_logger("BaseModel")
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 
-class PTLBase(ptl.LightningModule):
+class BaseModel(nn.Module):
 
 
     def __init__(   self,  
@@ -49,20 +38,17 @@ class PTLBase(ptl.LightningModule):
                     label_encoder: LabelEncoder,
                     feature_dims:dict,
                     metric:Union[Callable,str],
-                    logger=None,
                     inference:bool=False
                     ):
         super().__init__()
         self.hps = hyperparamaters
-        self.monitor_metric = hyperparamaters["general"].get("monitor_metric", "loss")
         self.feature_dims = feature_dims
         self.task_dims = {task: len(labels) for task, labels in label_encoder.task_labels.items()}
         self.inference = inference
         self.seg_task = label_encoder.seg_task
-        self.logger = logger
 
         # setting up metric container which takes care of metric calculation, aggregation and storing
-        self.metrics = utils.MetricContainer(
+        self.metric = utils.MetricContainer(
                                             metric = metric,
                                             task_labels = label_encoder.task_labels,
                                             )
@@ -177,9 +163,15 @@ class PTLBase(ptl.LightningModule):
                     )
 
 
-    def forward(self, batch:utils.BatchInput, output:utils.BatchOutput):
+    def forward(self, batch:utils.BatchInput, split:str, epoch:int):
 
-        ## will run every module and add stuff to output.
+        # creates a batch specific output container which will be filled
+        # with predictions, logits and outputs of modules and submodules
+        output = self.output.step( 
+                                    batch, 
+                                    split = split, 
+                                    epoch = epoch
+                                    )
 
         # we skip the token_module
         if "token_module" not in self.skip_modules:
@@ -200,17 +192,6 @@ class PTLBase(ptl.LightningModule):
             self.__seg_clf(batch, output)
 
 
-    def _step(self, batch:utils.BatchInput, split:str):
-        batch.current_epoch = self.current_epoch
-
-        # creates a batch specific output container which will be filled
-        # with predictions, logits and outputs of modules and submodules
-        output = self.output.step(batch, step_type = split)
-
-
-        # pass the batch and output through the modules
-        self.forward(batch, output)
-
         # Will take the prediction dataframe created during the forward pass
         # and pass it to the metric container which will calculate, aggregate
         # and store metrics
@@ -224,61 +205,8 @@ class PTLBase(ptl.LightningModule):
         else:
             loss = self.loss(batch, output)
 
-        return loss, output.df
+        return loss
       
-    
-    def training_step(self, batch, batch_idx):
-        loss, _ = self._step(batch, "train")
-        self.log('train_loss', loss, prog_bar=True)
-        return loss
-
-
-    def validation_step(self, batch, batch_idx): 
-        loss, df = self._step(batch, "val")
-        self.log('val_loss', loss, prog_bar=True)
-
-
-        if self.monitor_metric != "val_loss":
-            score = self.metrics["val"][-1][self.monitor_metric.replace("val_","")]
-            self.log(self.monitor_metric, score, prog_bar=True)
-
-        return {"val_loss": loss}
-
-
-    def test_step(self, batch, batch_idx):
-        loss, df = self._step(batch, "test")
-        self.outputs["test"].extend(df.to_dict("records"))
-        return loss
-
-
-    def on_train_epoch_end(self):
-        self._end_of_epoch("train")
-
-
-    def on_validation_epoch_end(self):
-        self._end_of_epoch("val")
-
-
-    def on_test_epoch_end(self):
-        self._end_of_epoch("test")
-
-
-    def _end_of_epoch(self, split):
-        epoch_metrics = self.metrics.calc_epoch_metrics(split)
-
-        logger.log_epoch(
-                        random_seed = "RANDOM SEED",
-                        hyperparamater_id =  "SOMETHING",
-                        epoch_metrics = epoch_metrics,
-                        )
-
-        self.log_dict(
-                        epoch_metrics,
-                        on_step=False,
-                        on_epoch=True,
-                        )
-
-
 
     def __add_layer(self, layer:Layer, args:tuple, kwargs:dict):
 

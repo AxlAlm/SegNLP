@@ -47,8 +47,8 @@ class BatchOutput:
                                             )
 
 
-    def step(self, batch: BatchInput, step_type : str):
-
+    def step(self, batch: BatchInput, split : str, epoch: int):
+        
         # create a copy of the original dataframe for all predictions
         pred_df = batch._df.copy(deep=True)
         for task in self.label_encoder.task_labels.keys():
@@ -60,10 +60,8 @@ class BatchOutput:
         else:
             pred_df["seg_id"] = None
 
-
         # we made a multi-index dict to keep the TARGET and PRED labels seperate
         self.df  = pd.concat((batch._df, pred_df), keys= ['TARGET', 'PRED'], axis=0)
-
 
         self.stuff = {}
         self.logits = {}
@@ -71,10 +69,11 @@ class BatchOutput:
 
         # if we want to use schedule sampling we select the ground truths segmentation instead of 
         # the predictions. Only for Training steps
-        try:
-            self.__use_gt_seg = getattr(self, "seg_gts")(self.batch.current_epoch) and step_type == "train"
-        except AttributeError:
+        if  hasattr(self, "seg_gts") and split == "train":
+            self.__use_gt_seg = self.seg_gts(epoch)
+        else:
             self.__use_gt_seg = False
+
 
         return self
 
@@ -94,9 +93,9 @@ class BatchOutput:
         if self.__use_gt_seg and "seg" in task:
             
             for subtask in task.split("+"):
-                self.loc["PRED", subtask] = self.loc["TARGET", subtask].to_numpy()
+                self.df.loc["PRED", subtask] = self.df.loc["TARGET", subtask].to_numpy()
 
-            self.loc["PRED", "seg_id"] = self.loc["TARGET", "seg_id"].to_numpy()
+            self.df.loc["PRED", "seg_id"] = self.df.loc["TARGET", "seg_id"].to_numpy()
             return
         
 

@@ -6,11 +6,11 @@ import torch.nn.functional as F
 from torch.nn.modules import module
 
 #segnlp
-from .base import PTLBase
+from .base import BaseModel
 from segnlp import utils
 
 
-class JointPN(PTLBase):
+class JointPN(BaseModel):
 
     """
     Original Paper:

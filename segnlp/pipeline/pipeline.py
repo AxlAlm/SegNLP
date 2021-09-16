@@ -11,10 +11,9 @@ import pwd
 import torch
 
 # segnlp
-from .evaluator import Evaluator
-from .trainer import Trainer
-from .tester import Tester
-from .stat_sig import StatSig
+from .loop_train import TrainLoop
+from .loop_test import TestLoop
+from .loop_hp_tune import HPTuneLoop
 from .dataset_preprocessor import DatasetPreprocessor
 from .labeler import Labeler
 from .text_processor import TextProcessor
@@ -32,14 +31,13 @@ user_dir = pwd.getpwuid(os.getuid()).pw_dir
 
 class Pipeline(
                 TextProcessor, 
-                Labeler, 
                 DatasetPreprocessor,
-                Evaluator, 
-                Trainer, 
-                Tester,
-                StatSig,
-                Splitter,
                 FeatureExtractor,
+                Labeler, 
+                Splitter,
+                HPTuneLoop,
+                TrainLoop, 
+                TestLoop,
                 ):
     
     def __init__(self,
@@ -59,6 +57,11 @@ class Pipeline(
         self.model = getattr(models, model) if isinstance(model,str) else model
         self.evaluation_method = evaluation_method
         self.metric = metric
+
+        self.training = True
+        self.testing = True
+
+
 
         # task info
         self.prediction_level = dataset.prediction_level
@@ -162,21 +165,29 @@ class Pipeline(
         self.__check_config()
 
 
-        #setup all all folder and file names
+        # Setup the main folder names
         self._path_to_models  = os.path.join(self._path, "models")
         self._path_to_data = os.path.join(self._path, "data")
         self._path_to_logs = os.path.join(self._path, "logs")
+        self._path_to_hps = os.path.join(self._path, "hps")
+
+        # create the main folders
         os.makedirs(self._path_to_models, exist_ok=True)
         os.makedirs(self._path_to_data, exist_ok=True)
-        self._path_to_df = os.path.join(self._path_to_data, "df.hdf5")
-        self._path_to_pwf = os.path.join(self._path_to_data, "pwf.hdf5")
-        self._path_to_psf = os.path.join(self._path_to_data, "psf.hdf5")
-        self._path_to_splits = os.path.join(self._path_to_data, "splits.pkl")
-        self._path_to_top_models = os.path.join(self._path_to_models, "top")
-        self._path_to_tmp_models = os.path.join(self._path_to_models, "tmp")
-        self._path_to_model_info = os.path.join(self._path_to_models, "model_info.json")
-        self._path_to_hp_hist = os.path.join(self._path_to_models, "hp_hist.json")
-        self._path_to_test_score = os.path.join(self._path_to_models, "test_scores.json")
+        os.makedirs(self._path_to_logs, exist_ok=True)
+        os.makedirs(self._path_to_hps, exist_ok=True)
+
+        # set up files paths
+        self._path_to_df = os.path.join(self._path_to_data, "df.hdf5") # for dataframe
+        self._path_to_pwf = os.path.join(self._path_to_data, "pwf.hdf5") # for pretrained word features
+        self._path_to_psf = os.path.join(self._path_to_data, "psf.hdf5") # for pretrained segment features
+        self._path_to_splits = os.path.join(self._path_to_data, "splits.pkl") # for splits
+        self._path_to_hp_hist = os.path.join(self._path_to_hps, "hist.txt") # for hp history
+
+        if not os.path.exists(self._path_to_hp_hist):
+            open(self._path_to_hp_hist, 'w')
+
+        self._path_to_hp_json = os.path.join(self._path_to_hps, "hps.json") # for storing hps
 
 
         self.logger = utils.CSVLogger(self._path_to_logs)
@@ -195,6 +206,7 @@ class Pipeline(
         # after we have processed data we will deactivate preprocessing so we dont keep
         # large models only using in preprocessing in memory
         self.deactivate_preprocessing()
+
     
 
     @classmethod

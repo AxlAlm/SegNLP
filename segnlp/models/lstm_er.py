@@ -2,16 +2,15 @@
       
       
 #pytroch
-from segnlp.models.base import PTLBase
 import torch
 import torch.nn as nn
 from torch import Tensor
 
 #segnlp
-from .base import PTLBase
+from .base import BaseModel
 from segnlp import utils
 
-class LSTM_ER(PTLBase):
+class LSTM_ER(BaseModel):
 
     """
     

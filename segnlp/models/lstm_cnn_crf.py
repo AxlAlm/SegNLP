@@ -6,11 +6,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 #segnlp
-from .base import PTLBase
+from .base import BaseModel
 from segnlp import utils
 
 
-class LSTM_CNN_CRF(PTLBase):
+class LSTM_CNN_CRF(BaseModel):
 
     """
     BiLSTM CNN CRF network
