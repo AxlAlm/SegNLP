@@ -134,7 +134,7 @@ class BatchInput:
                 if level == "am" and key == "span_idxs":
                     level = "adu"
             
-                lengths = utils.ensure_list(self.get(level, "lenghts"))
+                lengths = utils.ensure_list(self.get(level, "lengths"))
                     
                 data =  pad_sequence(
                                     torch.split(
@@ -142,7 +142,7 @@ class BatchInput:
                                                 lengths
                                                 ), 
                                     batch_first = True,
-                                    padding_value = -1 if self.task_regexp.search(key) else 0,
+                                    padding_value = -1 if self._task_regexp.search(key) else 0,
                                     )
         
         if isinstance(data, Tensor):

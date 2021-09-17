@@ -498,38 +498,45 @@ class TextProcessor:
         """
 
         If sample level is not sentences we need to correct the Dependecy Parsing as its
-        done on sentence level. What we do is that we set the ROOT in in sentence except the first
-        to point at the ROOT of the previous sentence. 
-        
+        done on sentence level.  To get a full graph for each sample we set the ROOT of each sentence to 
+        point to the ROOT in the previous sentence.        
         """
+
+        df["root_idxs"] = None
 
         for _, sample in df.groupby(f"{self.sample_level}_id", sort=False):
             
             sentences  = sample.groupby("sentence_id", sort=False)
 
-            sent_length = 0
+            current_position = 0
             depheads = []
             sent_roots = []
             for _, sent_df in sentences:
                 
-                sent_depheads = sent_df["dephead"].to_numpy() + sent_length
+                # normalize the indexes of of the depheads to be on a sample level, e.g. take into acount
+                # the previous sentences
+                sent_depheads = sent_df["dephead"].to_numpy() + current_position
 
+                # try to find a "ROOT", if it doenst exist we leave it and do nothing
                 try:
                     sent_root_idx = sent_df["deprel"].to_list().index("ROOT")
-                except ValueError as e:
+                except ValueError:
                     pass
                 else:
                     # we change the index of the HEAD of the root be the idx of the previous ROOT
                     if sent_roots:
                         sent_depheads[sent_root_idx] = sent_roots[-1] 
-                        sent_length += sent_df.shape[0]
+                        current_position += sent_df.shape[0]
 
                     sent_roots.append(sent_root_idx)
 
                 depheads.extend(sent_depheads)
             
             df.loc[sample.index, "depheads"] = depheads
-        
+
+            # the root of the sample will be the ROOT of the first sentence
+            df.loc[sample.index, "root_idxs"] = [sent_roots[0]] * len(sample)
+
         return df
 
 

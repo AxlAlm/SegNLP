@@ -240,7 +240,7 @@ class BatchOutput:
         pair_df.loc[pair_df["p1"] > pair_df["p2"], "direction"] = 2 # <-
 
         # finding the matches between predicted segments and true segments
-        if not self.__use_seg_gt:
+        if not self.__use_gt_seg:
 
             # we also have information about whether the seg_id is a true segments 
             # and if so, which TRUE segmentent id it overlaps with, and how much
@@ -346,30 +346,25 @@ class BatchOutput:
 
 
     def get_preds(self, task:str, one_hot:bool = False):
-        pass
         
-        # task_key = task
 
-        # # if we want to use schedule sampling we select the ground truths instead of 
-        # # the predictions
-        # if self.__use_seg_gt:
-        #     task_key = f"T-{task}"
+        # create the end indexes. Remove the last value as its the end and will create a faulty split
+        end_idxs = np.cumsum(self.batch.get("token", "lenghts"))[:-1]
 
-        # # we take the lengths in tokens for each sample
-        # tok_lengths = self.df.groupby(level=0, sort=False).size().to_numpy()
+        # split and then pad
+        preds = utils.zero_pad(
+                                np.hsplit(
+                                        self.df[task].to_numpy(), 
+                                        end_idxs
+                                        )
+                            )
 
-        # # create the end indexes. Remove the last value as its the end and will create a faulty split
-        # end_idxs = np.cumsum(tok_lengths)[:-1]
-
-        # # split and then pad
-        # preds = utils.zero_pad(np.hsplit(self.df[task_key].to_numpy(), end_idxs))
-
-        # #then we create one_hots from the preds if thats needed
-        # if one_hot:
-        #     return utils.one_hot(
-        #                             matrix = torch.LongTensor(preds),
-        #                             mask = self.batch["token"]["mask"],
-        #                             num_classes = len(self.label_encoders[task])
-        #                             )
-        # else:
-        #return preds
+        #then we create one_hots from the preds if thats needed
+        if one_hot:
+            return utils.one_hot(
+                                    matrix = torch.LongTensor(preds),
+                                    mask = self.batch["token"]["mask"],
+                                    num_classes = len(self.label_encoders[task])
+                                    )
+        else:
+            return preds

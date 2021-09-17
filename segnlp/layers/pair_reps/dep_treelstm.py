@@ -593,7 +593,7 @@ class DepTreeLSTM(nn.Module):
                 device : Union[str, torch.device] = "cpu",
                 assertion: bool = False
                 ):
-
+        
         if not isinstance(input, Tensor):
             input = torch.cat(input, dim=-1)
 
@@ -632,12 +632,12 @@ class DepTreeLSTM(nn.Module):
 
         tree_lstm_out = tree_lstm_out.view(-1, 2, self.hidden_size)
         tree_pair_embs = torch.cat(
-                    (
-                        tree_lstm_out[root_id, 0, :],  # ↑hpA
-                        tree_lstm_out[start_id, 1, :],  # ↓hp1
-                        tree_lstm_out[end_id, 1, :]  # ↓hp2
-                    ),
-                    dim=-1)
+                        (
+                            tree_lstm_out[root_id, 0, :],  # ↑hpA
+                            tree_lstm_out[start_id, 1, :],  # ↓hp1
+                            tree_lstm_out[end_id, 1, :]  # ↓hp2
+                        ),
+                        dim=-1)
 
         return tree_pair_embs
 

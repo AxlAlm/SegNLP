@@ -20,12 +20,12 @@ class OneHots(nn.Module):
 
     def __init__(self, labels:list = None):
         super().__init__()
-        self.vocab = {l:i for i,l in enumerate(labels)}
+        self.vocab = {l.lower():i for i,l in enumerate(labels)}
         self.output_size = len(self.vocab)
     
 
     def __encode(self, input:Sequence):
-        return torch.LongTensor([self.vocab[x] for x in input])
+        return torch.LongTensor([self.vocab[x.lower()] for x in input])
 
 
     def forward(self, 

@@ -2,7 +2,7 @@
    
 """
 POS tags can be found here 
-https://spacy.io/api/annotation#pos-tagging
+https://spacy.io/api/annotation
 
 or by:
 

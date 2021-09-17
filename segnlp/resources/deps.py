@@ -4,7 +4,7 @@
 
 """
 Dep labels can be found here
-https://spacy.io/api/annotation#dependency-parsing
+https://spacy.io/api/annotation
 
 """
 
@@ -14,9 +14,10 @@ spacy_dep = [
                         "csubjpass", "dative", "dep", "det","dobj", "expl", "intj", "mark", "meta",
                         "neg", "nn", "nounmod", "npmod", "nsubj", "nsubjpass", "nummod", "oprd",
                         "obj", "obl", "parataxis", "pcomp", "pobj", "poss", "preconj", "prep",
-                        "prt", "punct", "quantmod", "relcl", "root", "xcomp", "csubj", "nmod",
-                        ## ADDED:
-                        "npadvmod","subtok", "predet",
+                        "prt", "punct", "quantmod", "relcl", "root", "xcomp", 
+
+                        # Following are not listed on SpaCy but still gets annotated so have added these to the list
+                        "nmod","npadvmod","subtok", "predet",
                         ]
 
 

@@ -24,10 +24,21 @@
 
 
 
-## Training
+## Training Tips
 
     - Early Stopping
+        - Reduce overfitting
 
+    - Gradient Clipping
+        Useful in RNNS
+    
+
+    - Learning Rate scheduling
+
+
+    - Dropout
+        - reduce overfitting
+        - prevent Features co-adapting ( a feature can only be useful in the presence of a particular other feature??!?)
 
 
 ## OOV
@@ -47,4 +58,13 @@
 
 
     ####
+
+
+
+## Segmentation Encoding Schems / Segment Representation Schemes
+
+
+
+https://aclanthology.org/W09-1119.pdf
     
+https://aclanthology.org/W15-5603.pdf
