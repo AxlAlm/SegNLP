@@ -147,7 +147,6 @@ class PE(DataSet):
             desc = f"Downloading ArgumentAnnotatedEssays-2.0"
             u.download(url=self.download_url, save_path=zip_dump_path, desc=desc)
 
-        
         u.unzip(zip_dump_path, self.dump_path)
         u.unzip(data_folder + ".zip", parent_folder)
 
@@ -297,7 +296,6 @@ class PE(DataSet):
         ac_id2idx = {AC_ID:i for i, (AC_ID, *_) in enumerate(ac_id2span_storted)}
         ac_id2relation = {AC_ID: ac_id2idx[AC_REL_ID] - ac_id2idx[AC_ID]  for AC_ID, AC_REL_ID in ac_id2relation.items()}
         
-        #self.task_labels.extend(list(ac_id2relation.values()))
 
         # fill in some spans
         prev_span_end = 0
@@ -412,7 +410,6 @@ class PE(DataSet):
         return {"train":train, "test":test}
       
   
-
     def _process_data(self, path_to_data):
         """loads the Pursuasive Essay data and parse it into a DataSet. Also dumps the dataset 
         locally so that one does not need to parse it again, only load the parsed data.
@@ -458,14 +455,3 @@ class PE(DataSet):
                             })
 
         return data
-        
-    
-    @classmethod
-    def label_colors(self):
-        return {
-                "PRO":"#14ac1f",
-                "CON":"#ff0000",
-                "MajorClaim": "#83bde4",
-                "Claim": "#94edaf",
-                "Premise": "#f1a8ee",
-                }

@@ -594,7 +594,14 @@ class DepTreeLSTM(nn.Module):
                 assertion: bool = False
                 ):
         
+
+
+
         if not isinstance(input, Tensor):
+
+            for i in input:
+                print(i.shape)
+                
             input = torch.cat(input, dim=-1)
 
         # 1) Build graph from dependecy data

@@ -59,6 +59,7 @@ class BatchOutput:
             pred_df["seg_id"] = batch._df["seg_id"].to_numpy()
         else:
             pred_df["seg_id"] = None
+        
 
         # we made a multi-index dict to keep the TARGET and PRED labels seperate
         self.df  = pd.concat((batch._df, pred_df), keys= ['TARGET', 'PRED'], axis=0)
@@ -88,15 +89,15 @@ class BatchOutput:
 
     def add_preds(self, preds:Union[np.ndarray, Tensor], level:str,  task:str):
     
-        # if we are using the segmentation ground truths we overwrite the segmentation labels
-        # aswell as segment ids
-        if self.__use_gt_seg and "seg" in task:
+        # # if we are using the segmentation ground truths we overwrite the segmentation labels
+        # # aswell as segment ids
+        # if self.__use_gt_seg and "seg" in task:
             
-            for subtask in task.split("+"):
-                self.df.loc["PRED", subtask] = self.df.loc["TARGET", subtask].to_numpy()
+        #     for subtask in task.split("+"):
+        #         self.df.loc["PRED", subtask] = self.df.loc["TARGET", subtask].to_numpy()
 
-            self.df.loc["PRED", "seg_id"] = self.df.loc["TARGET", "seg_id"].to_numpy()
-            return
+        #     self.df.loc["PRED", "seg_id"] = self.df.loc["TARGET", "seg_id"].to_numpy()
+        #     return
         
 
         if level == "token":
@@ -186,10 +187,8 @@ class BatchOutput:
             return i, j, ratio
 
 
-        df = self.df.loc["PRED"] #if self.__use_gt_seg else "PRED"]
+        df = self.df.loc["TARGET" if self.__use_gt_seg else "PRED"]
 
-        df.loc[:, "TARGET-link_label"] = self.df.loc["TARGET","link_label"]
-        df.loc[:, "TARGET-link"] = self.df.loc["TARGET","link"]
 
         first_df = df.groupby("seg_id", sort=False).first()
         first_df.reset_index(inplace=True)
@@ -225,7 +224,7 @@ class BatchOutput:
         pair_df["sample_id"] = first_df.loc[pair_df["p1"], "sample_id"].to_numpy()
 
         #set true the link_label
-        pair_df["TARGET-link_label"] = first_df.loc[pair_df["p1"], "TARGET-link_label"].to_numpy()
+        pair_df["link_label"] = first_df.loc[pair_df["p1"], "link_label"].to_numpy()
 
         #set start and end token indexes for p1 and p2
         pair_df["p1_start"] = first_df.loc[pair_df["p1"], "sample_token_id"].to_numpy()
@@ -290,7 +289,7 @@ class BatchOutput:
         # ground truth segment
 
         # 1 find which pairs are "false", i.e. the members whould not be linked
-        links = first_df.loc[pair_df["p1"], "TARGET-link"].to_numpy()
+        links = first_df.loc[pair_df["p1"], "link"].to_numpy()
         pairs_per_sample = pair_df.groupby("sample_id", sort=False).size().to_numpy()
         seg_per_sample = utils.np_cumsum_zero(first_df.groupby("sample_id", sort=False).size().to_numpy())
         normalized_links  = links + np.repeat(seg_per_sample, pairs_per_sample)
@@ -347,14 +346,14 @@ class BatchOutput:
 
     def get_preds(self, task:str, one_hot:bool = False):
         
-
         # create the end indexes. Remove the last value as its the end and will create a faulty split
-        end_idxs = np.cumsum(self.batch.get("token", "lenghts"))[:-1]
+        end_idxs = np.cumsum(self.batch.get("token", "lengths"))[:-1]
+
 
         # split and then pad
         preds = utils.zero_pad(
                                 np.hsplit(
-                                        self.df[task].to_numpy(), 
+                                        self.df.loc["TARGET" if self.__use_gt_seg else "PRED", task].to_numpy(), 
                                         end_idxs
                                         )
                             )
@@ -363,8 +362,8 @@ class BatchOutput:
         if one_hot:
             return utils.one_hot(
                                     matrix = torch.LongTensor(preds),
-                                    mask = self.batch["token"]["mask"],
-                                    num_classes = len(self.label_encoders[task])
+                                    mask = self.batch.get("token", "mask"),
+                                    num_classes = len(self.label_encoder.task_labels[task])
                                     )
         else:
             return preds

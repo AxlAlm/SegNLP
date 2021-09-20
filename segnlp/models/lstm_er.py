@@ -85,8 +85,8 @@ class LSTM_ER(BaseModel):
 
         #create pos onehots
         pos_one_hots = self.pos_onehot(
-                        batch.get("token", "pos"),
-                        batch.get("token", "lengths"),
+                        input = batch.get("token", "pos"),
+                        lengths = batch.get("token", "lengths"),
                         device = batch.device
         )
 
@@ -127,7 +127,8 @@ class LSTM_ER(BaseModel):
 
         #create dependecy relation onehots
         dep_one_hots = self.dep_onehot(
-                        batch.get("token", "deprel"),
+                        input = batch.get("token", "deprel"),
+                        lengths = batch.get("token", "lengths"),
                         device = batch.device
         )
 
@@ -192,7 +193,7 @@ class LSTM_ER(BaseModel):
         pair_data = output.get_pair_data()
 
         link_label_loss = self.link_labeler.loss(
-                                                targets = pair_data["bidir"]["TARGET-link_label"],
+                                                targets = pair_data["bidir"]["link_label"],
                                                 logits = output.logits["link_label"],
                                                 directions = pair_data["bidir"]["direction"],
                                                 true_link = pair_data["bidir"]["true_link"], 

@@ -23,7 +23,7 @@ exp = Pipeline(
                 pretrained_features = [
                                 GloveEmbeddings(),
                             ],
-                #overwrite = True,
+                overwrite = True,
                 )
 
 

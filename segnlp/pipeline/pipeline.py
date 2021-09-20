@@ -18,7 +18,7 @@ from .dataset_preprocessor import DatasetPreprocessor
 from .labeler import Labeler
 from .text_processor import TextProcessor
 from .splitter import Splitter
-from .feature_extractor import FeatureExtractor
+from .ptf_extractor import PretrainedFeatureExtractor
 from segnlp import get_logger
 from segnlp.datasets.base import DataSet
 import segnlp.utils as utils
@@ -32,7 +32,7 @@ user_dir = pwd.getpwuid(os.getuid()).pw_dir
 class Pipeline(
                 TextProcessor, 
                 DatasetPreprocessor,
-                FeatureExtractor,
+                PretrainedFeatureExtractor,
                 Labeler, 
                 Splitter,
                 HPTuneLoop,

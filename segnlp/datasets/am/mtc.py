@@ -53,7 +53,7 @@ class MTC(DataSet):
         task_labels = {     
                             "seg":  ["O","B","I"],
                             "label":["None", "pro", "opp"],
-                            "link_label": ["None", "sup", "exa", "add", "reb", "und"],
+                            "link_label": ["root", "sup", "exa", "add", "reb", "und"],
                             "link": list(range(-8,8,1))
                             }
 
@@ -90,10 +90,6 @@ class MTC(DataSet):
           
         return os.path.join(self.dump_path,"corpus", "en")
 
-
-    def _shuffle_split_data(self, data:list):
-        random.shuffle(data)
-        return None, data
 
     def _process_data(self, path_to_data):
         

@@ -2,6 +2,11 @@
 
 
 
+## Dataset
+
+    - Be weary of using dataset which come partly preprocessed.
+
+
 ## Layer Dimensionality 
 
 

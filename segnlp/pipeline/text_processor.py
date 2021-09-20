@@ -7,6 +7,19 @@ from tqdm import tqdm
 from string import punctuation
 import warnings
 import spacy
+from pprint import pprint
+
+# networkx
+import networkx as nx
+from networkx import Graph as nxGraph
+
+from networkx.algorithms.tree.recognition import is_tree
+
+# DGL
+import dgl
+from dgl import DGLGraph
+from dgl.traversal import topological_nodes_generator as traverse_topo
+
 
 #nltk
 import nltk
@@ -391,14 +404,26 @@ class TextProcessor:
         current_sent_idx = self.__get_char_idx("sentence")
         #paragraph, current_sent_id,  current_sent_idx = self.__get_text_id_idx("sentence")
 
+        print(doc)
+        
         spacy_doc = self.nlp(paragraph)
         
+
+        print(paragraph)
         removed_sents = 0
         for i, sentence in enumerate(spacy_doc.sents):
 
             if len(str(sentence).strip()) == 0:
                 removed_sents += 1
                 continue
+            
+
+            # ttt = "using animals for the benefit of the human beings with the rapid development of the standard of people 's life , increasing numbers of animal experiments are done , new medicines and foods , for instance ."
+
+            # if "benefit of the human beings with the rapid development" in str(sentence).lower():
+            #     print(paragraph)
+            #     print(lol)
+
 
             if current_sent_idx == 0:
                 start_idx = 0
@@ -504,6 +529,7 @@ class TextProcessor:
 
         df["root_idxs"] = None
 
+
         for _, sample in df.groupby(f"{self.sample_level}_id", sort=False):
             
             sentences  = sample.groupby("sentence_id", sort=False)
@@ -516,26 +542,60 @@ class TextProcessor:
                 # normalize the indexes of of the depheads to be on a sample level, e.g. take into acount
                 # the previous sentences
                 sent_depheads = sent_df["dephead"].to_numpy() + current_position
+                deprel_set = set(sent_df["deprel"].to_list())
 
-                # try to find a "ROOT", if it doenst exist we leave it and do nothing
-                try:
-                    sent_root_idx = sent_df["deprel"].to_list().index("ROOT")
-                except ValueError:
-                    pass
-                else:
-                    # we change the index of the HEAD of the root be the idx of the previous ROOT
-                    if sent_roots:
-                        sent_depheads[sent_root_idx] = sent_roots[-1] 
-                        current_position += sent_df.shape[0]
 
-                    sent_roots.append(sent_root_idx)
+                n = list(range(len(sent_depheads)))
+                e = sent_df["dephead"].to_list()
+                sent_graph = dgl.graph((n, e)).to_networkx().to_undirected()
+                if not nx.is_connected(sent_graph):
+                    pprint(list(zip(n, e, sent_df["str"], sent_df["deprel"].to_list())))
+                    print(LOOOL)
 
+
+
+                if not "ROOT" in deprel_set:
+                    print("HEKLFLLFELFELFEO")
+                    print(" ".join(sent_df["str"]))
+                    print(sent_depheads)
+                    print(sent_df["deprel"].to_list())
+                    print(bom)
+                
+                
+                sent_root_idx = sent_df["deprel"].to_list().index("ROOT")
+
+                print(sent_root_idx)
+    
+                # we change the index of the HEAD of the root be the idx of the previous ROOT
+                if sent_roots:
+                    sent_depheads[sent_root_idx] = sent_roots[-1] 
+                    sent_root_idx = sent_root_idx + current_position
+                
+                
+                current_position += sent_df.shape[0]
+                sent_roots.append(sent_root_idx)
                 depheads.extend(sent_depheads)
             
+
+            #print(depheads)
             df.loc[sample.index, "depheads"] = depheads
 
             # the root of the sample will be the ROOT of the first sentence
             df.loc[sample.index, "root_idxs"] = [sent_roots[0]] * len(sample)
+
+
+            print(sent_roots)
+            i = sample.index.to_list()
+            d = depheads
+            graph = dgl.graph((i, d)).to_networkx().to_undirected()
+
+            if not nx.is_connected(graph):
+                print(i)
+                print(d)
+                print(list(nx.connected_components(graph)))
+                print(lol)
+
+        
 
         return df
 

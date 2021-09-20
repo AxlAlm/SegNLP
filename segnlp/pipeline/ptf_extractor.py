@@ -5,7 +5,7 @@ import numpy as np
 
 
  
-class FeatureExtractor:
+class PretrainedFeatureExtractor:
    
 
     def _extract_pretrained_features(self, sample:pd.DataFrame):

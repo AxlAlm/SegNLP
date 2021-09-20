@@ -62,12 +62,11 @@ class DataSet:
             if "label" in supported_task_labels:
                 supported_task_labels["label"].remove("None")
 
-
-        data = self._process_data(self._download_data())
+        data_dir = self._download_data()
+        data = self._process_data(data_dir)
         self._splits = self._premade_splits(data)
-        self.data = pd.DataFrame(data)
+        self._data = pd.DataFrame(data)
         self._stats = self.__calc_label_stats()
-        
         self._task_labels = self.__get_task_labels(tasks, supported_task_labels)
 
 
