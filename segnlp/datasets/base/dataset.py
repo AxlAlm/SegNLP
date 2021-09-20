@@ -65,7 +65,7 @@ class DataSet:
         data_dir = self._download_data()
         data = self._process_data(data_dir)
         self._splits = self._premade_splits(data)
-        self._data = pd.DataFrame(data)
+        self.data = pd.DataFrame(data)
         self._stats = self.__calc_label_stats()
         self._task_labels = self.__get_task_labels(tasks, supported_task_labels)
 
@@ -73,7 +73,7 @@ class DataSet:
         assert isinstance(self.data, pd.DataFrame)
         
 
-    def __getitem__(self,key):
+    def __getitem__(self, key):
         if isinstance(key, int):
             return self.data.iloc[key].to_dict()
         else:

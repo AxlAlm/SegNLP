@@ -57,8 +57,6 @@ class TextProcessor:
     
         Will ignore any empty strings
 
-        Paragraph tokenization includes title in the first paragraph (might need to be changed)
-
         Parameters
         ----------
         doc : str
@@ -69,37 +67,8 @@ class TextProcessor:
         List[str]
             list of paragraphs
         """
-    
-        paras = []
-        stack = ""
-        for i, para in enumerate(doc.split("\n")):
-            #print([para])
-            #para =  para.strip()
+        return [p for p in doc.split("\n") if p]
 
-            if not para:
-                stack += "\n"
-                continue
-
-            #to add title to first paragraph
-            if i == 0:
-                if len(re.findall(r"[\.?!]", para)) <= 2:
-
-                    #if para[-1] not in punctuation:
-                        #para += "."
-
-                    stack += para
-                    continue
-                
-            if stack:
-                para = stack  + "\n" + para
-                stack = ""
-
-            paras.append(para)
-
-        if stack:
-            paras.append(stack)
-
-        return paras
 
 
     def __get_global_id(self, level:str) -> int:
@@ -404,27 +373,16 @@ class TextProcessor:
         current_sent_idx = self.__get_char_idx("sentence")
         #paragraph, current_sent_id,  current_sent_idx = self.__get_text_id_idx("sentence")
 
-        print(doc)
-        
         spacy_doc = self.nlp(paragraph)
         
 
-        print(paragraph)
         removed_sents = 0
         for i, sentence in enumerate(spacy_doc.sents):
 
             if len(str(sentence).strip()) == 0:
                 removed_sents += 1
                 continue
-            
-
-            # ttt = "using animals for the benefit of the human beings with the rapid development of the standard of people 's life , increasing numbers of animal experiments are done , new medicines and foods , for instance ."
-
-            # if "benefit of the human beings with the rapid development" in str(sentence).lower():
-            #     print(paragraph)
-            #     print(lol)
-
-
+        
             if current_sent_idx == 0:
                 start_idx = 0
             else:
@@ -473,6 +431,7 @@ class TextProcessor:
                 start = 0
             else:
                 start = doc.find(para, current_para_idx)
+
             end = start + para_len
  
             para_len = len(para)
@@ -545,26 +504,20 @@ class TextProcessor:
                 deprel_set = set(sent_df["deprel"].to_list())
 
 
-                n = list(range(len(sent_depheads)))
-                e = sent_df["dephead"].to_list()
-                sent_graph = dgl.graph((n, e)).to_networkx().to_undirected()
-                if not nx.is_connected(sent_graph):
-                    pprint(list(zip(n, e, sent_df["str"], sent_df["deprel"].to_list())))
-                    print(LOOOL)
+                # n = list(range(len(sent_depheads)))
+                # e = sent_df["dephead"].to_list()
+                # sent_graph = dgl.graph((n, e)).to_networkx().to_undirected()
+                # if not nx.is_connected(sent_graph):
+                #     pprint(list(zip(n, e, sent_df["str"], sent_df["deprel"].to_list())))
+                #     print(LOOOL)
 
+                #if not "ROOT" in deprel_set:
 
-
-                if not "ROOT" in deprel_set:
-                    print("HEKLFLLFELFELFEO")
-                    print(" ".join(sent_df["str"]))
-                    print(sent_depheads)
-                    print(sent_df["deprel"].to_list())
-                    print(bom)
-                
+    
                 
                 sent_root_idx = sent_df["deprel"].to_list().index("ROOT")
 
-                print(sent_root_idx)
+                #print(sent_root_idx)
     
                 # we change the index of the HEAD of the root be the idx of the previous ROOT
                 if sent_roots:
@@ -578,24 +531,25 @@ class TextProcessor:
             
 
             #print(depheads)
-            df.loc[sample.index, "depheads"] = depheads
+            df.loc[sample.index, "dephead"] = depheads
+
 
             # the root of the sample will be the ROOT of the first sentence
-            df.loc[sample.index, "root_idxs"] = [sent_roots[0]] * len(sample)
+            df.loc[sample.index, "root_idx"] = [sent_roots[0]] * len(sample)
 
 
-            print(sent_roots)
             i = sample.index.to_list()
             d = depheads
             graph = dgl.graph((i, d)).to_networkx().to_undirected()
 
             if not nx.is_connected(graph):
-                print(i)
-                print(d)
-                print(list(nx.connected_components(graph)))
-                print(lol)
+                raise RuntimeError(" Dependency Relations do not form a graph")
+                # print(sent_roots)
+                # print(i)
+                # print(d)
+                # print(list(nx.connected_components(graph)))
+                # print(lol)
 
-        
 
         return df
 
@@ -645,7 +599,6 @@ class TextProcessor:
         if self.sample_level != "sentence":
             df = self.__fix_deps(df)
 
-        df.rename(columns = {"text": "str"}, inplace = True)
         return df
 
 

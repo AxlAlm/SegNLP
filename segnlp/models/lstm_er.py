@@ -65,7 +65,7 @@ class LSTM_ER(BaseModel):
                                                     + self.task_dims["seg+label"],
                                 )
 
-        self.pair_enc = self.add_encoder(
+        self.linear_pair_enc = self.add_encoder(
                                 layer = "Linear",
                                 hyperparams = self.hps.get("LinearPair", {}),
                                 input_size = (self.word_lstm.output_size * 2) + self.deptreelstm.output_size,
@@ -75,7 +75,7 @@ class LSTM_ER(BaseModel):
         self.link_labeler = self.add_link_labeler(
                                     layer = "DirLinkLabeler",
                                     hyperparams = self.hps.get("DirLinkLabeler", {}),
-                                    input_size = (self.word_lstm.output_size * 2) + self.deptreelstm.output_size,
+                                    input_size = self.linear_pair_enc.output_size,
                                     output_size = self.task_dims["link_label"],
                                     )
 
@@ -140,7 +140,7 @@ class LSTM_ER(BaseModel):
                                                         dep_one_hots,
                                                         output.get_preds("seg+label", one_hot = True),
                                                         ),
-                                            roots = batch.get("token", "root_idxs"),
+                                            roots = batch.get("token", "root_idx"),
                                             deplinks = batch.get("token", "dephead"),
                                             token_mask = batch.get("token", "mask"),
                                             starts = pair_data["nodir"]["p1_end"],
@@ -160,8 +160,9 @@ class LSTM_ER(BaseModel):
                                 ),
                                 dim=-1
                                 )
+    
 
-        pair_embs = self.pair_enc(pair_embs)
+        pair_embs = self.linear_pair_enc(pair_embs)
 
         return {
                 "pair_embs":pair_embs

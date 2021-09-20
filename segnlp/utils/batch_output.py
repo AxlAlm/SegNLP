@@ -119,6 +119,7 @@ class BatchOutput:
 
 
         elif level == "p_seg":
+            print(preds.shape)
             seg_tok_lengths = self.df.loc["PRED"].groupby("seg_id", sort=False).size()
             token_preds = np.repeat(preds, seg_tok_lengths)
 
