@@ -35,7 +35,8 @@ hps = {
                 "max_epochs":100,
                 "patience": 10,
                 "task_weight": 0.5,
-                "seg_gts_k": 10,
+                "use_target_segs_k": 10,
+                "freeze_n_skip_segment_module": 5,
                 },
 
        "LSTM": {   
@@ -60,7 +61,7 @@ hps = {
                         "sub_graph_type": 0,
                         },
 
-        "LinearPair": {
+        "LinearPairEnc": {
                         "hidden_size":100,
                         "activation": "Tanh",
                         },

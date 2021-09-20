@@ -14,6 +14,7 @@ from segnlp.utils import datamodule
 
 
 
+
 class TrainLoop:
 
 
@@ -31,6 +32,10 @@ class TrainLoop:
         gradient_clip_val = hyperparamaters["general"].get("gradient_clip_val", None)
         batch_size = hyperparamaters["general"]["batch_size"]
         patience = hyperparamaters["general"].get("patience", None)
+        use_target_segs_k = hyperparamaters["general"].get("use_target_segs_k", None)
+        #token_module_freeze_k = hyperparamaters["general"].get("token_module_freeze", False)
+        skip_segment_module_k = hyperparamaters["general"].get("skip_segment_module_k", False)
+
 
         #loading our preprocessed dataset
         datamodule  = utils.DataModule(
@@ -39,13 +44,23 @@ class TrainLoop:
                                 cv = cv
                                 )
 
+
         # set up a checkpoint class to save best models
         path_to_model = os.path.join(self._path_to_models, model_id + ".ckpt")
         checkpointer = utils.SaveBest(path_to_model = path_to_model)
 
+
         # EarlyStopping, if patience is None it will allways return False
         early_stopper = utils.EarlyStopping(patience)
 
+
+        # if we want to use ground truth in segmentation during training we can use
+        # the following variable value to based on epoch use ground truth segmentation
+        target_seg_sampling = utils.ScheduleSampling(
+                                            schedule="inverse_sig",
+                                            k=use_target_segs_k
+                                            )
+                                            
         # set up model
         model = self.model(
                         hyperparamaters  = hyperparamaters,
@@ -54,6 +69,7 @@ class TrainLoop:
                         metric = self.metric,                    
                         )
         
+
         # move model to specified device
         model = model.to(device)
 
@@ -62,10 +78,8 @@ class TrainLoop:
                                         model = model, 
                                         hyperparamaters = hyperparamaters
                                         )
-                        
 
  
-
         for epoch in tqdm(range(max_epochs), desc = "Epochs", position=2):
 
             # we make sure to generate our batches each epoch so that we can shuffle 
@@ -74,16 +88,27 @@ class TrainLoop:
             train_dataset = datamodule.step(split = "train")
             val_dataset = datamodule.step(split = "val")
 
-        
-            # Train Loop
-            model.train()
+
+            # We can can help tasks which are dependent on the segmentation to be feed
+            # ground truth segmentaions instead of the predicted segmentation during traingin
+            use_target_segs = target_seg_sampling(epoch)
+                
+
+            # Sets the model to training mode.
+            # will also freeze and set modules to skip if needed
+            model.train(
+                        freeze_n_skip_segment_module = epoch < skip_segment_module_k or skip_segment_module_k == -1,
+                        )
+
+
+            # train batches
             for train_batch in tqdm(train_dataset, desc = "Train Steps", position=3, total = len(train_dataset)):
                 
                 # pass the batch
                 loss = model(
                             train_batch, 
                             split = "train", 
-                            epoch = epoch
+                            use_target_segs = use_target_segs
                             )
                    
                 # reset the opt grads
@@ -100,6 +125,7 @@ class TrainLoop:
                 optimizer.step()
 
 
+
             # Validation Loop
             model.eval()
             with torch.no_grad():
@@ -109,8 +135,8 @@ class TrainLoop:
                     model(
                             val_batch, 
                             split = "val", 
-                            epoch = epoch
                             )
+                    
                     
             # Log train epoch metrics
             train_epoch_metrics = model.metrics.calc_epoch_metrics("train")

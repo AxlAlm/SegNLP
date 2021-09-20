@@ -67,7 +67,7 @@ class LSTM_ER(BaseModel):
 
         self.linear_pair_enc = self.add_encoder(
                                 layer = "Linear",
-                                hyperparams = self.hps.get("LinearPair", {}),
+                                hyperparams = self.hps.get("LinearPairEnc", {}),
                                 input_size = (self.word_lstm.output_size * 2) + self.deptreelstm.output_size,
                                 module = "segment_module"
         )

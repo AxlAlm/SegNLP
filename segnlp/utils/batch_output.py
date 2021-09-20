@@ -33,21 +33,12 @@ class BatchOutput:
 
     def __init__(self, 
                 label_encoder : LabelEncoder,
-                seg_gts_k: int = None,
                 ):
 
         self.label_encoder = label_encoder
 
-        # if we want to use ground truth in segmentation during training we can use
-        # the following variable value to based on epoch use ground truth segmentation
-        if seg_gts_k is not None:
-            self.seg_gts = ScheduleSampling(
-                                            schedule="inverse_sig",
-                                            k=seg_gts_k
-                                            )
 
-
-    def step(self, batch: BatchInput, split : str, epoch: int):
+    def step(self, batch: BatchInput,  use_target_segs :bool = False):
         
         # create a copy of the original dataframe for all predictions
         pred_df = batch._df.copy(deep=True)
@@ -70,12 +61,8 @@ class BatchOutput:
 
         # if we want to use schedule sampling we select the ground truths segmentation instead of 
         # the predictions. Only for Training steps
-        if  hasattr(self, "seg_gts") and split == "train":
-            self.__use_gt_seg = self.seg_gts(epoch)
-        else:
-            self.__use_gt_seg = False
-
-
+        self.__use_gt_seg = use_target_segs
+     
         return self
 
 
@@ -89,15 +76,15 @@ class BatchOutput:
 
     def add_preds(self, preds:Union[np.ndarray, Tensor], level:str,  task:str):
     
-        # # if we are using the segmentation ground truths we overwrite the segmentation labels
-        # # aswell as segment ids
-        # if self.__use_gt_seg and "seg" in task:
+        # if we are using the segmentation ground truths we overwrite the segmentation labels
+        # aswell as segment ids
+        if self.__use_gt_seg and "seg" in task:
             
-        #     for subtask in task.split("+"):
-        #         self.df.loc["PRED", subtask] = self.df.loc["TARGET", subtask].to_numpy()
+            for subtask in task.split("+"):
+                self.df.loc["PRED", subtask] = self.df.loc["TARGET", subtask].to_numpy()
 
-        #     self.df.loc["PRED", "seg_id"] = self.df.loc["TARGET", "seg_id"].to_numpy()
-        #     return
+            self.df.loc["PRED", "seg_id"] = self.df.loc["TARGET", "seg_id"].to_numpy()
+            return
         
 
         if level == "token":
@@ -119,7 +106,6 @@ class BatchOutput:
 
 
         elif level == "p_seg":
-            print(preds.shape)
             seg_tok_lengths = self.df.loc["PRED"].groupby("seg_id", sort=False).size()
             token_preds = np.repeat(preds, seg_tok_lengths)
 
@@ -189,7 +175,6 @@ class BatchOutput:
 
 
         df = self.df.loc["TARGET" if self.__use_gt_seg else "PRED"]
-
 
         first_df = df.groupby("seg_id", sort=False).first()
         first_df.reset_index(inplace=True)
@@ -350,11 +335,10 @@ class BatchOutput:
         # create the end indexes. Remove the last value as its the end and will create a faulty split
         end_idxs = np.cumsum(self.batch.get("token", "lengths"))[:-1]
 
-
         # split and then pad
         preds = utils.zero_pad(
                                 np.hsplit(
-                                        self.df.loc["TARGET" if self.__use_gt_seg else "PRED", task].to_numpy(), 
+                                        self.df.loc["PRED", task].to_numpy(), 
                                         end_idxs
                                         )
                             )

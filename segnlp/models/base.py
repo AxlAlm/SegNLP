@@ -58,7 +58,6 @@ class BaseModel(nn.Module):
         # throughout the step
         self.output = utils.BatchOutput(
                                         label_encoder = label_encoder, 
-                                        seg_gts_k = self.hps["general"].get("seg_gts_k", None),
                                         )
 
         # the batch outputs can be collected and stored to get outputs over a complete split. E.g. returning 
@@ -71,23 +70,6 @@ class BaseModel(nn.Module):
         # we will add modules that we will skip
         self.skip_modules = set()
 
-        # if one wants to train a part of a network first one can skip a section of the model
-        # skipping, unlike freezing, will skip all calls to the sections you decide to skip
-        # Skipping will also freeze layer weights
-        if hyperparamaters["general"].get("skip_token_module", False):
-            self.skip_modules.add("token_module")
-            self.freeze_modules.add("token_module")
-
-        if hyperparamaters["general"].get("skip_segment_module", False):
-            self.skip_modules.add("segment_module")
-            self.freeze_modules.add("segment_module")
-
-        # Freezing will freeze the weights in all layers in the section
-        if hyperparamaters["general"].get("freeze_token_module", False):
-            self.freeze_modules.add("token_module")
-
-        if hyperparamaters["general"].get("freeze_segment_module", False):
-            self.freeze_modules.add("segment_module")
 
         
     @classmethod
@@ -163,14 +145,17 @@ class BaseModel(nn.Module):
                     )
 
 
-    def forward(self, batch:utils.BatchInput, split:str, epoch:int):
+    def forward(self, 
+                batch:utils.BatchInput, 
+                split:str, 
+                use_target_segs : bool = False
+                ):
 
         # creates a batch specific output container which will be filled
         # with predictions, logits and outputs of modules and submodules
         output = self.output.step( 
                                     batch, 
-                                    split = split, 
-                                    epoch = epoch
+                                    use_target_segs = use_target_segs
                                     )
 
         # we skip the token_module
@@ -283,3 +268,50 @@ class BaseModel(nn.Module):
                                 args=args,
                                 kwargs=kwargs,
                                 )
+
+
+    def train(self, freeze_n_skip_segment_module:int):
+        super().train()
+
+        if freeze_n_skip_segment_module:
+            self.skip_modules.add("segment_module")
+            self.freeze_modules.add("segment_module")
+
+
+        for k, v in self.named_children():
+            
+            if v.module != "segment_module":
+                continue
+            
+            #freeze all of the layers
+            for name, param in v.named_parameters():
+                param.requires_grad = False
+
+
+        # for param in self.layer.parameters():
+        #     param.requires_grad = False
+
+
+    # def freeze_n_skip_token_module():
+
+    #     self.skip_modules.add("token_module")
+    #     self.freeze_modules.add("token_module")
+
+    #     # if one wants to train a part of a network first one can skip a section of the model
+    #     # skipping, unlike freezing, will skip all calls to the sections you decide to skip
+    #     # Skipping will also freeze layer weights
+    #     if hyperparamaters["general"].get("skip_token_module", False):
+    #         self.skip_modules.add("token_module")
+    #         self.freeze_modules.add("token_module")
+
+    #     if hyperparamaters["general"].get("skip_segment_module", False):
+    #         self.skip_modules.add("segment_module")
+    #         self.freeze_modules.add("segment_module")
+
+    #     # Freezing will freeze the weights in all layers in the section
+    #     if hyperparamaters["general"].get("freeze_token_module", False):
+    #         self.freeze_modules.add("token_module")
+
+    #     if hyperparamaters["general"].get("freeze_segment_module", False):
+    #         self.freeze_modules.add("segment_module")
+            
