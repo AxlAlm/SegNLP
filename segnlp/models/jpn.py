@@ -32,7 +32,6 @@ class JointPN(BaseModel):
                             layer = "Agg", 
                             hyperparams = self.hps.get("Agg", {}),
                             input_size = self.feature_dims["word_embs"],
-                            module = "segment_module"
                             )
 
 
@@ -54,22 +53,19 @@ class JointPN(BaseModel):
                                     input_size  =   self.agg.output_size
                                                     + self.bow.output_size
                                                     + self.seg_pos.output_size,
-                                    module = "segment_module"
                                     )
 
 
-        self.fc2 = self.add_encoder(
+        self.fc2 = self.add_segment_encoder(
                                     layer = "Linear", 
                                     hyperparams = self.hps.get("Linear_fc", {}),
                                     input_size  =   self.agg.output_size
                                                     + self.bow.output_size
                                                     + self.seg_pos.output_size,
-                                    module = "segment_module"
 
                                 )
 
-
-        self.encoder = self.add_encoder(    
+        self.encoder = self.add_segment_encoder(    
                                 layer = "LSTM", 
                                 hyperparams = self.hps.get("encoder_LSTM", {}),
                                 input_size = self.fc1.output_size,
@@ -77,11 +73,10 @@ class JointPN(BaseModel):
                                 )
 
 
-        self.decoder = self.add_encoder(    
+        self.decoder = self.add_segment_encoder(    
                                 layer = "LSTM", 
                                 hyperparams = self.hps.get("decoder_LSTM", {}),
                                 input_size = self.fc2.output_size,
-                                module = "segment_module"
                                 )
 
 
@@ -109,21 +104,21 @@ class JointPN(BaseModel):
     def seg_rep(self, batch: utils.BatchInput, output: utils.BatchOutput):
 
         seg_embs = self.agg(
-                            input = batch["token"]["word_embs"], 
-                            lengths = batch["seg"]["lengths"],
-                            span_idxs = batch["seg"]["span_idxs"],
+                            input = batch.get("token", "word_embs"), 
+                            lengths = batch.get("seg", "lengths"),
+                            span_idxs = batch.get("seg", "span_idxs"),
                             )
 
         bow = self.bow(
-                        input = batch["token"]["str"], 
-                        lengths = batch["token"]["lengths"],
-                        span_idxs = batch["seg"]["span_idxs"]
+                        input = batch.get("token", "str"), 
+                        lengths = batch.get("token", "lengths"),
+                        span_idxs = batch.get("seg", "span_idxs")
                         )
 
         segpos = self.seg_pos(
-                            document_paragraph_id = batch["seg"]["document_paragraph_id"], 
-                            nr_paragraphs_doc = batch["seg"]["nr_paragraphs_doc"],
-                            lengths = batch["seg"]["lengths"],
+                            document_paragraph_id = batch.get("seg", "document_paragraph_id"), 
+                            nr_paragraphs_doc = batch.get("seg", "nr_paragraphs_doc"),
+                            lengths = batch.get("seg", "lengths"),
                             )
 
         seg_embs = torch.cat((seg_embs, bow, segpos), dim=-1) # 
@@ -134,13 +129,13 @@ class JointPN(BaseModel):
 
         encoder_out, states = self.encoder(
                                         input = f1c_out,
-                                        lengths = batch["seg"]["lengths"],
+                                        lengths = batch.get("seg", "lengths"),
                                         )
 
 
         decoder_out, _  = self.decoder(
                                         input = (f2c_out, states),
-                                        lengths = batch["seg"]["lengths"],
+                                        lengths = batch.get("seg", "lengths"),
                                         )
         
         return {    
@@ -151,29 +146,39 @@ class JointPN(BaseModel):
 
     def seg_clf(self, batch:utils.BatchInput, output:utils.BatchOutput):
 
-        label_outs = self.labeler(
-                                    input = output.stuff["encoder_out"],
-                                    )
+        label_logits, label_preds = self.labeler(input = output.stuff["encoder_out"])
 
-        link_outs  = self.pointer(
+        link_logits, link_preds  = self.pointer(
                                     input = output.stuff["decoder_out"],
                                     encoder_outputs = output.stuff["encoder_out"],
-                                    mask = batch["seg"]["mask"],
+                                    mask = batch.get("seg", "mask"),
                                     )
 
-        return label_outs + link_outs
+        return [
+                  {
+                    "task": "label",
+                    "logits": label_logits,
+                    "preds": label_preds,
+                  },
+                    {
+                    "task": "label",
+                    "logits": link_logits,
+                    "preds": link_preds,
+                  }
+                ]
+                    
 
 
     def loss(self, batch: utils.BatchInput, output: utils.BatchOutput):
 
         label_loss = self.labeler.loss(
                                         logits = output.logits["label"],
-                                        targets = batch["seg"]["label"]
+                                        targets = batch.get("seg", "label")
                                     )
 
         link_loss = self.pointer.loss(
                                         logits = output.logits["link"],
-                                        targets = batch["seg"]["link"]
+                                        targets = batch.get("seg", "link")
                                     )
         
 

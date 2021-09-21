@@ -42,7 +42,6 @@ class BatchInput:
         if level == "token":
             flat_values = self._df.loc[:, key].to_numpy()
         else:
-
             flat_values = self._df.groupby(f"{level}_id", sort = False).first().loc[:, key].to_numpy()
 
         if isinstance(flat_values[0], str):

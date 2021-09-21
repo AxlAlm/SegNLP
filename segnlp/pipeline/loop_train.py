@@ -34,8 +34,7 @@ class TrainLoop:
         patience = hyperparamaters["general"].get("patience", None)
         use_target_segs_k = hyperparamaters["general"].get("use_target_segs_k", None)
         #token_module_freeze_k = hyperparamaters["general"].get("token_module_freeze", False)
-        skip_segment_module_k = hyperparamaters["general"].get("skip_segment_module_k", False)
-
+        freeze_segment_module_k = hyperparamaters["general"].get("freeze_segment_module_k", False)            
 
         #loading our preprocessed dataset
         datamodule  = utils.DataModule(
@@ -96,10 +95,17 @@ class TrainLoop:
 
             # Sets the model to training mode.
             # will also freeze and set modules to skip if needed
+            cond1 = epoch < freeze_segment_module_k
+            cond2 = freeze_segment_module_k == -1
+            freeze_segment_module = False
+            if  (cond1 or cond2) and freeze_segment_module_k:
+                freeze_segment_module = True
+                use_target_segs = False
+        
+        
             model.train(
-                        freeze_n_skip_segment_module = epoch < skip_segment_module_k or skip_segment_module_k == -1,
+                        freeze_segment_module = freeze_segment_module,
                         )
-
 
             # train batches
             for train_batch in tqdm(train_dataset, desc = "Train Steps", position=3, total = len(train_dataset)):
@@ -110,12 +116,12 @@ class TrainLoop:
                             split = "train", 
                             use_target_segs = use_target_segs
                             )
-                   
+                
                 # reset the opt grads
                 optimizer.zero_grad()
 
                 # calc grads
-                loss.backwards()
+                loss.backward()
 
                 #clip gradients
                 if gradient_clip_val is not None:
@@ -137,7 +143,7 @@ class TrainLoop:
                             split = "val", 
                             )
                     
-                    
+
             # Log train epoch metrics
             train_epoch_metrics = model.metrics.calc_epoch_metrics("train")
             self.logger.log_epoch(  

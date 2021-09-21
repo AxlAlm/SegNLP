@@ -21,15 +21,14 @@ import re
 import pandas as pd
 from numpy.random import MT19937
 from numpy.random import RandomState, SeedSequence
+import random
 
 #torch
 import torch
 
-#pytroch lightning 
-from pytorch_lightning import seed_everything
-
 #segnlp
 from segnlp import get_logger
+
 
 logger = get_logger("MISC-UTILS")
 
@@ -217,9 +216,11 @@ def dynamic_update(src, v, pad_value=0):
     return new_src
 
 
-def set_random_seed(nr, using_gpu:bool=False):
+def set_random_seed(seed, using_gpu:bool=False):
 
-    seed_everything(nr)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
 
     if using_gpu:
         torch.backends.cudnn.deterministic = True
@@ -269,3 +270,11 @@ class Memorize:
         # of the class self.func is fetched from. __get__ is then called and then we can modify self.func 
         # so its passed with its instansiated object
         return functools.partial(self.__call__, obj)
+
+
+
+def freeze_module(module : torch.nn.Module):
+    #freeze all of the paramaters
+    for name, param in module.named_parameters():
+        param.requires_grad = False
+

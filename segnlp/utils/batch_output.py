@@ -37,9 +37,10 @@ class BatchOutput:
 
         self.label_encoder = label_encoder
 
-
+    @utils.timer
     def step(self, batch: BatchInput,  use_target_segs :bool = False):
-        
+
+
         # create a copy of the original dataframe for all predictions
         pred_df = batch._df.copy(deep=True)
         for task in self.label_encoder.task_labels.keys():
@@ -76,10 +77,13 @@ class BatchOutput:
 
     def add_preds(self, preds:Union[np.ndarray, Tensor], level:str,  task:str):
     
+
         # if we are using the segmentation ground truths we overwrite the segmentation labels
         # aswell as segment ids
         if self.__use_gt_seg and "seg" in task:
             
+            self.df.loc["PRED", task] = self.df.loc["TARGET", task].to_numpy()
+
             for subtask in task.split("+"):
                 self.df.loc["PRED", subtask] = self.df.loc["TARGET", subtask].to_numpy()
 
@@ -90,7 +94,7 @@ class BatchOutput:
         if level == "token":
             mask = ensure_numpy(self.batch.get("token", "mask")).astype(bool)
             self.df.loc["PRED", task] = ensure_numpy(preds)[mask]
-        
+
 
         elif level == "seg":
             mask = ensure_numpy(self.batch.get("seg", "mask")).astype(bool)
@@ -100,19 +104,28 @@ class BatchOutput:
             cond = ~self.df.loc["PRED", "seg_id"].isna()
 
             # repeat the segment prediction for all their tokens 
-            token_preds = np.repeat(seg_preds, ensure_numpy(self.batch.get("seg","lengths_tok"))[mask])
+            token_preds = np.repeat(seg_preds, ensure_numpy(self.batch.get("seg", "lengths_tok"))[mask])
 
             self.df.loc["PRED"].loc[cond, task] = token_preds
 
 
         elif level == "p_seg":
-            seg_tok_lengths = self.df.loc["PRED"].groupby("seg_id", sort=False).size()
+
+            print("UNIQUE SEG IDS ADD_PREDs", self.df.loc["PRED","seg_id"].nunique())
+
+            seg_tok_lengths = self.df.loc["PRED"].groupby("seg_id", sort=False).size().to_numpy()
+            
+            
+            d  = len(self.df.loc["TARGET"].groupby("seg_id", sort=False).size().to_numpy())
+
+            #print(preds, seg_tok_lengths)
+            print(self.__use_gt_seg, len(preds), len(seg_tok_lengths), d)
             token_preds = np.repeat(preds, seg_tok_lengths)
 
             # as predicts are given in seg ids ordered from 0 to nr predicted segments
             # we can just remove all rows which doesnt belong to a predicted segments and 
             # it will match all the token preds and be in the correct order.
-            self.df.loc["PRED"].loc[~self.df["PRED", "seg_id"].isna(), task] = token_preds
+            self.df.loc["PRED"].loc[~self.df.loc["PRED", "seg_id"].isna(), task] = token_preds
 
 
         self.df.loc["PRED"] = self.label_encoder.validate(
@@ -122,7 +135,7 @@ class BatchOutput:
                                                             ).values
                 
 
-    @utils.Memorize
+    #@utils.Memorize
     def get_pair_data(self):
 
         def set_id_fn():
@@ -176,11 +189,15 @@ class BatchOutput:
 
         df = self.df.loc["TARGET" if self.__use_gt_seg else "PRED"]
 
+
+        print("UNIQUE SEG IDS", df.loc[:,"seg_id"].nunique())
+
         first_df = df.groupby("seg_id", sort=False).first()
         first_df.reset_index(inplace=True)
 
         last_df = df.groupby("seg_id", sort=False).last()
         last_df.reset_index(inplace=True)
+
 
         # we create ids for each memeber of the pairs
         # the segments in the batch will have unique ids starting from 0 to 
@@ -291,12 +308,18 @@ class BatchOutput:
         pair_dict["bidir"]["lengths"] = pair_df.groupby("sample_id", sort=False).size().to_list()
         pair_dict["nodir"]["lengths"] = nodir_pair_df.groupby("sample_id", sort=False).size().to_list()
 
+
+        lens = nodir_pair_df.groupby("sample_id", sort=False).size().to_list()
+
+
+        starts = torch.split(torch.LongTensor(nodir_pair_df["p1_start"].to_numpy()), lens)
+        ends  = torch.split(torch.LongTensor(nodir_pair_df["p2_end"].to_numpy()), lens)
+
         return pair_dict
 
 
-    @utils.Memorize
+    #@utils.Memorize
     def get_seg_data(self):
-
 
         if self.__use_gt_seg:
             seg_data = {
@@ -306,7 +329,6 @@ class BatchOutput:
         else:
 
             df = self.df.loc["PRED"]
-
 
             seg_lengths = df[~df["seg_id"].isna()].groupby(level=0, sort=False)["seg_id"].nunique().to_numpy()
 
@@ -328,6 +350,7 @@ class BatchOutput:
                         "lengths": seg_lengths
                         }   
         return seg_data
+
 
 
     def get_preds(self, task:str, one_hot:bool = False):

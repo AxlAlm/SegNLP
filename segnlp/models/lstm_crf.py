@@ -55,12 +55,12 @@ class LSTM_CRF(BaseModel):
     def token_rep(self, batch: utils.BatchInput, output: utils.BatchOutput):
 
         #fine tune embedding via a linear layer
-        word_embs = self.finetuner(batch["token"]["word_embs"])
+        word_embs = self.finetuner(batch.get("token", "word_embs"))
 
         # lstm encoder
         lstm_out, _ = self.encoder(
                                     input = word_embs, 
-                                    lengths = batch["token"]["lengths"]
+                                    lengths = batch.get("token", "lengths")
                                 )
 
         return {
@@ -69,15 +69,22 @@ class LSTM_CRF(BaseModel):
 
 
     def token_clf(self, batch: utils.BatchInput, output: utils.BatchOutput):
-        return self.segmenter(
-                                    input = output.stuff["lstm_out"],
-                                    mask = batch["token"]["mask"],
+        logits, preds  = self.segmenter(
+                                    input=output.stuff["lstm_out"],
+                                    mask=batch.get("token", "mask"),
                                     )
+        return [
+                {
+                "task": self.seg_task,
+                "logits": logits,
+                "preds": preds,
+                }
+                ]
 
 
     def loss(self, batch: utils.BatchInput, output: utils.BatchOutput):
         return self.segmenter.loss(
                                         logits = output.logits[self.seg_task],
-                                        targets = batch["token"][self.seg_task],
-                                        mask = batch["token"]["mask"],
+                                        targets = batch.get("token", self.seg_task),
+                                        mask = batch.get("token", "mask"),
                                     )

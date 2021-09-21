@@ -41,11 +41,10 @@ class LSTM_DIST(BaseModel):
         super().__init__(*args, **kwargs)
 
 
-        self.word_lstm = self.add_encoder(
+        self.word_lstm = self.add_token_encoder(
                                     layer = "LSTM",
                                     hyperparams = self.hps.get("Word_LSTM", {}),
                                     input_size = self.feature_dims["word_embs"],
-                                    module = "segment_module"
                                     )
 
         self.minus_span = self.add_seg_rep(
@@ -54,18 +53,16 @@ class LSTM_DIST(BaseModel):
                                         input_size = self.word_lstm.output_size,
                                     )
 
-        self.am_lstm = self.add_encoder(
+        self.am_lstm = self.add_seg_encoder(
                                     layer = "LSTM",
                                     hyperparams = self.hps.get("AM_LSTM", {}),
                                     input_size = self.minus_span.output_size,
-                                    module = "segment_module"
                                     )
 
-        self.ac_lstm = self.add_encoder(
+        self.ac_lstm = self.add_seg_encoder(
                                     layer = "LSTM",
                                     hyperparams = self.hps.get("AC_LSTM", {}),
                                     input_size = self.minus_span.output_size,
-                                    module = "segment_module"
                                     )
                                 
         self.seg_bow = self.add_seg_embedder(
@@ -87,18 +84,16 @@ class LSTM_DIST(BaseModel):
 
 
         input_size = (self.am_lstm.output_size * 2) + self.seg_bow.output_size + self.seg_pos.output_size
-        self.adu_lstm =  self.add_encoder(
+        self.adu_lstm =  self.add_seg_encoder(
                                     layer = "LSTM",
                                     hyperparams = self.hps.get("ADU_LSTM", {}),
                                     input_size = input_size,
-                                    module = "segment_module"
                                     )
 
-        self.link_lstm =  self.add_encoder(
+        self.link_lstm =  self.add_seg_encoder(
                                     layer = "LSTM",
                                     hyperparams = self.hps.get("Link_LSTM", {}),
                                     input_size = self.adu_lstm.output_size,
-                                    module = "segment_module"
                                     )
 
 
@@ -127,7 +122,7 @@ class LSTM_DIST(BaseModel):
                                             layer = "LinearCLF",
                                             hyperparams = self.hps.get("LinearCLF", {}),
                                             input_size = self.adu_lstm.output_size,
-                                            output_size = self.task_dims["label"],
+                                            output_size = self.task_dims["link_label"],
                                             )
 
 
@@ -140,31 +135,31 @@ class LSTM_DIST(BaseModel):
 
 
         lstm_out, _ = self.word_lstm(
-                                        input = batch["token"]["word_embs"], 
-                                        lengths =  batch["token"]["lengths"],
+                                        input = batch.get("token", "word_embs"), 
+                                        lengths =  batch.get("token", "lengths"),
                                     )
 
 
         # create span representation for Argument Components and Argumentative Markers
         am_minus_embs = self.minus_span(
                                         input = lstm_out, 
-                                        span_idxs = batch["am"]["span_idxs"],
+                                        span_idxs = batch.get("am", "span_idxs"),
                                         device = batch.device
                                         )
         ac_minus_embs = self.minus_span(
                                         input = lstm_out, 
-                                        span_idxs = batch["seg"]["span_idxs"],
+                                        span_idxs = batch.get("seg", "span_idxs"),
                                         device = batch.device
                                         )
         
         # pass the minus representation for each type of segment to seperate LSTMs
         am_lstm_out, _ = self.am_lstm(
                                     am_minus_embs, 
-                                    batch["am"]["lengths"],
+                                    batch.get("am", "lengths"),
                                     )
         ac_lstm_out, _ = self.ac_lstm(
                                     ac_minus_embs,
-                                    batch["seg"]["lengths"],
+                                    batch.get("seg", "lengths"),
                                     )
 
         # The BOW features, φ(wi:j), are create from one hot encodings + positional features (see below). 
@@ -175,9 +170,9 @@ class LSTM_DIST(BaseModel):
         # for each segment by adding them instead of concatenating (see segnlp.layers.embedders.seg_bow.SegBOW)
         # i.e. a vector of word counts
         seg_bow = self.seg_bow(
-                        input = batch["token"]["str"], 
-                        lengths = batch["token"]["lengths"],
-                        span_idxs = batch["adu"]["span_idxs"],
+                        input = batch.get("token", "str"), 
+                        lengths = batch.get("token", "lengths"),
+                        span_idxs = batch.get("adu", "span_idxs"),
                         device = batch.device
                         )
         
@@ -186,9 +181,9 @@ class LSTM_DIST(BaseModel):
 
         # positional features for segments
         segpos = self.seg_pos(
-                            document_paragraph_id = batch["seg"]["document_paragraph_id"], 
-                            nr_paragraphs_doc = batch["seg"]["nr_paragraphs_doc"],
-                            lengths = batch["seg"]["lengths"],
+                            document_paragraph_id = batch.get("seg", "document_paragraph_id"), 
+                            nr_paragraphs_doc = batch.get("seg", "nr_paragraphs_doc"),
+                            lengths = batch.get("seg", "lengths"),
                             device = batch.device
 
                             )
@@ -204,10 +199,10 @@ class LSTM_DIST(BaseModel):
             
     
         # run concatenated features through and LSTM, output will be used to predict label and link_label
-        adu_emb, _ = self.adu_lstm(cat_emb, batch["seg"]["lengths"])
+        adu_emb, _ = self.adu_lstm(cat_emb, batch.get("seg", "lengths"))
 
         #then run the adu_embs through a final lstm to create features for linking.
-        adu_emb_link, _ = self.link_lstm(adu_emb, batch["seg"]["lengths"])
+        adu_emb_link, _ = self.link_lstm(adu_emb, batch.get("seg", "lengths"))
 
         # create embeddings for all pairs
         pair_embs = self.pairer(
@@ -224,35 +219,56 @@ class LSTM_DIST(BaseModel):
     def seg_clf(self, batch: utils.BatchInput, output: utils.BatchOutput):
 
         # classify the label of the segments
-        label_outs = self.labeler(output.stuff["adu_emb"])
+        label_logits, label_preds = self.labeler(output.stuff["adu_emb"])
 
         # classify the label of the links
-        link_label_outs = self.link_labeler(output.stuff["adu_emb"])
+        link_label_logits, link_label_preds = self.link_labeler(output.stuff["adu_emb"])
 
         # classify links
-        link_outs = self.linker(
+        link_logits, link_preds = self.linker(
                                 input = output.stuff["pair_embs"], 
-                                segment_mask = batch["seg"]["mask"]
+                                segment_mask = batch.get("seg", "mask")
                                 )
             
-        return label_outs + link_outs + link_label_outs
+        return [
+                {
+                    "task": "label",
+                    "logits": label_logits,
+                    "preds": label_preds,
+                  },
+                {
+                    "task": "link_label",
+                    "logits": link_label_logits,
+                    "preds": link_label_preds,
+                  },
+                {
+                    "task": "link",
+                    "logits": link_logits,
+                    "preds": link_preds,
+                  }
+                ]
+                    
+
+
+
+
 
 
     def loss(self, batch: utils.BatchInput, output: utils.BatchOutput):
 
         link_loss = self.linker.loss(
                                 torch.flatten(output.logits["link"], end_dim=-2), 
-                                batch["seg"]["link"].view(-1)
+                                batch.get("seg", "link").view(-1)
                                 )
 
         link_label_loss = self.link_labeler.loss(
                                     torch.flatten(output.logits["link_label"], end_dim=-2),
-                                     batch["seg"]["link_label"].view(-1)
+                                     batch.get("seg", "link_label").view(-1)
                                      )
 
         label_loss = self.labeler.loss(
                                 torch.flatten(output.logits["label"], end_dim=-2), 
-                                batch["seg"]["label"].view(-1)
+                                batch.get("seg", "label").view(-1)
                                 )
 
         ## this is the reported loss aggregation in the paper, but...

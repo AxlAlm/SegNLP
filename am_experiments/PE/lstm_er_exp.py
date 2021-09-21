@@ -36,7 +36,7 @@ hps = {
                 "patience": 10,
                 "task_weight": 0.5,
                 "use_target_segs_k": 10,
-                "freeze_n_skip_segment_module": 5,
+                #"freeze_segment_module_k": 5,
                 },
 
        "LSTM": {   
@@ -48,7 +48,6 @@ hps = {
                     },
         "BigramSeg": {
                         "hidden_size": 512,
-                        "activation": "Sigmoid"
                 },
         "Agg":{
                 "mode":"mean",
@@ -57,10 +56,8 @@ hps = {
                         "dropout":0.5,
                         "hidden_size":100,
                         "bidir":True,
-                        "graph_buid_type": 0,
-                        "sub_graph_type": 0,
+                        "mode": "shortest_path",
                         },
-
         "LinearPairEnc": {
                         "hidden_size":100,
                         "activation": "Tanh",

@@ -17,14 +17,14 @@ class BigramSeg(nn.Module):
     """
 
     def __init__(
-        self,
-        input_size,
-        hidden_size,
-        output_size,
-        dropout=0.0,
-        loss_reduction = "mean",
-        ignore_index = -1
-    ):
+            self,
+            input_size : int,
+            hidden_size : int ,
+            output_size : int ,
+            dropout : float = 0.0,
+            loss_reduction : str = "mean",
+            ignore_index : int  = -1
+        ):
         super().__init__()
         self.ignore_index = ignore_index
         self.loss_reduction = loss_reduction
@@ -49,15 +49,15 @@ class BigramSeg(nn.Module):
 
         # sizes
         batch_size = input.size(0)
-        max_lenght = input.size(1)
-        size = [batch_size, max_lenght, self.output_size]
+        max_length = input.size(1)
+        size = [batch_size, max_length, self.output_size]
 
         # construct tensors
         logits = torch.zeros(size, device=device)
-        preds = torch.zeros(batch_size, max_lenght, dtype=torch.long, device=device)
+        preds = torch.zeros(batch_size, max_length, dtype=torch.long, device=device)
 
         # predict labels token by token
-        for i in range(max_lenght):
+        for i in range(max_length):
             prev_label_one_hot = F.one_hot(
                                 preds[:, i - 1 ],
                                 num_classes=self.output_size

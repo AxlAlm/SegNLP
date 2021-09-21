@@ -417,22 +417,25 @@ class DepGraph:
             # u are the token indexes
             # v are the indexes of the heads for each token
             v = deplinks[i][token_mask[i]]
-            u = torch.arange(len(v), device=device)
+            u = torch.arange(v.size(0), device=device)
 
             ## filter out self loops at root noodes, THIS BECAUSE?
             self_loop = u == v
             u = u[~self_loop]
             v = v[~self_loop]
 
+
             # creat sample DGLGraph, convert it to an undirected graph.
             graph = dgl.graph((u,v))
             graph_unidir = graph.to_networkx().to_undirected()
+
 
             # we take the start id and end ids for the sample
             start = utils.ensure_numpy(starts[i])
             end = utils.ensure_numpy(ends[i])
 
-            #
+
+
             subgraph_func = functools.partial(
                                             self.get_subgraph,
                                             g=graph,
@@ -594,7 +597,6 @@ class DepTreeLSTM(nn.Module):
 
         if not isinstance(input, Tensor): 
             input = torch.cat(input, dim=-1)
-
 
 
         # 1) Build graph from dependecy data

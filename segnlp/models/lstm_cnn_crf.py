@@ -67,18 +67,18 @@ class LSTM_CNN_CRF(BaseModel):
     def token_rep(self, batch: utils.BatchInput, output: utils.BatchOutput):
 
         #fine-tune word embeddings by reprojecting them with a linear layer
-        word_embs = self.finetuner(batch["token"]["word_embs"])
+        word_embs = self.finetuner(batch.get("token", "word_embs"))
 
         #getting character embeddings
         char_embs = self.char_embedder(
-                                        batch["token"]["str"],
-                                        batch["token"]["lengths"]
+                                        batch.get("token", "str"),
+                                        batch.get("token", "lengths")
                                         )
     
         # passing features to lstm (it will concatenate features)
         lstm_out, _ = self.encoder(
                                     input = (word_embs, char_embs), 
-                                    lengths = batch["token"]["lengths"]
+                                    lengths = batch.get("token", "lengths")
                                 )
 
         return {
@@ -87,15 +87,21 @@ class LSTM_CNN_CRF(BaseModel):
 
 
     def token_clf(self, batch: utils.BatchInput, output: utils.BatchOutput):
-        return self.segmenter(
+        logits, preds  = self.segmenter(
                                     input=output.stuff["lstm_out"],
-                                    mask=batch["token"]["mask"],
+                                    mask=batch.get("token", "mask"),
                                     )
-
+        return [
+                {
+                "task": self.seg_task,
+                "logits": logits,
+                "preds": preds,
+                }
+                ]
 
     def loss(self, batch: utils.BatchInput, output: utils.BatchOutput):
         return self.segmenter.loss(
                                         logits = output.logits[self.seg_task],
-                                        targets = batch["token"][self.seg_task],
-                                        mask = batch["token"]["mask"],
+                                        targets = batch.get("token", self.seg_task),
+                                        mask = batch.get("token", "mask"),
                                     )

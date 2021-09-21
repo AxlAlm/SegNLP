@@ -143,8 +143,8 @@ class Pointer(nn.Module):
         for i in range(seq_len):
             logits[:, i] = self.attention(input[:,i], encoder_outputs, mask)
 
-
         preds = torch.argmax(logits, dim=-1)
+         
         return logits, preds
 
 

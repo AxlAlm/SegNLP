@@ -20,15 +20,16 @@ from segnlp import utils
 
 class DirLinkLabeler(nn.Module):
 
-
     """
     Direktional Link Labeler work on the level of all possible pairs. It takes all bi-directional pairs
     between segments and predicts the directional labels including None for no link and root for pointing 
     to itself.
-    
-    
-    """
 
+    Layer takes pair embeddings as well as pair ids of pair members.
+
+    Layer returns the link label  and link for each unique p1 and 
+
+    """
 
     def __init__(self, 
                 input_size:int, 
@@ -41,7 +42,7 @@ class DirLinkLabeler(nn.Module):
         super().__init__()
         self.loss_reduction = loss_reduction
         self.ignore_index = ignore_index
-        self.match_ratio = match_threshold
+        self.match_threshold = match_threshold
 
         # if we have link labels {root, REL1, REL2} we will predict the folowing labels
         # {None, root, REL1, REL2, REL1-rev, REL2-rev}
@@ -73,10 +74,15 @@ class DirLinkLabeler(nn.Module):
                             "p2": pair_p2,
                             }
                             )
+        
+        print("BEFROE", len(set(df["p1"].to_list())))
 
         # filter out all pair where prediction is 0 ( None), which means that the pairs
         # are predicted to not link, (or more correct "there is no relation between")
         df = df[df["label"] != 0]
+
+
+        print("AFTER", len(set(df["p1"].to_list())))
 
         # for each pair where the prediction is a X-rev relation we need to swap the order of the 
         # member of the pair. I.e. if we have a pair ( p1, p2) where the label is X-rev we swap places
@@ -94,6 +100,10 @@ class DirLinkLabeler(nn.Module):
         p1_p2_new[~rev_preds_filter, 1] = p1_p2[~rev_preds_filter, 1]
 
         df.loc[:, ["p1", "p2"]]  = p1_p2_new
+
+
+        print("AFTER AGAIN", len(set(df["p1"].to_list())))
+
 
         #after we have set SOURCE and TARGETS we normalize the link_labels to non-"-Rev" labels
         df.loc[rev_preds_filter, "label"] -= self.link_labels_wo_root
@@ -119,15 +129,18 @@ class DirLinkLabeler(nn.Module):
                 pair_p2 : Tensor,
                 ):
 
+        print("OKOKOKOKOKK", len(set(utils.ensure_list(pair_p1))), pair_p1.shape)
         logits = self.clf(self.dropout(input))
         link_labels, links = self.__get_preds(
                                     logits = logits,
                                     pair_p1 = pair_p1,
                                     pair_p2 = pair_p2
                                     )
+    
+        print("WTFFF", link_labels.shape)
 
         return logits, link_labels, links
-
+    
 
     def loss(self,
             targets: Tensor, 

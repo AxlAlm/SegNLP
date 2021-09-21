@@ -486,7 +486,7 @@ class TextProcessor:
         point to the ROOT in the previous sentence.        
         """
 
-        df["root_idxs"] = None
+        df["root_idx"] = None
 
 
         for _, sample in df.groupby(f"{self.sample_level}_id", sort=False):
@@ -538,17 +538,26 @@ class TextProcessor:
             df.loc[sample.index, "root_idx"] = [sent_roots[0]] * len(sample)
 
 
-            i = sample.index.to_list()
-            d = depheads
-            graph = dgl.graph((i, d)).to_networkx().to_undirected()
+            # cond1 = len(depheads) >= max(sample["document_token_id"])
+            # cond2 = max(depheads) <= max(sample["document_token_id"])
 
-            if not nx.is_connected(graph):
-                raise RuntimeError(" Dependency Relations do not form a graph")
-                # print(sent_roots)
-                # print(i)
-                # print(d)
-                # print(list(nx.connected_components(graph)))
-                # print(lol)
+            # if not (cond1 and cond2):
+            #     print(lol)
+
+            #print(len(depheads), max(sample["document_token_id"]))
+            #if max(sample["sample_token_id"]) != len(),
+
+            # i = sample.index.to_list()
+            # d = depheads
+            # graph = dgl.graph((i, d)).to_networkx().to_undirected()
+
+            # if not nx.is_connected(graph):
+            #     raise RuntimeError(" Dependency Relations do not form a graph")
+            #     # print(sent_roots)
+            #     # print(i)
+            #     # print(d)
+            #     # print(list(nx.connected_components(graph)))
+            #     # print(lol)
 
 
         return df
