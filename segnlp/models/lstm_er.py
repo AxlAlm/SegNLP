@@ -82,6 +82,9 @@ class LSTM_ER(BaseModel):
 
     def token_rep(self, batch: Batch) -> dict:
 
+        batch.get("token", "lengths", pred = True)
+        print(lol)
+
         #create pos onehots
         pos_one_hots = self.pos_onehot(
                         input = batch.get("token", "pos"),

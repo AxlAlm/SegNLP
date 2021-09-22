@@ -250,14 +250,15 @@ class Memorize:
         self.cache = {}
 
 
-    def __call__(self, *args):
-
+    def __call__(self, *args, **kwargs):
+        
+        key = args + tuple(sorted(kwargs.items()))
         
         if args in self.cache:
-            return self.cache[args]
+            return self.cache[key]
         else:
-            value = self.func(*args)
-            self.cache[args] = value
+            value = self.func(*args, **kwargs)
+            self.cache[key] = value
             return value
 
 

@@ -3,6 +3,8 @@
 import numpy as np
 import pandas as pd
 import re
+from functools import wraps
+
 
 # pytorch
 import torch
@@ -12,26 +14,46 @@ from torch.nn.utils.rnn import pad_sequence
 
 # segnlp
 from segnlp import utils
+from .label_encoder import LabelEncoder
+from .array import ensure_numpy
+
 
 class Batch:
 
 
     def __init__(self, 
                 df: pd.DataFrame, 
+                label_encoder : LabelEncoder, 
                 pretrained_features: dict = {},
                 device = None
                 ):
-        self._df = df
-        self._pred_df = df.copy(deep=True)
+
+
+        self._df : pd.DataFrame = df
+        self._pred_df : pd.DataFrame = df.copy(deep=True)
+
+        # we set all task values to 0
+        self._pred_df["seg_id"] = None
+        for task in label_encoder.task_labels:
+            self._pred_df[task] = None
+
+        #
+        self.label_encoder : LabelEncoder= label_encoder
+
         self._task_regexp = re.compile("seg|link|label|link_label")
+
         self._pretrained_features = pretrained_features
+
         self.device = device
-        self.__ok_levels = set(["seg", "token", "span"])
+
+        self.__ok_levels = set(["seg", "token", "span", "pair"])
 
         if "am_id" in self._df.columns:
             self.__ok_levels.update(["am_id", "adu_id"])
 
         self._size = self._df["sample_id"].nunique()
+
+        self.use_target_segs : bool = True
 
 
     def __len__(self):
@@ -72,8 +94,8 @@ class Batch:
             return torch.LongTensor(np.column_stack((start_tok_ids, end_tok_ids)))
 
 
-    def __get_mask(self, df: pd.DataFrame, level:str, ):
-        return utils.create_mask(self.get(df, level, "lengths"), as_bool = True)
+    def __get_mask(self, level:str, pred : bool = False):
+        return utils.create_mask(self.get(level, "lengths", pred), as_bool = True)
 
 
     def __get_lengths(self, df: pd.DataFrame, level:str):
@@ -84,17 +106,17 @@ class Batch:
             return torch.LongTensor(df.groupby(level=0, sort=False)[f"{level}_id"].nunique().to_numpy())
 
 
-    def __get_pretrained_embeddings(self, level:str, flat:bool):
+    def __get_pretrained_embeddings(self, df:pd.DataFrame, level:str, flat:bool):
 
         if level == "token":
             embs = self._pretrained_features["word_embs"]
         else:
             embs = self._pretrained_features["seg_embs"]
 
-        embs = embs[:, :max(self._get_lengths(level)), :]
+        embs = embs[:, :max(self.__get_lengths(df, level)), :]
 
         if flat:
-            embs = embs[self._get_mask("level")]
+            embs = embs[self.__get_mask("level")]
 
         return torch.tensor(embs, dtype = torch.float)
 
@@ -255,33 +277,54 @@ class Batch:
         return pair_dict
 
 
+
+    def _sampling_wrapper(func):
+        
+        @wraps(func)
+        def wrapped_get(self, *args, **kwargs):
+            
+            if self.use_target_segs:
+                kwargs["pred"] = False
+
+            return func(self, *args, **kwargs)
+        
+        return wrapped_get
+
+    @_sampling_wrapper
     @utils.Memorize
     def get(self, 
-            level:str, 
-            key:str, 
-            flat:bool = False, 
+            level : str, 
+            key : str, 
+            flat : bool = False, 
             pred : bool = False,
             bidir : bool = True
             ):
 
+
+        print(pred)
+
         if level not in self.__ok_levels:
             raise KeyError
-
-        
-        if level == "pair" and hasattr(self, f"_pair_df{'_pred' if pred else ''}"):
-            self.__create_pair_df()
-
+            
 
         df = self._pred_df if pred else self._df
+
+        if level == "pair":
+            pair_df_attr = f"_pair_df{'_pred' if pred else ''}"
+            if not hasattr(self, f"_pair_df{'_pred' if pred else ''}"):
+                setattr(self.__create_pair_df(df), pair_df_attr)
+
+            df = getattr(pair_df_attr)
     
+
         if key == "lengths":
             data =  self.__get_lengths(df, level)
 
         elif key == "embs":
-            data =  self.__get_pretrained_embeddings(df, level, flat=flat)
+            data =  self.__get_pretrained_embeddings(df, level, flat = flat)
 
         elif key == "mask":
-            data = self.__get_mask(df, level)
+            data = self.__get_mask(level, pred = pred)
 
         else:
             if key == "span_idxs":
@@ -298,7 +341,7 @@ class Batch:
                 if level == "am" and key == "span_idxs":
                     level = "adu"
             
-                lengths = utils.ensure_list(self.get(df, level, "lengths"))
+                lengths = utils.ensure_list(self.get( level, "lengths"))
                     
                 data =  pad_sequence(
                                     torch.split(

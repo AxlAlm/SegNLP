@@ -49,12 +49,9 @@ class BaseModel(nn.Module):
         self.inference : bool = inference
         self.seg_task : dict = label_encoder.seg_task
 
-        # setting up metric container which takes care of metric calculation, aggregation and storing
-        self.metrics = utils.MetricContainer(
-                                            metric = metric,
-                                            task_labels = label_encoder.task_labels,
-                                            )
-
+        # make sure we know which module we have
+        self._have_token_module : bool = hasattr(self, "token_rep")
+        self._have_seg_module : bool = hasattr(self, "seg_rep")
 
         # for all layers that do classification we need to know which task they are classifying 
         # so we keep track on this by creating a mapping dict. Things will be added to this
@@ -78,78 +75,40 @@ class BaseModel(nn.Module):
     def name(self):
         return self.__name__
 
-
-    def __rep(self, batch:Batch, module_type:str):
         
-        f_name = f"{module_type}_rep"
-
-        if not hasattr(self,  f_name):
-            return 
-
-        return getattr(self, f_name)(batch)   
-
-
-    def __clf(self, batch:Batch, module_type:str):
-        
-        f_name = f"{module_type}_clf"
-
-        if not hasattr(self,  f_name):
-            return 
-
-        return getattr(self, f_name)(batch)
-
- 
-
     @utils.timer
     def forward(self, 
                 batch:Batch, 
-                split:str, 
-                use_target_segs : bool = False
                 ):
-
-        # creates a batch specific output container which will be filled
-        # with predictions, logits and outputs of modules and submodules
-        output = self.output.step( 
-                                    batch, 
-                                    use_target_segs = use_target_segs
-                                    )
 
         total_loss = 0
 
         token_rep_out = None # set a default value incase module is skipped
         # we skip the token_module
-        if  not self._token_layers_are_frozen:
+        if  not self._token_layers_are_frozen and self._have_token_module:
             
             # 1) represent tokens
-            token_rep_out = self.__rep(batch, "token")
+            token_rep_out = self.token_rep(batch)
 
             # 2) classifiy on tokens
-            token_clf_out = self.__clf(batch, token_rep_out, "token")
+            token_clf_out = self.token_clf(batch, token_rep_out)
 
             if not self.inference:
                 total_loss += self.token_loss(batch, token_clf_out)
 
 
         # we freeze the segment module
-        if not self._segment_layers_are_frozen:
+        if not self._segment_layers_are_frozen and self._have_seg_module:
 
             # 3) represent segments
-            seg_rep_out = self.__rep(batch, token_rep_out, "seg")
+            seg_rep_out = self.seg_rep(batch, token_rep_out)
 
             # 4) classify segments
-            seg_clf_out = self.__clf(batch, seg_rep_out, "seg")
+            seg_clf_out = self.seg_clf(batch, seg_rep_out)
 
             if not self.inference:
                 total_loss += self.seg_loss(batch, seg_clf_out)
 
-
-        # Will take the prediction dataframe created during the forward pass
-        # and pass it to the metric container which will calculate, aggregate
-        # and store metrics
-        self.metrics.calc_add(
-                            df = output.df.copy(deep=True), 
-                            split = split
-                            )
 
         return total_loss
 

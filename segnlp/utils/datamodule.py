@@ -21,7 +21,7 @@ from torch.utils.data import DataLoader
 import segnlp
 from .batch import Batch
 from segnlp import utils
-
+from .label_encoder import LabelEncoder
 
 
 class DataModule:
@@ -36,27 +36,29 @@ class DataModule:
     """
 
     def __init__(self, 
-                path_to_data:str, 
-                batch_size: str,
-                cv : int = 0
+                path_to_data : str, 
+                batch_size : str,
+                label_encoder : LabelEncoder,
+                cv : int = 0,
                 ):
 
-        self._df_fp = os.path.join(path_to_data, "df.hdf5")
-        self._pwf_fp = utils.check_file(os.path.join(path_to_data, "pwf.hdf5"))
-        self._psf_fp = utils.check_file(os.path.join(path_to_data, "psf.hdf5"))
+        self._df_fp : str = os.path.join(path_to_data, "df.hdf5")
+        self._pwf_fp : str = utils.check_file(os.path.join(path_to_data, "pwf.hdf5"))
+        self._psf_fp : str = utils.check_file(os.path.join(path_to_data, "psf.hdf5"))
 
         with open(os.path.join(path_to_data, f"splits.pkl"), "rb") as f:
-            self._splits = pickle.load(f)
+            self._splits : dict = pickle.load(f)
         
-        self.batch_size = batch_size
-        self.split_id = cv
+        self.batch_size : int = batch_size
+        self.split_id : int = cv
+        self.label_encoder : LabelEncoder = label_encoder
         
 
     def __getitem__(self, key:Union[np.ndarray, list]) -> Batch:
         return Batch(
                     df = self.__get_df(key),
+                    label_encoder = self.label_encoder,
                     pretrained_features = self.__get_pretrained_features(key),
-                    label_encoder = self.label_encoder
                     )
 
 

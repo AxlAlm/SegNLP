@@ -40,10 +40,15 @@ class TrainLoop:
         datamodule  = utils.DataModule(
                                 path_to_data = self._path_to_data,
                                 batch_size = batch_size,
+                                label_encoder = self.label_encoder,
                                 cv = cv,
-                                label_encoder = self.label_encoder
                                 )
 
+        # setting up metric container which takes care of metric calculation, aggregation and storing
+        metric_container = utils.MetricContainer(
+                                            metric = self.metric,
+                                            task_labels = self.task_labels,
+                                            )
 
         # set up a checkpoint class to save best models
         path_to_model = os.path.join(self._path_to_models, model_id + ".ckpt")
@@ -87,23 +92,22 @@ class TrainLoop:
             # NOTE! the dataset är generators so nothing is re-loaded, processed or anything
             train_dataset = datamodule.step(split = "train")
             val_dataset = datamodule.step(split = "val")
-
-
-            # We can can help tasks which are dependent on the segmentation to be feed
-            # ground truth segmentaions instead of the predicted segmentation during traingin
-            use_target_segs = target_seg_sampling(epoch)
-                
+ 
 
             # Sets the model to training mode.
             # will also freeze and set modules to skip if needed
             cond1 = epoch < freeze_segment_module_k
             cond2 = freeze_segment_module_k == -1
-            freeze_segment_module = False
-            if  (cond1 or cond2) and freeze_segment_module_k:
-                freeze_segment_module = True
-                use_target_segs = False
-        
-        
+            freeze_segment_module = (cond1 or cond2) and freeze_segment_module_k != False
+
+
+            # We can can help tasks which are dependent on the segmentation to be feed
+            # ground truth segmentaions instead of the predicted segmentation during traingin
+            use_target_segs = False
+            if not freeze_segment_module:
+                use_target_segs = target_seg_sampling(epoch)
+   
+
             model.train(
                         freeze_segment_module = freeze_segment_module,
                         )
@@ -111,12 +115,14 @@ class TrainLoop:
             # train batches
             for train_batch in tqdm(train_dataset, desc = "Train Steps", position=3, total = len(train_dataset)):
                 
+                #if we are using sampling
+                #train_batch.use_target_segs = use_target_segs
+
                 # pass the batch
-                loss = model(
-                            train_batch, 
-                            split = "train", 
-                            use_target_segs = use_target_segs
-                            )
+                loss = model(train_batch)
+
+                #calculate the metrics
+                metric_container.calc_add(train_batch, "train")
                 
                 # reset the opt grads
                 optimizer.zero_grad()
@@ -131,8 +137,6 @@ class TrainLoop:
                 # update paramaters
                 optimizer.step()
 
-                break
-
 
             # Validation Loop
             model.eval()
@@ -144,10 +148,12 @@ class TrainLoop:
                             val_batch, 
                             split = "val", 
                             )
-                    
+                
+                    metric_container.calc_add(val_batch, "val")
 
+                
             # Log train epoch metrics
-            train_epoch_metrics = model.metrics.calc_epoch_metrics("train")
+            train_epoch_metrics = metric_container.calc_epoch_metrics("train")
             self.logger.log_epoch(  
                                 epoch = epoch,
                                 split = "train",
@@ -158,7 +164,7 @@ class TrainLoop:
 
 
             # Log val epoch metrics
-            val_epoch_metrics = model.metrics.calc_epoch_metrics("val")
+            val_epoch_metrics = metric_container.calc_epoch_metrics("val")
             self.logger.log_epoch(  
                                 epoch = epoch,
                                 split = "val",
