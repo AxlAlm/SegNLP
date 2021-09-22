@@ -9,8 +9,7 @@ from .misc import *
 
 # specific utils classes
 from .bio_decoder import BIODecoder
-from .batch_output import BatchOutput
-from .batch_input import BatchInput
+from .batch import Batch
 from .schedule_sample import ScheduleSampling
 from .datamodule import DataModule
 from .metric_container import MetricContainer

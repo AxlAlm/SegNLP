@@ -24,11 +24,6 @@ class DirLinkLabeler(nn.Module):
     Direktional Link Labeler work on the level of all possible pairs. It takes all bi-directional pairs
     between segments and predicts the directional labels including None for no link and root for pointing 
     to itself.
-
-    Layer takes pair embeddings as well as pair ids of pair members.
-
-    Layer returns the link label  and link for each unique p1 and 
-
     """
 
     def __init__(self, 
@@ -75,15 +70,6 @@ class DirLinkLabeler(nn.Module):
                             }
                             )
         
-        print("BEFROE", len(set(df["p1"].to_list())))
-
-        # filter out all pair where prediction is 0 ( None), which means that the pairs
-        # are predicted to not link, (or more correct "there is no relation between")
-        df = df[df["label"] != 0]
-
-
-        print("AFTER", len(set(df["p1"].to_list())))
-
         # for each pair where the prediction is a X-rev relation we need to swap the order of the 
         # member of the pair. I.e. if we have a pair ( p1, p2) where the label is X-rev we swap places
         # on p1 and p2. What this does is make p1 our column for SOURCE and p2 our column for TARGET. 
@@ -101,15 +87,28 @@ class DirLinkLabeler(nn.Module):
 
         df.loc[:, ["p1", "p2"]]  = p1_p2_new
 
-
-        print("AFTER AGAIN", len(set(df["p1"].to_list())))
-
-
         #after we have set SOURCE and TARGETS we normalize the link_labels to non-"-Rev" labels
         df.loc[rev_preds_filter, "label"] -= self.link_labels_wo_root
 
-        #as we also removed 0 labels above we will move all labels down 1 so we get original labels
+
+        # We can filter out all pair where prediction is 0 ( None), which means that the pairs
+        # are predicted to not link, (or more correct "there is no relation between"). 
+        # However, each segments needs to link to something however, because we can predict 0
+        # for all pairs with a certain source, we need to set the label for those pairs to a 
+        # default value, i.e. themselves. SO, for each segments where all predictions are 0, we set the 
+        # link to be equal to itself.
+        no_link = df["label"] != 0
+        self_refs = df["p1"] == df["p2"]
+        cond = np.logical_or(no_link, self_refs)
+
+        df.loc[cond, "label"] = 1 # set the label to root
+        df = df[cond] # remove all rows where label == 0 except where p1 == p2
+
+
+        #as we also move down labels by 1 so thay we are matching original layers, .e.g. None is 
+        # not a valid link_label
         df.loc[:, "label"] -= 1
+
 
         # Lastly we want to sort all the pairs then select the row for
         # for each unique p1, starting segments. I.e. we get the highested scored
@@ -129,15 +128,12 @@ class DirLinkLabeler(nn.Module):
                 pair_p2 : Tensor,
                 ):
 
-        print("OKOKOKOKOKK", len(set(utils.ensure_list(pair_p1))), pair_p1.shape)
         logits = self.clf(self.dropout(input))
         link_labels, links = self.__get_preds(
                                     logits = logits,
                                     pair_p1 = pair_p1,
                                     pair_p2 = pair_p2
                                     )
-    
-        print("WTFFF", link_labels.shape)
 
         return logits, link_labels, links
     

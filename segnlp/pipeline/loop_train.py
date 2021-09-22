@@ -27,7 +27,7 @@ class TrainLoop:
                     ):
 
 
-       # some hyperparamters we need to configure training
+        # some hyperparamters we need to configure training
         max_epochs = hyperparamaters["general"]["max_epochs"]
         gradient_clip_val = hyperparamaters["general"].get("gradient_clip_val", None)
         batch_size = hyperparamaters["general"]["batch_size"]
@@ -40,7 +40,8 @@ class TrainLoop:
         datamodule  = utils.DataModule(
                                 path_to_data = self._path_to_data,
                                 batch_size = batch_size,
-                                cv = cv
+                                cv = cv,
+                                label_encoder = self.label_encoder
                                 )
 
 
@@ -130,6 +131,7 @@ class TrainLoop:
                 # update paramaters
                 optimizer.step()
 
+                break
 
 
             # Validation Loop
@@ -179,6 +181,7 @@ class TrainLoop:
             # with the optimizer, i.e. change the learning rate in some way
             if lr_scheduler is not None:
                 lr_scheduler.step()
+        
 
 
     def __cv_loop(self,

@@ -16,17 +16,15 @@ import torch
 from torch.utils.data import BatchSampler
 from torch.utils.data import DataLoader
 
-# pytorch lightning
-import pytorch_lightning as ptl
 
 #segnlp
 import segnlp
-from .batch_input import BatchInput
+from .batch import Batch
 from segnlp import utils
 
 
 
-class DataModule(ptl.LightningDataModule):
+class DataModule:
 
     """
 
@@ -54,10 +52,11 @@ class DataModule(ptl.LightningDataModule):
         self.split_id = cv
         
 
-    def __getitem__(self, key:Union[np.ndarray, list]) -> BatchInput:
-        return BatchInput(
+    def __getitem__(self, key:Union[np.ndarray, list]) -> Batch:
+        return Batch(
                     df = self.__get_df(key),
-                    pretrained_features = self.__get_pretrained_features(key)
+                    pretrained_features = self.__get_pretrained_features(key),
+                    label_encoder = self.label_encoder
                     )
 
 

@@ -9,6 +9,8 @@ from torch import Tensor
 #segnlp
 from .base import BaseModel
 from segnlp import utils
+from segnlp.utils import Batch
+
 
 class LSTM_ER(BaseModel):
 
@@ -22,7 +24,7 @@ class LSTM_ER(BaseModel):
 
     """
 
-    def __init__(self,  *args, **kwargs):   
+    def __init__(self,  *args, **kwargs) -> None:   
         super().__init__(*args, **kwargs)
 
 
@@ -78,8 +80,7 @@ class LSTM_ER(BaseModel):
                                     )
 
 
-    @utils.timer
-    def token_rep(self, batch: utils.BatchInput, output: utils.BatchOutput):
+    def token_rep(self, batch: Batch) -> dict:
 
         #create pos onehots
         pos_one_hots = self.pos_onehot(
@@ -101,33 +102,32 @@ class LSTM_ER(BaseModel):
                 "lstm_out": lstm_out
                 }
 
-    @utils.timer
-    def token_clf(self, batch: utils.BatchInput, output: utils.BatchOutput):
+
+    def token_clf(self, batch: Batch, rep_out: dict) -> dict:
         logits, preds  = self.segmenter(
-                                input = output.stuff["lstm_out"],
+                                input = rep_out["lstm_out"],
                                 )
-        return [
-                {
-                "task": self.seg_task,
-                "logits": logits,
-                "preds": preds,
-                }
-                ]
+        
+        batch.add("token", "seg+label", preds)
+        return {"seg+label": logits}
 
-    @utils.timer
-    def seg_rep(self, batch: utils.BatchInput, output: utils.BatchOutput):
+    
+    def token_loss(self, batch: Batch, clf_out: dict) -> Tensor:
+        return self.segmenter.loss(
+                                targets =  batch.get("token", "seg+label"),
+                                logits = clf_out["seg+label"],
+                                )
 
+
+    def seg_rep(self, batch: Batch, token_rep_out: dict) -> dict:
 
         # get the average embedding for each segments 
         seg_embs = self.agg(
                             input = batch.get("token", "embs"),
-                            lengths = output.get_seg_data()["lengths"], 
-                            span_idxs = output.get_seg_data()["span_idxs"],
+                            lengths = batch.get("seg", "lengths", pred = True), 
+                            span_idxs = batch.get("seg", "span_idxs", pred = True),
                             device = batch.device
                             )
-
-        pair_data = output.get_pair_data()
-
 
         #create dependecy relation onehots
         dep_one_hots = self.dep_onehot(
@@ -136,20 +136,23 @@ class LSTM_ER(BaseModel):
                         device = batch.device
         )
 
+        token_label_one_hots = utils.one_hot(batch("token", "seg+label", pred = True))
+
+
         # We create Non-Directional Pair Embeddings using DepTreeLSTM
         # If we have the segments A,B,C. E.g. embeddings for the pairs (A,A), (A,B), (A,C), (B,B), (B,C)
         tree_pair_embs = self.deptreelstm(    
                                             input = (
-                                                        output.stuff["lstm_out"],
+                                                        token_rep_out["lstm_out"],
                                                         dep_one_hots,
-                                                        output.get_preds("seg+label", one_hot = True),
+                                                        token_label_one_hots,
                                                         ),
                                             roots = batch.get("token", "root_idx"),
                                             deplinks = batch.get("token", "dephead"),
                                             token_mask = batch.get("token", "mask"),
-                                            starts = pair_data["nodir"]["p1_end"],
-                                            ends = pair_data["nodir"]["p2_end"], #the last token indexes in each seg
-                                            lengths = pair_data["nodir"]["lengths"],
+                                            starts = batch.get("pair", "p1_end", bidir = False),
+                                            ends = batch.get("pair", "p2_end", bidir = False), #the last token indexes in each seg
+                                            lengths = batch.get("pair", "lengths", bidir = False),
                                             device = batch.device
                                             )
 
@@ -158,9 +161,9 @@ class LSTM_ER(BaseModel):
         seg_embs_flat = seg_embs[batch.get("seg", "mask").type(torch.bool)]
 
         pair_embs = torch.cat((
-                                seg_embs_flat[pair_data["bidir"]["p1"]], 
-                                seg_embs_flat[pair_data["bidir"]["p2"]],
-                                tree_pair_embs[pair_data["bidir"]["id"]]
+                                seg_embs_flat[batch.get("pair", "p1", bidir = True)],
+                                seg_embs_flat[batch.get("pair", "p2", bidir = True)],
+                                tree_pair_embs[batch.get("pair", "id", bidir = True)]
                                 ),
                                 dim=-1
                                 )
@@ -173,48 +176,30 @@ class LSTM_ER(BaseModel):
                 }
 
 
-    @utils.timer
-    def seg_clf(self, batch: utils.BatchInput, output: utils.BatchOutput):
-
-        pair_data = output.get_pair_data()
+    def seg_clf(self, batch: Batch, rep_out: dict) -> dict:
 
         # We predict link labels for both directions. Get the dominant pair dir
         # plus roots' probabilities
         link_label_logits, link_label_preds, link_preds =  self.link_labeler(
-                                            input = output.stuff["pair_embs"],
-                                            pair_p1 = pair_data["bidir"]["p1"],
-                                            pair_p2 =  pair_data["bidir"]["p2"],
+                                            input = rep_out["pair_embs"],
+                                            pair_p1 = batch.get("pair", "p1", bidir = True),
+                                            pair_p2 =  batch.get("pair", "p2", bidir = True),
                                             )
 
-        return [
-                {
-                    "task": "link_label",
-                    "logits": link_label_logits,
-                    "preds": link_label_preds,
-                    "level": "p_seg",
-                  },
-                {
-                    "task": "link",
-                    "preds": link_preds,
-                    "level": "p_seg",
-                  }
-                ]
+        # add our prediction to the batch
+        batch.add("p-seg", "link_label", link_label_preds)
+        batch.add("p-seg", "link", link_preds)
+
+
+        return { "link_label": link_label_logits}
                     
-    
-    def token_loss(self, batch: utils.BatchInput, output: utils.BatchOutput):
-        return self.segmenter.loss(
-                                targets =  batch.get("token", "seg+label"),
-                                logits = output.logits["seg+label"],
-                                )
 
-
-    def seg_loss(self, batch: utils.BatchInput, output: utils.BatchOutput):
-        pair_data = output.get_pair_data()
+    def seg_loss(self, batch: Batch, clf_out: dict) -> Tensor:
         return self.link_labeler.loss(
-                                                targets = pair_data["bidir"]["link_label"],
-                                                logits = output.logits["link_label"],
-                                                directions = pair_data["bidir"]["direction"],
-                                                true_link = pair_data["bidir"]["true_link"], 
-                                                p1_match_ratio = pair_data["bidir"]["p1-ratio"],
-                                                p2_match_ratio = pair_data["bidir"]["p2-ratio"]
+                                                targets = batch.get("pair", "link_label", bidir = True, pred = False),
+                                                logits = clf_out["link_label"],
+                                                directions = batch.get("pair", "direction", bidir = True, pred = True),
+                                                true_link = batch.get("pair", "true_link", bidir = True, pred = True), 
+                                                p1_match_ratio = batch.get("pair", "p1-ratio", bidir = True, pred = True), #pair_data["bidir"]["p1-ratio"],
+                                                p2_match_ratio = batch.get("pair", "p2-ratio", bidir = True, pred = True), #pair_data["bidir"]["p2-ratio"]
                                                 )

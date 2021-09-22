@@ -1,6 +1,7 @@
 
 #pytroch
 import torch
+from torch.functional import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.modules import module
@@ -8,6 +9,7 @@ from torch.nn.modules import module
 #segnlp
 from .base import BaseModel
 from segnlp import utils
+from segnlp.utils import Batch
 
 
 class JointPN(BaseModel):
@@ -101,7 +103,7 @@ class JointPN(BaseModel):
         return "JointPN"
     
 
-    def seg_rep(self, batch: utils.BatchInput, output: utils.BatchOutput):
+    def seg_rep(self, batch: Batch):
 
         seg_embs = self.agg(
                             input = batch.get("token", "word_embs"), 
@@ -144,7 +146,7 @@ class JointPN(BaseModel):
                 }
         
 
-    def seg_clf(self, batch:utils.BatchInput, output:utils.BatchOutput):
+    def seg_clf(self, batch:Batch, seg_rep_out:dict) -> dict:
 
         label_logits, label_preds = self.labeler(input = output.stuff["encoder_out"])
 
@@ -168,8 +170,7 @@ class JointPN(BaseModel):
                 ]
                     
 
-
-    def loss(self, batch: utils.BatchInput, output: utils.BatchOutput):
+    def seg_loss(self, batch: Batch, seg_clf_out:dict) -> Tensor:
 
         label_loss = self.labeler.loss(
                                         logits = output.logits["label"],

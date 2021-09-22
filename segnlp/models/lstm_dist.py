@@ -10,13 +10,13 @@ import time
 
 #pytroch
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
+from torch import Tensor
 
 #segnlp
 from .base import BaseModel
 from segnlp import utils
+from segnlp.utils import Batch
+
 
 class LSTM_DIST(BaseModel):
 
@@ -37,7 +37,7 @@ class LSTM_DIST(BaseModel):
 
     """
 
-    def __init__(self,  *args, **kwargs):   
+    def __init__(self,  *args, **kwargs) -> None:   
         super().__init__(*args, **kwargs)
 
 
@@ -127,11 +127,11 @@ class LSTM_DIST(BaseModel):
 
 
     @classmethod
-    def name(self):
+    def name(self) -> str:
         return "LSTM_DIST"
 
 
-    def seg_rep(self, batch: utils.BatchInput, output: utils.BatchOutput):
+    def seg_rep(self, batch: Batch, token_rep_out: dict) -> dict:
 
 
         lstm_out, _ = self.word_lstm(
@@ -216,7 +216,7 @@ class LSTM_DIST(BaseModel):
                 }
 
 
-    def seg_clf(self, batch: utils.BatchInput, output: utils.BatchOutput):
+    def seg_clf(self, batch: Batch, seg_rep_out: dict) -> dict:
 
         # classify the label of the segments
         label_logits, label_preds = self.labeler(output.stuff["adu_emb"])
@@ -249,12 +249,7 @@ class LSTM_DIST(BaseModel):
                 ]
                     
 
-
-
-
-
-
-    def loss(self, batch: utils.BatchInput, output: utils.BatchOutput):
+    def seg_loss(self, batch: Batch, seg_clf_out: dict) -> Tensor:
 
         link_loss = self.linker.loss(
                                 torch.flatten(output.logits["link"], end_dim=-2), 

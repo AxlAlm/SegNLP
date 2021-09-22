@@ -2,12 +2,14 @@
 
 #pytroch
 import torch
+from torch.functional import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
 
 #segnlp
 from .base import BaseModel
 from segnlp import utils
+from segnlp.utils import Batch
 
 
 class LSTM_CNN_CRF(BaseModel):
@@ -60,11 +62,11 @@ class LSTM_CNN_CRF(BaseModel):
 
 
     @classmethod
-    def name(self):
+    def name(self) -> str:
         return "LSTM_CNN_CRF"
 
 
-    def token_rep(self, batch: utils.BatchInput, output: utils.BatchOutput):
+    def token_rep(self, batch: Batch):
 
         #fine-tune word embeddings by reprojecting them with a linear layer
         word_embs = self.finetuner(batch.get("token", "word_embs"))
@@ -86,7 +88,7 @@ class LSTM_CNN_CRF(BaseModel):
                 }
 
 
-    def token_clf(self, batch: utils.BatchInput, output: utils.BatchOutput):
+    def token_clf(self, batch: Batch, token_rep_out: dict) -> dict:
         logits, preds  = self.segmenter(
                                     input=output.stuff["lstm_out"],
                                     mask=batch.get("token", "mask"),
@@ -99,7 +101,8 @@ class LSTM_CNN_CRF(BaseModel):
                 }
                 ]
 
-    def loss(self, batch: utils.BatchInput, output: utils.BatchOutput):
+
+    def token_loss(self, batch: Batch, token_clf_out:dict) -> Tensor:
         return self.segmenter.loss(
                                         logits = output.logits[self.seg_task],
                                         targets = batch.get("token", self.seg_task),

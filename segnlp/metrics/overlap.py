@@ -7,6 +7,9 @@ from collections import Counter
 #sklearn
 from sklearn.metrics import confusion_matrix
 
+# segnlp
+from .metric_utils import overlap_ratio
+
 
 def extract_match_info(df):
     
@@ -251,7 +254,20 @@ def calc_f1(cm:np.array, labels:list, prefix:str):
 
 def overlap_metric(df:pd.DataFrame, task_labels:dict):
 
-    exact, approx, i2j_exact, i2j_approx, i = extract_match_info(df)
+
+    i, j, ratio = overlap_ratio(
+                                    target_df = df.loc["TARGET"],  
+                                    pred_df = df.loc["PRED"]
+                                    )
+
+    
+    exact = ratio == 1.0
+    approx = ratio >= 0.5
+
+    #contains mapping between i j where i is an exact/approx match for j
+    i2j_exact = dict(zip(i[exact], j[exact]))
+    i2j_approx = dict(zip(i[approx], j[approx]))
+
     
     # we remap all i to j, if we dont find any i that maps to a j
     # we swap j to -1 (map defults to NaN but we change to -1)

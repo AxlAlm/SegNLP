@@ -7,6 +7,10 @@ import numpy as np
 import os
 import pwd
 
+#spacy
+from spacy.language import Language
+
+
 #pytorch
 import torch
 
@@ -23,7 +27,7 @@ from segnlp import get_logger
 from segnlp.datasets.base import DataSet
 import segnlp.utils as utils
 from segnlp import models
-
+from segnlp.models.base import BaseModel
 
 logger = get_logger("PIPELINE")
 user_dir = pwd.getpwuid(os.getuid()).pw_dir
@@ -53,33 +57,31 @@ class Pipeline(
                 ):
 
         #general
-        self.id = id
-        self.model = getattr(models, model) if isinstance(model,str) else model
-        self.evaluation_method = evaluation_method
-        self.metric = metric
-
-        self.training = True
-        self.testing = True
-
+        self.id : str = id
+        self.model : BaseModel = getattr(models, model) if isinstance(model,str) else model
+        self.evaluation_method : str = evaluation_method
+        self.metric : str = metric
+        self.training : bool = True
+        self.testing : bool = True
 
 
         # task info
-        self.prediction_level = dataset.prediction_level
-        self.sample_level = dataset.sample_level
-        self.input_level = dataset.level
-        self.tasks = dataset.tasks
-        self.subtasks = dataset.subtasks
-        self.task_labels = dataset.task_labels
-        self.dataset_level = dataset.level
-        self.all_tasks = sorted(set(self.tasks + self.subtasks))
-        self.label_encoder = utils.LabelEncoder(task_labels = self.task_labels)
+        self.dataset_level : str = dataset.level
+        self.prediction_level : str = dataset.prediction_level
+        self.sample_level : str = dataset.sample_level
+        self.input_level : str = dataset.level
+        self.tasks : list = dataset.tasks
+        self.subtasks : list = dataset.subtasks
+        self.task_labels : Dict[str,list] = dataset.task_labels
+        self.all_tasks : list = sorted(set(self.tasks + self.subtasks))
+        self.label_encoder : utils.LabelEncoder = utils.LabelEncoder(task_labels = self.task_labels)
    
 
         # data storing / dataset preprocessing
-        self._init_storage_done = False
+        self._init_storage_done : bool = False
 
         # argumentative markers
-        self.argumentative_markers = False 
+        self.argumentative_markers : bool = False 
         if "am" in other_levels:
             self.argumentative_markers = True
 
@@ -89,32 +91,32 @@ class Pipeline(
                 self.am_extraction = "pre"
 
         # pretrained featues
-        self.feature2model = {fm.name:fm for fm in pretrained_features}
-        self.features = list(self.feature2model.keys())
-        self._feature_groups = set([fm.group for fm in pretrained_features])
-        self.feature2dim = {fm.name:fm.feature_dim for fm in pretrained_features}
+        self.feature2model : dict = {fm.name:fm for fm in pretrained_features}
+        self.features : list = list(self.feature2model.keys())
+        self._feature_groups : set = set([fm.group for fm in pretrained_features])
+        self.feature2dim : dict = {fm.name:fm.feature_dim for fm in pretrained_features}
         self.feature2dim.update({
                                 group:sum([fm.feature_dim for fm in pretrained_features if fm.group == group]) 
                                 for group in self._feature_groups
                                 })
-        self._use_pwf = "word_embs" in self._feature_groups
-        self._use_psf = "seg_embs" in self._feature_groups
+        self._use_pwf : bool = "word_embs" in self._feature_groups
+        self._use_psf : bool = "seg_embs" in self._feature_groups
 
 
         # preprocessing
-        self._need_bio = "seg" in self.subtasks
-        self._labeling = True
-        self._removed = 0
+        self._need_bio : bool = "seg" in self.subtasks
+        self._labeling : bool = True
+        self._removed : int = 0
 
         # Text Processing
-        self.level2parents = {
+        self.level2parents : dict = {
                                 "token": ["sentence", "paragraph", "document"],
                                 "sentence": ["paragraph", "document"],
                                 "paragraph": ["document"],
                                 "document": []
                                 }
 
-        self.parent2children = {
+        self.parent2children : dict = {
                                 "document": ["paragraph","sentence", "token"],
                                 "paragraph": ["sentence", "token"],
                                 "sentence": ["token"],
@@ -123,8 +125,8 @@ class Pipeline(
         self._prune_hiers()
 
         # storing the current row for each level, used to fetch ids etc for lower lever data
-        self._level_row_cache = {}
-        self.nlp = self._load_nlp_model()
+        self._level_row_cache : dict = {}
+        self.nlp : Language = self._load_nlp_model()
     
 
         #create and save config
@@ -147,7 +149,7 @@ class Pipeline(
                             )
 
         #setup pipeline  root folder
-        self._path = os.path.join(root_dir, self.id)
+        self._path : str = os.path.join(root_dir, self.id)
 
         if overwrite:
             logger.info(f"Overriding all data in {self._path} by moving existing folder to /tmp/ and creating a new folder")
@@ -166,10 +168,10 @@ class Pipeline(
 
 
         # Setup the main folder names
-        self._path_to_models  = os.path.join(self._path, "models")
-        self._path_to_data = os.path.join(self._path, "data")
-        self._path_to_logs = os.path.join(self._path, "logs")
-        self._path_to_hps = os.path.join(self._path, "hps")
+        self._path_to_models  : str = os.path.join(self._path, "models")
+        self._path_to_data : str = os.path.join(self._path, "data")
+        self._path_to_logs : str = os.path.join(self._path, "logs")
+        self._path_to_hps : str = os.path.join(self._path, "hps")
 
         # create the main folders
         os.makedirs(self._path_to_models, exist_ok=True)
@@ -178,19 +180,19 @@ class Pipeline(
         os.makedirs(self._path_to_hps, exist_ok=True)
 
         # set up files paths
-        self._path_to_df = os.path.join(self._path_to_data, "df.hdf5") # for dataframe
-        self._path_to_pwf = os.path.join(self._path_to_data, "pwf.hdf5") # for pretrained word features
-        self._path_to_psf = os.path.join(self._path_to_data, "psf.hdf5") # for pretrained segment features
-        self._path_to_splits = os.path.join(self._path_to_data, "splits.pkl") # for splits
-        self._path_to_hp_hist = os.path.join(self._path_to_hps, "hist.txt") # for hp history
+        self._path_to_df : str = os.path.join(self._path_to_data, "df.hdf5") # for dataframe
+        self._path_to_pwf : str = os.path.join(self._path_to_data, "pwf.hdf5") # for pretrained word features
+        self._path_to_psf : str = os.path.join(self._path_to_data, "psf.hdf5") # for pretrained segment features
+        self._path_to_splits : str = os.path.join(self._path_to_data, "splits.pkl") # for splits
+        self._path_to_hp_hist : str = os.path.join(self._path_to_hps, "hist.txt") # for hp history
 
         if not os.path.exists(self._path_to_hp_hist):
             open(self._path_to_hp_hist, 'w')
 
-        self._path_to_hp_json = os.path.join(self._path_to_hps, "hps.json") # for storing hps
+        self._path_to_hp_json : str = os.path.join(self._path_to_hps, "hps.json") # for storing hps
 
 
-        self.logger = utils.CSVLogger(self._path_to_logs)
+        self.logger : utils.CSVLogger = utils.CSVLogger(self._path_to_logs)
 
         #dump config
         self.__dump_config()
@@ -208,7 +210,6 @@ class Pipeline(
         self.deactivate_preprocessing()
 
     
-
     @classmethod
     def load(self, model_dir_path:str=None, pipeline_folder:str=None, root_dir:str =f"{user_dir}/.segnlp/pipelines"):
         

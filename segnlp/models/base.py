@@ -14,6 +14,7 @@ import torch.nn.functional as F
 #segnlp
 from segnlp import get_logger
 from segnlp import utils
+from segnlp.utils import Batch
 from segnlp.utils import LabelEncoder
 
 from segnlp.layers import link_labelers
@@ -54,17 +55,6 @@ class BaseModel(nn.Module):
                                             task_labels = label_encoder.task_labels,
                                             )
 
-        # setting up an output object which will format and store outputs for each batch.
-        # using .step() will create a batch specific output container which will be used to store information 
-        # throughout the step
-        self.output = utils.BatchOutput(
-                                        label_encoder = label_encoder, 
-                                        )
-
-        # the batch outputs can be collected and stored to get outputs over a complete split. E.g. returning 
-        # test outputs or validation outputs
-        self.outputs : Dict[str, dict[str, float]] = {"val":[], "test":[], "train":[]}
-
 
         # for all layers that do classification we need to know which task they are classifying 
         # so we keep track on this by creating a mapping dict. Things will be added to this
@@ -89,53 +79,30 @@ class BaseModel(nn.Module):
         return self.__name__
 
 
-    @utils.timer
-    def __rep(self, batch:utils.BatchInput, output:utils.BatchOutput, module_type:str):
+    def __rep(self, batch:Batch, module_type:str):
         
         f_name = f"{module_type}_rep"
 
         if not hasattr(self,  f_name):
             return 
 
-        stuff = getattr(self, f_name)(batch, output)
+        return getattr(self, f_name)(batch)   
 
-        assert isinstance(stuff, dict)
-        output.add_stuff(stuff)
 
-    @utils.timer
-    def __clf(self, batch:utils.BatchInput, output:utils.BatchOutput, module_type:str):
+    def __clf(self, batch:Batch, module_type:str):
         
         f_name = f"{module_type}_clf"
-
-        level = "seg" if module_type == "segment" else "token"
 
         if not hasattr(self,  f_name):
             return 
 
-        task_outs = getattr(self, f_name)(batch, output)
+        return getattr(self, f_name)(batch)
 
-        assert isinstance(task_outs, list)
-
-        for task_dict in task_outs:
-
-            level = level if "level" not in task_dict else task_dict["level"]
-
-            if "task" in task_dict:
-                output.add_preds(
-                                task_dict["preds"], 
-                                level = level,
-                                task = task_dict["task"]
-                                )
-
-            if "logits" in task_dict:
-                output.add_logits(
-                                    task_dict["logits"], 
-                                    task = task_dict["task"]
-                                    )
+ 
 
     @utils.timer
     def forward(self, 
-                batch:utils.BatchInput, 
+                batch:Batch, 
                 split:str, 
                 use_target_segs : bool = False
                 ):
@@ -149,32 +116,31 @@ class BaseModel(nn.Module):
 
         total_loss = 0
 
+        token_rep_out = None # set a default value incase module is skipped
         # we skip the token_module
         if  not self._token_layers_are_frozen:
             
             # 1) represent tokens
-            self.__rep(batch, output, "token")
+            token_rep_out = self.__rep(batch, "token")
 
             # 2) classifiy on tokens
-            self.__clf(batch, output, "token")
-
+            token_clf_out = self.__clf(batch, token_rep_out, "token")
 
             if not self.inference:
-                total_loss += self.token_loss(batch, output)
+                total_loss += self.token_loss(batch, token_clf_out)
 
 
         # we freeze the segment module
         if not self._segment_layers_are_frozen:
 
             # 3) represent segments
-            self.__rep(batch, output, "seg")
+            seg_rep_out = self.__rep(batch, token_rep_out, "seg")
 
             # 4) classify segments
-            self.__clf(batch, output, "seg")
-
+            seg_clf_out = self.__clf(batch, seg_rep_out, "seg")
 
             if not self.inference:
-                total_loss += self.seg_loss(batch, output)
+                total_loss += self.seg_loss(batch, seg_clf_out)
 
 
         # Will take the prediction dataframe created during the forward pass
