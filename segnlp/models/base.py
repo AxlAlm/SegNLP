@@ -109,7 +109,6 @@ class BaseModel(nn.Module):
             if not self.inference:
                 total_loss += self.seg_loss(batch, seg_clf_out)
 
-
         return total_loss
 
 

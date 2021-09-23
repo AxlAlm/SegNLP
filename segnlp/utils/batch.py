@@ -20,7 +20,7 @@ from .array import ensure_list
 from .array import create_mask
 from .array import np_cumsum_zero
 from .cache import Memorize
-from segnlp.metrics.metric_utils import overlap_ratio
+from .find_overlap import find_overlap
 
 
 
@@ -206,21 +206,29 @@ class Batch:
         pair_df.loc[pair_df["p1"] > pair_df["p2"], "direction"] = 2 # <-
 
 
+        # we also have information about whether the seg_id is a true segments 
+        # and if so, which TRUE segmentent id it overlaps with, and how much
+        i, j, ratio = find_overlap(
+                                                target_df = self._df,  
+                                                pred_df = self._pred_df
+                                                )
+
+        # adding ratio for true seg ids for each p1,p2
+        i2ratio = dict(zip(i, ratio))
+        j2ratio = dict(zip(j, ratio))
+        i2j = dict(zip(i, j))
+        j2i = dict(zip(j, i))
+
+        # adding matching info to _df 
+        self._df["i"] = self._df["seg_id"].map(j2i)
+        self._df["i_ratio"] = self._df["seg_id"].map(j2ratio)
+
+        # adding matching info to pred_df 
+        self._pred_df["j"] = self._pred_df["seg_id"].map(i2j)
+        self._pred_df["j_ratio"] = self._pred_df["seg_id"].map(i2ratio)
+
 
         if pred:
-            # we also have information about whether the seg_id is a true segments 
-            # and if so, which TRUE segmentent id it overlaps with, and how much
-            seg_id, T_seg_id, ratio = overlap_ratio(
-                                                    target_df = self._df,  
-                                                    pred_df = self._pred_df
-                                                    )
-
-            # p1_matches = np.isin(pair_df["p1"], seg_id)
-            # p2_matches = np.isin(pair_df["p2"], seg_id)
-
-            # adding ratio for true seg ids for each p1,p2
-            i2ratio = dict(zip(seg_id, ratio))
-
             pair_df["p1-ratio"] = pair_df["p1-ratio"].map(i2ratio)
             pair_df["p2-ratio"] = pair_df["p2-ratio"].map(i2ratio)
         else:
@@ -363,6 +371,19 @@ class Batch:
 
 
     def add(self, level:str, key:str, value:str):
+
+        # if we are using TARGET segmentation results we  overwrite the 
+        # columns of seg_id with TARGET seg_id as well as TARGET labels for each
+        # task done in segmenation
+        if "seg" in key and self.use_target_segs:
+
+            self._pred_df["seg_id"] = self._df["seg_id"].to_numpy()
+
+            for subtask in key.split("+"):
+                self._pred_df[subtask] = self._df[subtask].to_numpy()
+
+            return
+            
         
         if level == "token":
             mask = ensure_numpy(self.get("token", "mask")).astype(bool)
@@ -374,7 +395,7 @@ class Batch:
             seg_preds = ensure_numpy(value)[mask]
             
             # we spread the predictions on segments over tokens in TARGET segments
-            cond = ~self._df.loc["seg_id"].isna()
+            cond = ~self._df["seg_id"].isna()
 
             # expand the segment prediction for all their tokens 
             token_preds = np.repeat(seg_preds, ensure_numpy(self.get("seg", "lengths_tok"))[mask])
@@ -386,7 +407,7 @@ class Batch:
         elif level == "p_seg":
 
             #get the lengths of each segment
-            seg_lengths = self._pred_df.loc.groupby("seg_id", sort=False).size().to_numpy()
+            seg_lengths = self._pred_df.groupby("seg_id", sort=False).size().to_numpy()
             
             #expand the predictions over the tokens in the segments
             token_preds = np.repeat(value, seg_lengths)
@@ -394,7 +415,7 @@ class Batch:
             # as predicts are given in seg ids ordered from 0 to nr predicted segments
             # we can just remove all rows which doesnt belong to a predicted segments and 
             # it will match all the token preds and be in the correct order.
-            self._pred_df.loc[~self._pred_df.loc["seg_id"].isna(), key] = token_preds
+            self._pred_df.loc[~self._pred_df["seg_id"].isna(), key] = token_preds
 
 
         self._pred_df = self.label_encoder.validate(
@@ -402,7 +423,31 @@ class Batch:
                                                     df = self._pred_df,
                                                     level = level,
                                                     )
+        
+
+        # creating target_ids for links
+        if key == "link":
+            
+            for si, sample_df in self._pred_df.groupby("sample_id", sort = False):
                 
+                # remove samples that doens have segments if we are predicting on segments
+                segs = sample_df.groupby("seg_id", sort = False)
+            
+                # it might be helpfult to keep track on the global seg_id of the target
+                # i.e. the seg_id of the linked segment
+                seg_first = segs.first()
+
+                links = seg_first["link"].to_numpy(dtype=int)
+
+                target_ids = seg_first.index.to_numpy()[links]
+
+                # remove rows outside segments
+                is_not_nan = ~sample_df["seg_id"].isna()
+
+                # exapnd target_id over the rows
+                self._pred_df.loc[si].loc[is_not_nan, "target_id"] = np.repeat(target_ids, segs.size().to_numpy())
+                
+
 
     def to(self, device):
         self.device = device

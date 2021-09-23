@@ -188,11 +188,12 @@ class LSTM_ER(BaseModel):
                                             input = rep_out["pair_embs"],
                                             pair_p1 = batch.get("pair", "p1", bidir = True),
                                             pair_p2 =  batch.get("pair", "p2", bidir = True),
+                                            sample_id = batch.get("pair", "sample_id", bidir = True)
                                             )
 
         # add our prediction to the batch
-        batch.add("p-seg", "link_label", link_label_preds)
-        batch.add("p-seg", "link", link_preds)
+        batch.add("p_seg", "link_label", link_label_preds)
+        batch.add("p_seg", "link", link_preds)
 
 
         return { "link_label": link_label_logits}

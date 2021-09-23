@@ -106,11 +106,21 @@ class DatasetPreprocessor:
 
             if self.argumentative_markers:
                 sample = self._label_ams(sample, mode=self.am_extraction)
-                
-            seg_length = len(sample.groupby("seg_id", sort = False))
+            
+
+            # remove samples that doens have segments if we are predicting on segments
+            segs = sample.groupby("seg_id", sort = False)
+            seg_length = len(segs)
             if self.prediction_level == "seg" and seg_length == 0:
                 continue
+
+            # it might be helpfult to keep track on the global seg_id of the target
+            # i.e. the seg_id of the linked segment
+            seg_first = segs.first()
+            target_ids = seg_first.index.to_numpy()[seg_first["link"].to_numpy()]
+            sample.loc[~sample["seg_id"].isna() ,"target_id"] = np.repeat(target_ids, segs.size().to_numpy())
             
+
             pretrained_features = self._extract_pretrained_features(sample)
 
             if "seg_embs" in pretrained_features:

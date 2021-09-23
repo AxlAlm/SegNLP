@@ -11,6 +11,7 @@ import numpy as np
 # pytorch
 import torch
 from torch import Tensor
+from torch._C import dtype
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -54,11 +55,15 @@ class DirLinkLabeler(nn.Module):
     def __get_preds(self, 
                     logits: Tensor,  
                     pair_p1: Tensor,
-                    pair_p2: Tensor
+                    pair_p2: Tensor,
+                    sample_id: Tensor
                     ):
 
         # we take the max value and labels for each of the Link labels
         v, l = torch.max(logits, dim=-1)
+
+        pair_p1 = utils.ensure_numpy(pair_p1)
+        pair_p2 = utils.ensure_numpy(pair_p2)
 
         #then we build a df
         df = pd.DataFrame(
@@ -116,8 +121,18 @@ class DirLinkLabeler(nn.Module):
         df.sort_values(by=['value'], inplace=True, ascending=False)
         seg_df = df.groupby("p1").first()
 
+  
+        # lastly, we need to turn p2 inte link, i.e. p2 refer to an unique seg in the batch
+        # but links needs to be a index to a segment in a sample
+        # To normalize p2 we subtract with the utils.cumsum_zero() of all sample segment lengths
+        # I.e. the start of the global segment id for each sample
+        lengths_segs = pd.DataFrame({"p1": pair_p1, "sample_id":sample_id}).groupby("sample_id", sort = False)["p1"].nunique().to_numpy()
+        g_seg_starts =  utils.np_cumsum_zero(lengths_segs)
+        seg_df["link"] = seg_df.pop("p2") - np.repeat(g_seg_starts, lengths_segs)
+
+
         link_label_preds = seg_df["label"].to_numpy()
-        links = seg_df["p2"].to_numpy()
+        links = seg_df["link"].to_numpy()
 
         return link_label_preds, links
 
@@ -126,13 +141,15 @@ class DirLinkLabeler(nn.Module):
                 input:Tensor,
                 pair_p1 : Tensor,
                 pair_p2 : Tensor,
+                sample_id: Tensor,
                 ):
 
         logits = self.clf(self.dropout(input))
         link_labels, links = self.__get_preds(
                                     logits = logits,
                                     pair_p1 = pair_p1,
-                                    pair_p2 = pair_p2
+                                    pair_p2 = pair_p2,
+                                    sample_id = sample_id,
                                     )
 
         return logits, link_labels, links
