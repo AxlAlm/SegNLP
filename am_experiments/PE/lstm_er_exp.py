@@ -6,10 +6,6 @@ from segnlp import Pipeline
 from segnlp.datasets.am import PE
 from segnlp.pretrained_features import GloveEmbeddings
 
-import flair, torch
-flair.device = torch.device('cpu') 
-
-
             
 exp = Pipeline(
                 id="lstm_er_pe",
@@ -35,8 +31,8 @@ hps = {
                 "max_epochs":100,
                 "patience": 10,
                 "task_weight": 0.5,
-                "use_target_segs_k": 10,
-                #"freeze_segment_module_k": 5,
+                #"use_target_segs_k": 10,
+                "freeze_segment_module_k": 5,
                 },
 
        "LSTM": {   

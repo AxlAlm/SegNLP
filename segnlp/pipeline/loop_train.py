@@ -1,6 +1,7 @@
 
 
 #basics
+from segnlp.utils.array import ensure_numpy
 from tqdm import tqdm
 from typing import Union
 import os
@@ -84,8 +85,15 @@ class TrainLoop:
                                         hyperparamaters = hyperparamaters
                                         )
 
- 
-        for epoch in tqdm(range(max_epochs), desc = "Epochs", position=2):
+        # train batches
+        postfix = { 
+                    "train_loss" : 0.0, 
+                    "val_loss": 0.0, 
+                    f"train_{monitor_metric}":0.0,
+                    f"val_{monitor_metric}":0.0
+                    }
+            
+        for epoch in range(max_epochs):
 
             # we make sure to generate our batches each epoch so that we can shuffle 
             # the whole dataset so we dont keep feeding the model the same batches each epoch
@@ -93,6 +101,14 @@ class TrainLoop:
             train_dataset = datamodule.step(split = "train")
             val_dataset = datamodule.step(split = "val")
  
+            #setup tqmd
+            epoch_tqdm = tqdm(
+                            total = len(train_dataset) + len(val_dataset), 
+                            desc = f"Epoch {epoch}", 
+                            position=2, 
+                            postfix = postfix
+                            )
+
 
             # Sets the model to training mode.
             # will also freeze and set modules to skip if needed
@@ -112,8 +128,8 @@ class TrainLoop:
                         freeze_segment_module = freeze_segment_module,
                         )
 
-            # train batches
-            for train_batch in tqdm(train_dataset, desc = "Train Steps", position=3, total = len(train_dataset)):
+  
+            for train_batch in train_dataset:
                 
                 #if we are using sampling
                 train_batch.use_target_segs = use_target_segs
@@ -137,21 +153,29 @@ class TrainLoop:
                 # update paramaters
                 optimizer.step()
 
+                postfix["train_loss"] = loss.item()
+                epoch_tqdm.set_postfix(postfix)
+                epoch_tqdm.update(1)
+
 
             # Validation Loop
             model.eval()
             with torch.no_grad():
-                for val_batch in tqdm(val_dataset, desc = "Val Steps", position=3, total = len(val_dataset)):
+                for val_batch in val_dataset:
                                             
                     # pass the batch
-                    model(
-                            val_batch, 
-                            split = "val", 
-                            )
+                    val_loss = model(
+                                val_batch, 
+                                split = "val", 
+                                )
                 
                     metric_container.calc_add(val_batch, "val")
 
-                
+                    postfix["val_loss"] = val_loss.item()
+                    epoch_tqdm.set_postfix(postfix)
+                    epoch_tqdm.update(1)
+
+
             # Log train epoch metrics
             train_epoch_metrics = metric_container.calc_epoch_metrics("train")
             self.logger.log_epoch(  
@@ -161,6 +185,8 @@ class TrainLoop:
                                 epoch_metrics = train_epoch_metrics,
                                 cv = cv
                                 )
+
+            postfix[f"train_{monitor_metric}"] = train_epoch_metrics
 
 
             # Log val epoch metrics
@@ -172,8 +198,9 @@ class TrainLoop:
                                 epoch_metrics = val_epoch_metrics,
                                 cv = cv
                                 )
+            postfix[f"val_{monitor_metric}"] = val_epoch_metrics
+
     
-        
             score = val_epoch_metrics[monitor_metric]
 
             # save model
@@ -187,6 +214,9 @@ class TrainLoop:
             # with the optimizer, i.e. change the learning rate in some way
             if lr_scheduler is not None:
                 lr_scheduler.step()
+
+            epoch_tqdm.set_postfix(postfix)
+            epoch_tqdm.update(1)
         
 
 

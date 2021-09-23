@@ -17,6 +17,9 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 
+
+warnings.filterwarnings("ignore")
+
 settings = {
             "dl_n_workers": 1 #multiprocessing.cpu_count()
             }

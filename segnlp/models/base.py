@@ -76,7 +76,6 @@ class BaseModel(nn.Module):
         return self.__name__
 
         
-    @utils.timer
     def forward(self, 
                 batch:Batch, 
                 ):
