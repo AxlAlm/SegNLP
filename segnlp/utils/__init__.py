@@ -20,3 +20,4 @@ from .train_utils import SaveBest
 from .train_utils import EarlyStopping
 from .optimizer import configure_optimizers
 from .csv_logger import CSVLogger
+from .cache import Memorize

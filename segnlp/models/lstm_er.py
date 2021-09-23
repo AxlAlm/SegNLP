@@ -82,9 +82,6 @@ class LSTM_ER(BaseModel):
 
     def token_rep(self, batch: Batch) -> dict:
 
-        batch.get("token", "lengths", pred = True)
-        print(lol)
-
         #create pos onehots
         pos_one_hots = self.pos_onehot(
                         input = batch.get("token", "pos"),
@@ -139,7 +136,11 @@ class LSTM_ER(BaseModel):
                         device = batch.device
         )
 
-        token_label_one_hots = utils.one_hot(batch("token", "seg+label", pred = True))
+        token_label_one_hots = utils.one_hot(
+                                            batch.get("token", "seg+label", pred = True), 
+                                            batch.get("token", "mask"), 
+                                            num_classes=self.task_dims["seg+label"]
+                                            )
 
 
         # We create Non-Directional Pair Embeddings using DepTreeLSTM

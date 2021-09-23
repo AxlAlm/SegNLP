@@ -67,7 +67,13 @@ def overlap_ratio(pred_df : pd.DataFrame, target_df : pd.DataFrame) -> Tuple[np.
     # we extract matching information. Which predicted segments are overlapping with which 
     # ground truth segments
     overlap_info = np.vstack(tdf.groupby(level = 0, sort=False).apply(_overlap, (pdf)))
+
+    # lets remove rows with nan, as they lack any match
+    is_nan = np.isnan(overlap_info[:, :2])
+    nan_mask = ~np.logical_or(is_nan[:,0], is_nan[:,1])
+    overlap_info = overlap_info[nan_mask]
     
+        
     #seperate the info
     i = overlap_info[:,0].astype(int) #predicted segment id
     j = overlap_info[:,1].astype(int) # ground truth segment id

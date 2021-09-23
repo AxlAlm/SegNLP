@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import re
 from functools import wraps
+from typing import Union
 
 
 # pytorch
@@ -13,9 +14,14 @@ from torch._C import dtype
 from torch.nn.utils.rnn import pad_sequence
 
 # segnlp
-from segnlp import utils
 from .label_encoder import LabelEncoder
 from .array import ensure_numpy
+from .array import ensure_list
+from .array import create_mask
+from .array import np_cumsum_zero
+from .cache import Memorize
+from segnlp.metrics.metric_utils import overlap_ratio
+
 
 
 class Batch:
@@ -53,12 +59,25 @@ class Batch:
 
         self._size = self._df["sample_id"].nunique()
 
-        self.use_target_segs : bool = True
+        self.use_target_segs : bool = False
 
 
     def __len__(self):
         return self._size
  
+
+    def __sampling_wrapper(func):
+        
+        @wraps(func)
+        def wrapped_get(self, *args, **kwargs):
+            
+            if self.use_target_segs:
+                kwargs["pred"] = False
+
+            return func(self, *args, **kwargs)
+        
+        return wrapped_get
+
 
     def __get_column_values(self, df: pd.DataFrame, level: str, key:str):
 
@@ -95,7 +114,7 @@ class Batch:
 
 
     def __get_mask(self, level:str, pred : bool = False):
-        return utils.create_mask(self.get(level, "lengths", pred), as_bool = True)
+        return create_mask(self.get(level, "lengths", pred), as_bool = True)
 
 
     def __get_lengths(self, df: pd.DataFrame, level:str):
@@ -121,7 +140,7 @@ class Batch:
         return torch.tensor(embs, dtype = torch.float)
 
 
-    def __create_pair_df(self, pred : bool = False):
+    def __create_pair_df(self, df: pd.DataFrame, pred :bool):
 
 
         def set_id_fn():
@@ -138,14 +157,11 @@ class Batch:
             return set_id
 
 
-        df = self._pred_df if pred else self._df
-
         first_df = df.groupby("seg_id", sort=False).first()
         first_df.reset_index(inplace=True)
 
         last_df = df.groupby("seg_id", sort=False).last()
         last_df.reset_index(inplace=True)
-
 
         # we create ids for each memeber of the pairs
         # the segments in the batch will have unique ids starting from 0 to 
@@ -171,8 +187,8 @@ class Batch:
         # create ids for each NON-directional pair
         pair_df["id"] = pair_df.apply(set_id_fn(), axis=1)
 
-        # #set the sample id for each pair
-        # pair_df["sample_id"] = first_df.loc[pair_df["p1"], "sample_id"].to_numpy()
+        #set the sample id for each pair
+        pair_df["sample_id"] = first_df.loc[pair_df["p1"], "sample_id"].to_numpy()
 
         #set true the link_label
         pair_df["link_label"] = first_df.loc[pair_df["p1"], "link_label"].to_numpy()
@@ -189,53 +205,25 @@ class Batch:
         pair_df.loc[pair_df["p1"] < pair_df["p2"], "direction"] = 1 # ->
         pair_df.loc[pair_df["p1"] > pair_df["p2"], "direction"] = 2 # <-
 
-        # finding the matches between predicted segments and true segments
-        if pred:
 
+
+        if pred:
             # we also have information about whether the seg_id is a true segments 
             # and if so, which TRUE segmentent id it overlaps with, and how much
             seg_id, T_seg_id, ratio = overlap_ratio(
-                                                    target_df = self.df.loc["TARGET"],  
-                                                    pred_df = self.df.loc["PRED"]
+                                                    target_df = self._df,  
+                                                    pred_df = self._pred_df
                                                     )
 
-            p1_matches = np.isin(pair_df["p1"], seg_id)
-            p2_matches = np.isin(pair_df["p2"], seg_id)
-
-
-
-
-            # adding true seg ids for each p1,p2
-            i2j = dict(zip(seg_id, T_seg_id))
-
-            p1_v = np.array(p1, dtype=np.float)
-            p1_v[~p1_matches] = np.nan
-
-            p2_v = np.array(p2, dtype=np.float)
-            p2_v[~p2_matches] =  np.nan
-
-            pair_df["p1"] = p1_v
-            pair_df["p2"] = p2_v
-            pair_df["p1"] = pair_df["p1"].map(i2j)
-            pair_df["p2"] = pair_df["p2"].map(i2j)
+            # p1_matches = np.isin(pair_df["p1"], seg_id)
+            # p2_matches = np.isin(pair_df["p2"], seg_id)
 
             # adding ratio for true seg ids for each p1,p2
             i2ratio = dict(zip(seg_id, ratio))
 
-            p1_ratio_default = np.array(p1, dtype=np.float)
-            p1_ratio_default[~p1_matches] = float("-inf")
-
-            p2_ratio_default = np.array(p2, dtype=np.float)
-            p2_ratio_default[~p2_matches] = float("-inf")
-
-            pair_df["p1-ratio"] = p1_ratio_default
-            pair_df["p2-ratio"] = p2_ratio_default
             pair_df["p1-ratio"] = pair_df["p1-ratio"].map(i2ratio)
             pair_df["p2-ratio"] = pair_df["p2-ratio"].map(i2ratio)
-        
         else:
-            pair_df["p1"] = p1
-            pair_df["p2"] = p2
             pair_df["p1-ratio"] = 1
             pair_df["p2-ratio"] = 1
         
@@ -248,75 +236,23 @@ class Batch:
         # 1 find which pairs are "false", i.e. the members whould not be linked
         links = first_df.loc[pair_df["p1"], "link"].to_numpy()
         pairs_per_sample = pair_df.groupby("sample_id", sort=False).size().to_numpy()
-        seg_per_sample = utils.np_cumsum_zero(first_df.groupby("sample_id", sort=False).size().to_numpy())
+        seg_per_sample = np_cumsum_zero(first_df.groupby("sample_id", sort=False).size().to_numpy())
         normalized_links  = links + np.repeat(seg_per_sample, pairs_per_sample)
         pair_df["true_link"] = first_df.iloc[normalized_links].index.to_numpy() == p2
 
 
-        nodir_pair_df = pair_df[pair_df["direction"].isin([0,1]).to_numpy()]
+        return pair_df
 
 
+    def __get_df_data(self,
+                    df : pd.DataFrame,
+                    level : str, 
+                    key : str, 
+                    flat : bool = False, 
+                    pred : bool = False,
+                    ) -> Union[Tensor, list, np.ndarray]:
 
-
-
-        pair_dict = {
-                    "bidir": {k:torch.tensor(v, device=self.batch.device) for k,v in pair_df.to_dict("list").items()},
-                    "nodir": {k:torch.tensor(v, device=self.batch.device) for k,v in nodir_pair_df.to_dict("list").items()}
-                    }
-
-        pair_dict["bidir"]["lengths"] = pair_df.groupby("sample_id", sort=False).size().to_list()
-        pair_dict["nodir"]["lengths"] = nodir_pair_df.groupby("sample_id", sort=False).size().to_list()
-
-
-        lens = nodir_pair_df.groupby("sample_id", sort=False).size().to_list()
-
-
-        starts = torch.split(torch.LongTensor(nodir_pair_df["p1_start"].to_numpy()), lens)
-        ends  = torch.split(torch.LongTensor(nodir_pair_df["p2_end"].to_numpy()), lens)
-
-        return pair_dict
-
-
-
-    def _sampling_wrapper(func):
-        
-        @wraps(func)
-        def wrapped_get(self, *args, **kwargs):
-            
-            if self.use_target_segs:
-                kwargs["pred"] = False
-
-            return func(self, *args, **kwargs)
-        
-        return wrapped_get
-
-    @_sampling_wrapper
-    @utils.Memorize
-    def get(self, 
-            level : str, 
-            key : str, 
-            flat : bool = False, 
-            pred : bool = False,
-            bidir : bool = True
-            ):
-
-
-        print(pred)
-
-        if level not in self.__ok_levels:
-            raise KeyError
-            
-
-        df = self._pred_df if pred else self._df
-
-        if level == "pair":
-            pair_df_attr = f"_pair_df{'_pred' if pred else ''}"
-            if not hasattr(self, f"_pair_df{'_pred' if pred else ''}"):
-                setattr(self.__create_pair_df(df), pair_df_attr)
-
-            df = getattr(pair_df_attr)
     
-
         if key == "lengths":
             data =  self.__get_lengths(df, level)
 
@@ -341,7 +277,7 @@ class Batch:
                 if level == "am" and key == "span_idxs":
                     level = "adu"
             
-                lengths = utils.ensure_list(self.get( level, "lengths"))
+                lengths = ensure_list(self.get( level, "lengths"))
                     
                 data =  pad_sequence(
                                     torch.split(
@@ -352,6 +288,73 @@ class Batch:
                                     padding_value = -1 if self._task_regexp.search(key) else 0,
                                     )
         
+        return data
+
+
+    def __get_pair_df_data(self,
+                    df : pd.DataFrame,
+                    level : str, 
+                    key : str, 
+                    flat : bool = False, 
+                    pred : bool = False,
+                    bidir : bool = True,   
+                    ) -> Union[Tensor, list, np.ndarray]:
+
+
+        if not hasattr(self, "_pair_df_pred") and pred:
+            self._pair_df_pred = self.__create_pair_df(df, pred)
+
+        if not hasattr(self, "_pair_df"):
+            self._pair_df = self.__create_pair_df(df, pred)
+
+
+        pair_df = self._pair_df_pred if pred else self._pair_df
+
+        if not bidir:
+            pair_df = pair_df[pair_df["direction"].isin([0,1]).to_numpy()]
+
+        if key == "lengths":
+            data = pair_df.groupby("sample_id", sort=False).size().to_list()
+
+        else:
+            data = torch.LongTensor(pair_df[key].to_numpy())
+
+        return data
+
+
+    @__sampling_wrapper
+    @Memorize
+    def get(self, 
+            level : str, 
+            key : str, 
+            flat : bool = False, 
+            pred : bool = False,
+            bidir : bool = True
+            ):
+
+        if level not in self.__ok_levels:
+            raise KeyError
+
+        
+        df = self._pred_df if pred else self._df
+
+        if level == "pair":
+            data = self.__get_pair_df_data(
+                                    df = df,
+                                    level = level, 
+                                    key = key, 
+                                    flat = flat, 
+                                    pred = pred,
+                                    )
+        else:
+            data = self.__get_df_data(
+                                    df = df,
+                                    level = level, 
+                                    key = key, 
+                                    flat = flat, 
+                                    pred = pred,
+                                    )
+
 
         if isinstance(data, Tensor):
             data = data.to(self.device)
@@ -370,20 +373,23 @@ class Batch:
             mask = ensure_numpy(self.get("seg", "mask")).astype(bool)
             seg_preds = ensure_numpy(value)[mask]
             
-            # we spread the predictions on segments over all tokens in the segments
-            cond = ~self._pred_df.loc["seg_id"].isna()
+            # we spread the predictions on segments over tokens in TARGET segments
+            cond = ~self._df.loc["seg_id"].isna()
 
-            # repeat the segment prediction for all their tokens 
+            # expand the segment prediction for all their tokens 
             token_preds = np.repeat(seg_preds, ensure_numpy(self.get("seg", "lengths_tok"))[mask])
-
+            
+            #set the predictions for all rows which belong to a TARGET segment
             self._pred_df.loc.loc[cond, key] = token_preds
 
 
         elif level == "p_seg":
-            seg_tok_lengths = self._pred_df.loc.groupby("seg_id", sort=False).size().to_numpy()
+
+            #get the lengths of each segment
+            seg_lengths = self._pred_df.loc.groupby("seg_id", sort=False).size().to_numpy()
             
-        
-            token_preds = np.repeat(value, seg_tok_lengths)
+            #expand the predictions over the tokens in the segments
+            token_preds = np.repeat(value, seg_lengths)
 
             # as predicts are given in seg ids ordered from 0 to nr predicted segments
             # we can just remove all rows which doesnt belong to a predicted segments and 

@@ -116,7 +116,7 @@ class TrainLoop:
             for train_batch in tqdm(train_dataset, desc = "Train Steps", position=3, total = len(train_dataset)):
                 
                 #if we are using sampling
-                #train_batch.use_target_segs = use_target_segs
+                train_batch.use_target_segs = use_target_segs
 
                 # pass the batch
                 loss = model(train_batch)

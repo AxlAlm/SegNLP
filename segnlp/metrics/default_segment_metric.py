@@ -7,10 +7,10 @@ from .metric_utils import f1_precision_recall
 from .metric_utils import link_f1
 
 
-def default_segment_metric(df:pd.DataFrame, task_labels:dict):
+def default_segment_metric(pred_df:pd.DataFrame, target_df:pd.DataFrame,  task_labels:dict):
     
-    target_df = df.loc["TARGET"].groupby("seg_id").first()
-    pred_df = df.loc["PRED"].groupby("seg_id").first()
+    target_df = target_df.groupby("seg_id").first()
+    pred_df = pred_df.groupby("seg_id").first()
 
     collected_scores = {}
     for task in task_labels.keys():
