@@ -8,7 +8,7 @@ from torch import Tensor
 from segnlp.utils import zero_pad
 
 # AllenNLP
-from allennlp.modules.conditional_random_field import ConditionalRandomField as CRF_
+from allennlp.modules.conditional_random_field import ConditionalRandomField
 
 
 class CRF(nn.Module):
@@ -28,7 +28,7 @@ class CRF(nn.Module):
                 ):
         super().__init__()
         self.clf = nn.Linear(input_size, output_size)
-        self.crf = CRF_(    
+        self.crf = ConditionalRandomField(    
                         num_tags=output_size,
                         )
         self.dropout = nn.Dropout(dropout)

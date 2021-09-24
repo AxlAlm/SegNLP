@@ -45,8 +45,8 @@ class MetricContainer(dict):
         if epoch_metrics.shape[0] == 0:
             return {}
 
-        epoch_metrics.index = split + "_" + epoch_metrics.index
-        
+        #epoch_metrics.index = split + "_" + epoch_metrics.index
+
         self[split] = []
         return epoch_metrics.to_dict()
    

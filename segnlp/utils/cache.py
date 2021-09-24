@@ -13,9 +13,8 @@ class Memorize:
     def __call__(self, *args, **kwargs):
         
         key = args + tuple(sorted(kwargs.items()))
-    
-            
-        if args in self.cache:
+
+        if key in self.cache:
             return self.cache[key]
         else:
             value = self.func(*args, **kwargs)

@@ -191,9 +191,6 @@ class Pipeline(
 
         self._path_to_hp_json : str = os.path.join(self._path_to_hps, "hps.json") # for storing hps
 
-
-        self.logger : utils.CSVLogger = utils.CSVLogger(self._path_to_logs)
-
         #dump config
         self.__dump_config()
 

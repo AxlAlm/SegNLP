@@ -95,11 +95,19 @@ class HPTuneLoop:
                 n_random_seeds:int=6,
                 random_seed:int=None,
                 monitor_metric:str = "val_f1",
+                gpus : list = [],
+                overfit_n_batches : int = None
                 ):
 
         self.training = True
 
         hp_dicts = self.__create_hyperparam_sets(hyperparamaters)
+
+
+        if not gpus:
+            device = "cpu"
+        else:
+            device = gpus[0]
         
         for hp_uid, hps in tqdm(hp_dicts.items(), desc="Hyperparamaters",  position=0):    
         
@@ -116,6 +124,8 @@ class HPTuneLoop:
                         model_id = f"{hp_uid}-{random_seed}",
                         hyperparamaters = hps,
                         monitor_metric = monitor_metric,
+                        device = device,
+                        overfit_n_batches = overfit_n_batches
                         )
 
             # write hp uid to a .txt file

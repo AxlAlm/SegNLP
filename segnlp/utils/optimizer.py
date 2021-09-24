@@ -19,7 +19,7 @@ def configure_optimizers(model: nn.Module, hyperparamaters:dict) -> Tuple[optim.
     lr_s = None
     if "lr_scheduler" in hyperparamaters["general"]:
         lr_s = getattr(torch.optim.lr_scheduler , hyperparamaters["general"]["lr_scheduler"])
-        lr_s = lr_s(opt, hyperparamaters["general"].get("lr_scheduler_kwargs", {}))
+        lr_s = lr_s(opt, **hyperparamaters["general"].get("lr_scheduler_kwargs", {}))
 
     return opt, lr_s
 

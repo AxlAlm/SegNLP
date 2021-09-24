@@ -75,7 +75,7 @@ class BaseModel(nn.Module):
     def name(self):
         return self.__name__
 
-        
+    
     def forward(self, 
                 batch:Batch, 
                 ):
@@ -108,6 +108,7 @@ class BaseModel(nn.Module):
             if not self.inference:
                 total_loss += self.seg_loss(batch, seg_clf_out)
 
+
         return total_loss
 
 
@@ -131,13 +132,19 @@ class BaseModel(nn.Module):
         if task:
             self._layer2task[layer] = task
 
+        found_layer = False
         for lm in layer_modules:
 
             try:
                 layer = getattr(lm, layer)
+                found_layer = True
             except AttributeError:
                 continue
         
+        if not found_layer:
+            raise KeyError(f"Couldnt find a layer called '{layer}'")
+
+
         layer = layer(**hyperparamaters)
 
         if module_type == "token":
@@ -302,10 +309,9 @@ class BaseModel(nn.Module):
                             )
 
 
-    def train(self, freeze_token_module: bool = False, freeze_segment_module: bool = False):
-        super().train()
+    def freeze(self, freeze_token_module: bool = False, freeze_segment_module: bool = False):
 
-        #make sure to reset them on each epoch call
+         #make sure to reset them on each epoch call
         self._token_layers_are_frozen  = False
         self._segment_layers_are_frozen = False
 
@@ -324,12 +330,19 @@ class BaseModel(nn.Module):
                 utils.freeze_module(submodule)
 
 
-    def eval(self):
-        super().eval()
 
-        #make sure to reset them on each epoch call
-        self._token_layers_are_frozen  = False
-        self._segment_layers_are_frozen = False
+    # def train(self, freeze_token_module: bool = False, freeze_segment_module: bool = False):
+    #     super().train()
+    #     print("CALLLLLLED")
+
+   
+
+    # def eval(self):
+    #     super().eval()
+
+    #     # #make sure to reset them on each epoch call
+    #     # self._token_layers_are_frozen  = False
+    #     # self._segment_layers_are_frozen = False
 
 
 

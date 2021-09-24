@@ -19,30 +19,31 @@ from segnlp.utils import Batch
 
 class LSTM_CRF(BaseModel):
 
+    """
+    https://aclanthology.org/W19-4501.pdf
+    
+    """
 
     def __init__(self,  *args, **kwargs) -> None:   
         super().__init__(*args, **kwargs)
 
-        self.finetuner = self.add_encoder(
-                                    layer = "LinearRP", 
-                                    hyperparams = {},
+        self.finetuner = self.add_token_encoder(
+                                    layer = "Linear", 
+                                    hyperparamaters = {},
                                     input_size = self.feature_dims["word_embs"],
-                                    module = "token_module"
                                 )
 
-        self.encoder = self.add_encoder(    
+        self.encoder = self.add_token_encoder(    
                                 layer = "LSTM", 
-                                hyperparams = self.hps.get("LSTM", {}),
+                                hyperparamaters = self.hps.get("LSTM", {}),
                                 input_size = self.finetuner.output_size,
-                                module = "token_module"
                                 )
 
         self.segmenter = self.add_segmenter(
                                 layer = "CRF",
-                                hyperparams = self.hps.get("CRF", {}),
+                                hyperparamaters = self.hps.get("CRF", {}),
                                 input_size = self.encoder.output_size,
                                 output_size = self.task_dims[self.seg_task],
-                                task = self.seg_task,
                                 )
 
 
@@ -54,7 +55,7 @@ class LSTM_CRF(BaseModel):
     def token_rep(self, batch: Batch) -> dict:
 
         #fine tune embedding via a linear layer
-        word_embs = self.finetuner(batch.get("token", "word_embs"))
+        word_embs = self.finetuner(batch.get("token", "embs"))
 
         # lstm encoder
         lstm_out, _ = self.encoder(
@@ -69,21 +70,19 @@ class LSTM_CRF(BaseModel):
 
     def token_clf(self, batch: Batch, token_rep_out:dict) -> dict:
         logits, preds  = self.segmenter(
-                                    input=output.stuff["lstm_out"],
+                                    input=token_rep_out["lstm_out"],
                                     mask=batch.get("token", "mask"),
                                     )
-        return [
-                {
-                "task": self.seg_task,
-                "logits": logits,
-                "preds": preds,
-                }
-                ]
+
+        #add/save predictions 
+        batch.add("token", self.seg_task, preds)
+
+        return {"logits" : logits}
 
 
     def token_loss(self, batch: Batch, token_clf_out: dict) -> Tensor:
         return self.segmenter.loss(
-                                        logits = output.logits[self.seg_task],
+                                        logits = token_clf_out["logits"],
                                         targets = batch.get("token", self.seg_task),
                                         mask = batch.get("token", "mask"),
                                     )

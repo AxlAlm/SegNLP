@@ -537,29 +537,8 @@ class TextProcessor:
             # the root of the sample will be the ROOT of the first sentence
             df.loc[sample.index, "root_idx"] = [sent_roots[0]] * len(sample)
 
-
-            # cond1 = len(depheads) >= max(sample["document_token_id"])
-            # cond2 = max(depheads) <= max(sample["document_token_id"])
-
-            # if not (cond1 and cond2):
-            #     print(lol)
-
-            #print(len(depheads), max(sample["document_token_id"]))
-            #if max(sample["sample_token_id"]) != len(),
-
-            # i = sample.index.to_list()
-            # d = depheads
-            # graph = dgl.graph((i, d)).to_networkx().to_undirected()
-
-            # if not nx.is_connected(graph):
-            #     raise RuntimeError(" Dependency Relations do not form a graph")
-            #     # print(sent_roots)
-            #     # print(i)
-            #     # print(d)
-            #     # print(list(nx.connected_components(graph)))
-            #     # print(lol)
-
-
+        df["root_idx"] = df["root_idx"].to_numpy(int)
+        
         return df
 
 

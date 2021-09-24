@@ -2,7 +2,7 @@
 
 
 #basics
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import numpy as np
 from typing import Union, Sequence
 import os
@@ -38,6 +38,10 @@ class DatasetPreprocessor:
     
         if self._check_data():
             return None
+
+        # os.remove(self._path_to_df)
+        # os.remove(self._path_to_pwf)
+        # os.remove(self._path_to_psf)
 
         self._df_storage = pd.HDFStore(self._path_to_df)
 
@@ -76,7 +80,6 @@ class DatasetPreprocessor:
         self._df_storage.close()
 
         
-
     def _process_and_store_samples(self, doc:dict):
 
         span_labels = doc.get("span_labels", None)
@@ -108,18 +111,22 @@ class DatasetPreprocessor:
                 sample = self._label_ams(sample, mode=self.am_extraction)
             
 
-            # remove samples that doens have segments if we are predicting on segments
-            segs = sample.groupby("seg_id", sort = False)
-            seg_length = len(segs)
-            if self.prediction_level == "seg" and seg_length == 0:
-                continue
+            if self.sample_level != "sentence":
 
-            # it might be helpfult to keep track on the global seg_id of the target
-            # i.e. the seg_id of the linked segment
-            seg_first = segs.first()
-            target_ids = seg_first.index.to_numpy()[seg_first["link"].to_numpy()]
-            sample.loc[~sample["seg_id"].isna() ,"target_id"] = np.repeat(target_ids, segs.size().to_numpy())
+                # remove samples that doens have segments if we are predicting on segments
+                segs = sample.groupby("seg_id", sort = False)
+                seg_length = len(segs)
+                if self.prediction_level == "seg" and seg_length == 0:
+                    continue
+
+                # it might be helpfult to keep track on the global seg_id of the target
+                # i.e. the seg_id of the linked segment
+                seg_first = segs.first()
+                target_ids = seg_first.index.to_numpy()[seg_first["link"].to_numpy()]
+                sample.loc[~sample["seg_id"].isna() ,"target_id"] = np.repeat(target_ids, segs.size().to_numpy())
             
+
+
 
             pretrained_features = self._extract_pretrained_features(sample)
 
@@ -130,8 +137,8 @@ class DatasetPreprocessor:
                 self._pwf_storage.append(pretrained_features["word_embs"])
 
             sample.index = tok_sample_id
-
-            self._df_storage.append(f"df", sample, min_itemsize={'str': 50})
+        
+            self._df_storage.append("df", sample, min_itemsize={'str': 50})
             self._n_samples += 1
             
 

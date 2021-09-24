@@ -111,14 +111,14 @@ class LSTM_ER(BaseModel):
         batch.add("token", "seg+label", preds)
         return {"seg+label": logits}
 
-    
+
     def token_loss(self, batch: Batch, clf_out: dict) -> Tensor:
         return self.segmenter.loss(
                                 targets =  batch.get("token", "seg+label"),
                                 logits = clf_out["seg+label"],
                                 )
 
-
+    @utils.timer
     def seg_rep(self, batch: Batch, token_rep_out: dict) -> dict:
 
         # get the average embedding for each segments 
@@ -126,7 +126,7 @@ class LSTM_ER(BaseModel):
                             input = batch.get("token", "embs"),
                             lengths = batch.get("seg", "lengths", pred = True), 
                             span_idxs = batch.get("seg", "span_idxs", pred = True),
-                            device = batch.device
+                            device = batch.device,
                             )
 
         #create dependecy relation onehots
@@ -142,7 +142,6 @@ class LSTM_ER(BaseModel):
                                             num_classes=self.task_dims["seg+label"]
                                             )
 
-
         # We create Non-Directional Pair Embeddings using DepTreeLSTM
         # If we have the segments A,B,C. E.g. embeddings for the pairs (A,A), (A,B), (A,C), (B,B), (B,C)
         tree_pair_embs = self.deptreelstm(    
@@ -154,20 +153,20 @@ class LSTM_ER(BaseModel):
                                             roots = batch.get("token", "root_idx"),
                                             deplinks = batch.get("token", "dephead"),
                                             token_mask = batch.get("token", "mask"),
-                                            starts = batch.get("pair", "p1_end", bidir = False),
-                                            ends = batch.get("pair", "p2_end", bidir = False), #the last token indexes in each seg
-                                            lengths = batch.get("pair", "lengths", bidir = False),
+                                            starts = batch.get("pair", "p1_end", bidir = False, pred = True),
+                                            ends = batch.get("pair", "p2_end", bidir = False, pred = True), #the last token indexes in each seg
+                                            lengths = batch.get("pair", "lengths", bidir = False, pred = True),
                                             device = batch.device
                                             )
 
         # We then add the non directional pair embeddings to the directional pair representations
         # creating dp´ = [dp; s1, s2] (see paper above, page 1109)
-        seg_embs_flat = seg_embs[batch.get("seg", "mask").type(torch.bool)]
+        seg_embs_flat = seg_embs[batch.get("seg", "mask", pred = True).type(torch.bool)]
 
         pair_embs = torch.cat((
-                                seg_embs_flat[batch.get("pair", "p1", bidir = True)],
-                                seg_embs_flat[batch.get("pair", "p2", bidir = True)],
-                                tree_pair_embs[batch.get("pair", "id", bidir = True)]
+                                seg_embs_flat[batch.get("pair", "p1", bidir = True, pred = True)],
+                                seg_embs_flat[batch.get("pair", "p2", bidir = True, pred = True)],
+                                tree_pair_embs[batch.get("pair", "id", bidir = True, pred = True)]
                                 ),
                                 dim=-1
                                 )

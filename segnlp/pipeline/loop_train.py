@@ -25,6 +25,7 @@ class TrainLoop:
                     monitor_metric: str,               
                     cv : int = 0,
                     device : Union[str, torch.device] = "cpu",
+                    overfit_n_batches : int = None
                     ):
 
 
@@ -45,6 +46,12 @@ class TrainLoop:
                                 cv = cv,
                                 )
 
+        logger = utils.CSVLogger(
+                                path_to_logs = self._path_to_logs, 
+                                model_id = model_id
+                                )
+
+
         # setting up metric container which takes care of metric calculation, aggregation and storing
         metric_container = utils.MetricContainer(
                                             metric = self.metric,
@@ -54,7 +61,6 @@ class TrainLoop:
         # set up a checkpoint class to save best models
         path_to_model = os.path.join(self._path_to_models, model_id + ".ckpt")
         checkpointer = utils.SaveBest(path_to_model = path_to_model)
-
 
         # EarlyStopping, if patience is None it will allways return False
         early_stopper = utils.EarlyStopping(patience)
@@ -90,9 +96,16 @@ class TrainLoop:
                     "train_loss" : 0.0, 
                     "val_loss": 0.0, 
                     f"train_{monitor_metric}":0.0,
-                    f"val_{monitor_metric}":0.0
+                    f"val_{monitor_metric}":0.0,
+                    f"top_val_{monitor_metric}": 0.0
                     }
-            
+        
+        #setup tqmd
+        epoch_tqdm = tqdm(
+                        position=2, 
+                        postfix = postfix
+                        )
+
         for epoch in range(max_epochs):
 
             # we make sure to generate our batches each epoch so that we can shuffle 
@@ -102,15 +115,10 @@ class TrainLoop:
             val_dataset = datamodule.step(split = "val")
  
             #setup tqmd
-            epoch_tqdm = tqdm(
-                            total = len(train_dataset) + len(val_dataset), 
-                            desc = f"Epoch {epoch}", 
-                            position=2, 
-                            postfix = postfix
-                            )
+            epoch_tqdm.reset(total = len(train_dataset) + len(val_dataset))
+            epoch_tqdm.set_description(desc = f"Epoch {epoch}")
 
 
-            # Sets the model to training mode.
             # will also freeze and set modules to skip if needed
             cond1 = epoch < freeze_segment_module_k
             cond2 = freeze_segment_module_k == -1
@@ -120,16 +128,15 @@ class TrainLoop:
             # We can can help tasks which are dependent on the segmentation to be feed
             # ground truth segmentaions instead of the predicted segmentation during traingin
             use_target_segs = False
-            if not freeze_segment_module:
+            if not freeze_segment_module and use_target_segs_k:
                 use_target_segs = target_seg_sampling(epoch)
-   
 
-            model.train(
-                        freeze_segment_module = freeze_segment_module,
-                        )
+            #freeze modules
+            model.freeze(freeze_segment_module = freeze_segment_module,)
 
-  
-            for train_batch in train_dataset:
+            # Sets the model to training mode.
+            model.train()
+            for ti, train_batch in enumerate(train_dataset):
                 
                 #if we are using sampling
                 train_batch.use_target_segs = use_target_segs
@@ -158,16 +165,21 @@ class TrainLoop:
                 epoch_tqdm.update(1)
 
 
+                if overfit_n_batches and ti+1 >= overfit_n_batches:
+                    break
+
+
             # Validation Loop
+            total_val_loss = 0
             model.eval()
             with torch.no_grad():
-                for val_batch in val_dataset:
+                for vi, val_batch in enumerate(val_dataset):
                                             
                     # pass the batch
                     val_loss = model(
                                 val_batch, 
-                                split = "val", 
                                 )
+                    total_val_loss += val_loss.item()
                 
                     metric_container.calc_add(val_batch, "val")
 
@@ -175,10 +187,12 @@ class TrainLoop:
                     epoch_tqdm.set_postfix(postfix)
                     epoch_tqdm.update(1)
 
+                    if overfit_n_batches and vi+1 >= overfit_n_batches:
+                        break
 
             # Log train epoch metrics
             train_epoch_metrics = metric_container.calc_epoch_metrics("train")
-            self.logger.log_epoch(  
+            logger.log_epoch(  
                                 epoch = epoch,
                                 split = "train",
                                 model_id = model_id,
@@ -186,25 +200,29 @@ class TrainLoop:
                                 cv = cv
                                 )
 
-            postfix[f"train_{monitor_metric}"] = train_epoch_metrics
+            postfix[f"train_{monitor_metric}"] = train_epoch_metrics[monitor_metric]
 
 
             # Log val epoch metrics
             val_epoch_metrics = metric_container.calc_epoch_metrics("val")
-            self.logger.log_epoch(  
+            logger.log_epoch(  
                                 epoch = epoch,
                                 split = "val",
                                 model_id = model_id,
                                 epoch_metrics = val_epoch_metrics,
                                 cv = cv
                                 )
-            postfix[f"val_{monitor_metric}"] = val_epoch_metrics
+            postfix[f"val_{monitor_metric}"] = val_epoch_metrics[monitor_metric]
 
-    
+
+            # fetch the score we will decide saving and early stoping on
             score = val_epoch_metrics[monitor_metric]
 
             # save model
             checkpointer(model, score)
+
+            #set the top score
+            postfix[f"top_val_{monitor_metric}"] = checkpointer._top_score
 
             # stop if model is not better after n times, set by patience
             if early_stopper(score):
@@ -213,7 +231,7 @@ class TrainLoop:
             # if we use a learning scheduler we call step() to make it do its thing 
             # with the optimizer, i.e. change the learning rate in some way
             if lr_scheduler is not None:
-                lr_scheduler.step()
+                lr_scheduler.step(total_val_loss)
 
             epoch_tqdm.set_postfix(postfix)
             epoch_tqdm.update(1)
@@ -241,7 +259,8 @@ class TrainLoop:
             model_id:str,
             hyperparamaters: dict,
             monitor_metric: str, 
-            device: Union[str, torch.device] = "cpu"
+            device: Union[str, torch.device] = "cpu",
+            overfit_n_batches : int = None
             ) -> None:
 
     
@@ -251,6 +270,7 @@ class TrainLoop:
                             hyperparamaters = hyperparamaters,
                             monitor_metric = monitor_metric,
                             device = device,
+                            overfit_n_batches = overfit_n_batches
                         )
         else:
             self.__train_loop(
@@ -258,4 +278,5 @@ class TrainLoop:
                         hyperparamaters = hyperparamaters,
                         monitor_metric = monitor_metric,
                         device = device,
+                        overfit_n_batches = overfit_n_batches,
                     )

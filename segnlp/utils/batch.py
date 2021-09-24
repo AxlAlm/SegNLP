@@ -21,7 +21,7 @@ from .array import create_mask
 from .array import np_cumsum_zero
 from .cache import Memorize
 from .find_overlap import find_overlap
-
+from .misc import timer
 
 
 class Batch:
@@ -115,7 +115,7 @@ class Batch:
 
 
     def __get_mask(self, level:str, pred : bool = False):
-        return create_mask(self.get(level, "lengths", pred), as_bool = True)
+        return create_mask(self.get(level, "lengths", pred = pred), as_bool = True)
 
 
     def __get_lengths(self, df: pd.DataFrame, level:str):
@@ -208,25 +208,11 @@ class Batch:
 
 
         if pred:
-            pair_df["p1-ratio"] = pair_df["p1-ratio"].map(self._i2ratio)
-            pair_df["p2-ratio"] = pair_df["p2-ratio"].map(self._i2ratio)
+            pair_df["p1-ratio"] = pair_df["p1"].map(self._i2ratio)
+            pair_df["p2-ratio"] = pair_df["p2"].map(self._i2ratio)
         else:
             pair_df["p1-ratio"] = 1
             pair_df["p2-ratio"] = 1
-        
-
-        # We also need to create mask which tells us which pairs either:
-        # 1; include NON-LINKING segments
-        # 2; include segments which do not match/overlap sufficiently with a 
-        # ground truth segment
-
-        # 1 find which pairs are "false", i.e. the members whould not be linked
-        links = first_df.loc[pair_df["p1"], "link"].to_numpy()
-        pairs_per_sample = pair_df.groupby("sample_id", sort=False).size().to_numpy()
-        seg_per_sample = np_cumsum_zero(first_df.groupby("sample_id", sort=False).size().to_numpy())
-        normalized_links  = links + np.repeat(seg_per_sample, pairs_per_sample)
-        pair_df["true_link"] = first_df.iloc[normalized_links].index.to_numpy() == p2
-
 
         return pair_df
 
@@ -263,9 +249,9 @@ class Batch:
 
                 if level == "am" and key == "span_idxs":
                     level = "adu"
-            
-                lengths = ensure_list(self.get( level, "lengths"))
-                    
+
+                lengths = ensure_list(self.get(level, "lengths", pred = pred))
+
                 data =  pad_sequence(
                                     torch.split(
                                                 data, 
@@ -320,6 +306,8 @@ class Batch:
 
         #hacky temporary solution
         self._i2ratio = i2ratio
+        self._i2j = i2j
+        self._j2i = j2i
 
         # adding matching info to _df 
         self._df["i"] = self._df["seg_id"].map(j2i)
@@ -330,8 +318,25 @@ class Batch:
         self._pred_df["j_ratio"] = self._pred_df["seg_id"].map(i2ratio)
 
 
+        self.__add_link_matching_info()
 
+
+    @timer
+    def __add_link_matching_info(self):
+
+        def check_true_pair(row, mapping):
+            print(row)
+            seg_id = row["seg_id"]
+            target_id = row["target_id"]
+            return mapping[seg_id] == target_id
+
+        true_pair_mappings = dict(zip(self._df["seg_id"], self._df["target_id"]))
+        pred_mapping = {self._j2i[j]: self._j2i[jt]  for j,jt in true_pair_mappings.items()}
         
+        self._pred_df["true_link"] = self._pair_df.apply(check_true_pair, axis = 0, args = (pred_mapping, ))
+        self._df["true_link"] = self._pair_df.apply(check_true_pair, axis = 0, args = (true_pair_mappings, ))
+
+
     @__sampling_wrapper
     @Memorize
     def get(self, 
@@ -427,6 +432,10 @@ class Batch:
                                                     )
         
 
+        if "seg" in key:
+            self.__add_overlap_info()
+
+
         # creating target_ids for links
         if key == "link":
             
@@ -449,9 +458,9 @@ class Batch:
                 # exapnd target_id over the rows
                 self._pred_df.loc[si].loc[is_not_nan, "target_id"] = np.repeat(target_ids, segs.size().to_numpy())
         
+            
+            self.__add_link_matching_info()
 
-        if "seg" in key:
-            self.__add_overlap_info()
 
 
     def to(self, device):
