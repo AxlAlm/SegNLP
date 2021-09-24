@@ -68,18 +68,21 @@ def find_overlap(pred_df : pd.DataFrame, target_df : pd.DataFrame) -> Tuple[np.n
     # ground truth segments
     overlap_info = np.vstack(tdf.groupby(level = 0, sort=False).apply(_overlap, (pdf)))
 
-    # lets remove rows with nan, as they lack any match
-    #is_nan = np.isnan(overlap_info[:, :2])
-    nan_mask = ~np.logical_or(
-                            overlap_info[:,0] == np.nan, 
-                            overlap_info[:,1] == np.nan
-                            )
+    # we then filter out all Nones, and filter out all cases where j match with more than one i.
+    # i.e. for each j we only selec the best i 
+    df = pd.DataFrame(overlap_info, columns = ["i", "j", "ratio"])
+    df = df.dropna()
+    df = df.sort_values("ratio")
+    top_matches = df.groupby("j", sort = False).first()
 
-        
-    #seperate the info
-    i = overlap_info[nan_mask, 0].astype(int) #predicted segment id
-    j = overlap_info[nan_mask, 1].astype(int) # ground truth segment id
-    ratio = overlap_info[nan_mask, 2]
+    i  = top_matches["i"].to_numpy(int)
+    j = top_matches.index.to_numpy(int)
+    ratio = top_matches["ratio"].to_numpy(float)
 
-    
-    return i, j, ratio
+    i2ratio = dict(zip(i, ratio))
+    j2ratio = dict(zip(j, ratio))
+    i2j = dict(zip(i, j))
+    j2i = dict(zip(j, i))
+
+    return i2ratio, j2ratio, i2j, j2i
+

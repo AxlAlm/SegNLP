@@ -2,7 +2,7 @@
 
 #basics
 from segnlp.utils.array import ensure_numpy
-from tqdm import tqdm
+from tqdm.auto import tqdm
 from typing import Union
 import os
 

@@ -5,7 +5,7 @@ import itertools
 import json
 import os
 from copy import deepcopy
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 
 #segnlp
@@ -101,8 +101,6 @@ class HPTuneLoop:
 
         hp_dicts = self.__create_hyperparam_sets(hyperparamaters)
         
-        print("_" * (os.get_terminal_size().columns - 3))
-
         for hp_uid, hps in tqdm(hp_dicts.items(), desc="Hyperparamaters",  position=0):    
         
             if random_seed is not None and isinstance(random_seed, int):

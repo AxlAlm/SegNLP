@@ -40,6 +40,7 @@ class Batch:
 
         # we set all task values to 0
         self._pred_df["seg_id"] = None
+        self._pred_df["target_id"] = None
         for task in label_encoder.task_labels:
             self._pred_df[task] = None
 
@@ -206,31 +207,9 @@ class Batch:
         pair_df.loc[pair_df["p1"] > pair_df["p2"], "direction"] = 2 # <-
 
 
-        # we also have information about whether the seg_id is a true segments 
-        # and if so, which TRUE segmentent id it overlaps with, and how much
-        i, j, ratio = find_overlap(
-                                                target_df = self._df,  
-                                                pred_df = self._pred_df
-                                                )
-
-        # adding ratio for true seg ids for each p1,p2
-        i2ratio = dict(zip(i, ratio))
-        j2ratio = dict(zip(j, ratio))
-        i2j = dict(zip(i, j))
-        j2i = dict(zip(j, i))
-
-        # adding matching info to _df 
-        self._df["i"] = self._df["seg_id"].map(j2i)
-        self._df["i_ratio"] = self._df["seg_id"].map(j2ratio)
-
-        # adding matching info to pred_df 
-        self._pred_df["j"] = self._pred_df["seg_id"].map(i2j)
-        self._pred_df["j_ratio"] = self._pred_df["seg_id"].map(i2ratio)
-
-
         if pred:
-            pair_df["p1-ratio"] = pair_df["p1-ratio"].map(i2ratio)
-            pair_df["p2-ratio"] = pair_df["p2-ratio"].map(i2ratio)
+            pair_df["p1-ratio"] = pair_df["p1-ratio"].map(self._i2ratio)
+            pair_df["p2-ratio"] = pair_df["p2-ratio"].map(self._i2ratio)
         else:
             pair_df["p1-ratio"] = 1
             pair_df["p2-ratio"] = 1
@@ -330,6 +309,29 @@ class Batch:
         return data
 
 
+    def __add_overlap_info(self):
+
+        # we also have information about whether the seg_id is a true segments 
+        # and if so, which TRUE segmentent id it overlaps with, and how much
+        i2ratio, j2ratio, i2j, j2i = find_overlap(
+                                                target_df = self._df,  
+                                                pred_df = self._pred_df
+                                                )
+
+        #hacky temporary solution
+        self._i2ratio = i2ratio
+
+        # adding matching info to _df 
+        self._df["i"] = self._df["seg_id"].map(j2i)
+        self._df["i_ratio"] = self._df["seg_id"].map(j2ratio)
+
+        # adding matching info to pred_df 
+        self._pred_df["j"] = self._pred_df["seg_id"].map(i2j)
+        self._pred_df["j_ratio"] = self._pred_df["seg_id"].map(i2ratio)
+
+
+
+        
     @__sampling_wrapper
     @Memorize
     def get(self, 
@@ -446,7 +448,10 @@ class Batch:
 
                 # exapnd target_id over the rows
                 self._pred_df.loc[si].loc[is_not_nan, "target_id"] = np.repeat(target_ids, segs.size().to_numpy())
-                
+        
+
+        if "seg" in key:
+            self.__add_overlap_info()
 
 
     def to(self, device):
