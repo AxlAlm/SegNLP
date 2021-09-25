@@ -61,7 +61,6 @@ class DirLinkLabeler(nn.Module):
 
         # we take the max value and labels for each of the Link labels
         v, l = torch.max(logits, dim=-1)
-
         pair_p1 = utils.ensure_numpy(pair_p1)
         pair_p2 = utils.ensure_numpy(pair_p2)
 

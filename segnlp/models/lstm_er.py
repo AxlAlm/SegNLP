@@ -153,9 +153,9 @@ class LSTM_ER(BaseModel):
                                             roots = batch.get("token", "root_idx"),
                                             deplinks = batch.get("token", "dephead"),
                                             token_mask = batch.get("token", "mask"),
-                                            starts = batch.get("pair", "p1_end", bidir = False, pred = True),
-                                            ends = batch.get("pair", "p2_end", bidir = False, pred = True), #the last token indexes in each seg
-                                            lengths = batch.get("pair", "lengths", bidir = False, pred = True),
+                                            starts = batch.get("pair", "p1_end", bidir = False),
+                                            ends = batch.get("pair", "p2_end", bidir = False), #the last token indexes in each seg
+                                            lengths = batch.get("pair", "lengths", bidir = False),
                                             device = batch.device
                                             )
 
@@ -164,8 +164,8 @@ class LSTM_ER(BaseModel):
         seg_embs_flat = seg_embs[batch.get("seg", "mask", pred = True).type(torch.bool)]
 
         pair_embs = torch.cat((
-                                seg_embs_flat[batch.get("pair", "p1", bidir = True, pred = True)],
-                                seg_embs_flat[batch.get("pair", "p2", bidir = True, pred = True)],
+                                seg_embs_flat[batch.get("pair", "p1", bidir = True)],
+                                seg_embs_flat[batch.get("pair", "p2", bidir = True)],
                                 tree_pair_embs[batch.get("pair", "id", bidir = True, pred = True)]
                                 ),
                                 dim=-1
@@ -191,8 +191,8 @@ class LSTM_ER(BaseModel):
                                             )
 
         # add our prediction to the batch
-        batch.add("p_seg", "link_label", link_label_preds)
         batch.add("p_seg", "link", link_preds)
+        batch.add("p_seg", "link_label", link_label_preds)
 
 
         return { "link_label": link_label_logits}
@@ -200,10 +200,10 @@ class LSTM_ER(BaseModel):
 
     def seg_loss(self, batch: Batch, clf_out: dict) -> Tensor:
         return self.link_labeler.loss(
-                                                targets = batch.get("pair", "link_label", bidir = True, pred = False),
+                                                targets = batch.get("pair", "link_label", bidir = True),
                                                 logits = clf_out["link_label"],
-                                                directions = batch.get("pair", "direction", bidir = True, pred = True),
-                                                true_link = batch.get("pair", "true_link", bidir = True, pred = True), 
-                                                p1_match_ratio = batch.get("pair", "p1-ratio", bidir = True, pred = True), #pair_data["bidir"]["p1-ratio"],
-                                                p2_match_ratio = batch.get("pair", "p2-ratio", bidir = True, pred = True), #pair_data["bidir"]["p2-ratio"]
+                                                directions = batch.get("pair", "direction", bidir = True),
+                                                true_link = batch.get("pair", "true_link", bidir = True), 
+                                                p1_match_ratio = batch.get("pair", "p1-ratio", bidir = True), #pair_data["bidir"]["p1-ratio"],
+                                                p2_match_ratio = batch.get("pair", "p2-ratio", bidir = True), #pair_data["bidir"]["p2-ratio"]
                                                 )

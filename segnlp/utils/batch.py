@@ -141,8 +141,45 @@ class Batch:
         return torch.tensor(embs, dtype = torch.float)
 
 
-    def __create_pair_df(self, df: pd.DataFrame, pred :bool):
+    def __add_link_matching_info(self, pair_df):
 
+
+        def check_true_pair(row, mapping):
+
+            p1 = row["p1"]
+            p2 = row["p2"]
+            dir = row["direction"]
+            
+            source = p2 if dir == 2 else p1
+            target = p1 if dir == 2 else p2
+
+            if source not in mapping:
+                return False
+            else:
+                correct_target = mapping[source]
+                return correct_target == target
+
+        
+        j_jt = self._df.loc[:, ["seg_id", "target_id"]].dropna()
+
+        # maps a true source to the correct target using the ids of predicted pairs
+        source2target = {
+                        self._j2i.get(j, "NONE"): self._j2i.get(jt, "NONE")
+                        for j,jt in zip(j_jt["seg_id"], j_jt["target_id"])
+                        }
+
+        if "NONE" in source2target:
+            source2target.pop("NONE")
+
+
+        if not source2target:
+            pair_df["true_link"] = False
+            return
+        
+        pair_df["true_link"] = pair_df.apply(check_true_pair, axis = 1, args = (source2target, ))
+
+
+    def __create_pair_df(self, df: pd.DataFrame, pred :bool):
 
         def set_id_fn():
             pair_dict = dict()
@@ -156,6 +193,7 @@ class Batch:
                 return pair_dict[p]
 
             return set_id
+
 
 
         first_df = df.groupby("seg_id", sort=False).first()
@@ -179,6 +217,7 @@ class Batch:
             p2.extend(np.tile(sample_seg_ids, n))
             j += n
         
+
         # setup pairs
         pair_df = pd.DataFrame({
                                 "p1": p1,
@@ -205,6 +244,18 @@ class Batch:
         pair_df["direction"] = 0  #self
         pair_df.loc[pair_df["p1"] < pair_df["p2"], "direction"] = 1 # ->
         pair_df.loc[pair_df["p1"] > pair_df["p2"], "direction"] = 2 # <-
+
+        ## ADD target link label
+        # mask for where p1 is a source
+        p1_source_mask = np.logical_or(pair_df["direction"] == 0 , pair_df["direction"] == 1)
+        pair_df.loc[p1_source_mask, "link_label"] = first_df.loc[pair_df.loc[p1_source_mask, "p1"], "link_label"].to_numpy()
+
+        #where p2 is a source
+        p2_source_mask = pair_df["direction"] == 2
+        pair_df.loc[p2_source_mask, "link_label"] = first_df.loc[pair_df.loc[p2_source_mask, "p2"], "link_label"].to_numpy()
+
+
+        self.__add_link_matching_info(pair_df)
 
 
         if pred:
@@ -241,6 +292,8 @@ class Batch:
             else:
                 data = self.__get_column_values(df, level, key)
 
+            if len(data) == 0:
+                return data
 
             if isinstance(data[0], str):
                 return data
@@ -266,22 +319,12 @@ class Batch:
 
     def __get_pair_df_data(self,
                     df : pd.DataFrame,
-                    level : str, 
                     key : str, 
-                    flat : bool = False, 
-                    pred : bool = False,
                     bidir : bool = True,   
                     ) -> Union[Tensor, list, np.ndarray]:
 
-
-        if not hasattr(self, "_pair_df_pred") and pred:
-            self._pair_df_pred = self.__create_pair_df(df, pred)
-
-        if not hasattr(self, "_pair_df"):
-            self._pair_df = self.__create_pair_df(df, pred)
-
-
-        pair_df = self._pair_df_pred if pred else self._pair_df
+        self._pair_df = self.__create_pair_df(df, pred = not self.use_target_segs)
+        pair_df = self._pair_df
 
         if not bidir:
             pair_df = pair_df[pair_df["direction"].isin([0,1]).to_numpy()]
@@ -295,6 +338,7 @@ class Batch:
         return data
 
 
+    @timer
     def __add_overlap_info(self):
 
         # we also have information about whether the seg_id is a true segments 
@@ -318,25 +362,6 @@ class Batch:
         self._pred_df["j_ratio"] = self._pred_df["seg_id"].map(i2ratio)
 
 
-        self.__add_link_matching_info()
-
-
-    @timer
-    def __add_link_matching_info(self):
-
-        def check_true_pair(row, mapping):
-            print(row)
-            seg_id = row["seg_id"]
-            target_id = row["target_id"]
-            return mapping[seg_id] == target_id
-
-        true_pair_mappings = dict(zip(self._df["seg_id"], self._df["target_id"]))
-        pred_mapping = {self._j2i[j]: self._j2i[jt]  for j,jt in true_pair_mappings.items()}
-        
-        self._pred_df["true_link"] = self._pair_df.apply(check_true_pair, axis = 0, args = (pred_mapping, ))
-        self._df["true_link"] = self._pair_df.apply(check_true_pair, axis = 0, args = (true_pair_mappings, ))
-
-
     @__sampling_wrapper
     @Memorize
     def get(self, 
@@ -350,20 +375,20 @@ class Batch:
         if level not in self.__ok_levels:
             raise KeyError
 
-        
-        df = self._pred_df if pred else self._df
-
+        # for level == pair We only have one pair_df as we are using the predicted or TARGET segments
+        # to create candidate pairs
+        #
+        # For other levels we have seperate dfs for TARGET and PREDICTIONS
         if level == "pair":
             data = self.__get_pair_df_data(
-                                    df = df,
-                                    level = level, 
+                                    df = self._pred_df,
                                     key = key, 
-                                    flat = flat, 
-                                    pred = pred,
+                                    bidir = bidir,
                                     )
         else:
+            
             data = self.__get_df_data(
-                                    df = df,
+                                    df = self._pred_df if pred else self._df,
                                     level = level, 
                                     key = key, 
                                     flat = flat, 
@@ -458,8 +483,6 @@ class Batch:
                 # exapnd target_id over the rows
                 self._pred_df.loc[si].loc[is_not_nan, "target_id"] = np.repeat(target_ids, segs.size().to_numpy())
         
-            
-            self.__add_link_matching_info()
 
 
 
