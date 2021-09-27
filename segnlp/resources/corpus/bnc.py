@@ -2,7 +2,7 @@
 #basic
 import xml.etree.ElementTree as ET
 from nltk.probability import FreqDist
-from tqdm import tqdm
+from tqdm.auto import tqdm
 from glob import glob
 import os
 
@@ -54,7 +54,7 @@ class BNC:
 
 
     def words(self):
-        for doc in tqdm(self, total=len(self), desc="BNC docs"):
+        for doc in tqdm(self, total=len(self), desc="Extracting Words"):
             for word in doc.lower().split():
                 yield word
     

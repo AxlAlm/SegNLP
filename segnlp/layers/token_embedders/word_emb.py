@@ -3,6 +3,7 @@
 #basics
 import string
 from typing import Union
+from tqdm.auto import tqdm
 
 #pytroch
 import torch
@@ -40,7 +41,7 @@ class WordEmb(nn.Module):
     def __init__(   
                 self,
                 vocab: Vocab,
-                path_to_model: str = None,
+                path_to_pretrained: str = None,
                 num_embeddings: int = None,
                 embedding_dim: int = None,
                 freeze: bool = None,
@@ -53,9 +54,9 @@ class WordEmb(nn.Module):
         super().__init__()
         self.vocab = vocab
 
-        if path_to_model is not None:
+        if path_to_pretrained is not None:
             # we create embedding matrix for the given vocab. in the order given
-            vocab_matrix = self.__create_vocab_matrix(vocab, path_to_model)
+            vocab_matrix = self.__create_vocab_matrix(vocab, path_to_pretrained)
 
             self.embs = nn.Embedding.from_pretrained(
                                                         vocab_matrix, 
@@ -71,23 +72,25 @@ class WordEmb(nn.Module):
                                     scale_grad_by_freq = scale_grad_by_freq, 
                                     sparse = sparse, 
                                     )
+        
+        self.output_size = self.embs.embedding_dim
 
 
-    def __create_vocab_matrix(self, vocab:list, path_to_model:str):
+    def __create_vocab_matrix(self, vocab:list, path_to_pretrained:str):
 
-        model = KeyedVectors.load_word2vec_format(path_to_model, binary=True)
+        model = KeyedVectors.load_word2vec_format(path_to_pretrained, binary=True if path_to_pretrained.endswith(".bin") else False)
+
         vocab_matrix = torch.zeros((len(vocab), model.vector_size))
 
         for i, word in vocab.vocab.items():
 
-            if word == "<UNK>":
+            if word not in model:
                 vocab_matrix[i] = torch.rand(model.vector_size, dtype=torch.float)
+                continue
             
-            try:
-                vocab_matrix[i] = torch.tensor(model[word], dtype=torch.float)
-            except KeyError:
-                vocab_matrix[i] = torch.rand(model.vector_size, dtype=torch.float)
+            vocab_matrix[i] = torch.tensor(model[word], dtype=torch.float)
 
+    
         return vocab_matrix
             
 
@@ -97,7 +100,13 @@ class WordEmb(nn.Module):
         token_id_flat = self.vocab[input]
 
         # formats the encoded tokens to (Batch size, max token length)
-        token_ids = pad_sequence(torch.split(token_id_flat, utils.ensure_list(lengths)), batch_first = True)
+        token_ids = pad_sequence(
+                                torch.split(
+                                            token_id_flat, 
+                                            utils.ensure_list(lengths)
+                                            ), 
+                                        batch_first = True
+                                )
 
         # gets embeddings
         embs = self.embs(token_ids)

@@ -1,6 +1,7 @@
 
 #basics
 import numpy as np
+from numpy.lib.utils import deprecate
 import pandas as pd
 import re
 from functools import wraps
@@ -181,6 +182,7 @@ class Batch:
 
     def __create_pair_df(self, df: pd.DataFrame, pred :bool):
 
+
         def set_id_fn():
             pair_dict = dict()
 
@@ -189,18 +191,26 @@ class Batch:
 
                 if p not in pair_dict:
                     pair_dict[p] = len(pair_dict)
-                
+
                 return pair_dict[p]
 
             return set_id
 
-
-
+        
         first_df = df.groupby("seg_id", sort=False).first()
         first_df.reset_index(inplace=True)
 
         last_df = df.groupby("seg_id", sort=False).last()
         last_df.reset_index(inplace=True)
+
+
+
+        if pred:
+            first_target_df = self._df.groupby("seg_id", sort=False).first()
+            j2link_label = {j:row["link_label"] for j, row in first_target_df.iterrows()}
+            link_labels = [-1 if i not in self._i2j else j2link_label.get(self._i2j[i], -1) for i in first_df.index.to_numpy()]
+            first_df["link_label"] = link_labels
+
 
         # we create ids for each memeber of the pairs
         # the segments in the batch will have unique ids starting from 0 to 
@@ -216,14 +226,18 @@ class Batch:
             p1.extend(np.repeat(sample_seg_ids, n).astype(int))
             p2.extend(np.tile(sample_seg_ids, n))
             j += n
-        
-
+    
         # setup pairs
         pair_df = pd.DataFrame({
                                 "p1": p1,
                                 "p2": p2,
                                 })
-        
+                                
+
+        if not len(pair_df.index):
+            return pd.DataFrame()
+
+
         # create ids for each NON-directional pair
         pair_df["id"] = pair_df.apply(set_id_fn(), axis=1)
 
@@ -231,7 +245,7 @@ class Batch:
         pair_df["sample_id"] = first_df.loc[pair_df["p1"], "sample_id"].to_numpy()
 
         #set true the link_label
-        pair_df["link_label"] = first_df.loc[pair_df["p1"], "link_label"].to_numpy()
+        #pair_df["link_label"] = first_df.loc[pair_df["p1"], "link_label"].to_numpy()
 
         #set start and end token indexes for p1 and p2
         pair_df["p1_start"] = first_df.loc[pair_df["p1"], "sample_token_id"].to_numpy()
@@ -245,8 +259,8 @@ class Batch:
         pair_df.loc[pair_df["p1"] < pair_df["p2"], "direction"] = 1 # ->
         pair_df.loc[pair_df["p1"] > pair_df["p2"], "direction"] = 2 # <-
 
-        ## ADD target link label
-        # mask for where p1 is a source
+
+        # mask for where p1 is a source        
         p1_source_mask = np.logical_or(pair_df["direction"] == 0 , pair_df["direction"] == 1)
         pair_df.loc[p1_source_mask, "link_label"] = first_df.loc[pair_df.loc[p1_source_mask, "p1"], "link_label"].to_numpy()
 
@@ -269,12 +283,14 @@ class Batch:
 
 
     def __get_df_data(self,
-                    df : pd.DataFrame,
                     level : str, 
                     key : str, 
                     flat : bool = False, 
                     pred : bool = False,
                     ) -> Union[Tensor, list, np.ndarray]:
+
+
+        df = self._pred_df if pred else self._df
 
     
         if key == "lengths":
@@ -318,13 +334,24 @@ class Batch:
 
 
     def __get_pair_df_data(self,
-                    df : pd.DataFrame,
                     key : str, 
                     bidir : bool = True,   
                     ) -> Union[Tensor, list, np.ndarray]:
 
-        self._pair_df = self.__create_pair_df(df, pred = not self.use_target_segs)
+
+        if not hasattr(self, "_pair_df"):
+
+            pred = not self.use_target_segs
+
+            self._pair_df = self.__create_pair_df(
+                                                df = self._pred_df if pred else self._df,
+                                                pred = pred
+                                                )
+
         pair_df = self._pair_df
+
+        if not len(self._pair_df.index):
+            return []
 
         if not bidir:
             pair_df = pair_df[pair_df["direction"].isin([0,1]).to_numpy()]
@@ -338,7 +365,6 @@ class Batch:
         return data
 
 
-    @timer
     def __add_overlap_info(self):
 
         # we also have information about whether the seg_id is a true segments 
@@ -377,18 +403,15 @@ class Batch:
 
         # for level == pair We only have one pair_df as we are using the predicted or TARGET segments
         # to create candidate pairs
-        #
         # For other levels we have seperate dfs for TARGET and PREDICTIONS
         if level == "pair":
             data = self.__get_pair_df_data(
-                                    df = self._pred_df,
                                     key = key, 
                                     bidir = bidir,
                                     )
         else:
             
             data = self.__get_df_data(
-                                    df = self._pred_df if pred else self._df,
                                     level = level, 
                                     key = key, 
                                     flat = flat, 
@@ -414,6 +437,7 @@ class Batch:
             for subtask in key.split("+"):
                 self._pred_df[subtask] = self._df[subtask].to_numpy()
 
+            self.__add_overlap_info()
             return
             
         
@@ -483,8 +507,6 @@ class Batch:
                 # exapnd target_id over the rows
                 self._pred_df.loc[si].loc[is_not_nan, "target_id"] = np.repeat(target_ids, segs.size().to_numpy())
         
-
-
 
     def to(self, device):
         self.device = device

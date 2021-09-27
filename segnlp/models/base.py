@@ -106,7 +106,9 @@ class BaseModel(nn.Module):
             seg_clf_out = self.seg_clf(batch, seg_rep_out)
 
             if not self.inference:
-                total_loss += self.seg_loss(batch, seg_clf_out)
+                seg_loss = self.seg_loss(batch, seg_clf_out)
+                if seg_loss is not None:
+                    total_loss += seg_loss
 
 
         return total_loss

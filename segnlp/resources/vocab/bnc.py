@@ -3,6 +3,7 @@
 #basics
 import os
 import json
+from nltk import FreqDist
 
 #segnlp
 from segnlp.resources.corpus import BNC
@@ -13,10 +14,12 @@ from segnlp import get_logger
 logger = get_logger("BNC VOCAB")
 
 
-def bnc_vocab(**kwargs):
+def bnc_vocab(
+        size: int = 30000, 
+        unk_word: str = "<UNK>",
+        remove_stopwords:bool = False
+        ) -> Vocab:
     
-    logger.info("Creating vocab from BNC ...")
-
     save_path = "/tmp/bnc_word_freqs.pkl"
 
     if not os.path.exists(save_path):
@@ -30,9 +33,14 @@ def bnc_vocab(**kwargs):
         with open(save_path, "r") as f:
             freqs = json.load(f)
 
-    kwargs["name"] = f"BNC, size = {kwargs['size']}"
-    kwargs["freq_dist"] = freqs
-    return Vocab(**kwargs)
+
+    return Vocab(
+        name = "BNC", 
+        freq_dist = freqs, 
+        size = size, 
+        unk_word = unk_word,
+        remove_stopwords = remove_stopwords,
+    )
 
 
 

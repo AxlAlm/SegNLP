@@ -1,6 +1,4 @@
       
-      
-      
 #pytroch
 import torch
 import torch.nn as nn
@@ -15,8 +13,10 @@ from segnlp.utils import Batch
 class LSTM_ER(BaseModel):
 
     """
-    
     Paper:
+    https://aclanthology.org/P17-1002.pdf
+
+    Model Paper:
     https://www.aclweb.org/anthology/P16-1105.pdf
 
     original code (links on bottom page):
@@ -28,6 +28,11 @@ class LSTM_ER(BaseModel):
         super().__init__(*args, **kwargs)
 
 
+        self.word_emb = self.add_token_embedder(
+                                layer = "WordEmb",
+                                hyperparamaters = self.hps.get("WordEmb", {})
+        )
+
         self.pos_onehot = self.add_token_embedder(
                                     layer  = "PosOneHots",
                                     hyperparamaters = {},
@@ -36,7 +41,7 @@ class LSTM_ER(BaseModel):
         self.word_lstm = self.add_token_encoder(    
                                 layer = "LSTM", 
                                 hyperparamaters = self.hps.get("LSTM", {}),
-                                input_size = self.feature_dims["word_embs"] + 
+                                input_size = self.word_emb.output_size + 
                                              self.pos_onehot.output_size,
                                 )
 
@@ -82,7 +87,14 @@ class LSTM_ER(BaseModel):
 
     def token_rep(self, batch: Batch) -> dict:
 
-        #create pos onehots
+        # embedd words
+        word_embs = self.word_emb(
+                            input  = batch.get("token", "str"),
+                            lengths = batch.get("token", "lengths"),
+
+        )
+
+        # create pos onehots
         pos_one_hots = self.pos_onehot(
                         input = batch.get("token", "pos"),
                         lengths = batch.get("token", "lengths"),
@@ -92,7 +104,7 @@ class LSTM_ER(BaseModel):
         # lstm_out = (batch_size, max_nr_tokens, lstm_hidden)
         lstm_out, _ = self.word_lstm(
                                 input = [
-                                            batch.get("token", "embs"),
+                                            word_embs,
                                             pos_one_hots,
                                             ],
                                 lengths = batch.get("token", "lengths")
@@ -118,8 +130,12 @@ class LSTM_ER(BaseModel):
                                 logits = clf_out["seg+label"],
                                 )
 
-    @utils.timer
+
     def seg_rep(self, batch: Batch, token_rep_out: dict) -> dict:
+        
+        # if we do not have any candidate pairs, we skip the whole seg_module
+        if not len(batch.get("pair", "id")):
+            return None
 
         # get the average embedding for each segments 
         seg_embs = self.agg(
@@ -180,6 +196,10 @@ class LSTM_ER(BaseModel):
 
 
     def seg_clf(self, batch: Batch, rep_out: dict) -> dict:
+    
+         # if we do not have any candidate pairs, we skip the whole seg_module
+        if rep_out is None:
+            return None
 
         # We predict link labels for both directions. Get the dominant pair dir
         # plus roots' probabilities
@@ -199,6 +219,11 @@ class LSTM_ER(BaseModel):
                     
 
     def seg_loss(self, batch: Batch, clf_out: dict) -> Tensor:
+        
+         # if we do not have any candidate pairs, we skip the whole seg_module
+        if clf_out is None:
+            return None
+
         return self.link_labeler.loss(
                                                 targets = batch.get("pair", "link_label", bidir = True),
                                                 logits = clf_out["link_label"],

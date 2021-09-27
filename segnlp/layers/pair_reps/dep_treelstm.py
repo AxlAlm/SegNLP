@@ -408,7 +408,7 @@ class DepGraph:
         ends  = torch.split(ends, lengths, dim=0)
 
         #token_mask = token_mask.type(torch.bool)
-
+        
         for i in range(batch_size):
 
             if lengths[i] == 0:  # no candidate pair
@@ -593,7 +593,7 @@ class DepTreeLSTM(nn.Module):
                 device : Union[str, torch.device] = "cpu",
                 assertion: bool = False
                 ):
-    
+
 
         if not isinstance(input, Tensor): 
             input = torch.cat(input, dim=-1)

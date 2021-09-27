@@ -8,7 +8,7 @@ import json
 from typing import List, Dict, Tuple
 from datetime import datetime
 import pytz
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import os
 import sys
 import requests
@@ -178,8 +178,7 @@ def download(url:str, save_path:str, desc:str):
     progress_bar = tqdm(total=total, unit='iB', unit_scale=True, desc=desc)
 
     if total is None:
-        f.write(response.content)
-        return
+        raise RuntimeError("Empty Data")
 
     with open(save_path, 'wb') as f:
         for data in response.iter_content(chunk_size=1024):

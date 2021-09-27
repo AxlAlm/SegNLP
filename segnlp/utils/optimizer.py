@@ -13,8 +13,10 @@ from torch.optim import lr_scheduler
 def configure_optimizers(model: nn.Module, hyperparamaters:dict) -> Tuple[optim.Optimizer, Union[None, 
                                                                                 lr_scheduler._LRScheduler]]:
 
+    #setup optimizer
+    opt_kwargs = hyperparamaters["general"]["optimizer_kwargs"]
     opt_class = getattr(torch.optim, hyperparamaters["general"]["optimizer"])
-    opt = opt_class(model.parameters(), lr = hyperparamaters["general"]["lr"])
+    opt = opt_class(model.parameters(), **opt_kwargs)
 
     lr_s = None
     if "lr_scheduler" in hyperparamaters["general"]:

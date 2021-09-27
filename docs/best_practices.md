@@ -1,6 +1,8 @@
 
 
 
+# Dataset
+
 
 ## Dataset
 
@@ -8,6 +10,16 @@
     Even if we know where the preprocessed data is from and how its created it can still be important to implement those steps yourself to both for replication purposes, inference purposes and for comparison between preprocessing methods; e.g. does Stanza/CoreNLP, SpaCy or just a whitespace tokenizer yield the best result.
     An NLP system should always try to replicate a real-world-context, especiallly for evaluation. I.e. the input to the system should be as raw as possible.
     
+
+
+## Shuffling
+
+    - shuffle each epoch
+
+
+
+# NNs
+
 
 ## Layer Dimensionality 
 
@@ -18,16 +30,14 @@
 
 
 
-
-## Shuffling
-
-    - shuffle each epoch
+## Optimization and Learning Scheduling
 
 
 
-## Metrics
+## Weight Averaging
 
-
+https://pytorch.org/blog/pytorch-1.6-now-includes-stochastic-weight-averaging/
+https://arxiv.org/abs/1803.05407
 
 
 
@@ -48,6 +58,18 @@
         - prevent Features co-adapting ( a feature can only be useful in the presence of a particular other feature??!?)
 
 
+
+
+
+
+## Metrics
+
+
+
+
+# FEATURES
+
+
 ## OOV
     
 
@@ -61,14 +83,17 @@
 
     #### Fine-Tuning
 
-    
-
-
     ####
 
+    https://arxiv.org/pdf/2010.05006.pdf
 
 
-## Segmentation Encoding Schems / Segment Representation Schemes
+## Byte Pair embeddings
+
+
+
+
+# Segmentation Encoding Schems / Segment Representation Schemes
 
 
 

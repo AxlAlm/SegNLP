@@ -185,11 +185,12 @@ class DirLinkLabeler(nn.Module):
         # then for all directions which are 2 (backwards/reversed) we add the number of link_labels (minus root)
         targets += 1
         targets[directions == 2] += self.link_labels_wo_root
-    
+
         # neg_mask include all the pairs which should be countet as non linking pairs, e.g. label None.
         # this mask is usually created from all segs that are not linked or pairs that include segments which 
         # are not true segments.
         targets[neg_mask] = 0
+        
 
         loss = F.cross_entropy(
                                 logits, 
