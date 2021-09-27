@@ -387,7 +387,7 @@ class Batch:
         self._pred_df["j"] = self._pred_df["seg_id"].map(i2j)
         self._pred_df["j_ratio"] = self._pred_df["seg_id"].map(i2ratio)
 
-
+    
     @__sampling_wrapper
     @Memorize
     def get(self, 

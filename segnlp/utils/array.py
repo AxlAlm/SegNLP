@@ -99,6 +99,7 @@ def flatten(a):
     else:
         return a.flatten()
 
+
 def dynamic_update(src, v, pad_value=0): 
 
     a = np.array(list(src.shape[1:]))
@@ -188,9 +189,11 @@ def create_mask(lengths, as_bool=True, flat=False):
 
     if not torch.is_tensor(lengths):
         lengths = torch.tensor(lengths)
+    
+    device = lengths.device
 
     max_len = torch.max(lengths)
-    mask = torch.arange(max_len).expand(len(lengths), max_len)  < lengths.unsqueeze(1)
+    mask = torch.arange(max_len, device = device).expand(len(lengths), max_len)  < lengths.unsqueeze(1)
     
     if not as_bool:
         mask = mask.type(torch.uint8)

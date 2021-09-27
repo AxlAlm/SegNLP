@@ -5,6 +5,7 @@ from segnlp.utils.array import ensure_numpy
 from tqdm.auto import tqdm
 from typing import Union
 import os
+from time import time
 
 #pytroch
 import torch
@@ -85,6 +86,7 @@ class TrainLoop:
         # move model to specified device
         model = model.to(device)
 
+
         # after model is initialized we can setup out optimizers and learning schedulers
         optimizer, lr_scheduler  = utils.configure_optimizers(
                                         model = model, 
@@ -138,6 +140,9 @@ class TrainLoop:
             model.train()
             for ti, train_batch in enumerate(train_dataset):
                 
+                #set device
+                train_batch.to(device)
+                
                 #if we are using sampling
                 train_batch.use_target_segs = use_target_segs
 
@@ -172,8 +177,11 @@ class TrainLoop:
             # Validation Loop
             total_val_loss = 0
             model.eval()
-            with torch.no_grad():
+            with torch.no_grad(set_to_none=True):
                 for vi, val_batch in enumerate(val_dataset):
+
+                    #set device
+                    val_batch.to(device)
                                             
                     # pass the batch
                     val_loss = model(

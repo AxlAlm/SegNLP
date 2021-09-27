@@ -75,7 +75,7 @@ class BaseModel(nn.Module):
     def name(self):
         return self.__name__
 
-    
+
     def forward(self, 
                 batch:Batch, 
                 ):

@@ -47,11 +47,6 @@ class LSTM_CRF(BaseModel):
                                 )
 
 
-    @classmethod
-    def name(self) -> str:
-        return "LSTM_CNN_CRF"
-
-
     def token_rep(self, batch: Batch) -> dict:
 
         #fine tune embedding via a linear layer

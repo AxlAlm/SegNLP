@@ -97,7 +97,7 @@ class LSTM(nn.Module):
 
         packed_embs = pack_padded_sequence(
                                             input[non_zero_lens], 
-                                            lengths[non_zero_lens],
+                                            utils.ensure_numpy(lengths[non_zero_lens]),
                                             batch_first=True
                                             )
 

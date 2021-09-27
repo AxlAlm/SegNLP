@@ -8,6 +8,10 @@ from copy import deepcopy
 from tqdm.auto import tqdm
 
 
+# pytroch
+import torch
+
+
 #segnlp
 from segnlp import get_logger
 import segnlp.utils as utils
@@ -107,7 +111,7 @@ class HPTuneLoop:
         if not gpus:
             device = "cpu"
         else:
-            device = gpus[0]
+            device =  f"cuda:{gpus[0]}"
         
         for hp_uid, hps in tqdm(hp_dicts.items(), desc="Hyperparamaters",  position=0):    
         

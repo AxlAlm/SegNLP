@@ -37,7 +37,7 @@ class DataModule:
 
     def __init__(self, 
                 path_to_data : str, 
-                batch_size : str,
+                batch_size : int,
                 label_encoder : LabelEncoder,
                 cv : int = 0,
                 ):
@@ -61,7 +61,7 @@ class DataModule:
                     pretrained_features = self.__get_pretrained_features(key),
                     )
 
-
+    
     def __get_df(self, key):
         return pd.read_hdf(self._df_fp, mode = "r", where = f"index in {[k for k in key]}")
 
