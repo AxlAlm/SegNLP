@@ -126,11 +126,6 @@ class LSTM_DIST(BaseModel):
                                             )
 
 
-    @classmethod
-    def name(self) -> str:
-        return "LSTM_DIST"
-
-
     def seg_rep(self, batch: Batch, token_rep_out: dict) -> dict:
 
 
@@ -219,51 +214,44 @@ class LSTM_DIST(BaseModel):
     def seg_clf(self, batch: Batch, seg_rep_out: dict) -> dict:
 
         # classify the label of the segments
-        label_logits, label_preds = self.labeler(output.stuff["adu_emb"])
+        label_logits, label_preds = self.labeler(seg_rep_out["adu_emb"])
 
         # classify the label of the links
-        link_label_logits, link_label_preds = self.link_labeler(output.stuff["adu_emb"])
+        link_label_logits, link_label_preds = self.link_labeler(seg_rep_out["adu_emb"])
 
         # classify links
         link_logits, link_preds = self.linker(
-                                input = output.stuff["pair_embs"], 
+                                input = seg_rep_out["pair_embs"], 
                                 segment_mask = batch.get("seg", "mask")
                                 )
-            
-        return [
-                {
-                    "task": "label",
-                    "logits": label_logits,
-                    "preds": label_preds,
-                  },
-                {
-                    "task": "link_label",
-                    "logits": link_label_logits,
-                    "preds": link_label_preds,
-                  },
-                {
-                    "task": "link",
-                    "logits": link_logits,
-                    "preds": link_preds,
-                  }
-                ]
-                    
+
+        # save/add preds
+        batch.add("seg", "label", label_preds)
+        batch.add("seg", "link_label", link_label_preds)
+        batch.add("seg", "link", link_preds)
+
+        return {
+                "label_logits": label_logits,
+                "link_label_logits": link_label_logits,
+                "link_logits": link_logits,
+                }
+
 
     def seg_loss(self, batch: Batch, seg_clf_out: dict) -> Tensor:
 
-        link_loss = self.linker.loss(
-                                torch.flatten(output.logits["link"], end_dim=-2), 
-                                batch.get("seg", "link").view(-1)
+        label_loss = self.labeler.loss(
+                                logits = seg_clf_out["label_logits"], 
+                                targets = batch.get("seg", "label")
                                 )
 
         link_label_loss = self.link_labeler.loss(
-                                    torch.flatten(output.logits["link_label"], end_dim=-2),
-                                     batch.get("seg", "link_label").view(-1)
+                                    logits = seg_clf_out["link_label_logits"],
+                                    targets = batch.get("seg", "link_label")
                                      )
-
-        label_loss = self.labeler.loss(
-                                torch.flatten(output.logits["label"], end_dim=-2), 
-                                batch.get("seg", "label").view(-1)
+    
+        link_loss = self.linker.loss(
+                                logits = seg_clf_out["link_logits"],
+                                targets = batch.get("seg", "link")
                                 )
 
         ## this is the reported loss aggregation in the paper, but...

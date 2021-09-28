@@ -59,3 +59,14 @@ class PairCLF(LinearCLF):
         preds = torch.argmax(logits, dim=-1)
 
         return logits, preds 
+
+
+
+    def loss(self, logits:Tensor, targets:Tensor):
+        return F.cross_entropy(
+                                torch.flatten(logits, end_dim=-2), 
+                                targets.view(-1), 
+                                reduction = self.loss_reduction,
+                                ignore_index = self.ignore_index
+                                )
+

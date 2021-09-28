@@ -148,37 +148,34 @@ class JointPN(BaseModel):
 
     def seg_clf(self, batch:Batch, seg_rep_out:dict) -> dict:
 
-        label_logits, label_preds = self.labeler(input = output.stuff["encoder_out"])
+        label_logits, label_preds = self.labeler(input = seg_rep_out["encoder_out"])
 
         link_logits, link_preds  = self.pointer(
-                                    input = output.stuff["decoder_out"],
-                                    encoder_outputs = output.stuff["encoder_out"],
+                                    input = seg_rep_out["decoder_out"],
+                                    encoder_outputs = seg_rep_out["encoder_out"],
                                     mask = batch.get("seg", "mask"),
                                     )
 
-        return [
-                  {
-                    "task": "label",
-                    "logits": label_logits,
-                    "preds": label_preds,
-                  },
-                    {
-                    "task": "label",
-                    "logits": link_logits,
-                    "preds": link_preds,
-                  }
-                ]
+        # add/save predictions
+        batch.add("seg", "label", label_preds)
+        batch.add("seg", "links", link_preds)
+
+        return {
+                "label_logits" : label_logits,
+                "link_logits" : link_logits,
+                }
+
                     
 
     def seg_loss(self, batch: Batch, seg_clf_out:dict) -> Tensor:
 
         label_loss = self.labeler.loss(
-                                        logits = output.logits["label"],
+                                        logits = seg_clf_out["label_logits"],
                                         targets = batch.get("seg", "label")
                                     )
 
         link_loss = self.pointer.loss(
-                                        logits = output.logits["link"],
+                                        logits = seg_clf_out["link_logits"],
                                         targets = batch.get("seg", "link")
                                     )
         

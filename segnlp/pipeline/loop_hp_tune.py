@@ -6,6 +6,8 @@ import json
 import os
 from copy import deepcopy
 from tqdm.auto import tqdm
+from glob import glob
+import shutil
 
 
 # pytroch
@@ -34,22 +36,18 @@ class HPTuneLoop:
             group_sets = [dict(zip(gdict.keys(),v)) for v in itertools.product(*vs)]
             group_variations.append(group_sets)
 
-        
         hp_sets = [dict(zip(hyperparamaters.keys(),v)) for v in itertools.product(*group_variations)]
 
         #give each hp an unique id
-        create_hp_uid = lambda x: utils.create_uid("".join(list(map(str, x.keys())) + list(map(str, x.values()))))
-        hp_uids = [create_hp_uid(hp) for hp in hp_sets]
+        create_hp_id = lambda x: utils.create_uid("".join(list(map(str, x.keys())) + list(map(str, x.values()))))
+        hp_ids = [create_hp_id(hp) for hp in hp_sets]
 
 
         # add ids
-        hp_dicts = dict(zip(hp_uids,hp_sets))
+        hp_dicts = dict(zip(hp_ids,hp_sets))
         
-
-        #### check if the hp_uids are already tested and logged
-        with open(self._path_to_hp_hist, "r") as f:
-            done_hp_ids = set(f.read().split("\n"))
-
+        # hp_ids of the saved hyperparamaters
+        done_hp_ids = set([fp.replace(".json", "") for fp in os.listdir(self._path_to_hps)])
 
         for hp_id in list(hp_dicts.keys()):
             if hp_id in done_hp_ids:
@@ -60,37 +58,43 @@ class HPTuneLoop:
         return hp_dicts
 
 
-    def __dump_hp_uid(self, hp_uid: str) -> None:
-
-        with open(self._path_to_hp_hist, "a") as f:
-            f.write(hp_uid + "\n")
-
-
     def __dump_hps( self,
-                    hp_uid:str,
+                    hp_id:str,
                     hyperparamaters: dict, 
+                    random_seeds: list,
                     ):
 
         hyperparamaters = deepcopy(hyperparamaters)
 
-        #fix objects
-        for t, hps in hyperparamaters.items():
-                for k,v in hps.items():
-                    if not isinstance(v, (str, int, float)):
-                        hyperparamaters[t][k] = str(hyperparamaters[t][k])
-            
+        # #fix objects
+        # for group, hps in hyperparamaters.items():
+        #     for k,v in hps.items():
+
+        #         if isinstance(v, dict):
+        #             pass
+
+        #         elif not isinstance(v, (str, int, float)):
+        #             hyperparamaters[group][k] = str(hyperparamaters[group][k])
+                
+        #         else:
+        #             hyperparamaters[group][k]
+        
    
         time = utils.get_time()
         config = {
-                    "hp_uid": hp_uid,
+                    "hp_id": hp_id,
                     "time": str(time),
                     "timestamp": str(time.timestamp()),
                     "hyperparamaters": hyperparamaters,
+                    "random_seeds" : random_seeds
                     }
 
-        #### check if the hp_uids are already tested and logged
-        with open(self._path_to_hp_json, "a") as f:
-            f.write(json.dumps(config, indent=4) + "\n")
+        #create file for the hyperparamaters
+        fp = os.path.join(self._path_to_hps, hp_id + ".json")
+        
+        #### check if the hp_ids are already tested and logged
+        with open(fp, "a") as f:
+            json.dump(config, f, indent=4)
 
 
 
@@ -113,27 +117,43 @@ class HPTuneLoop:
         else:
             device =  f"cuda:{gpus[0]}"
         
-        for hp_uid, hps in tqdm(hp_dicts.items(), desc="Hyperparamaters",  position=0):    
-        
+        for hp_id, hps in tqdm(hp_dicts.items(), desc="Hyperparamaters",  position=0):    
+            
+            #make a folder in models for the model
+            path_to_hp_models = os.path.join(self._path_to_models, hp_id)
+            os.makedirs(path_to_hp_models, exist_ok=True)
+
             if random_seed is not None and isinstance(random_seed, int):
                 random_seeds = [random_seed]
             else:
                 random_seeds = utils.random_ints(n_random_seeds)
 
+            #done_random_seeds = []
             for random_seed in tqdm(random_seeds, desc = "Random Seeds", position=1):
                 
-                utils.set_random_seed(random_seed)
+                try:
+                    self.fit(
+                            hp_id = hp_id,
+                            random_seed = random_seed,
+                            hyperparamaters = hps,
+                            monitor_metric = monitor_metric,
+                            device = device,
+                            overfit_n_batches = overfit_n_batches
+                            )
+                except BaseException as e:
+                    # failed_models = glob(os.path.join(path_to_hp_models, random_seed + "*.ckpt"))
+                    # for fp in failed_models:
+                    #     os.remove(fp)
 
-                self.fit(
-                        model_id = f"{hp_uid}-{random_seed}",
-                        hyperparamaters = hps,
-                        monitor_metric = monitor_metric,
-                        device = device,
-                        overfit_n_batches = overfit_n_batches
-                        )
-
-            # write hp uid to a .txt file
-            self.__dump_hp_uid(hp_uid)
-
+                    shutil.rmtree(path_to_hp_models)
+                    raise e
+                
+                #done_random_seeds.append(random_seed)
+ 
+ 
             # write hyperparamters along with timestamps to a json
-            self.__dump_hps(hp_uid, hps)
+            self.__dump_hps(
+                            hp_id = hp_id, 
+                            hyperparamaters = hps,
+                            random_seeds = random_seeds
+                            )

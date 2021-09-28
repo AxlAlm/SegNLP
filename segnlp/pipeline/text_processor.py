@@ -20,6 +20,9 @@ import dgl
 from dgl import DGLGraph
 from dgl.traversal import topological_nodes_generator as traverse_topo
 
+#spacy
+from spacy.language import Language
+
 
 #nltk
 import nltk
@@ -50,6 +53,31 @@ strange_characters = {
 
 
 class TextProcessor:
+
+
+    def _init_text_processor(self):
+
+        # storing the current row for each level, used to fetch ids etc for lower lever data
+        self._level_row_cache : dict = {}
+        self._nlp_name = "Spacy"
+        self.nlp : Language = self._load_nlp_model()
+
+        # Text Processing
+        self.level2parents : dict = {
+                                "token": ["sentence", "paragraph", "document"],
+                                "sentence": ["paragraph", "document"],
+                                "paragraph": ["document"],
+                                "document": []
+                                }
+
+        self.parent2children : dict = {
+                                "document": ["paragraph","sentence", "token"],
+                                "paragraph": ["sentence", "token"],
+                                "sentence": ["token"],
+                                "token": []
+                                }
+        self._prune_hiers()
+
 
 
     def __paragraph_tokenize(self, doc:str) -> List[str]:
@@ -538,7 +566,7 @@ class TextProcessor:
             df.loc[sample.index, "root_idx"] = [sent_roots[0]] * len(sample)
 
         df["root_idx"] = df["root_idx"].to_numpy(int)
-        
+
         return df
 
 

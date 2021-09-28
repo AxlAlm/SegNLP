@@ -100,7 +100,10 @@ class BaseModel(nn.Module):
         if not self._segment_layers_are_frozen and self._have_seg_module:
 
             # 3) represent segments
-            seg_rep_out = self.seg_rep(batch, token_rep_out)
+            if token_rep_out is None:
+                seg_rep_out = self.seg_rep(batch)
+            else:
+                seg_rep_out = self.seg_rep(batch, token_rep_out)
 
             # 4) classify segments
             seg_clf_out = self.seg_clf(batch, seg_rep_out)

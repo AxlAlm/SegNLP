@@ -98,6 +98,16 @@ def load_pickle_data(file_path):
         data = pkl.load(f)
     return data
 
+def save_json(data, file_path):
+    with open(file_path, "w") as f:
+        json.dump(data, f,  indent=4)
+
+
+def load_json(file_path):
+    with open(file_path, "r") as f:
+        data = json.load(f)
+    return data
+
 
 def timer(func):
 
@@ -135,40 +145,6 @@ def get_time():
     #timestamp = timestamp.timestamp()
     return time
 
-
-def copy_and_vet_dict(input_dict:dict):
-
-    output_dict = {}
-    for k,v in input_dict.items():
-
-        if isinstance(k, int):
-            k = str(k)
-
-        if isinstance(v, (str, int, float, bool)):
-            pass
-        elif isinstance(v, np.ndarray):
-            v = v.tolist()
-        elif not v:
-            pass
-        elif isinstance(v, np.float32):
-            v = float(v)
-        elif isinstance(v, dict):
-            v = copy_and_vet_dict(v)
-        elif isinstance(v, (list, tuple)):
-            pass
-        elif getattr(v, "name", None):
-            att = getattr(v, "name", None)
-
-            if callable(att):
-                v = v.name()
-            else:
-                v = v.name
-        else:
-            raise ValueError(f'"{v}" of type {type(v)} is not a valid type')
-
-        output_dict[k] = v
-    
-    return output_dict
 
 
 def download(url:str, save_path:str, desc:str):

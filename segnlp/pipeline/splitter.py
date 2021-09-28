@@ -21,7 +21,7 @@ class Splitter:
     def _set_splits(self,  premade_splits):
 
 
-        def split(indexes, premade_splits:dict=None):
+        def premade_split(indexes, premade_splits:dict=None):
 
             if premade_splits is not None:
                 train = [i for i in indexes if i in premade_splits["train"]]
@@ -37,7 +37,8 @@ class Splitter:
                         }
                     }    
 
-        def split_new(idxs):
+
+        def new_split(idxs):
             train, test  = train_test_split(idxs, test_size=0.3, shuffle=True)
             train, val  = train_test_split(train, test_size=0.1, shuffle=True)
             return {0:{
@@ -46,6 +47,7 @@ class Splitter:
                         "test":test
                         }
                     }
+
 
         def cv_split(idxs):
             kf = KFold(n_splits=10, shuffle=True)
@@ -62,10 +64,10 @@ class Splitter:
             splits = cv_split(idxs)
 
         elif self.sample_level != self.dataset_level:
-            splits = split_new(idxs)
+            splits = new_split(idxs)
 
         else:
-            splits = split(idxs, premade_splits = premade_splits)
+            splits = premade_split(idxs, premade_splits = premade_splits)
 
 
         with open(self._path_to_splits, "wb") as f:

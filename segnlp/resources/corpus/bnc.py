@@ -1,7 +1,7 @@
 
 #basic
 import xml.etree.ElementTree as ET
-from nltk.probability import FreqDist
+from collections import Counter
 from tqdm.auto import tqdm
 from glob import glob
 import os
@@ -44,8 +44,6 @@ class BNC:
         download(url=self.url, save_path=self.save_path, desc="Downloading BNC-Corpus")
         unzip(self.save_path, self.data_path)
 
-  
-
 
     def __get_files(self):
         path_to_text = os.path.join(self.data_path,"download", "Texts")
@@ -53,15 +51,14 @@ class BNC:
         return files, 0, len(files)-1
 
 
-    def words(self):
-        for doc in tqdm(self, total=len(self), desc="Extracting Words"):
-            for word in doc.lower().split():
-                yield word
-    
-    
     def word_freqs(self):
-        return FreqDist(self.words())
-
+        freqs = Counter()
+        for doc in tqdm(self, total=len(self), desc="Calculating Word Frequency"):
+            freqs += Counter([tok for tok  in doc.lower().split()])
+    
+        sorted_freqs = dict(sorted(freqs.items(), key = lambda x:x[1], reverse=True))
+        return sorted_freqs
+    
 
     def __iter__(self):
         return self

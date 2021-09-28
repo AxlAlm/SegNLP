@@ -21,13 +21,18 @@ class TrainLoop:
 
 
     def __train_loop(self, 
-                    model_id:str,
+                    hp_id:str,
+                    random_seed : int, 
                     hyperparamaters: dict,
                     monitor_metric: str,               
                     cv : int = 0,
                     device : Union[str, torch.device] = "cpu",
-                    overfit_n_batches : int = None
+                    overfit_n_batches : int = None,
+                    suffix : str = ""
                     ):
+
+        #set the random seed
+        utils.set_random_seed(random_seed)
 
 
         # some hyperparamters we need to configure training
@@ -47,12 +52,6 @@ class TrainLoop:
                                 cv = cv,
                                 )
 
-        logger = utils.CSVLogger(
-                                path_to_logs = self._path_to_logs, 
-                                model_id = model_id
-                                )
-
-
         # setting up metric container which takes care of metric calculation, aggregation and storing
         metric_container = utils.MetricContainer(
                                             metric = self.metric,
@@ -60,7 +59,7 @@ class TrainLoop:
                                             )
 
         # set up a checkpoint class to save best models
-        path_to_model = os.path.join(self._path_to_models, model_id + ".ckpt")
+        path_to_model = os.path.join(self._path_to_models, hp_id, str(random_seed) + suffix + ".ckpt")
         checkpointer = utils.SaveBest(path_to_model = path_to_model)
 
         # EarlyStopping, if patience is None it will allways return False
@@ -200,10 +199,11 @@ class TrainLoop:
 
             # Log train epoch metrics
             train_epoch_metrics = metric_container.calc_epoch_metrics("train")
-            logger.log_epoch(  
+            self._log_epoch(  
                                 epoch = epoch,
                                 split = "train",
-                                model_id = model_id,
+                                hp_id = hp_id,
+                                random_seed = random_seed,
                                 epoch_metrics = train_epoch_metrics,
                                 cv = cv
                                 )
@@ -213,10 +213,11 @@ class TrainLoop:
 
             # Log val epoch metrics
             val_epoch_metrics = metric_container.calc_epoch_metrics("val")
-            logger.log_epoch(  
+            self._log_epoch(  
                                 epoch = epoch,
                                 split = "val",
-                                model_id = model_id,
+                                hp_id = hp_id,
+                                random_seed = random_seed,
                                 epoch_metrics = val_epoch_metrics,
                                 cv = cv
                                 )
@@ -247,7 +248,8 @@ class TrainLoop:
 
 
     def __cv_loop(self,
-                model_id:str,
+                hp_id:str,
+                random_seed: int,                 
                 hyperparamaters: dict,
                 monitor_metric: str,
                 device : Union[str, torch.device] = "cpu"
@@ -255,26 +257,29 @@ class TrainLoop:
 
         for i in range(n_cvs):
            self.__train_loop(
-                        model_id = model_id + f"cv={i}",
+                        hp_id  = hp_id,
+                        random_seed = random_seed,       
                         hyperparamaters = hyperparamaters,
                         monitor_metric = monitor_metric,
-                        cv = 1,
+                        cv = i,
                         device = device,
+                        suffix = f"cv={i}"
                     )            
 
 
     def fit(self,
-            model_id:str,
+            hp_id:str,
+            random_seed: int, 
             hyperparamaters: dict,
             monitor_metric: str, 
             device: Union[str, torch.device] = "cpu",
             overfit_n_batches : int = None
             ) -> None:
-
     
         if self.evaluation_method == "cv":
             self.__cv_loop(
-                            model_id = model_id,
+                            hp_id = hp_id,
+                            random_seed = random_seed,
                             hyperparamaters = hyperparamaters,
                             monitor_metric = monitor_metric,
                             device = device,
@@ -282,7 +287,8 @@ class TrainLoop:
                         )
         else:
             self.__train_loop(
-                        model_id = model_id,
+                        hp_id = hp_id,
+                        random_seed = random_seed,                        
                         hyperparamaters = hyperparamaters,
                         monitor_metric = monitor_metric,
                         device = device,

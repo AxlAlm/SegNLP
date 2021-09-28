@@ -2,6 +2,12 @@
 #basics
 from typing import List, Dict, Tuple, Union
 from tqdm import tqdm
+import pandas as pd
+from glob import glob
+import os
+
+# pytorch 
+import torch
 
 #segnlp
 from segnlp import get_logger
@@ -11,43 +17,67 @@ import segnlp.utils as utils
 class TestLoop:
 
 
-    def test(self):
+    def test(self, batch_size : int = 32, seg_data : pd.DataFrame = None):
 
         #loading our preprocessed dataset
         datamodule  = utils.DataModule(
                                 path_to_data = self._path_to_data,
-                                batch_size = batch_size,
-                                cv = cv
+                                batch_size = 32,
+                                cv = 0
                                 )
 
         # create a dataset generator
         test_dataset = datamodule.step("test")
 
         # get all the paths to all models
-        models_to_test = []
+        all_models = glob(self._path_to_models + "/*/*")
+        model_groups = {hp_id: [m for m  in all_models if m.split("/")[-2] == hp_id] for hp_id in self.hp_ids}
+        
 
-        for path_to_model in models_to_test:
 
-            model_info = "LOAD MODEL INFO"
-            model = model.load(path_to_model)
+        for hp_id, seed_models in model_groups.items():
+            
+            # load hyperparamaters
+            model_info_path = os.path.join(self._path_to_hps, hp_id + ".json")
+            model_info = utils.load_json(model_info_path)
 
-            model.eval()
-            torch.zero_grad()
-
-            for test_batch in tqdm(test_dataset, desc = "Test Steps", position=3, total = len(test_dataset)):
+            for model_path in seed_models:
                 
-                model(test_batch)
-
-
-            # Log val epoch metrics
-            test_epoch_metrics = model.metrics.calc_epoch_metrics("val")
-            self.logger.log_epoch(  
-                                epoch = 0,
-                                split = "test",
-                                model_id = model_id,
-                                epoch_metrics = test_epoch_metrics,
-                                cv = 0
+                #setup model
+                model = self.model(
+                                hyperparamaters  = model_info["hyperparamaters"],
+                                label_encoder = self.label_encoder,
+                                feature_dims = self.feature2dim,
+                                metric = self.metric
                                 )
+                
+                #load model weights
+                model.load_state_dict(torch.load(model_path))
+
+                # set model to model to evaluation mode
+                model.eval()
+                with torch.zero_grad():
+
+                    for test_batch in tqdm(test_dataset, desc = "Testing", total = len(test_dataset)):
+                        
+                        if seg_data is not None:
+                            test_batch._pred_df.loc[:, "seg_id"] = seg_data.loc[:, "seg_id"]
+
+                        model(test_batch)
+
+
+                # Log val epoch metrics
+                test_epoch_metrics = model.metrics.calc_epoch_metrics("val")
+                self._log_epoch(  
+                                    epoch = 0,
+                                    split = "test",
+                                    model_id = model_id,
+                                    epoch_metrics = test_epoch_metrics,
+                                    cv = 0
+                                    )
+
+
+
 
 
 
