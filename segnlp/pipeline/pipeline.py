@@ -89,11 +89,11 @@ class Pipeline(
         self._init_text_processor()
         self._init_logs()
 
-        # create config
-        self.config = self.__create_dump_config()
-
         # init files
         self.__init__dirs_and_files(overwrite = overwrite)
+
+        # create config
+        self.config = self.__create_dump_config()
 
         #processed the data
         self.__preprocess_dataset(dataset)
