@@ -2,6 +2,7 @@
 
 #nltk
 from nltk.corpus import brown as BROWN
+from nltk import FreqDist
 
 #segnlp
 from .vocab import Vocab

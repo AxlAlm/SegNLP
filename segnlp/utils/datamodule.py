@@ -42,7 +42,7 @@ class DataModule:
                 cv : int = 0,
                 ):
 
-        self._df_fp : str = os.path.join(path_to_data, "df.hdf5")
+        self._df_fp : str = os.path.join(path_to_data, "df.csv")
         self._pwf_fp : str = utils.check_file(os.path.join(path_to_data, "pwf.hdf5"))
         self._psf_fp : str = utils.check_file(os.path.join(path_to_data, "psf.hdf5"))
 
@@ -52,18 +52,15 @@ class DataModule:
         self.batch_size : int = batch_size
         self.split_id : int = cv
         self.label_encoder : LabelEncoder = label_encoder
-        
+        self._df = pd.read_csv(self._df_fp, index_col = 0)
 
+        
     def __getitem__(self, key:Union[np.ndarray, list]) -> Batch:
         return Batch(
-                    df = self.__get_df(key),
+                    df = self._df.loc[key],
                     label_encoder = self.label_encoder,
                     pretrained_features = self.__get_pretrained_features(key),
                     )
-
-    
-    def __get_df(self, key):
-        return pd.read_hdf(self._df_fp, mode = "r", where = f"index in {[k for k in key]}")
 
 
     def __get_pretrained_features(self, key):

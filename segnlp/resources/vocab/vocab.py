@@ -76,9 +76,14 @@ class Vocab:
         return self._size
     
 
-    def __getitem__(self, words: List[str]):
+    def __getitem__(self, words: Union[str, List[str]]):
+
+        if isinstance(words, str):
+            words = [words]
+            
         return torch.tensor([self._word2id.get(word, 0) for word in words], dtype=torch.int64)
 
 
-    def decode(self, word_ids: List[str]):
-        return [self._id2word[i] for i in  word_ids]
+    # def decode(self, word_ids: Union[str, List[str]]):
+
+    #     return [self._id2word[i] for i in  word_ids]

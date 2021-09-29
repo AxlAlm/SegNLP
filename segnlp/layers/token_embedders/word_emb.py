@@ -16,6 +16,7 @@ from gensim.models import KeyedVectors
 
 #segnlp
 from segnlp.resources.vocab import Vocab
+from segnlp import resources
 from segnlp import utils
 
 
@@ -52,11 +53,11 @@ class WordEmb(nn.Module):
                 sparse = False,
                 ):
         super().__init__()
-        self.vocab = vocab
+        self.vocab = getattr(resources.vocab, vocab)()  if isinstance(vocab, str) else vocab
 
         if path_to_pretrained is not None:
             # we create embedding matrix for the given vocab. in the order given
-            vocab_matrix = self.__create_vocab_matrix(vocab, path_to_pretrained)
+            vocab_matrix = self.__create_vocab_matrix(self.vocab, path_to_pretrained)
 
             self.embs = nn.Embedding.from_pretrained(
                                                         vocab_matrix, 

@@ -1,5 +1,6 @@
 
 #basics
+from gensim import utils
 import numpy as np
 from numpy.lib.utils import deprecate
 import pandas as pd
@@ -39,21 +40,18 @@ class Batch:
         self._df : pd.DataFrame = df
         self._pred_df : pd.DataFrame = df.copy(deep=True)
 
-        # we set all task values to 0
-        self._pred_df["seg_id"] = None
+        if "seg" in label_encoder.task_labels:
+            self._pred_df["seg_id"] = None
+
         self._pred_df["target_id"] = None
         for task in label_encoder.task_labels:
             self._pred_df[task] = None
 
         #
-        self.label_encoder : LabelEncoder= label_encoder
-
+        self.label_encoder : LabelEncoder = label_encoder
         self._task_regexp = re.compile("seg|link|label|link_label")
-
         self._pretrained_features = pretrained_features
-
         self.device = device
-
         self.__ok_levels = set(["seg", "token", "span", "pair"])
 
         if "am_id" in self._df.columns:

@@ -28,6 +28,14 @@ class LinearCLF(nn.Module):
         self.ignore_index = ignore_index
         self.apply(utils.get_weight_init_fn(weight_init, weight_init_kwargs))
 
+          
+    def forward(self, input:Tensor):
+
+        logits = self.clf(self.dropout(input))
+        preds = torch.argmax(logits, dim=-1)
+
+        return logits, preds
+
 
     def loss(self, logits:Tensor, targets:Tensor):
         return F.cross_entropy(
@@ -36,12 +44,3 @@ class LinearCLF(nn.Module):
                                 reduction = self.loss_reduction,
                                 ignore_index = self.ignore_index
                                 )
-
-                                
-    def forward(self, input:Tensor):
-
-        logits = self.clf(self.dropout(input))
-        preds = torch.argmax(logits, dim=-1)
-
-        return logits, preds
-

@@ -90,21 +90,18 @@ class LSTM_CNN_CRF(BaseModel):
 
     def token_clf(self, batch: Batch, token_rep_out: dict) -> dict:
         logits, preds  = self.segmenter(
-                                    input=output.stuff["lstm_out"],
-                                    mask=batch.get("token", "mask"),
+                                    input = token_rep_out["lstm_out"],
+                                    mask = batch.get("token", "mask"),
                                     )
-        return [
-                {
-                "task": self.seg_task,
-                "logits": logits,
-                "preds": preds,
-                }
-                ]
+
+        # add/save prediction
+        batch.add("token", self.seg_task, preds)
+        return {"logits" : logits}
 
 
     def token_loss(self, batch: Batch, token_clf_out:dict) -> Tensor:
         return self.segmenter.loss(
-                                        logits = output.logits[self.seg_task],
+                                        logits = token_clf_out["logits"],
                                         targets = batch.get("token", self.seg_task),
                                         mask = batch.get("token", "mask"),
                                     )

@@ -20,11 +20,11 @@ def bnc_vocab(
         remove_stopwords:bool = False
         ) -> Vocab:
     
-    save_path = "/tmp/bnc_word_freqs.pkl"
+    save_path = "/tmp/bnc_word_freqs.json"
 
     if not os.path.exists(save_path):
         
-        freqs = dict(BNC().word_freqs())
+        freqs = BNC().word_freqs()
 
         with open(save_path, "w") as f:
             json.dump(freqs, f)
