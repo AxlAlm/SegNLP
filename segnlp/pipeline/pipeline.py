@@ -69,9 +69,6 @@ class Pipeline(
         self.other_levels = other_levels
         self.dataset_name = dataset.name()
 
-        #setup pipeline  root folder
-        self._path : str = os.path.join(self.root_dir, self.id)
-
         # task info
         self.dataset_level : str = dataset.level
         self.prediction_level : str = dataset.prediction_level
@@ -83,14 +80,14 @@ class Pipeline(
         self.all_tasks : list = sorted(set(self.tasks + self.subtasks))
         self.label_encoder : utils.LabelEncoder = utils.LabelEncoder(task_labels = self.task_labels)
    
+        # init files
+        self.__init__dirs_and_files(overwrite = overwrite)
+
         # init modules
         self._init_dataset_processor()
         self._init_pretrained_feature_extractor(pretrained_features)
         self._init_text_processor()
         self._init_logs()
-
-        # init files
-        self.__init__dirs_and_files(overwrite = overwrite)
 
         # create config
         self.config = self.__create_dump_config()
@@ -109,6 +106,8 @@ class Pipeline(
 
 
     def __init__dirs_and_files(self, overwrite : bool):
+
+        self._path = os.path.join(self.root_dir, self.id)
 
         if overwrite:
             #logger.info(f"Overriding all data in {self._path} by moving existing folder to /tmp/ and creating a new folder")
