@@ -116,6 +116,10 @@ class HPTuneLoop:
             device = "cpu"
         else:
             device =  f"cuda:{gpus[0]}"
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = True
+            torch.backends.cudnn.enabled = True
+
         
         for hp_id, hps in tqdm(hp_dicts.items(), desc="Hyperparamaters",  position=0):    
             

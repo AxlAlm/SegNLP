@@ -117,4 +117,5 @@ class DataModule:
                             sampler=batch_sampler,
                             collate_fn=self.__collate_fn, 
                             num_workers = segnlp.settings["dl_n_workers"],
+                            pin_memory = False
                             )

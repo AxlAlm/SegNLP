@@ -15,6 +15,8 @@ from segnlp import utils
 from segnlp.utils import datamodule
 
 
+from pynvml.smi import nvidia_smi
+
 
 
 class TrainLoop:
@@ -55,7 +57,7 @@ class TrainLoop:
         # setting up metric container which takes care of metric calculation, aggregation and storing
         metric_container = utils.MetricContainer(
                                             metric = self.metric,
-                                            task_labels = self.task_labels,
+                                            task_labels = self.task_labels
                                             )
 
         # set up a checkpoint class to save best models
@@ -108,6 +110,15 @@ class TrainLoop:
                         )
 
         for epoch in range(max_epochs):
+            
+            #NOTE not needed
+            #print(torch.cuda.memory_allocated())
+            #torch.cuda.empty_cache()
+
+            # uncomment to print memory usage
+            #nvsmi = nvidia_smi.getInstance()
+            #print(nvsmi.DeviceQuery('memory.free, memory.total')["gpu"])
+
 
             # we make sure to generate our batches each epoch so that we can shuffle 
             # the whole dataset so we dont keep feeding the model the same batches each epoch
@@ -171,7 +182,7 @@ class TrainLoop:
 
                 if overfit_n_batches and ti+1 >= overfit_n_batches:
                     break
-
+            
 
             # Validation Loop
             total_val_loss = 0
@@ -196,6 +207,7 @@ class TrainLoop:
 
                     if overfit_n_batches and vi+1 >= overfit_n_batches:
                         break
+
 
             # Log train epoch metrics
             train_epoch_metrics = metric_container.calc_epoch_metrics("train")

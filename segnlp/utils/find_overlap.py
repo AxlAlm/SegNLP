@@ -20,14 +20,13 @@ For each target it will:
 
 """
 
-def _overlap(target_seg_df: pd.DataFrame, pdf: pd.DataFrame):
+def _overlap(j:int, target_seg_df: pd.DataFrame, pdf: pd.DataFrame) -> np.ndarray:
 
     # target segment id
-    j = target_seg_df["seg_id"].to_list()[0]
+    #j = target_seg_df["seg_id"].to_list()[0]
 
     # predicted segments in the sample target df
     pred_seg_ids = target_seg_df["PRED-seg_id"].dropna().to_list()
-
 
     if not pred_seg_ids:
         return np.array([None, None, None])
@@ -45,7 +44,7 @@ def _overlap(target_seg_df: pd.DataFrame, pdf: pd.DataFrame):
     return np.array([i, j, overlap_ratio])
 
 
-def find_overlap(pred_df : pd.DataFrame, target_df : pd.DataFrame) -> Tuple[np.ndarray]:
+def find_overlap(pred_df : pd.DataFrame, target_df : pd.DataFrame) -> Tuple[dict]:
 
     # Create a new dfs which contain the information we need
     pdf = pd.DataFrame({
@@ -64,9 +63,10 @@ def find_overlap(pred_df : pd.DataFrame, target_df : pd.DataFrame) -> Tuple[np.n
                         )
     tdf = tdf[~tdf.index.isna()]
 
-    # we extract matching information. Which predicted segments are overlapping with which 
-    # ground truth segments
-    overlap_info = np.vstack(tdf.groupby(level = 0, sort=False).apply(_overlap, (pdf)))
+
+    # extract information about overlaps
+    overlap_info = np.vstack([ _overlap(j, tsdf, pdf) for j, tsdf in tdf.groupby("seg_id", sort=False)])    
+  
 
     # we then filter out all Nones, and filter out all cases where j match with more than one i.
     # i.e. for each j we only selec the best i 

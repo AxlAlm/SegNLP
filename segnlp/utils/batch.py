@@ -117,6 +117,10 @@ class Batch:
         return create_mask(self.get(level, "lengths", pred = pred), as_bool = True)
 
 
+    # def __seg_tok_lengths(self, df: pd.DataFrame, level:str):
+    #     return df.groupby(level, sort=False).size().to_numpy()
+
+
     def __get_lengths(self, df: pd.DataFrame, level:str):
 
         if level == "token":
@@ -294,6 +298,9 @@ class Batch:
         if key == "lengths":
             data =  self.__get_lengths(df, level)
 
+        # elif key == "lengths_tok":
+        #     data = self.__seg_tok_lengths(df, level)
+
         elif key == "embs":
             data =  self.__get_pretrained_embeddings(df, level, flat = flat)
 
@@ -387,7 +394,7 @@ class Batch:
 
     
     @__sampling_wrapper
-    @Memorize
+    #@Memorize
     def get(self, 
             level : str, 
             key : str, 
@@ -425,6 +432,9 @@ class Batch:
 
     def add(self, level:str, key:str, value:str):
 
+        if key not in self.label_encoder.task_labels:
+            raise KeyError(f"cannot add values to key ='{key}'")
+
         # if we are using TARGET segmentation results we  overwrite the 
         # columns of seg_id with TARGET seg_id as well as TARGET labels for each
         # task done in segmenation
@@ -447,15 +457,18 @@ class Batch:
         elif level == "seg":
             mask = ensure_numpy(self.get("seg", "mask")).astype(bool)
             seg_preds = ensure_numpy(value)[mask]
+
+            # get the length of tokens for each seg 
+            tok_lens = self._pred_df.groupby("seg_id", sort=False).size().to_numpy()
             
             # we spread the predictions on segments over tokens in TARGET segments
-            cond = ~self._df["seg_id"].isna()
+            cond = ~self._pred_df["seg_id"].isna()
 
             # expand the segment prediction for all their tokens 
-            token_preds = np.repeat(seg_preds, ensure_numpy(self.get("seg", "lengths_tok"))[mask])
+            token_preds = np.repeat(seg_preds, tok_lens)
             
             #set the predictions for all rows which belong to a TARGET segment
-            self._pred_df.loc.loc[cond, key] = token_preds
+            self._pred_df.loc[cond, key] = token_preds
 
 
         elif level == "p_seg":

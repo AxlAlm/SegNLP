@@ -1,5 +1,6 @@
 #basics
 import numpy as np
+from typing import Union
 
 #pytorch
 from torch import Tensor
@@ -133,11 +134,15 @@ class Pointer(nn.Module):
                                         input_dim=input_size,
                                         )
 
-    def forward(self, input:Tensor, encoder_outputs:Tensor, mask:Tensor):
+    def forward(self, 
+                input:Tensor,
+                encoder_outputs:Tensor, 
+                mask:Tensor, 
+                device : Union[str, torch.device] = "cpu" 
+                ):
 
         batch_size = input.shape[0]
         seq_len = input.shape[1]
-        device = input.device
 
         logits = torch.zeros(batch_size, seq_len, seq_len, device=device)
         for i in range(seq_len):

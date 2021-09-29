@@ -26,6 +26,7 @@ from segnlp.layers import encoders
 from segnlp.layers import pair_reps
 from segnlp.layers import seg_reps
 from segnlp.layers import general
+from segnlp.layers import labelers
 
 
 logger = get_logger("BaseModel")
@@ -143,6 +144,8 @@ class BaseModel(nn.Module):
             try:
                 layer = getattr(lm, layer)
                 found_layer = True
+                break
+            
             except AttributeError:
                 continue
         
@@ -266,7 +269,7 @@ class BaseModel(nn.Module):
         return self.__add_layer(
                                 layer = layer,
                                 hyperparamaters = hyperparamaters,
-                                layer_modules = [general, Labeler],
+                                layer_modules = [general, labelers],
                                 module_type = "segment",
                                 input_size = input_size,
                                 output_size  = output_size,
@@ -301,7 +304,7 @@ class BaseModel(nn.Module):
                     layer: str,  
                     hyperparamaters: dict,
                     input_size : int,
-                    output_size : int,
+                    output_size : int = None,
                     ):
         return self.__add_layer(
                             layer = layer,

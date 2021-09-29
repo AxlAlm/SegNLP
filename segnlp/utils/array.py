@@ -268,7 +268,9 @@ def cumsum_zero(input:torch.tensor):
     torch.cumsum([4,5,10]) -> [4,9,19]
     cumsum_zero([4,5,10]) -> [0,4,9]
     """
-    return torch.cat((torch.zeros(1),torch.cumsum(input, dim=0)))[:-1].type(torch.LongTensor)
+    z = torch.zeros(1, device=input.device)
+    cumsum = torch.cumsum(input, dim=0)
+    return torch.cat((z, cumsum))[:-1].type(torch.LongTensor)
 
 
 def np_cumsum_zero(input:np.ndarray):

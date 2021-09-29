@@ -32,68 +32,66 @@ class JointPN(BaseModel):
 
         self.agg = self.add_seg_rep(
                             layer = "Agg", 
-                            hyperparams = self.hps.get("Agg", {}),
+                            hyperparamaters = self.hps.get("Agg", {}),
                             input_size = self.feature_dims["word_embs"],
                             )
 
 
         self.bow = self.add_seg_embedder(
                             layer = "SegBOW",
-                            hyperparams = self.hps.get("SegBOW", {}),
+                            hyperparamaters = self.hps.get("SegBOW", {}),
                             )
 
 
         self.seg_pos = self.add_seg_embedder(
                                         layer = "SegPos",
-                                        hyperparams = {},
+                                        hyperparamaters = {},
                                         )
 
 
-        self.fc1 = self.add_encoder(    
+        self.fc1 = self.add_seg_encoder(    
                                     layer = "Linear", 
-                                    hyperparams = self.hps.get("Linear_fc", {}),
+                                    hyperparamaters = self.hps.get("Linear_fc", {}),
                                     input_size  =   self.agg.output_size
                                                     + self.bow.output_size
                                                     + self.seg_pos.output_size,
                                     )
 
 
-        self.fc2 = self.add_segment_encoder(
+        self.fc2 = self.add_seg_encoder(
                                     layer = "Linear", 
-                                    hyperparams = self.hps.get("Linear_fc", {}),
+                                    hyperparamaters = self.hps.get("Linear_fc", {}),
                                     input_size  =   self.agg.output_size
                                                     + self.bow.output_size
                                                     + self.seg_pos.output_size,
 
                                 )
 
-        self.encoder = self.add_segment_encoder(    
-                                layer = "LSTM", 
-                                hyperparams = self.hps.get("encoder_LSTM", {}),
-                                input_size = self.fc1.output_size,
-                                module = "segment_module"
-                                )
+        self.lstm_encoder = self.add_seg_encoder(    
+                                            layer = "LSTM", 
+                                            hyperparamaters = self.hps.get("LSTM_encoder", {}),
+                                            input_size = self.fc1.output_size,
+                                            )
 
 
-        self.decoder = self.add_segment_encoder(    
-                                layer = "LSTM", 
-                                hyperparams = self.hps.get("decoder_LSTM", {}),
-                                input_size = self.fc2.output_size,
-                                )
+        self.lstm_decoder = self.add_seg_encoder(    
+                                            layer = "LSTM", 
+                                            hyperparamaters = self.hps.get("LSTM_decoder", {}),
+                                            input_size = self.fc2.output_size,
+                                            )
 
 
         self.pointer = self.add_linker(
-                                layer = "Pointer",
-                                hyperparams = self.hps.get("Pointer", {}),
-                                input_size = self.decoder.output_size,
-                                output_size = self.task_dims["link"],
-                                )
+                                    layer = "Pointer",
+                                    hyperparamaters = self.hps.get("Pointer", {}),
+                                    input_size = self.lstm_decoder.output_size,
+                                    )
 
 
         self.labeler =  self.add_labeler(
                                         layer = "LinearCLF",
-                                        hyperparams = self.hps.get("LinearCLF", {}),
-                                        input_size = self.encoder.output_size,
+                                        hyperparamaters = self.hps.get("LinearCLF", {}),
+                                        input_size = self.lstm_encoder.output_size,
                                         output_size = self.task_dims["label"]
                                         )
                 
@@ -106,21 +104,24 @@ class JointPN(BaseModel):
     def seg_rep(self, batch: Batch):
 
         seg_embs = self.agg(
-                            input = batch.get("token", "word_embs"), 
+                            input = batch.get("token", "embs"), 
                             lengths = batch.get("seg", "lengths"),
                             span_idxs = batch.get("seg", "span_idxs"),
+                            device = batch.device
                             )
 
         bow = self.bow(
                         input = batch.get("token", "str"), 
                         lengths = batch.get("token", "lengths"),
-                        span_idxs = batch.get("seg", "span_idxs")
+                        span_idxs = batch.get("seg", "span_idxs"),
+                        device = batch.device
                         )
 
         segpos = self.seg_pos(
                             document_paragraph_id = batch.get("seg", "document_paragraph_id"), 
                             nr_paragraphs_doc = batch.get("seg", "nr_paragraphs_doc"),
                             lengths = batch.get("seg", "lengths"),
+                            device = batch.device
                             )
 
         seg_embs = torch.cat((seg_embs, bow, segpos), dim=-1) # 
@@ -129,13 +130,13 @@ class JointPN(BaseModel):
         f1c_out = self.fc1(seg_embs)
         f2c_out = self.fc2(seg_embs)
 
-        encoder_out, states = self.encoder(
+        encoder_out, states = self.lstm_encoder(
                                         input = f1c_out,
                                         lengths = batch.get("seg", "lengths"),
                                         )
 
 
-        decoder_out, _  = self.decoder(
+        decoder_out, _  = self.lstm_decoder(
                                         input = (f2c_out, states),
                                         lengths = batch.get("seg", "lengths"),
                                         )
@@ -154,11 +155,12 @@ class JointPN(BaseModel):
                                     input = seg_rep_out["decoder_out"],
                                     encoder_outputs = seg_rep_out["encoder_out"],
                                     mask = batch.get("seg", "mask"),
+                                    device = batch.device
                                     )
 
         # add/save predictions
         batch.add("seg", "label", label_preds)
-        batch.add("seg", "links", link_preds)
+        batch.add("seg", "link", link_preds)
 
         return {
                 "label_logits" : label_logits,

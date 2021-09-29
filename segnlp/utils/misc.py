@@ -197,10 +197,6 @@ def set_random_seed(seed, using_gpu:bool=False):
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    if using_gpu:
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-
 
 def create_uid(string):
     uid = str(hashlib.sha256(string.encode('utf-8')).hexdigest())

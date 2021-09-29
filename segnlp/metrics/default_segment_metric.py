@@ -8,9 +8,13 @@ from .metric_utils import link_f1
 
 
 def default_segment_metric(pred_df:pd.DataFrame, target_df:pd.DataFrame,  task_labels:dict):
-    
+
+    # NOTE! we remove complexed/coupled labels as metric will calculate metric per task and then average
+    task_labels = {k:v for k,v in task_labels.items() if "+" not in k}
+
     target_df = target_df.groupby("seg_id").first()
     pred_df = pred_df.groupby("seg_id").first()
+
 
     collected_scores = {}
     for task in task_labels.keys():

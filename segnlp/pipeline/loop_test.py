@@ -17,12 +17,16 @@ import segnlp.utils as utils
 class TestLoop:
 
 
-    def test(self, batch_size : int = 32, seg_data : pd.DataFrame = None):
+    def test(self, 
+            hp_id_to_test : str = "all", 
+            batch_size : int = 32, 
+            seg_data : pd.DataFrame = None
+            ) -> None:
 
         #loading our preprocessed dataset
         datamodule  = utils.DataModule(
                                 path_to_data = self._path_to_data,
-                                batch_size = 32,
+                                batch_size = batch_size,
                                 cv = 0
                                 )
 
@@ -30,22 +34,33 @@ class TestLoop:
         test_dataset = datamodule.step("test")
 
         # get all the paths to all models
-        all_models = glob(self._path_to_models + "/*/*")
-        model_groups = {hp_id: [m for m  in all_models if m.split("/")[-2] == hp_id] for hp_id in self.hp_ids}
+        #all_models = glob(self._path_to_models + "/*/*")
+        #hp_groups = {hp_id: [m for m  in all_models if m.split("/")[-2] == hp_id] for hp_id in self.hp_ids}
         
+        hp_ids  = [f.replace(".json","") for f in os.listdir(self._path_to_hps)]
 
 
-        for hp_id, seed_models in model_groups.items():
+        for hp_id in hp_ids:
+
+            if hp_id != hp_id_to_test and hp_id_to_test != "all":
+                continue
+
             
             # load hyperparamaters
             model_info_path = os.path.join(self._path_to_hps, hp_id + ".json")
             model_info = utils.load_json(model_info_path)
 
-            for model_path in seed_models:
+            hyperparamaters = model_info["hyperparamaters"]
+            random_seeds = model_info["random_seeds"]
+
+            for random_seed in random_seeds:
+
+                #model path 
+                model_path = glob(os.path.join(self._path_to_models, hp_id, f"{random_seeds}*"))[0]
                 
                 #setup model
                 model = self.model(
-                                hyperparamaters  = model_info["hyperparamaters"],
+                                hyperparamaters  = hyperparamaters,
                                 label_encoder = self.label_encoder,
                                 feature_dims = self.feature2dim,
                                 metric = self.metric
@@ -71,7 +86,8 @@ class TestLoop:
                 self._log_epoch(  
                                     epoch = 0,
                                     split = "test",
-                                    model_id = model_id,
+                                    hp_id = hp_id,
+                                    random_seed = random_seed,
                                     epoch_metrics = test_epoch_metrics,
                                     cv = 0
                                     )

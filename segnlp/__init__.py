@@ -21,7 +21,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore")
 
 settings = {
-            "dl_n_workers": 1 #multiprocessing.cpu_count()
+            "dl_n_workers": multiprocessing.cpu_count()
             }
 
 set_random_seed(42)
