@@ -176,7 +176,7 @@ class TrainLoop:
             # Validation Loop
             total_val_loss = 0
             model.eval()
-            with torch.no_grad(set_to_none=True):
+            with torch.no_grad():
                 for vi, val_batch in enumerate(val_dataset):
 
                     #set device

@@ -40,8 +40,6 @@ class Batch:
         self._df : pd.DataFrame = df
         self._pred_df : pd.DataFrame = df.copy(deep=True)
 
-        print(label_encoder.task_labels)
-
         if "seg" in label_encoder.task_labels:
             self._pred_df["seg_id"] = None
 
@@ -364,7 +362,7 @@ class Batch:
 
         return data
 
-    @timer
+
     def __add_overlap_info(self):
 
         # we also have information about whether the seg_id is a true segments 

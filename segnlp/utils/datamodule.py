@@ -55,7 +55,6 @@ class DataModule:
         self._df = pd.read_csv(self._df_fp, index_col = 0)
 
         
-    @utils.timer
     def __getitem__(self, key:Union[np.ndarray, list]) -> Batch:
         return Batch(
                     df = self._df.loc[key],

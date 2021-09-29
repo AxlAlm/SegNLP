@@ -1,5 +1,6 @@
       
 #pytroch
+from segnlp.layers.token_embedders import word_emb
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -111,7 +112,7 @@ class LSTM_ER(BaseModel):
                                 )
 
         return {
-                "lstm_out": lstm_out
+                "lstm_out": lstm_out,
                 }
 
 
@@ -121,7 +122,10 @@ class LSTM_ER(BaseModel):
                                 )
         
         batch.add("token", "seg+label", preds)
-        return {"seg+label": logits}
+
+        return {
+                "seg+label": logits,
+                }
 
 
     def token_loss(self, batch: Batch, clf_out: dict) -> Tensor:
@@ -139,7 +143,7 @@ class LSTM_ER(BaseModel):
 
         # get the average embedding for each segments 
         seg_embs = self.agg(
-                            input = batch.get("token", "embs"),
+                            input = token_rep_out["lstm_out"],
                             lengths = batch.get("seg", "lengths", pred = True), 
                             span_idxs = batch.get("seg", "span_idxs", pred = True),
                             device = batch.device,
