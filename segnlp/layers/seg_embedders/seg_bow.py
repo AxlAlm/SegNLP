@@ -10,6 +10,7 @@ import torch
 
 #segnlp
 from segnlp.resources.vocab import Vocab
+from segnlp import resources
 from segnlp import utils
 
 
@@ -25,7 +26,7 @@ class SegBOW(nn.Module):
 
         assert mode in ["one_hots", "counts"]
 
-        self.vocab = vocab
+        self.vocab = getattr(resources.vocab, vocab)() if isinstance(vocab, str) else vocab
         self.vocab_size = len(self.vocab)
         self.output_size = self.vocab_size #out_dim if out_dim is not None else self.vocab_size
         self.mode = mode

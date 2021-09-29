@@ -95,10 +95,14 @@ class WordEmb(nn.Module):
         return vocab_matrix
             
 
-    def forward(self, input:list, lengths: list):
+    def forward(self,
+                input:list, 
+                lengths: list,
+                device : Union[str, torch.device] = "cpu"
+                ) -> Tensor:
         
         # encode tokens, assumes input is a list of all tokens in the batch
-        token_id_flat = self.vocab[input]
+        token_id_flat = self.vocab[utils.ensure_numpy(input)].to(device)
 
         # formats the encoded tokens to (Batch size, max token length)
         token_ids = pad_sequence(

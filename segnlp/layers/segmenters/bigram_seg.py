@@ -59,7 +59,7 @@ class BigramSeg(nn.Module):
         # predict labels token by token
         for i in range(max_length):
             prev_label_one_hot = F.one_hot(
-                                preds[:, i - 1 ],
+                                preds[:, i - 1],
                                 num_classes=self.output_size
                                 )
             x = torch.cat((input[:, i], prev_label_one_hot), dim=-1)

@@ -92,7 +92,7 @@ class LSTM_ER(BaseModel):
         word_embs = self.word_emb(
                             input  = batch.get("token", "str"),
                             lengths = batch.get("token", "lengths"),
-
+                            device = batch.device
         )
 
         # create pos onehots
@@ -119,6 +119,7 @@ class LSTM_ER(BaseModel):
     def token_clf(self, batch: Batch, rep_out: dict) -> dict:
         logits, preds  = self.segmenter(
                                 input = rep_out["lstm_out"],
+                                device = batch.device
                                 )
         
         batch.add("token", "seg+label", preds)
