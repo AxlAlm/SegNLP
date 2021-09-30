@@ -88,8 +88,15 @@ class TrainLoop:
         model = model.to(device)
 
 
-        # after model is initialized we can setup out optimizers and learning schedulers
-        optimizer, lr_scheduler  = utils.configure_optimizers(
+        # after model is initialized we can setup optimizer
+        optimizer = self._configure_optimizers(
+                                        model = model, 
+                                        hyperparamaters = hyperparamaters
+                                        )
+
+        # setup learning scheduler
+        lr_scheduler = self._configure_learning_scheduler(
+                                        opt = optimizer,
                                         model = model, 
                                         hyperparamaters = hyperparamaters
                                         )
@@ -110,15 +117,6 @@ class TrainLoop:
                         )
 
         for epoch in range(max_epochs):
-            
-            #NOTE not needed
-            #print(torch.cuda.memory_allocated())
-            #torch.cuda.empty_cache()
-
-            # uncomment to print memory usage
-            #nvsmi = nvidia_smi.getInstance()
-            #print(nvsmi.DeviceQuery('memory.free, memory.total')["gpu"])
-
 
             # we make sure to generate our batches each epoch so that we can shuffle 
             # the whole dataset so we dont keep feeding the model the same batches each epoch
@@ -252,7 +250,7 @@ class TrainLoop:
             # if we use a learning scheduler we call step() to make it do its thing 
             # with the optimizer, i.e. change the learning rate in some way
             if lr_scheduler is not None:
-                lr_scheduler.step(total_val_loss)
+                lr_scheduler.step(score)
 
             epoch_tqdm.set_postfix(postfix)
             epoch_tqdm.update(1)

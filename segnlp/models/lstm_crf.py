@@ -5,10 +5,6 @@
 
 
 #pytroch
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.nn.modules import module
 from torch import Tensor
 
 #segnlp
@@ -16,11 +12,15 @@ from .base import BaseModel
 from segnlp import utils
 from segnlp.utils import Batch
 
+from segnlp.layers.dropout import BinaryTokenDropout, ParamaterDropout
+
 
 class LSTM_CRF(BaseModel):
 
     """
     https://aclanthology.org/W19-4501.pdf
+    
+
     
     """
 
@@ -29,7 +29,7 @@ class LSTM_CRF(BaseModel):
 
         self.finetuner = self.add_token_encoder(
                                     layer = "Linear", 
-                                    hyperparamaters = {},
+                                    hyperparamaters = self.hps.get("LinearFineTuner", {}),
                                     input_size = self.feature_dims["word_embs"],
                                 )
 
@@ -46,8 +46,19 @@ class LSTM_CRF(BaseModel):
                                 output_size = self.task_dims[self.seg_task],
                                 )
 
+        self.binary_token_dropout = BinaryTokenDropout(**self.hps["BinaryTokenDropout"])
+        self.paramater_dropout = ParamaterDropout(**self.hps["ParamaterDropout"])
+
 
     def token_rep(self, batch: Batch) -> dict:
+
+        embs = batch.get("token", "embs")
+
+        # drop random tokens
+        embs = self.binary_token_dropout(embs)
+
+        # drop random paramaters
+        embs = self.paramater_dropout(embs)
 
         #fine tune embedding via a linear layer
         word_embs = self.finetuner(batch.get("token", "embs"))
@@ -57,6 +68,12 @@ class LSTM_CRF(BaseModel):
                                     input = word_embs, 
                                     lengths = batch.get("token", "lengths")
                                 )
+
+        # drop random tokens
+        lstm_out = self.binary_token_dropout(lstm_out)
+
+        # drop random paramaters
+        lstm_out = self.paramater_dropout(lstm_out)
 
         return {
                 "lstm_out": lstm_out

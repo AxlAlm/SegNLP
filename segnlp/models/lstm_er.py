@@ -1,6 +1,5 @@
       
 #pytroch
-from segnlp.layers.token_embedders import word_emb
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -38,6 +37,11 @@ class LSTM_ER(BaseModel):
                                     layer  = "PosOneHots",
                                     hyperparamaters = {},
         )
+
+        self.word_dropout  = self.add_token_dropout(
+                                                layer = "Dropout",
+                                                hyperparamaters = self.hps.get("word_dropout", {}),
+                                                )
 
         self.word_lstm = self.add_token_encoder(    
                                 layer = "LSTM", 
@@ -78,6 +82,11 @@ class LSTM_ER(BaseModel):
                                 input_size = (self.word_lstm.output_size * 2) + self.deptreelstm.output_size,
         )
 
+        self.output_dropout  = self.add_seg_dropout(
+                                                layer = "Dropout",
+                                                hyperparamaters = self.hps.get("output_dropout", {}),
+                                                )
+
         self.link_labeler = self.add_link_labeler(
                                     layer = "DirLinkLabeler",
                                     hyperparamaters = self.hps.get("DirLinkLabeler", {}),
@@ -102,12 +111,15 @@ class LSTM_ER(BaseModel):
                         device = batch.device
         )
 
-        # lstm_out = (batch_size, max_nr_tokens, lstm_hidden)
+        #concatenate embeddings
+        cat_embs = torch.cat([word_embs, pos_one_hots], dim = -1)
+
+        # dropout
+        cat_embs = self.word_dropout(cat_embs)
+
+        # pass to lstm
         lstm_out, _ = self.word_lstm(
-                                input = [
-                                            word_embs,
-                                            pos_one_hots,
-                                            ],
+                                input = cat_embs,
                                 lengths = batch.get("token", "lengths")
                                 )
 
@@ -184,6 +196,7 @@ class LSTM_ER(BaseModel):
         # creating dp´ = [dp; s1, s2] (see paper above, page 1109)
         seg_embs_flat = seg_embs[batch.get("seg", "mask", pred = True).type(torch.bool)]
 
+        #create bidirectional pair embeddings 
         pair_embs = torch.cat((
                                 seg_embs_flat[batch.get("pair", "p1", bidir = True)],
                                 seg_embs_flat[batch.get("pair", "p2", bidir = True)],
@@ -192,8 +205,11 @@ class LSTM_ER(BaseModel):
                                 dim=-1
                                 )
     
-
+        # pass embeddings to a final linear layerr
         pair_embs = self.linear_pair_enc(pair_embs)
+
+        # lastly, some tasty dropout
+        pair_embs = self.output_dropout(pair_embs)
 
         return {
                 "pair_embs":pair_embs

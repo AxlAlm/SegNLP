@@ -21,7 +21,6 @@ class CharEmb(nn.Module):
                 n_filters:int,
                 emb_size:int,
                 kernel_size:int,
-                dropout:float=0.0,
                 ):
         super().__init__()
         self.vocab = CharVocab()
@@ -35,7 +34,6 @@ class CharEmb(nn.Module):
                                     out_channels=n_filters, 
                                     kernel_size=kernel_size, 
                                     )
-        self.dropout = nn.Dropout(dropout)
         self.output_size = n_filters
                                     
 
@@ -59,7 +57,6 @@ class CharEmb(nn.Module):
         batch_size, seq_length, char_length = char_encs.shape
 
         char_embs = self.char_emb_layer(char_encs)
-        char_embs = self.dropout(char_embs)
 
         # char emb is a 4D vector of Batch size, seq length, character length and embedding size
         # we want to Conv over character embeddings per word, per sequence, so we can move the dimension 1 step down
@@ -69,7 +66,7 @@ class CharEmb(nn.Module):
         cnn_out = self.char_cnn(char_embs)
 
         # we can now pool the embeddings for each sequence of character embeddings and create word embeddings
-        values, indices = cnn_out.max(dim=2)
+        values, _ = cnn_out.max(dim=2)
 
         # as we have a stack of word embeddings we can now format it back in a view 
         # that has batchsize, seq_length and n_filters, 

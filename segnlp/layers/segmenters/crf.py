@@ -25,7 +25,6 @@ class CRF(nn.Module):
     def __init__(self, 
                 input_size:int, 
                 output_size:int, 
-                dropout:float=0.0,
                 ):
         super().__init__()
         self.clf = nn.Linear(input_size, output_size)
@@ -33,7 +32,6 @@ class CRF(nn.Module):
                         num_tags=output_size,
                         include_start_end_transitions = False
                         )
-        self.dropout = nn.Dropout(dropout)
 
     @classmethod
     def name(self):
@@ -42,7 +40,6 @@ class CRF(nn.Module):
 
     def forward(self, input:Tensor, mask:Tensor):
 
-        input = self.dropout(input)
         logits = self.clf(input)
         preds = self.crf.viterbi_tags(
                                 logits=logits,

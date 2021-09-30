@@ -11,8 +11,16 @@ or by:
 >>print(nlp.get_pipe("tagger").labels)
 
 """
+# pytroch
+import torch
 
-spacy_pos = [ 
+# segnlp
+from .base import Vocab
+
+class POSVocab(Vocab):
+
+    def _get_vocab(self):
+        return  [ 
                     '$', "''", ',', '-LRB-', '-RRB-', '.', ':', 'ADD', 'AFX', 'CC', 'CD', 
                     'DT', 'EX', 'FW', 'HYPH', 'IN', 'JJ', 'JJR', 'JJS', 'LS', 'MD', 'NFP', 
                     'NN','NNP', 'NNPS', 'NNS', 'PDT', 'POS', 'PRP', 'PRP$', 'RB', 'RBR', 

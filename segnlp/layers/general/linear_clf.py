@@ -13,17 +13,13 @@ class LinearCLF(nn.Module):
     def __init__(self, 
                 input_size, 
                 output_size, 
-                dropout:float=0.0,
                 loss_reduction = "mean",
                 ignore_index = -1,
                 weight_init = "normal",
                 weight_init_kwargs : dict = {}
                 ):
         super().__init__()
-
-        self.dropout = nn.Dropout(dropout)
         self.clf = nn.Linear(input_size, output_size)
-
         self.loss_reduction = loss_reduction
         self.ignore_index = ignore_index
         self.apply(utils.get_weight_init_fn(weight_init, weight_init_kwargs))
@@ -31,7 +27,7 @@ class LinearCLF(nn.Module):
           
     def forward(self, input:Tensor):
 
-        logits = self.clf(self.dropout(input))
+        logits = self.clf(input)
         preds = torch.argmax(logits, dim=-1)
 
         return logits, preds

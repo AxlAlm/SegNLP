@@ -31,7 +31,6 @@ class DirLinkLabeler(nn.Module):
                 input_size:int, 
                 output_size:int, 
                 match_threshold : float = 0.5,
-                dropout:float=0.0,
                 loss_reduction = "mean",
                 ignore_index = -1,
                 ):
@@ -48,7 +47,6 @@ class DirLinkLabeler(nn.Module):
         self.rev_label_treshhold = output_size
         output_size = ((output_size -1) * 2 ) + 2
 
-        self.dropout = nn.Dropout(dropout)
         self.clf = nn.Linear(input_size, output_size)
 
 
@@ -143,7 +141,7 @@ class DirLinkLabeler(nn.Module):
                 sample_id: Tensor,
                 ):
 
-        logits = self.clf(self.dropout(input))
+        logits = self.clf(input)
         link_labels, links = self.__get_preds(
                                     logits = logits,
                                     pair_p1 = pair_p1,

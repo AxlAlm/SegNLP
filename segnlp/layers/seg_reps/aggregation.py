@@ -14,7 +14,6 @@ class Agg(nn.Module):
     def __init__(self, 
                 input_size:int, 
                 mode:str="mean", 
-                dropout:float=0.0
                 ):
         super().__init__()
 
@@ -30,8 +29,6 @@ class Agg(nn.Module):
         else:
             self.output_size = input_size
 
-        self.dropout = nn.Dropout(dropout)
-
 
     def forward(self, 
                 input:Tensor, 
@@ -42,8 +39,6 @@ class Agg(nn.Module):
 
         batch_size = input.shape[0]
         agg_m = torch.zeros(batch_size, max(lengths), self.output_size, device=device)
-
-        input = self.dropout(input)
 
         for i in range(batch_size):
             for j in range(lengths[i]):

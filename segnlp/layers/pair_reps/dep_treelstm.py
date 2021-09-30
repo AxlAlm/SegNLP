@@ -311,7 +311,6 @@ class TypeTreeLSTM(nn.Module):
         self,
         embedding_dim,
         h_size,
-        dropout=0,
         bidirectional=True,
     ):
 
@@ -319,7 +318,7 @@ class TypeTreeLSTM(nn.Module):
 
         self.bidirectional = bidirectional
         self.TeeLSTM_cell = TreeLSTMCell(embedding_dim, h_size)
-        # self.dropout = nn.Dropout(dropout)
+
 
     def forward(self, g: DGLGraph, h0: Tensor, c0: Tensor):
         """A modified N-ary tree-lstm (LSTM-ER) network

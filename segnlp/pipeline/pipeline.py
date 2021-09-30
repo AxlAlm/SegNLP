@@ -22,6 +22,7 @@ from .text_processor import TextProcessor
 from .splitter import Splitter
 from .pretrained_feature_extractor import PretrainedFeatureExtractor
 from .logs import Logs
+from .train_utils import TrainUtils
 
 from segnlp import get_logger
 from segnlp.datasets.base import DataSet
@@ -43,6 +44,7 @@ class Pipeline(
                 TrainLoop, 
                 TestLoop,
                 Logs,
+                TrainUtils,
                 ):
     
     def __init__(self,

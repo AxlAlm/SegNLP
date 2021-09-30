@@ -19,7 +19,6 @@ class SegBOW(nn.Module):
     def __init__(   
                 self,
                 vocab: Vocab,
-                dropout: float = 0.0,
                 mode: str = "one_hots",
                 ):
         super().__init__()
@@ -30,8 +29,6 @@ class SegBOW(nn.Module):
         self.vocab_size = len(self.vocab)
         self.output_size = self.vocab_size #out_dim if out_dim is not None else self.vocab_size
         self.mode = mode
-
-        self.dropout = nn.Dropout(dropout)
 
 
     def forward(self, 
@@ -44,9 +41,7 @@ class SegBOW(nn.Module):
         batch_size, seg_size, *_ = span_idxs.shape
 
         sample_tokens = np.split(input, utils.ensure_numpy(torch.cumsum(lengths, dim = 0)))[:-1] # np.split creates a empty tail
-        
-        #assert len(sample_tokens) == len(lengths)
-   
+           
         # one hots
         bow = torch.zeros(
                             (batch_size, seg_size, self.vocab_size),
@@ -70,9 +65,7 @@ class SegBOW(nn.Module):
                 else:
                     bow[k][s][token_ids] += 1
 
-        bow = self.dropout(bow.type(torch.float))
 
-
-        return bow.to(device)
+        return bow.type(torch.float).to(device)
         
         

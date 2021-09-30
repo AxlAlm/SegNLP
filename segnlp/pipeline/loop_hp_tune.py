@@ -5,6 +5,7 @@ import itertools
 import json
 import os
 from copy import deepcopy
+from numpy.lib.arraysetops import isin
 from tqdm.auto import tqdm
 from glob import glob
 import shutil
@@ -25,37 +26,59 @@ logger = get_logger("LOOP HP TUNING")
 class HPTuneLoop:
 
 
-    def __create_hyperparam_sets(self, hyperparamaters:dict) -> Dict[str, dict]:
-        """creates a set of hyperparamaters for hyperparamaters based on given hyperparamaters lists.
-        takes a hyperparamaters and create a set of new paramaters given that any
-        paramater values are list of values.
+    def __create_hyperparam_sets(self, hyperparamaters:dict) -> List[dict]:
         """
-        group_variations = []
-        for _, gdict in hyperparamaters.items():
-            vs = [[v] if not isinstance(v, list) else v for v in gdict.values()]
-            group_sets = [dict(zip(gdict.keys(),v)) for v in itertools.product(*vs)]
-            group_variations.append(group_sets)
 
-        hp_sets = [dict(zip(hyperparamaters.keys(),v)) for v in itertools.product(*group_variations)]
+        Create a set of hyperparamaters
+
+        """
+        to_list = lambda x: [x] if not isinstance(x, list) else x
+        variations = []
+        for type_, type_dict in hyperparamaters.items():
+
+            sub_type_vars = []
+
+            for k, v in type_dict.items():
+
+                if isinstance(v, dict):
+
+                    subsub_type_vars = [to_list(vv) for vv in v.values()]
+                    subsub_type_groups = [dict(zip(v.keys(), x)) for x in itertools.product(*subsub_type_vars)]
+                    sub_type_vars.append(subsub_type_groups)
+
+                else:
+                    sub_type_vars.append(to_list(v))
+            
+            variations.append([dict(zip(type_dict.keys(), x)) for x in itertools.product(*sub_type_vars)])
+
+        hp_sets = [dict(zip(hyperparamaters.keys(),v)) for v in itertools.product(*variations)]
+
+        return hp_sets
+
+
+    def __id_hyperparamaters(self, set_hyperparamaters: List[dict]) -> list:
+        """
+        creates a unique hash id for each hyperparamater. Used to check if hyperparamaters are already tested
+        """
 
         #give each hp an unique id
         create_hp_id = lambda x: utils.create_uid("".join(list(map(str, x.keys())) + list(map(str, x.values()))))
-        hp_ids = [create_hp_id(hp) for hp in hp_sets]
+        hp_ids = [create_hp_id(hp) for hp in set_hyperparamaters]
+        return list(zip(hp_ids, set_hyperparamaters))
 
 
-        # add ids
-        hp_dicts = dict(zip(hp_ids,hp_sets))
+    def __filter_hyperparamaters(self, identifed_hps: List[Tuple(str, dict)]) -> List[Tuple(str, dict)]:
+        """
+        check which hyperparamaters ids already exist and remove them  
+        """
         
-        # hp_ids of the saved hyperparamaters
+        # hp ids for hyperparamaters that is already tested
         done_hp_ids = set([fp.replace(".json", "") for fp in os.listdir(self._path_to_hps)])
 
-        for hp_id in list(hp_dicts.keys()):
-            if hp_id in done_hp_ids:
-                logger.info(f"WARNING! Hyperparamater with id {hp_id} has already been run. Will remove from hyperparamter tuning.")
-                hp_dicts.pop(hp_id)
-
+        # filtered hyperparamaters
+        filtered_hps = [(id,hps) for id,hps in identifed_hps if id not in done_hp_ids]
     
-        return hp_dicts
+        return filtered_hps
 
 
     def __dump_hps( self,
@@ -65,20 +88,6 @@ class HPTuneLoop:
                     ):
 
         hyperparamaters = deepcopy(hyperparamaters)
-
-        # #fix objects
-        # for group, hps in hyperparamaters.items():
-        #     for k,v in hps.items():
-
-        #         if isinstance(v, dict):
-        #             pass
-
-        #         elif not isinstance(v, (str, int, float)):
-        #             hyperparamaters[group][k] = str(hyperparamaters[group][k])
-                
-        #         else:
-        #             hyperparamaters[group][k]
-        
    
         time = utils.get_time()
         config = {
@@ -109,8 +118,9 @@ class HPTuneLoop:
 
         self.training = True
 
-        hp_dicts = self.__create_hyperparam_sets(hyperparamaters)
-
+        hp_sets = self.__create_hyperparam_sets(hyperparamaters)
+        id_hps_set = self.__id_hyperparamaters(hp_sets)
+        id_hps_set = self.__filter_hyperparamaters(id_hps_set)
 
         if not gpus:
             device = "cpu"
@@ -121,7 +131,7 @@ class HPTuneLoop:
             torch.backends.cudnn.enabled = True
 
         
-        for hp_id, hps in tqdm(hp_dicts.items(), desc="Hyperparamaters",  position=0):    
+        for hp_id, hps in tqdm(hp_sets, desc="Hyperparamaters",  position=0):    
             
             #make a folder in models for the model
             path_to_hp_models = os.path.join(self._path_to_models, hp_id)

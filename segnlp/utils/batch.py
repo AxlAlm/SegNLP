@@ -36,7 +36,6 @@ class Batch:
                 device = None
                 ):
 
-
         self._df : pd.DataFrame = df
         self._pred_df : pd.DataFrame = df.copy(deep=True)
 
@@ -61,6 +60,9 @@ class Batch:
 
         self.use_target_segs : bool = False
 
+        # cache
+        self.__cache = {}
+
 
     def __len__(self):
         return self._size
@@ -78,7 +80,7 @@ class Batch:
         
         return wrapped_get
 
-
+    
     def __get_column_values(self, df: pd.DataFrame, level: str, key:str):
 
         if level == "token":
@@ -394,7 +396,6 @@ class Batch:
 
     
     @__sampling_wrapper
-    #@Memorize
     def get(self, 
             level : str, 
             key : str, 
@@ -402,6 +403,14 @@ class Batch:
             pred : bool = False,
             bidir : bool = True
             ):
+
+        # create a key for string in cache
+        cache_key = (level, key, flat, pred, bidir)
+
+        # fetched cached data
+        if cache_key in self.__cache:
+            return self.__cache[cache_key]
+
 
         if level not in self.__ok_levels:
             raise KeyError
