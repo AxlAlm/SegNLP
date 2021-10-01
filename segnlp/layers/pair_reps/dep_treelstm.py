@@ -551,7 +551,6 @@ class DepTreeLSTM(nn.Module):
                  hidden_size: int,
                  bidir: bool,
                  mode : str = "shortest_path",
-                 dropout: int = 0.0
                  ):
         super().__init__()
 
@@ -563,7 +562,6 @@ class DepTreeLSTM(nn.Module):
         self.tree_lstm = TypeTreeLSTM(
                                         embedding_dim=input_size,
                                         h_size=hidden_size,
-                                        dropout=dropout,
                                         bidirectional=True
                                       )
         

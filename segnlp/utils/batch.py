@@ -21,7 +21,6 @@ from .array import ensure_numpy
 from .array import ensure_list
 from .array import create_mask
 from .array import np_cumsum_zero
-from .cache import Memorize
 from .find_overlap import find_overlap
 from .misc import timer
 

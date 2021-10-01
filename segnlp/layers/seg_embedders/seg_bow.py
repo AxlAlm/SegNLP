@@ -9,8 +9,7 @@ from torch import Tensor
 import torch
 
 #segnlp
-from segnlp.resources.vocab import Vocab
-from segnlp import resources
+from segnlp.resources import vocabs
 from segnlp import utils
 
 
@@ -18,14 +17,14 @@ class SegBOW(nn.Module):
 
     def __init__(   
                 self,
-                vocab: Vocab,
+                vocab: Union[str, list],
                 mode: str = "one_hots",
                 ):
         super().__init__()
 
         assert mode in ["one_hots", "counts"]
 
-        self.vocab = getattr(resources.vocab, vocab)() if isinstance(vocab, str) else vocab
+        self.vocab = getattr(vocabs, vocab)() if isinstance(vocab, str) else vocabs.Vocab(list)
         self.vocab_size = len(self.vocab)
         self.output_size = self.vocab_size #out_dim if out_dim is not None else self.vocab_size
         self.mode = mode

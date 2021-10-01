@@ -15,15 +15,17 @@ or by:
 import torch
 
 # segnlp
-from .base import Vocab
+from .vocab import Vocab
 
-class POSVocab(Vocab):
 
-    def _get_vocab(self):
-        return  [ 
+class Pos(Vocab):
+
+    def __init__(self):
+        pos =   [ 
                     '$', "''", ',', '-LRB-', '-RRB-', '.', ':', 'ADD', 'AFX', 'CC', 'CD', 
                     'DT', 'EX', 'FW', 'HYPH', 'IN', 'JJ', 'JJR', 'JJS', 'LS', 'MD', 'NFP', 
                     'NN','NNP', 'NNPS', 'NNS', 'PDT', 'POS', 'PRP', 'PRP$', 'RB', 'RBR', 
                     'RBS', 'RP', 'SYM', 'TO', 'UH', 'VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ', 
                     'WDT', 'WP', 'WP$', 'WRB', 'XX', '_SP', '``'
                 ]
+        super().__init__(vocab = pos)

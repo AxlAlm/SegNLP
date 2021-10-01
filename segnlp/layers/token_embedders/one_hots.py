@@ -1,6 +1,7 @@
 
 #basics
 from typing import Sequence, Union
+from numpy.lib.arraysetops import isin
 from torch.functional import Tensor
 
 # pytorch
@@ -11,15 +12,15 @@ from torch.nn.utils.rnn import pad_sequence
 
 
 # segnlp
-
 from segnlp import utils
+from segnlp.resources import vocabs
 
 
 class OneHots(nn.Module):
 
-    def __init__(self, vocab:list):
+    def __init__(self, vocab: Union[str, list]) -> None:
         super().__init__()
-        self.vocab = vocab
+        self.vocab = getattr(vocabs, vocab)() if isinstance(vocab, str) else vocab
         self.output_size = len(self.vocab)
     
 

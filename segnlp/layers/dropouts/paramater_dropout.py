@@ -13,7 +13,7 @@ from torch import nn
 from torch.functional import Tensor
 
 
-class BinaryTokenDropout(nn.Module):
+class ParamaterDropout(nn.Module):
 
     def __init__(self, p: float):
         super().__init__()
@@ -48,7 +48,7 @@ class BinaryTokenDropout(nn.Module):
             return input
 
         # create a zero tensor with the shape ( batch_size, 1 , feature_dim)
-        mask = torch.zeros((input.size(0), 1, input.size(1)), device = input.device, dtype = torch.long)
+        mask = torch.zeros((input.size(0), 1, input.size(2)), device = input.device, dtype = torch.float)
 
         # fill the mask with 1s based on bernoulli, i.e. for each value in the tensor we set
         # set value to either 1 based on prob p and to 0 based on q.

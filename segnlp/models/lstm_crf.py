@@ -12,16 +12,18 @@ from .base import BaseModel
 from segnlp import utils
 from segnlp.utils import Batch
 
-from segnlp.layers.dropout import BinaryTokenDropout, ParamaterDropout
-
 
 class LSTM_CRF(BaseModel):
 
     """
-    https://aclanthology.org/W19-4501.pdf
-    
 
-    
+    Paper using the model for Argument Mining:
+    https://aclanthology.org/W19-4501.pdf
+
+    Model paper:
+    https://alanakbik.github.io/papers/coling2018.pdf
+
+
     """
 
     def __init__(self,  *args, **kwargs) -> None:   
@@ -46,8 +48,16 @@ class LSTM_CRF(BaseModel):
                                 output_size = self.task_dims[self.seg_task],
                                 )
 
-        self.binary_token_dropout = BinaryTokenDropout(**self.hps["BinaryTokenDropout"])
-        self.paramater_dropout = ParamaterDropout(**self.hps["ParamaterDropout"])
+        self.binary_token_dropout = self.add_token_dropout(
+                                                layer = "BinaryTokenDropout",
+                                                hyperparamaters = self.hps.get("token_dropout", {})
+                                                )
+
+
+        self.paramater_dropout = self.add_token_dropout(
+                                                layer = "ParamaterDropout",
+                                                hyperparamaters = self.hps.get("paramater_dropout", {})
+                                                )
 
 
     def token_rep(self, batch: Batch) -> dict:

@@ -1,5 +1,5 @@
 
-from .char_emb import CharEmb
-from .word_emb import WordEmb
-from .one_hots import DepOneHots
-from .one_hots import PosOneHots
+from .one_hots import OneHots
+from .embs import Embs
+from .embs import PretrainedEmbs
+from .word_char_emb import WordCharEmb

@@ -11,26 +11,29 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 
 # segnlp
-from segnlp.resources.chars import CharVocab
+from .embs import Embs
 from segnlp import utils
 
-class CharEmb(nn.Module):
+class WordCharEmb(nn.Module):
+
+    """
+    Creating word embeddings from aggregation of character embeddings
+    
+    """
 
     def __init__(   
                 self,
-                n_filters:int,
-                emb_size:int,
+                num_embeddings:int,
                 kernel_size:int,
+                n_filters:int,
                 ):
         super().__init__()
-        self.vocab = CharVocab()
-        self.char_emb_layer = nn.Embedding( 
-                                            num_embeddings=len(self.vocab),
-                                            embedding_dim=emb_size, 
-                                            padding_idx=0
-                                            )
+        self.embs = Embs(
+                        vocab = "Char",
+                        num_embeddings = num_embeddings
+                        )
         self.char_cnn = nn.Conv1d(  
-                                    in_channels=emb_size, 
+                                    in_channels=self.embs.output_size, 
                                     out_channels=n_filters, 
                                     kernel_size=kernel_size, 
                                     )
@@ -41,6 +44,8 @@ class CharEmb(nn.Module):
                 input:Sequence, 
                 lengths:Sequence,
                 ):
+    
+        embs = self.embs(input)
         
         #encode tokens and padd to longest word
         char_encs_flat = pad_sequence(self.vocab[input], batch_first = True)

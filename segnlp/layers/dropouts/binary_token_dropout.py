@@ -38,7 +38,7 @@ class BinaryTokenDropout(nn.Module):
         # set value to either 1 based on prob p and to 0 based on q.
         # NOTE! a higher dropout value means that more words should be masked out, which means
         # we need to use q and not p, which is calcualted q = 1 - p 
-        q = 1 - self.p  
+        q = 1 - self._p 
         mask = mask.bernoulli_(q)
 
         # then we multiply the mask with the input tensor. We unsqueeze be able to multiply each 

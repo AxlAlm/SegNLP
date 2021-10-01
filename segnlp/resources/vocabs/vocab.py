@@ -1,37 +1,23 @@
 
 #basics
 from typing import List, Iterator, Union
-from collections import Counter
 
-#NLTK
-from nltk import FreqDist
 
 #pytorch
 import torch
-from torch._C import dtype
-
-#segnlp 
-from segnlp.resources.stopwords import stopwords
 
 
 class Vocab:
 
-    def __init__(self, 
-
-                ):
-        self.vocab : list = self._get_vocab()
-        self.unk = self.vocab[0]
+    def __init__(self, vocab : list):
+        self._vocab  = vocab
+        self._unk = self._vocab[0]
         self._id2item = dict(enumerate(self._vocab))
-        self._itemd2id = {w:i for i,w in self._id2item.items()} 
+        self._item2id = {w:i for i,w in self._id2item.items()} 
         self._size = len(self._vocab)
-
-    @property
-    def vocab(self):
-        return self._id2item
-
-    def _get_vocab(self):
-        raise NotImplementedError
-
+    
+    # def items(self):
+    #     return self._id2item.items()
 
     def __len__(self):
         return self._size
@@ -43,7 +29,6 @@ class Vocab:
             items = [items]
             
         return torch.LongTensor([self._item2id.get(item.lower(), 0) for item in items])
-
 
 
 

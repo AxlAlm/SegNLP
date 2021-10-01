@@ -27,6 +27,7 @@ from segnlp.layers import pair_reps
 from segnlp.layers import seg_reps
 from segnlp.layers import general
 from segnlp.layers import labelers
+from segnlp.layers import dropouts
 
 
 logger = get_logger("BaseModel")
@@ -145,7 +146,7 @@ class BaseModel(nn.Module):
                 layer = getattr(lm, layer)
                 found_layer = True
                 break
-            
+
             except AttributeError:
                 continue
         
@@ -317,6 +318,24 @@ class BaseModel(nn.Module):
                             )
 
 
+    def add_token_dropout(self, layer:str, hyperparamaters:dict):
+        return self.__add_layer(
+                            layer = layer,
+                            hyperparamaters = hyperparamaters,
+                            layer_modules = [dropouts],
+                            module_type = "token",                    
+                            )
+
+
+    def add_seg_dropout(self, layer:str, hyperparamaters:dict):
+        return self.__add_layer(
+                            layer = layer,
+                            hyperparamaters = hyperparamaters,
+                            layer_modules = [dropouts],
+                            module_type = "segment",
+                            )
+
+        
     def freeze(self, freeze_token_module: bool = False, freeze_segment_module: bool = False):
 
          #make sure to reset them on each epoch call

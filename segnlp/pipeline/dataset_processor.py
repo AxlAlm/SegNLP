@@ -11,15 +11,10 @@ from collections import Counter
 import pandas as pd
 import shutil
 
-
-#h5py
-import h5py
-
 # segnlp
 from segnlp.datasets.base import DataSet
 import segnlp.utils as utils
 from segnlp import get_logger
-from segnlp.utils import H5PY_STORAGE
 
 logger = get_logger("DatasetPreprocessor")
 

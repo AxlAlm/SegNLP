@@ -97,7 +97,6 @@ class TrainLoop:
         # setup learning scheduler
         lr_scheduler = self._configure_learning_scheduler(
                                         opt = optimizer,
-                                        model = model, 
                                         hyperparamaters = hyperparamaters
                                         )
 

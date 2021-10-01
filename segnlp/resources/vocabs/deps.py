@@ -4,30 +4,6 @@
 Dep labels can be found here
 https://spacy.io/api/annotation
 
-"""
-# pytroch
-import torch
-
-# segnlp
-from .base import Vocab
-
-
-class DepVocab(Vocab):
-
-    def _get_vocab(self):
-        return  [
-                "", "acl", "acomp", "advcl", "advmod", "agent", "amod", "appos", "attr", "aux",
-                "auxpass", "case", "cc", "ccomp", "compound", "conj", "cop", "csubj",
-                "csubjpass", "dative", "dep", "det","dobj", "expl", "intj", "mark", "meta",
-                "neg", "nn", "nounmod", "npmod", "nsubj", "nsubjpass", "nummod", "oprd",
-                "obj", "obl", "parataxis", "pcomp", "pobj", "poss", "preconj", "prep",
-                "prt", "punct", "quantmod", "relcl", "root", "xcomp", 
-
-                # Following are not listed on SpaCy but still gets annotated so have added these to the list
-                "nmod","npadvmod","subtok", "predet",
-                ]
-
-
 
 # universal_dep = [
 #                             "", "acl", "advcl", "advmod", "amod", "appos", "aux", "case",
@@ -38,3 +14,27 @@ class DepVocab(Vocab):
 #                         ]
 
                     
+"""
+# pytroch
+import torch
+
+# segnlp
+from .vocab import Vocab
+
+
+class Dep(Vocab):
+
+    def __init__(self):
+        deps = [
+                "", "acl", "acomp", "advcl", "advmod", "agent", "amod", "appos", "attr", "aux",
+                "auxpass", "case", "cc", "ccomp", "compound", "conj", "cop", "csubj",
+                "csubjpass", "dative", "dep", "det","dobj", "expl", "intj", "mark", "meta",
+                "neg", "nn", "nounmod", "npmod", "nsubj", "nsubjpass", "nummod", "oprd",
+                "obj", "obl", "parataxis", "pcomp", "pobj", "poss", "preconj", "prep",
+                "prt", "punct", "quantmod", "relcl", "root", "xcomp", 
+
+                # Following are not listed on SpaCy but still gets annotated so have added these to the list
+                "nmod","npadvmod","subtok", "predet",
+                ]
+        super().__init__(vocab = deps)
+

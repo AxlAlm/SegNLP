@@ -56,7 +56,7 @@ class HPTuneLoop:
         return hp_sets
 
 
-    def __id_hyperparamaters(self, set_hyperparamaters: List[dict]) -> list:
+    def __id_hyperparamaters(self, set_hyperparamaters: List[dict]) -> List[Tuple[str, dict]]:
         """
         creates a unique hash id for each hyperparamater. Used to check if hyperparamaters are already tested
         """
@@ -67,7 +67,7 @@ class HPTuneLoop:
         return list(zip(hp_ids, set_hyperparamaters))
 
 
-    def __filter_hyperparamaters(self, identifed_hps: List[Tuple(str, dict)]) -> List[Tuple(str, dict)]:
+    def __filter_hyperparamaters(self, identifed_hps: List[Tuple[str, dict]]) -> List[Tuple[str, dict]]:
         """
         check which hyperparamaters ids already exist and remove them  
         """
@@ -122,6 +122,7 @@ class HPTuneLoop:
         id_hps_set = self.__id_hyperparamaters(hp_sets)
         id_hps_set = self.__filter_hyperparamaters(id_hps_set)
 
+
         if not gpus:
             device = "cpu"
         else:
@@ -131,7 +132,7 @@ class HPTuneLoop:
             torch.backends.cudnn.enabled = True
 
         
-        for hp_id, hps in tqdm(hp_sets, desc="Hyperparamaters",  position=0):    
+        for hp_id, hps in tqdm(id_hps_set, desc="Hyperparamaters",  position=0):    
             
             #make a folder in models for the model
             path_to_hp_models = os.path.join(self._path_to_models, hp_id)

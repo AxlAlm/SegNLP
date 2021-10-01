@@ -29,31 +29,32 @@ class LSTM_ER(BaseModel):
 
 
         self.word_emb = self.add_token_embedder(
-                                layer = "WordEmb",
-                                hyperparamaters = self.hps.get("WordEmb", {})
+                                layer = "PretrainedEmbs",
+                                hyperparamaters = self.hps.get("word_embs", {})
         )
 
-        self.pos_onehot = self.add_token_embedder(
-                                    layer  = "PosOneHots",
-                                    hyperparamaters = {},
+        self.pos_embs = self.add_token_embedder(
+                                    layer  = "Embs",
+                                    hyperparamaters = self.hps.get("pos_embs", {}),
+        )
+    
+        self.dep_embs = self.add_token_embedder(
+                                    layer  = "Embs",
+                                    hyperparamaters = self.hps.get("dep_embs", {}),
         )
 
-        self.word_dropout  = self.add_token_dropout(
+        self.dropout  = self.add_token_dropout(
                                                 layer = "Dropout",
-                                                hyperparamaters = self.hps.get("word_dropout", {}),
+                                                hyperparamaters = self.hps.get("dropout", {}),
                                                 )
 
         self.word_lstm = self.add_token_encoder(    
                                 layer = "LSTM", 
                                 hyperparamaters = self.hps.get("LSTM", {}),
-                                input_size = self.word_emb.output_size + 
-                                             self.pos_onehot.output_size,
+                                input_size = self.word_emb.output_size  
+                                             + self.pos_embs.output_size,
                                 )
 
-        self.dep_onehot = self.add_token_embedder(                                  
-                                    layer  = "DepOneHots",
-                                    hyperparamaters = {},
-        )
 
         self.segmenter = self.add_segmenter(
                                 layer = "BigramSeg",
@@ -71,9 +72,9 @@ class LSTM_ER(BaseModel):
         self.deptreelstm = self.add_pair_rep(
                                     layer = "DepTreeLSTM",
                                     hyperparamaters = self.hps.get("DepTreeLSTM", {}),
-                                    input_size =    self.agg.output_size
-                                                    + self.dep_onehot.output_size
-                                                    + self.task_dims["seg+label"],
+                                    input_size =  self.agg.output_size
+                                                + self.dep_embs.output_size
+                                                + self.task_dims["seg+label"],
                                 )
 
         self.linear_pair_enc = self.add_seg_encoder(
@@ -105,17 +106,17 @@ class LSTM_ER(BaseModel):
         )
 
         # create pos onehots
-        pos_one_hots = self.pos_onehot(
+        pos_embs = self.pos_embs(
                         input = batch.get("token", "pos"),
                         lengths = batch.get("token", "lengths"),
                         device = batch.device
         )
 
         #concatenate embeddings
-        cat_embs = torch.cat([word_embs, pos_one_hots], dim = -1)
+        cat_embs = torch.cat([word_embs, pos_embs], dim = -1)
 
         # dropout
-        cat_embs = self.word_dropout(cat_embs)
+        cat_embs = self.dropout(cat_embs)
 
         # pass to lstm
         lstm_out, _ = self.word_lstm(
@@ -123,8 +124,20 @@ class LSTM_ER(BaseModel):
                                 lengths = batch.get("token", "lengths")
                                 )
 
+
+        #create dependecy relation onehots
+        dep_embs = self.dep_embs(
+                        input = batch.get("token", "deprel"),
+                        lengths = batch.get("token", "lengths"),
+                        device = batch.device
+        )
+        #apply dropout
+        dep_embs = self.dropout(dep_embs)
+
+
         return {
                 "lstm_out": lstm_out,
+                "dep_embs": dep_embs
                 }
 
 
@@ -153,36 +166,33 @@ class LSTM_ER(BaseModel):
         # if we do not have any candidate pairs, we skip the whole seg_module
         if not len(batch.get("pair", "id")):
             return None
+            
 
-        # get the average embedding for each segments 
-        seg_embs = self.agg(
-                            input = token_rep_out["lstm_out"],
-                            lengths = batch.get("seg", "lengths", pred = True), 
-                            span_idxs = batch.get("seg", "span_idxs", pred = True),
-                            device = batch.device,
-                            )
-
-        #create dependecy relation onehots
-        dep_one_hots = self.dep_onehot(
-                        input = batch.get("token", "deprel"),
-                        lengths = batch.get("token", "lengths"),
-                        device = batch.device
-        )
-
+        # create label embeddings from predictions of segmentation layer
         token_label_one_hots = utils.one_hot(
                                             batch.get("token", "seg+label", pred = True), 
                                             batch.get("token", "mask"), 
                                             num_classes=self.task_dims["seg+label"]
                                             )
 
+        #apply dropout
+        token_label_one_hots = self.dropout(token_label_one_hots)
+
+
+        # create new token embeddings
+        token_embs = torch.cat([
+                                token_label_one_hots,
+                                token_rep_out["lstm_out"],
+                                token_rep_out["dep_embs"],
+                                ],
+                                dim = -1
+                                )
+
+
         # We create Non-Directional Pair Embeddings using DepTreeLSTM
         # If we have the segments A,B,C. E.g. embeddings for the pairs (A,A), (A,B), (A,C), (B,B), (B,C)
         tree_pair_embs = self.deptreelstm(    
-                                            input = (
-                                                        token_rep_out["lstm_out"],
-                                                        dep_one_hots,
-                                                        token_label_one_hots,
-                                                        ),
+                                            input = token_embs,
                                             roots = batch.get("token", "root_idx"),
                                             deplinks = batch.get("token", "dephead"),
                                             token_mask = batch.get("token", "mask"),
@@ -191,6 +201,15 @@ class LSTM_ER(BaseModel):
                                             lengths = batch.get("pair", "lengths", bidir = False),
                                             device = batch.device
                                             )
+
+
+        # get the average embedding for each segments 
+        seg_embs = self.agg(
+                            input = token_rep_out["lstm_out"],
+                            lengths = batch.get("seg", "lengths", pred = True), 
+                            span_idxs = batch.get("seg", "span_idxs", pred = True),
+                            device = batch.device,
+                            )
 
         # We then add the non directional pair embeddings to the directional pair representations
         # creating dp´ = [dp; s1, s2] (see paper above, page 1109)
