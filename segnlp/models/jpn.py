@@ -39,7 +39,7 @@ class JointPN(BaseModel):
 
         self.bow = self.add_seg_embedder(
                             layer = "SegBOW",
-                            hyperparamaters = self.hps.get("SegBOW", {}),
+                            hyperparamaters = self.hps.get("seg_bow", {}),
                             )
 
 
@@ -51,7 +51,7 @@ class JointPN(BaseModel):
 
         self.fc1 = self.add_seg_encoder(    
                                     layer = "Linear", 
-                                    hyperparamaters = self.hps.get("Linear_fc", {}),
+                                    hyperparamaters = self.hps.get("linear_fc", {}),
                                     input_size  =   self.agg.output_size
                                                     + self.bow.output_size
                                                     + self.seg_pos.output_size,
@@ -60,7 +60,7 @@ class JointPN(BaseModel):
 
         self.fc2 = self.add_seg_encoder(
                                     layer = "Linear", 
-                                    hyperparamaters = self.hps.get("Linear_fc", {}),
+                                    hyperparamaters = self.hps.get("linear_fc", {}),
                                     input_size  =   self.agg.output_size
                                                     + self.bow.output_size
                                                     + self.seg_pos.output_size,
@@ -69,14 +69,14 @@ class JointPN(BaseModel):
 
         self.lstm_encoder = self.add_seg_encoder(    
                                             layer = "LSTM", 
-                                            hyperparamaters = self.hps.get("LSTM_encoder", {}),
+                                            hyperparamaters = self.hps.get("lstm_encoder", {}),
                                             input_size = self.fc1.output_size,
                                             )
 
 
         self.lstm_decoder = self.add_seg_encoder(    
                                             layer = "LSTM", 
-                                            hyperparamaters = self.hps.get("LSTM_decoder", {}),
+                                            hyperparamaters = self.hps.get("lstm_decoder", {}),
                                             input_size = self.fc2.output_size,
                                             )
 
@@ -90,7 +90,7 @@ class JointPN(BaseModel):
 
         self.labeler =  self.add_labeler(
                                         layer = "LinearCLF",
-                                        hyperparamaters = self.hps.get("LinearCLF", {}),
+                                        hyperparamaters = self.hps.get("linear_clf", {}),
                                         input_size = self.lstm_encoder.output_size,
                                         output_size = self.task_dims["label"]
                                         )
