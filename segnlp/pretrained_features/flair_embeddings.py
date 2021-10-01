@@ -14,7 +14,6 @@ import flair
 from flair.embeddings import WordEmbeddings
 from flair.embeddings import FlairEmbeddings as FlairFlairEmbeddings
 from flair.embeddings import TransformerWordEmbeddings
-from flair.embeddings import ELMoEmbeddings as FLairELMoEmbeddings
 from flair.embeddings import StackedEmbeddings
 
 from flair.data import Sentence
@@ -65,7 +64,6 @@ class FlairEmbWrapper(FeatureModel):
 
 
 
-
 class FlairEmbeddings(FlairEmbWrapper):
 
     def __init__(self, gpu:int=None, group:str="word_embs"):
@@ -89,16 +87,5 @@ class GloveEmbeddings(FlairEmbWrapper):
     def __init__(self, gpu:int=None, group:str="word_embs"):
         flair_embedding = WordEmbeddings("glove")
         super().__init__(flair_embedding, emb_name="glove", gpu=gpu, group=group)
-
-
-
-class ELMoEmbeddings(FlairEmbWrapper):
-
-    def __init__(self, gpu:int=None, group:str="word_embs"):
-        flair_embedding = FLairELMoEmbeddings(model="original", embedding_mode="average")
-        super().__init__(flair_embedding, emb_name="elmo", gpu=gpu, group=group)
-
-
-
 
 

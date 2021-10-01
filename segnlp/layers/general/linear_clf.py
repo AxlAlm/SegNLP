@@ -1,4 +1,8 @@
 
+#basics
+from typing import Union
+
+
 #pytorch
 import torch
 import torch.nn as nn
@@ -15,14 +19,13 @@ class LinearCLF(nn.Module):
                 output_size, 
                 loss_reduction = "mean",
                 ignore_index = -1,
-                weight_init = "normal",
-                weight_init_kwargs : dict = {}
+                weight_init : Union[str, dict] = None,
                 ):
         super().__init__()
         self.clf = nn.Linear(input_size, output_size)
         self.loss_reduction = loss_reduction
         self.ignore_index = ignore_index
-        self.apply(utils.get_weight_init_fn(weight_init, weight_init_kwargs))
+        utils.init_weights(self, weight_init)
 
           
     def forward(self, input:Tensor):

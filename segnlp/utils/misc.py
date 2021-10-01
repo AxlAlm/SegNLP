@@ -147,7 +147,10 @@ def get_time():
 
 
 
-def download(url:str, save_path:str, desc:str):
+def download(url:str, save_path:str, desc:str = ""):
+
+    if os.path.exists(save_path):
+        return None
 
     response = requests.get(url, stream=True)
     total = int(response.headers.get('content-length')) #response.iter_content(chunk_size=max(int(total/1000), 1024*1024)), 

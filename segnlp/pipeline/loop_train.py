@@ -141,7 +141,7 @@ class TrainLoop:
                 use_target_segs = target_seg_sampling(epoch)
 
             #freeze modules
-            model.freeze(freeze_segment_module = freeze_segment_module,)
+            model.freeze(freeze_segment_module = freeze_segment_module)
 
             # Sets the model to training mode.
             model.train()
@@ -214,7 +214,9 @@ class TrainLoop:
                                 hp_id = hp_id,
                                 random_seed = random_seed,
                                 epoch_metrics = train_epoch_metrics,
-                                cv = cv
+                                cv = cv,
+                                use_target_segs = use_target_segs,
+                                freeze_segment_module = freeze_segment_module
                                 )
 
             postfix[f"train_{monitor_metric}"] = train_epoch_metrics[monitor_metric]
@@ -228,7 +230,9 @@ class TrainLoop:
                                 hp_id = hp_id,
                                 random_seed = random_seed,
                                 epoch_metrics = val_epoch_metrics,
-                                cv = cv
+                                cv = cv,
+                                use_target_segs = use_target_segs,
+                                freeze_segment_module = freeze_segment_module
                                 )
             postfix[f"val_{monitor_metric}"] = val_epoch_metrics[monitor_metric]
 
@@ -237,7 +241,8 @@ class TrainLoop:
             score = val_epoch_metrics[monitor_metric]
 
             # save model
-            checkpointer(model, score)
+            if not use_target_segs and not freeze_segment_module:
+                checkpointer(model, score)
 
             #set the top score
             postfix[f"top_val_{monitor_metric}"] = checkpointer._top_score

@@ -11,6 +11,7 @@ import time
 #pytroch
 import torch
 from torch import Tensor
+import torch.nn as nn
 
 #segnlp
 from .base import BaseModel
@@ -40,44 +41,59 @@ class LSTM_DIST(BaseModel):
     def __init__(self,  *args, **kwargs) -> None:   
         super().__init__(*args, **kwargs)
 
+        self.emb_dropout = self.add_seg_dropout(
+                                layer = nn.Dropout,
+                                hyperparamaters = self.hps.get("embedding_dropout", {})
+                            )
+
+        self.bow_dropout = self.add_seg_dropout(
+                                layer = nn.Dropout,
+                                hyperparamaters = self.hps.get("bow_dropout", {})
+                            )
+
+
+        self.output_dropout = self.add_seg_dropout(
+                                layer = nn.Dropout,
+                                hyperparamaters = self.hps.get("output_dropout", {})
+                            )
 
         self.word_lstm = self.add_token_encoder(
                                     layer = "LSTM",
-                                    hyperparams = self.hps.get("Word_LSTM", {}),
+                                    hyperparamaters = self.hps.get("word_lstm", {}),
                                     input_size = self.feature_dims["word_embs"],
                                     )
 
         self.minus_span = self.add_seg_rep(
                                         layer = "MinusSpan",
-                                        hyperparams = self.hps.get("MinusSPan", {}),
+                                        hyperparamaters = self.hps.get("minus_span", {}),
                                         input_size = self.word_lstm.output_size,
                                     )
 
         self.am_lstm = self.add_seg_encoder(
                                     layer = "LSTM",
-                                    hyperparams = self.hps.get("AM_LSTM", {}),
+                                    hyperparamaters = self.hps.get("am_lstm", {}),
                                     input_size = self.minus_span.output_size,
                                     )
 
         self.ac_lstm = self.add_seg_encoder(
                                     layer = "LSTM",
-                                    hyperparams = self.hps.get("AC_LSTM", {}),
+                                    hyperparamaters = self.hps.get("ac_lstm", {}),
                                     input_size = self.minus_span.output_size,
                                     )
                                 
         self.seg_bow = self.add_seg_embedder(
                                         layer = "SegBOW",
-                                        hyperparams = self.hps.get("SegBOW", {}),
+                                        hyperparamaters = self.hps.get("seg_bow", {}),
                                         )
 
         self.seg_pos = self.add_seg_embedder(
                                         layer = "SegPos",
-                                        hyperparams = {},
+                                        hyperparamaters = {},
                                         )
 
-        self.bow_dim_redu  = self.add_encoder(
+        self.bow_dim_redu  = self.add_seg_encoder(
                                                 layer = "Linear",
-                                                hyperparams = self.hps.get("BOW_dim_redu", {}),
+                                                hyperparamaters = self.hps.get("bow_linear", {}),
                                                 input_size = self.seg_bow.output_size,
                                                 module = "segment_module"
         )
@@ -86,33 +102,33 @@ class LSTM_DIST(BaseModel):
         input_size = (self.am_lstm.output_size * 2) + self.seg_bow.output_size + self.seg_pos.output_size
         self.adu_lstm =  self.add_seg_encoder(
                                     layer = "LSTM",
-                                    hyperparams = self.hps.get("ADU_LSTM", {}),
+                                    hyperparamaters = self.hps.get("adu_lstm", {}),
                                     input_size = input_size,
                                     )
 
         self.link_lstm =  self.add_seg_encoder(
                                     layer = "LSTM",
-                                    hyperparams = self.hps.get("Link_LSTM", {}),
+                                    hyperparamaters = self.hps.get("link_lstm", {}),
                                     input_size = self.adu_lstm.output_size,
                                     )
 
 
         self.pairer = self.add_pair_rep(
                                 layer = "Pairer",
-                                hyperparams = self.hps.get("Pairer", {}),
+                                hyperparamaters = self.hps.get("Pairer", {}),
                                 input_size = self.link_lstm.output_size,
                                 
                                 )
 
         self.linker = self.add_linker(
                                 layer = "PairCLF",
-                                hyperparams = self.hps.get("PairCLF", {}),
+                                hyperparamaters = self.hps.get("linear_clf", {}),
                                 input_size = self.pairer.output_size,
                                 )
 
         self.labeler = self.add_labeler(
                                         layer = "LinearCLF",
-                                        hyperparams = self.hps.get("LinearCLF", {}),
+                                        hyperparamaters = self.hps.get("linear_clf", {}),
                                         input_size = self.adu_lstm.output_size,
                                         output_size = self.task_dims["label"],
 
@@ -120,7 +136,7 @@ class LSTM_DIST(BaseModel):
 
         self.link_labeler = self.add_link_labeler(
                                             layer = "LinearCLF",
-                                            hyperparams = self.hps.get("LinearCLF", {}),
+                                            hyperparamaters = self.hps.get("linear_clf", {}),
                                             input_size = self.adu_lstm.output_size,
                                             output_size = self.task_dims["link_label"],
                                             )
@@ -128,13 +144,19 @@ class LSTM_DIST(BaseModel):
 
     def seg_rep(self, batch: Batch, token_rep_out: dict) -> dict:
 
+        #featch word embeddings
+        word_embs = batch.get("token", "embs")
 
+        #apply dropout
+        word_embs = self.embedding_dropout(word_embs)
+
+        # pass embeddings to word lstm
         lstm_out, _ = self.word_lstm(
-                                        input = batch.get("token", "word_embs"), 
+                                        input = batch.get("token", "embs"), 
                                         lengths =  batch.get("token", "lengths"),
                                     )
 
-
+        
         # create span representation for Argument Components and Argumentative Markers
         am_minus_embs = self.minus_span(
                                         input = lstm_out, 
@@ -147,6 +169,7 @@ class LSTM_DIST(BaseModel):
                                         device = batch.device
                                         )
         
+
         # pass the minus representation for each type of segment to seperate LSTMs
         am_lstm_out, _ = self.am_lstm(
                                     am_minus_embs, 
@@ -174,6 +197,9 @@ class LSTM_DIST(BaseModel):
         #we reduce the dim
         seg_bow = self.bow_dim_redu(seg_bow)
 
+        #apply dropout to bows
+        seg_bow = self.bow_dropout(seg_bow) # 0.5?!?!?
+
         # positional features for segments
         segpos = self.seg_pos(
                             document_paragraph_id = batch.get("seg", "document_paragraph_id"), 
@@ -196,8 +222,14 @@ class LSTM_DIST(BaseModel):
         # run concatenated features through and LSTM, output will be used to predict label and link_label
         adu_emb, _ = self.adu_lstm(cat_emb, batch.get("seg", "lengths"))
 
+        #apply dropout to adu embs
+        adu_emb = self.output_dropout(adu_emb)
+
         #then run the adu_embs through a final lstm to create features for linking.
         adu_emb_link, _ = self.link_lstm(adu_emb, batch.get("seg", "lengths"))
+
+        #apply dropout to out adu_embs for linking
+        adu_emb_link = self.output_dropout(adu_emb_link)
 
         # create embeddings for all pairs
         pair_embs = self.pairer(

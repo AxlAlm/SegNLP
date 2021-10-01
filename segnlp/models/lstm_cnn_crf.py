@@ -33,33 +33,35 @@ class LSTM_CNN_CRF(BaseModel):
     def __init__(self,  *args, **kwargs):   
         super().__init__(*args, **kwargs)
 
-        self.finetuner = self.add_encoder(
-                                    layer = "Linear", 
-                                    hyperparams = {},
-                                    input_size = self.feature_dims["word_embs"],
-                                    module = "token_module"
+        self.word_embs = self.add_token_embedder(
+                                    layer = "PretrainedEmbs", 
+                                    hyperparamaters = self.hps.get("word_embs", {}),
                                 )
 
         self.char_embedder = self.add_token_embedder(
-                                                layer = "CharEmb", 
-                                                hyperparams = self.hps.get("CharEmb", {}),
+                                                layer = "CharWordEmb", 
+                                                hyperparamaters = self.hps.get("CharEmb", {}),
                                                 )
 
-        self.encoder = self.add_encoder(    
+        self.lstm_encoder = self.add_token_encoder(    
                                 layer = "LSTM", 
-                                hyperparams = self.hps.get("LSTM", {}),
-                                input_size = self.finetuner.output_size + self.char_embedder.output_size,
-                                module = "token_module"
+                                hyperparamaters = self.hps.get("LSTM", {}),
+                                input_size = self.word_embs.output_size + self.char_embedder.output_size,
                                 )
+
+        self.dropout = self.add_token_dropout(
+                                                layer  = nn.Dropout,
+                                                hyperparamaters = self.hps.get("dropout", {})
+                                                )
 
         self.segmenter = self.add_segmenter(
                                 layer = "CRF",
-                                hyperparams = self.hps.get("CRF", {}),
-                                input_size = self.encoder.output_size,
+                                hyperparamaters = self.hps.get("CRF", {}),
+                                input_size = self.lstm_encoder.output_size,
                                 output_size = self.task_dims[self.seg_task],
-                                task = self.seg_task
                                 )
 
+        
 
     @classmethod
     def name(self) -> str:
@@ -69,19 +71,25 @@ class LSTM_CNN_CRF(BaseModel):
     def token_rep(self, batch: Batch):
 
         #fine-tune word embeddings by reprojecting them with a linear layer
-        word_embs = self.finetuner(batch.get("token", "word_embs"))
+        word_embs = self.word_embs(
+                                    input = batch.get("token", "str"),
+                                    lengths = batch.get("token", "lengths")
+                                    )
 
         #getting character embeddings
         char_embs = self.char_embedder(
-                                        batch.get("token", "str"),
-                                        batch.get("token", "lengths")
+                                        input = batch.get("token", "str"),
+                                        lengths = batch.get("token", "lengths")
                                         )
     
         # passing features to lstm (it will concatenate features)
-        lstm_out, _ = self.encoder(
+        lstm_out, _ = self.lstm_encoder(
                                     input = (word_embs, char_embs), 
                                     lengths = batch.get("token", "lengths")
                                 )
+
+        # dropout
+        lstm_out = self.dropout(lstm_out)
 
         return {
                 "lstm_out":lstm_out

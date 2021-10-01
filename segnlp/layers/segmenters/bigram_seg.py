@@ -2,12 +2,14 @@
 #basics
 from typing import Union
 
-#pytroch
+# pytroch
 import torch
 from torch.functional import Tensor 
 import torch.nn as nn
 import torch.nn.functional as F
 
+# segnlp
+from segnlp import utils
 
 class BigramSeg(nn.Module):
     
@@ -23,7 +25,8 @@ class BigramSeg(nn.Module):
             output_size : int ,
             dropout : float = 0.0,
             loss_reduction : str = "mean",
-            ignore_index : int  = -1
+            ignore_index : int  = -1,
+            weight_init : Union[str, dict] = None
         ):
         super().__init__()
         self.ignore_index = ignore_index
@@ -40,6 +43,8 @@ class BigramSeg(nn.Module):
                             nn.Dropout(dropout),
                             nn.Linear(hidden_size, output_size),
                             )
+
+        utils.init_weights(self, weight_init)
 
     def forward(
                 self,

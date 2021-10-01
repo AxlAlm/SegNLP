@@ -551,6 +551,7 @@ class DepTreeLSTM(nn.Module):
                  hidden_size: int,
                  bidir: bool,
                  mode : str = "shortest_path",
+                 weight_init : Union[str, dict] = None,
                  ):
         super().__init__()
 
@@ -566,6 +567,7 @@ class DepTreeLSTM(nn.Module):
                                       )
         
         self.output_size = hidden_size * 3
+        utils.init_weights(self, weight_init)
 
 
     def split_nested_list(self,

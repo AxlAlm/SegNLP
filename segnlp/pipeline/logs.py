@@ -46,7 +46,9 @@ class Logs:
                 hp_id : str,
                 random_seed : int,
                 epoch_metrics : dict,
-                cv : int
+                cv : int,
+                use_target_segs :bool,
+                freeze_segment_module : bool,
                 ):                            
 
         # create dict
@@ -55,7 +57,9 @@ class Logs:
                     "split": split,
                     "hp_id":hp_id,
                     "random_seed": random_seed,
-                    "cv":cv
+                    "cv":cv,
+                    "use_target_segs" : use_target_segs,
+                    "freeze_segment_module": freeze_segment_module
                     }
         log_dict.update(epoch_metrics)
 

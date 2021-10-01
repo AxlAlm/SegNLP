@@ -26,6 +26,7 @@ class EmbsBase(nn.Module):
         self._vocab = getattr(vocabs, vocab)() if isinstance(vocab, str) else Vocab(list)
 
 
+
     def forward(self, 
                 input: Sequence,
                 lengths : Tensor = None,
@@ -61,7 +62,8 @@ class Embs(EmbsBase):
                     max_norm: float = None, 
                     norm_type: float = 2.0, 
                     scale_grad_by_freq:bool = False, 
-                    sparse = False
+                    sparse = False,
+                    weight_init : Union[str, dict] = None
                     ):
         super().__init__(vocab)
         self.embs = nn.Embedding( 
@@ -74,6 +76,8 @@ class Embs(EmbsBase):
                                 sparse = sparse, 
                                 )
         self.output_size = self.embs.embedding_dim
+        utils.init_weights(self, weight_init)
+
 
 
 class PretrainedEmbs(EmbsBase):

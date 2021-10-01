@@ -121,7 +121,7 @@ class BaseModel(nn.Module):
 
     #### LAYER ADDING
     def __add_layer(self, 
-                    layer : str, 
+                    layer : Union[str, nn.Module], 
                     hyperparamaters : dict,
                     layer_modules : List,
                     module_type: str,
@@ -139,19 +139,22 @@ class BaseModel(nn.Module):
         if task:
             self._layer2task[layer] = task
 
-        found_layer = False
-        for lm in layer_modules:
 
-            try:
-                layer = getattr(lm, layer)
-                found_layer = True
-                break
+        if isinstance(layer,str):
+            
+            found_layer = False
+            for lm in layer_modules:
 
-            except AttributeError:
-                continue
-        
-        if not found_layer:
-            raise KeyError(f"Couldnt find a layer called '{layer}'")
+                try:
+                    layer = getattr(lm, layer)
+                    found_layer = True
+                    break
+
+                except AttributeError:
+                    continue
+            
+            if not found_layer:
+                raise KeyError(f"Couldnt find a layer called '{layer}'")
 
 
         layer = layer(**hyperparamaters)

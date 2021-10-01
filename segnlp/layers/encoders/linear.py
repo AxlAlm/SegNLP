@@ -1,10 +1,9 @@
 
 
 #basics
-import numpy as np
+from typing import Union
 
 #pytroch
-import torch
 import torch.nn as nn
 from torch import Tensor
 
@@ -24,8 +23,7 @@ class Linear(nn.Module):
                     input_size:int, 
                     hidden_size:int=None, 
                     activation:str=None,
-                    weight_init: str = "normal",
-                    weight_init_kwargs: dict = {}
+                    weight_init : Union[str, dict] = None,
                     ):
         super().__init__()
         
@@ -40,7 +38,7 @@ class Linear(nn.Module):
         else:
             self.linear = nn.Linear(input_size, hidden_size)
 
-        self.apply(utils.get_weight_init_fn(weight_init, weight_init_kwargs))
+        utils.init_weights(self, weight_init)
         self.output_size = hidden_size
 
 
