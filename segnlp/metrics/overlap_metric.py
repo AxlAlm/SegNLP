@@ -103,7 +103,7 @@ def link_label_confusion_matrix(
         # # check if the target and the source are truly linked
         ji = j2i[j]
         jit = i2it[ji]
-        ijt = i2j[jit]
+        ijt = i2j.get(jit, "NO MATCH") #i2j only contain cases were there is an overlap.
         if ijt != jt:
             cm[j2link_label[j], -1] += 1
 
@@ -129,7 +129,7 @@ def link_label_confusion_matrix(
         # check if the target and the source are truly linked
         jt = j2jt[j]
         it = i2it[i]
-        ijt = i2j[it]
+        ijt = i2j.get(it, "NO MATCH") #i2j only contain cases were there is an overlap.
         if  ijt != jt:
             continue
 
