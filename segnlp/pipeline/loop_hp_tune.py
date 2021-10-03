@@ -150,7 +150,7 @@ class HPTuneLoop:
                     self.fit(
                             hp_id = hp_id,
                             random_seed = random_seed,
-                            hyperparamaters = hps,
+                            hyperparamaters = deepcopy(hps),
                             monitor_metric = monitor_metric,
                             device = device,
                             overfit_n_batches = overfit_n_batches

@@ -12,10 +12,8 @@ import torch
 
 #segnlp
 from segnlp import utils
-from segnlp.utils import datamodule
 
-
-from pynvml.smi import nvidia_smi
+#rom pynvml.smi import nvidia_smi
 
 
 
@@ -51,6 +49,7 @@ class TrainLoop:
                                 path_to_data = self._path_to_data,
                                 batch_size = batch_size,
                                 label_encoder = self.label_encoder,
+                                metric = self.metric,
                                 cv = cv,
                                 )
 

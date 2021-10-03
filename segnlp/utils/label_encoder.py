@@ -113,10 +113,10 @@ class LabelEncoder:
         max_segs = df.groupby(level=0, sort=False)["seg_id"].nunique().to_numpy()
         df.loc[:, "max_seg"] = np.repeat(max_segs, df.groupby(level=0, sort=False).size().to_numpy())
 
-        above = df["link"] > df["max_seg"]
+        above = df["link"] >= df["max_seg"]
         below = df["link"] < 0
 
-        df.loc[above | below, "link"] = df.loc[above | below, "max_seg"] -1
+        df.loc[above | below, "link"] = df.loc[above | below, "max_seg"] - 1
         df.pop("max_seg")
 
 

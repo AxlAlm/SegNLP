@@ -1,9 +1,7 @@
 
 
 #basics
-from segnlp.layers import dropouts
-import string
-from typing import Sequence
+from typing import Sequence, Union
 
 #pytroch
 import torch.nn as nn
@@ -44,12 +42,13 @@ class CharWordEmb(nn.Module):
                                     
 
     def forward(self, 
-                input:Sequence, 
-                lengths:Sequence,
+                input: Sequence, 
+                lengths: Sequence,
+                device : Union[str, torch.device] = "cpu"
                 ):
         
         # first we embed each token in the back
-        char_embs = self.embs(input)
+        char_embs = self.embs(input, device = device)
     
         # then we split the words into sample
         char_embs = pad_sequence(

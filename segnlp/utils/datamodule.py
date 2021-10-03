@@ -39,12 +39,15 @@ class DataModule:
                 path_to_data : str, 
                 batch_size : int,
                 label_encoder : LabelEncoder,
+                metric : str,
                 cv : int = 0,
                 ):
 
         self._df_fp : str = os.path.join(path_to_data, "df.csv")
         self._pwf_fp : str = utils.check_file(os.path.join(path_to_data, "pwf.hdf5"))
         self._psf_fp : str = utils.check_file(os.path.join(path_to_data, "psf.hdf5"))
+
+        self._metric = metric
 
         with open(os.path.join(path_to_data, f"splits.pkl"), "rb") as f:
             self._splits : dict = pickle.load(f)
@@ -59,6 +62,7 @@ class DataModule:
         return Batch(
                     df = self._df.loc[key],
                     label_encoder = self.label_encoder,
+                    metric = self._metric,
                     pretrained_features = self.__get_pretrained_features(key),
                     )
 

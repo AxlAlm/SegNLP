@@ -50,7 +50,7 @@ class LSTM_CNN_CRF(BaseModel):
                                 )
 
         self.dropout = self.add_token_dropout(
-                                                layer  = nn.Dropout,
+                                                layer = nn.Dropout,
                                                 hyperparamaters = self.hps.get("dropout", {})
                                                 )
 
@@ -73,13 +73,15 @@ class LSTM_CNN_CRF(BaseModel):
         #fine-tune word embeddings by reprojecting them with a linear layer
         word_embs = self.word_embs(
                                     input = batch.get("token", "str"),
-                                    lengths = batch.get("token", "lengths")
+                                    lengths = batch.get("token", "lengths"),
+                                    device = batch.device
                                     )
 
         #getting character embeddings
         char_embs = self.char_embedder(
                                         input = batch.get("token", "str"),
-                                        lengths = batch.get("token", "lengths")
+                                        lengths = batch.get("token", "lengths"),
+                                        device = batch.device
                                         )
     
         # passing features to lstm (it will concatenate features)
@@ -88,7 +90,7 @@ class LSTM_CNN_CRF(BaseModel):
                                     lengths = batch.get("token", "lengths")
                                 )
 
-        # dropout
+        # dropout on lstm output
         lstm_out = self.dropout(lstm_out)
 
         return {
