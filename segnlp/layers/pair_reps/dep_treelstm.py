@@ -387,7 +387,6 @@ class DepGraph:
         assert mode in set([
             "shortest_path"
         ]), f"{mode} is not a supported mode for DepPairingLayer"
-        self.device = device
         batch_size = deplinks.size(0)
 
         # # creat sample graphs G(U, V) tensor on CPU
@@ -415,8 +414,8 @@ class DepGraph:
             
             # u are the token indexes
             # v are the indexes of the heads for each token
-            v = deplinks[i][token_mask[i]]
-            u = torch.arange(v.size(0), device=device)
+            v = utils.ensure_numpy(deplinks[i][token_mask[i]])
+            u = utils.ensure_numpy(torch.arange(v.size(0), device=device))
 
             ## filter out self loops at root noodes, THIS BECAUSE?
             self_loop = u == v
@@ -451,7 +450,7 @@ class DepGraph:
         # batch graphs, move to model device, update nodes data by tokens
         # embedding
         nodes_emb = torch.cat(nodes_emb, dim=0)
-        self.graphs = dgl.batch(dep_graphs).to(self.device)
+        self.graphs = dgl.batch(dep_graphs).to(device)
         self.graphs.ndata["emb"] = nodes_emb
 
     # def assert_graph(self, u: Tensor, v: Tensor, roots: Tensor,

@@ -59,7 +59,7 @@ class LSTM_DIST(BaseModel):
 
         self.word_lstm = self.add_token_encoder(
                                     layer = "LSTM",
-                                    hyperparamaters = self.hps.get("word_lstm", {}),
+                                    hyperparamaters = self.hps.get("lstms", {}),
                                     input_size = self.feature_dims["word_embs"],
                                     )
 
@@ -71,13 +71,13 @@ class LSTM_DIST(BaseModel):
 
         self.am_lstm = self.add_seg_encoder(
                                     layer = "LSTM",
-                                    hyperparamaters = self.hps.get("am_lstm", {}),
+                                    hyperparamaters = self.hps.get("lstms", {}),
                                     input_size = self.minus_span.output_size,
                                     )
 
         self.ac_lstm = self.add_seg_encoder(
                                     layer = "LSTM",
-                                    hyperparamaters = self.hps.get("ac_lstm", {}),
+                                    hyperparamaters = self.hps.get("lstms", {}),
                                     input_size = self.minus_span.output_size,
                                     )
                                 
@@ -95,20 +95,19 @@ class LSTM_DIST(BaseModel):
                                                 layer = "Linear",
                                                 hyperparamaters = self.hps.get("bow_linear", {}),
                                                 input_size = self.seg_bow.output_size,
-                                                module = "segment_module"
         )
 
 
-        input_size = (self.am_lstm.output_size * 2) + self.seg_bow.output_size + self.seg_pos.output_size
+        input_size = (self.am_lstm.output_size * 2) + self.bow_dim_redu.output_size + self.seg_pos.output_size
         self.adu_lstm =  self.add_seg_encoder(
                                     layer = "LSTM",
-                                    hyperparamaters = self.hps.get("adu_lstm", {}),
+                                    hyperparamaters = self.hps.get("lstms", {}),
                                     input_size = input_size,
                                     )
 
         self.link_lstm =  self.add_seg_encoder(
                                     layer = "LSTM",
-                                    hyperparamaters = self.hps.get("link_lstm", {}),
+                                    hyperparamaters = self.hps.get("lstms", {}),
                                     input_size = self.adu_lstm.output_size,
                                     )
 
@@ -117,7 +116,6 @@ class LSTM_DIST(BaseModel):
                                 layer = "Pairer",
                                 hyperparamaters = self.hps.get("Pairer", {}),
                                 input_size = self.link_lstm.output_size,
-                                
                                 )
 
         self.linker = self.add_linker(
@@ -142,13 +140,13 @@ class LSTM_DIST(BaseModel):
                                             )
 
 
-    def seg_rep(self, batch: Batch, token_rep_out: dict) -> dict:
+    def seg_rep(self, batch: Batch) -> dict:
 
         #featch word embeddings
         word_embs = batch.get("token", "embs")
 
         #apply dropout
-        word_embs = self.embedding_dropout(word_embs)
+        word_embs = self.emb_dropout(word_embs)
 
         # pass embeddings to word lstm
         lstm_out, _ = self.word_lstm(
@@ -195,7 +193,7 @@ class LSTM_DIST(BaseModel):
                         )
         
         #we reduce the dim
-        seg_bow = self.bow_dim_redu(seg_bow)
+        seg_bow =self.bow_dim_redu(seg_bow)
 
         #apply dropout to bows
         seg_bow = self.bow_dropout(seg_bow) # 0.5?!?!?

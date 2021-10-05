@@ -11,9 +11,10 @@ from allennlp.modules.elmo import batch_to_ids
 
 # segnlp
 from segnlp import utils
+from .base import FeatureModel
 
 
-class ELMoEmbeddings():
+class ELMoEmbeddings(FeatureModel):
 
     """
     https://allennlp.org/elmo
@@ -50,9 +51,9 @@ class ELMoEmbeddings():
         self._feature_dim = 1024
 
 
-    @utils.timer
     def extract(self, df) -> np.ndarray:
         tokens = df["str"].to_numpy()
         batch_char_ids = batch_to_ids([tokens])
         embs = self.elmo(batch_char_ids)["elmo_representations"][0][0]
+
         return utils.ensure_numpy(embs)

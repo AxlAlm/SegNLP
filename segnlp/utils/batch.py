@@ -57,7 +57,7 @@ class Batch:
         self.__ok_levels = set(["seg", "token", "span", "pair"])
 
         if "am_id" in self._df.columns:
-            self.__ok_levels.update(["am_id", "adu_id"])
+            self.__ok_levels.update(["am", "adu"])
 
         self._size = self._df["sample_id"].nunique()
 
@@ -172,7 +172,7 @@ class Batch:
 
         # maps a true source to the correct target using the ids of predicted pairs
         source2target = {
-                        self.j2i.get(j, "NONE"): self.j2i.get(jt, "NONE")
+                        j2i.get(j, "NONE"): j2i.get(jt, "NONE")
                         for j,jt in zip(j_jt["seg_id"], j_jt["target_id"])
                         }
 
@@ -203,7 +203,16 @@ class Batch:
 
             return set_id
 
-        
+
+        # we also have information about whether the seg_id is a true segments 
+        # and if so, which TRUE segmentent id it overlaps with, and how much
+        i2ratio, j2ratio, i2j, j2i = find_overlap(
+                                                target_df = self._df,  
+                                                pred_df = self._pred_df
+                                                )
+
+
+
         first_df = df.groupby("seg_id", sort=False).first()
         first_df.reset_index(inplace=True)
 
@@ -215,7 +224,7 @@ class Batch:
         if pred:
             first_target_df = self._df.groupby("seg_id", sort=False).first()
             j2link_label = {j:row["link_label"] for j, row in first_target_df.iterrows()}
-            link_labels = [-1 if i not in self._i2j else j2link_label.get(self._i2j[i], -1) for i in first_df.index.to_numpy()]
+            link_labels = [-1 if i not in i2j else j2link_label.get(i2j[i], -1) for i in first_df.index.to_numpy()]
             first_df["link_label"] = link_labels
 
 
@@ -274,14 +283,6 @@ class Batch:
         #where p2 is a source
         p2_source_mask = pair_df["direction"] == 2
         pair_df.loc[p2_source_mask, "link_label"] = first_df.loc[pair_df.loc[p2_source_mask, "p2"], "link_label"].to_numpy()
-
-
-        # we also have information about whether the seg_id is a true segments 
-        # and if so, which TRUE segmentent id it overlaps with, and how much
-        i2ratio, j2ratio, i2j, j2i = find_overlap(
-                                                target_df = self._df,  
-                                                pred_df = self._pred_df
-                                                )
 
 
         self.__add_link_matching_info(pair_df, j2i)
@@ -442,7 +443,7 @@ class Batch:
             for subtask in key.split("+"):
                 self._pred_df[subtask] = self._df[subtask].to_numpy()
 
-            self.__add_overlap_info()
+            #self.__add_overlap_info()
             return
             
         

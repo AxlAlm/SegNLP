@@ -44,7 +44,7 @@ class LSTM_ER(BaseModel):
         )
 
         self.dropout  = self.add_token_dropout(
-                                                layer = "Dropout",
+                                                layer = nn.Dropout,
                                                 hyperparamaters = self.hps.get("dropout", {}),
                                                 )
 
@@ -176,7 +176,7 @@ class LSTM_ER(BaseModel):
                                             )
 
         #apply dropout
-        token_label_one_hots = self.dropout(token_label_one_hots)
+        token_label_one_hots = self.dropout(token_label_one_hots.type(torch.float))
 
 
         # create new token embeddings
@@ -196,9 +196,9 @@ class LSTM_ER(BaseModel):
                                             roots = batch.get("token", "root_idx"),
                                             deplinks = batch.get("token", "dephead"),
                                             token_mask = batch.get("token", "mask"),
-                                            starts = batch.get("pair", "p1_end", bidir = False),
-                                            ends = batch.get("pair", "p2_end", bidir = False), #the last token indexes in each seg
-                                            lengths = batch.get("pair", "lengths", bidir = False),
+                                            starts = batch.get("pair", "p1_end", bidir = True),
+                                            ends = batch.get("pair", "p2_end", bidir = True), #the last token indexes in each seg
+                                            lengths = batch.get("pair", "lengths", bidir = True),
                                             device = batch.device
                                             )
 
@@ -219,7 +219,7 @@ class LSTM_ER(BaseModel):
         pair_embs = torch.cat((
                                 seg_embs_flat[batch.get("pair", "p1", bidir = True)],
                                 seg_embs_flat[batch.get("pair", "p2", bidir = True)],
-                                tree_pair_embs[batch.get("pair", "id", bidir = True, pred = True)]
+                                tree_pair_embs
                                 ),
                                 dim=-1
                                 )

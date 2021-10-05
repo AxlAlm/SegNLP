@@ -31,6 +31,15 @@ class TrainLoop:
                     suffix : str = ""
                     ):
 
+
+        if "cuda" in device:
+            device_id = device[-1]
+            #os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+            os.environ['CUDA_DEVICE_ORDER'] = "PCI_BUS_ID" 
+            os.environ['CUDA_VISIBLE_DEVICES'] = device_id
+            torch.cuda.set_device(int(device_id))
+
+
         #set the random seed
         utils.set_random_seed(random_seed)
 
@@ -239,21 +248,23 @@ class TrainLoop:
             # fetch the score we will decide saving and early stoping on
             score = val_epoch_metrics[monitor_metric]
 
-            # save model
-            if not use_target_segs and not freeze_segment_module:
-                checkpointer(model, score)
-
-            #set the top score
-            postfix[f"top_val_{monitor_metric}"] = checkpointer._top_score
-
-            # stop if model is not better after n times, set by patience
-            if early_stopper(score):
-                break
-            
             # if we use a learning scheduler we call step() to make it do its thing 
             # with the optimizer, i.e. change the learning rate in some way
             if lr_scheduler is not None:
                 lr_scheduler.step(score)
+
+            if not use_target_segs and not freeze_segment_module:
+
+                # save best model
+                checkpointer(model, score)
+
+                #set the top score
+                postfix[f"top_val_{monitor_metric}"] = checkpointer._top_score
+
+                # stop if model is not better after n times, set by patience
+                if early_stopper(score):
+                    break
+            
 
             epoch_tqdm.set_postfix(postfix)
             epoch_tqdm.update(1)

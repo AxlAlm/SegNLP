@@ -1,6 +1,7 @@
 
 #basics
 import warnings
+import os
 import multiprocessing
 
 #segnlp
@@ -11,12 +12,10 @@ from .utils import set_random_seed
 #sklearn
 from sklearn.exceptions import UndefinedMetricWarning
 
-
-warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
-warnings.filterwarnings("ignore", category=RuntimeWarning)
-warnings.filterwarnings("ignore", category=UserWarning)
-warnings.filterwarnings("ignore", category=FutureWarning)
-
+# warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
+# warnings.filterwarnings("ignore", category=RuntimeWarning)
+# warnings.filterwarnings("ignore", category=UserWarning)
+# warnings.filterwarnings("ignore", category=FutureWarning)
 
 warnings.filterwarnings("ignore")
 

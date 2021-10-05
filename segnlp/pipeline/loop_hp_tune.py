@@ -122,10 +122,8 @@ class HPTuneLoop:
         id_hps_set = self.__id_hyperparamaters(hp_sets)
         id_hps_set = self.__filter_hyperparamaters(id_hps_set)
 
-
-        if not gpus:
-            device = "cpu"
-        else:
+        device  = "cpu"
+        if gpus:      
             device =  f"cuda:{gpus[0]}"
             torch.backends.cudnn.deterministic = True
             torch.backends.cudnn.benchmark = True

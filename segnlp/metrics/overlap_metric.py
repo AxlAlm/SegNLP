@@ -243,7 +243,8 @@ def overlap_metric(pred_df:pd.DataFrame, target_df:pd.DataFrame, task_labels:dic
     """
 
     calc_lable_metric = "label" in task_labels
-    calc_link_lable_metric = "link_label" in task_labels and len(pred_df["target_id"].unique()) != 0
+    calc_link_lable_metric = True
+    #calc_link_lable_metric = "link_label" in task_labels and len(pred_df["target_id"].unique()) != 0
 
     # we also have information about whether the seg_id is a true segments 
     # and if so, which TRUE segmentent id it overlaps with, and how much
@@ -264,13 +265,21 @@ def overlap_metric(pred_df:pd.DataFrame, target_df:pd.DataFrame, task_labels:dic
     j2jt = dict(zip(target_df.index, target_df["target_id"]))
     i2it = dict(zip(pred_df.index, pred_df["target_id"]))
 
-    # link labels
+    # labels
     j2label = dict(zip(target_df.index, target_df["label"].astype(int)))
-    j2link_label = dict(zip(target_df.index, target_df["link_label"].astype(int)))
-
-    # link labels
     i2label = dict(zip(pred_df.index, pred_df["label"].astype(int)))
-    i2link_label = dict(zip(pred_df.index, pred_df["link_label"].astype(int)))
+
+
+    #UGLY QUCKIFIX
+    calc_link_lable_metric = len(list(set(pred_df["link_label"]))) == 0
+
+    if not calc_link_lable_metric:
+        calc_link_lable_metric = list(set(pred_df["link_label"]))[0] is not None
+
+    if calc_link_lable_metric:
+        # link labels
+        j2link_label = dict(zip(target_df.index, target_df["link_label"].astype(int)))
+        i2link_label = dict(zip(pred_df.index, pred_df["link_label"].astype(int)))
 
     assert len(set(j2ratio.keys()).difference(set(j2jt.keys()))) == 0
 
@@ -303,37 +312,52 @@ def overlap_metric(pred_df:pd.DataFrame, target_df:pd.DataFrame, task_labels:dic
 
 
         ### LINK LABEL METRICS
-        #if calc_link_lable_metric:
-        link_label_cm = link_label_confusion_matrix(
-                                labels = task_labels["link_label"],
-                                threshold = threshold,
-                                i2ratio = i2ratio,
-                                j2ratio = j2ratio,
-                                i2j = i2j,
-                                j2i = j2i,
-                                j2jt = j2jt,
-                                i2it = i2it,
-                                j2link_label = j2link_label,
-                                i2link_label = i2link_label,
-                                )
+        if calc_link_lable_metric:
+            link_label_cm = link_label_confusion_matrix(
+                                    labels = task_labels["link_label"],
+                                    threshold = threshold,
+                                    i2ratio = i2ratio,
+                                    j2ratio = j2ratio,
+                                    i2j = i2j,
+                                    j2i = j2i,
+                                    j2jt = j2jt,
+                                    i2it = i2it,
+                                    j2link_label = j2link_label,
+                                    i2link_label = i2link_label,
+                                    )
 
-        link_label_metrics = calc_f1( 
-                        link_label_cm, 
-                        labels = task_labels["link_label"],
-                        prefix = f"link_label-{threshold}-",
-                        task = "link_label"
-                        )
-        metrics.update(link_label_metrics)
+            link_label_metrics = calc_f1( 
+                            link_label_cm, 
+                            labels = task_labels["link_label"],
+                            prefix = f"link_label-{threshold}-",
+                            task = "link_label"
+                            )
+            metrics.update(link_label_metrics)
 
 
-        metrics[f"{threshold}-f1"] = np.mean([
-                                                metrics[f"link_label-{threshold}-f1"],
-                                                metrics[f"label-{threshold}-f1"],
-                                            ])
 
-        metrics[f"{threshold}-f1-micro"] = np.mean([
-                                                metrics[f"link_label-{threshold}-f1-micro"],
-                                                metrics[f"label-{threshold}-f1-micro"],
-                                            ])
+        #ugly quick fix
+        if calc_link_lable_metric:
 
+            metrics[f"{threshold}-f1"] = np.mean([
+                                                    metrics[f"link_label-{threshold}-f1"],
+                                                    metrics[f"label-{threshold}-f1"],
+                                                ])
+
+            metrics[f"{threshold}-f1-micro"] = np.mean([
+                                                    metrics[f"link_label-{threshold}-f1-micro"],
+                                                    metrics[f"label-{threshold}-f1-micro"],
+                                                ])
+        else:
+            metrics[f"{threshold}-f1"] = np.mean([
+                                                    0,
+                                                    metrics[f"label-{threshold}-f1"],
+                                                ])
+
+            metrics[f"{threshold}-f1-micro"] = np.mean([
+                                                    0,
+                                                    metrics[f"label-{threshold}-f1-micro"],
+                                                ])
+
+    
     return metrics
