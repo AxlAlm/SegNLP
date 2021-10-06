@@ -31,7 +31,6 @@ from segnlp.layers import dropouts
 
 
 logger = get_logger("BaseModel")
-os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 
 class BaseModel(nn.Module):

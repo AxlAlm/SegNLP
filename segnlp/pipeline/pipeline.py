@@ -150,10 +150,7 @@ class Pipeline(
 
     @property
     def hp_ids(self):
-
-        with open(self._path_to_hp_hist, "r") as f:
-            hp_ids = [line.strip() for line in f.read().split("\n")]
-        
+        hp_ids = [fp.replace(".json","") for fp in os.listdir(self._path_to_hps)]
         return hp_ids
 
 

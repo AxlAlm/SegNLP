@@ -107,6 +107,26 @@ class HPTuneLoop:
 
 
 
+    def get_score_dists(self, monitor_metric: str):
+        
+        score_dists = {}
+        log_dfs = self._load_logs()
+        for hp_id in self.hp_ids:
+
+            df = log_dfs[hp_id]
+            df.set_index(["split"], inplace = True)
+            top_scores = df.loc["val"].groupby("random_seed")[monitor_metric].max()
+            score_dists[hp_id] = top_scores
+
+        return score_dists
+
+
+    def find_best_hp(self, monitor_metric:str):
+        score_dists = self.get_score_dists(monitor_metric = monitor_metric)
+
+        print(score_dists)
+
+
     def train(self,
                 hyperparamaters:dict,
                 n_random_seeds:int=6,
@@ -170,3 +190,9 @@ class HPTuneLoop:
                             hyperparamaters = hps,
                             random_seeds = random_seeds
                             )
+        
+
+
+        self.find_best_hp(
+                            monitor_metric = monitor_metric
+                        )

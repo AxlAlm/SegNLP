@@ -5,6 +5,10 @@ from glob import glob
 import pandas as pd
 import re
 
+
+# segnlp
+from segnlp import utils
+
 class Logs:
 
     def _init_logs(self) -> None:
@@ -13,15 +17,27 @@ class Logs:
 
 
     def _load_logs(self) -> pd.DataFrame:
+    
+        log_dfs = {}
+        all_log_files = glob(self._path_to_logs + "/*")
 
-        # we might have logs on failed or borken exps which we will filter out.
-        pattern = re.compile(f".*({'|'.join(self.hp_ids)}).log")
+        for hp_id in self.hp_ids:
 
-        print(pattern)
-        log_files = filter(pattern.match, glob(self._path_to_logs + "/*"))
-        log_df = pd.concat([pd.read_csv(lf) for lf in log_files])
+            # get the hyperparamater config
+            hp_info = utils.load_json(os.path.join(self._path_to_hps, hp_id + ".json"))
 
-        return log_df
+            # get the random seeds used
+            random_seeds = hp_info["random_seeds"]
+
+            log_files = []
+            for random_seed in random_seeds:
+                pattern = re.compile(f".*{self.hp_ids}-{random_seed}-.*.log")
+                log_files.extend(filter(pattern.match, all_log_files))
+
+
+            log_dfs[hp_id] = pd.concat([pd.read_csv(fp) for fp in log_files])
+
+        return log_dfs
 
 
     def __check_create_log_file(self, model_id:str):

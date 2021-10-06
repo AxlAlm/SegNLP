@@ -1,7 +1,7 @@
 
 #basics
 from typing import List, Dict, Tuple, Union
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import pandas as pd
 from glob import glob
 import os
@@ -18,9 +18,7 @@ class TestLoop:
 
 
     def test(self, 
-            hp_id_to_test : str = "all", 
             batch_size : int = 32, 
-            seg_data : pd.DataFrame = None
             ) -> None:
 
         #loading our preprocessed dataset
@@ -30,67 +28,64 @@ class TestLoop:
                                 cv = 0
                                 )
 
+        # setting up metric container which takes care of metric calculation, aggregation and storing
+        metric_container = utils.MetricContainer(
+                                            metric = self.metric,
+                                            task_labels = self.task_labels
+                                            )
+
         # create a dataset generator
         test_dataset = datamodule.step("test")
 
-        # get all the paths to all models
-        #all_models = glob(self._path_to_models + "/*/*")
-        #hp_groups = {hp_id: [m for m  in all_models if m.split("/")[-2] == hp_id] for hp_id in self.hp_ids}
-        
-        hp_ids  = [f.replace(".json","") for f in os.listdir(self._path_to_hps)]
+        # we only test the best hp setting
+        best_hp_id = self.best_hp
 
+        # load hyperparamaters
+        model_info_path = os.path.join(self._path_to_hps, best_hp_id + ".json")
+        model_info = utils.load_json(model_info_path)
 
-        for hp_id in hp_ids:
+        hyperparamaters = model_info["hyperparamaters"]
+        random_seeds = model_info["random_seeds"]
 
-            if hp_id != hp_id_to_test and hp_id_to_test != "all":
-                continue
+        for random_seed in tqdm(random_seeds, desc= "random_seeds"):
 
+            #model path 
+            model_path = glob(os.path.join(self._path_to_models, best_hp_id, f"{random_seeds}*"))[0]
             
-            # load hyperparamaters
-            model_info_path = os.path.join(self._path_to_hps, hp_id + ".json")
-            model_info = utils.load_json(model_info_path)
+            #setup model
+            model = self.model(
+                            hyperparamaters  = hyperparamaters,
+                            label_encoder = self.label_encoder,
+                            feature_dims = self.feature2dim,
+                            metric = self.metric
+                            )
+            
+            #load model weights
+            model.load_state_dict(torch.load(model_path))
 
-            hyperparamaters = model_info["hyperparamaters"]
-            random_seeds = model_info["random_seeds"]
+            # set model to model to evaluation mode
+            model.eval()
+            with torch.zero_grad():
 
-            for random_seed in random_seeds:
+                for test_batch in tqdm(test_dataset, desc = "Testing", total = len(test_dataset)):
+                    
+                    #pass the batch to model
+                    model(test_batch)
 
-                #model path 
-                model_path = glob(os.path.join(self._path_to_models, hp_id, f"{random_seeds}*"))[0]
-                
-                #setup model
-                model = self.model(
-                                hyperparamaters  = hyperparamaters,
-                                label_encoder = self.label_encoder,
-                                feature_dims = self.feature2dim,
-                                metric = self.metric
+                    #calculate the metrics
+                    metric_container.calc_add(test_batch, "train")
+
+
+            # Log val epoch metrics
+            test_epoch_metrics = model.metrics.calc_epoch_metrics("val")
+            self._log_epoch(  
+                                epoch = 0,
+                                split = "test",
+                                hp_id = best_hp_id,
+                                random_seed = random_seed,
+                                epoch_metrics = test_epoch_metrics,
+                                cv = 0
                                 )
-                
-                #load model weights
-                model.load_state_dict(torch.load(model_path))
-
-                # set model to model to evaluation mode
-                model.eval()
-                with torch.zero_grad():
-
-                    for test_batch in tqdm(test_dataset, desc = "Testing", total = len(test_dataset)):
-                        
-                        if seg_data is not None:
-                            test_batch._pred_df.loc[:, "seg_id"] = seg_data.loc[:, "seg_id"]
-
-                        model(test_batch)
-
-
-                # Log val epoch metrics
-                test_epoch_metrics = model.metrics.calc_epoch_metrics("val")
-                self._log_epoch(  
-                                    epoch = 0,
-                                    split = "test",
-                                    hp_id = hp_id,
-                                    random_seed = random_seed,
-                                    epoch_metrics = test_epoch_metrics,
-                                    cv = 0
-                                    )
 
 
 
