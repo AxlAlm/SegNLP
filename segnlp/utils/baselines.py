@@ -4,8 +4,12 @@ import random
 import numpy as np
 
 
+# pytroch
+import torch
+
 # segnlp
 from .bio_decoder import BIODecoder
+from .array import ensure_numpy
 
 
 class RandomBaseline:
@@ -27,7 +31,7 @@ class RandomBaseline:
 
             
             if task == "link":
-                self._clfs[task]  = self.__create_link_clf(labels = labels)
+                self._clfs[task]  = self.__create_link_clf()
             else:
                 self._clfs[task]  = self.__create_random_clf(labels = labels, weights = label_weights)
 
@@ -91,12 +95,13 @@ class RandomBaseline:
 class SentenceRandomBaseline(RandomBaseline):
 
 
-    def __init__(self, task_labels: dict,  random_seed:int, weights : dict = None):
+    def __init__(self, task_labels: dict,  random_seed:int, p:float, weights : dict = None):
         super().__init__(
                         task_labels = task_labels, 
                         random_seed = random_seed, 
                         weights = weights
                         )
+        self._p = p
         self._bio_decoder = BIODecoder()
 
 
@@ -116,8 +121,29 @@ class SentenceRandomBaseline(RandomBaseline):
         
         # seg_ids = self._bio_decoder(segs, sample_start_idxs = sample_start_idxs.astype(int))
 
-        # # add segment ids
-        df["seg_id"] = df["sentence_id"]        
+
+        # We set sentences as segments ids
+        df["seg_id"] = None
+
+        # then we selected sentences 
+        n_sentences = df["sentence_id"].nunique()
+
+        # then we extract the length of each sentence
+        sentence_lengths = df.groupby("sentence_id", sort = False).size().to_numpy()
+
+        # then we set setting sentence_id to  index so we can filter easily
+        df.set_index(["sentence_id"], inplace = True)
+
+        # the we select sentences
+        mask = ensure_numpy(torch.zeros(n_sentences).bernoulli_(self._p)).astype(bool)
+        selected_sentences = np.arange(n_sentences)[mask]
+
+        # then we select rows using our selected sentences and add a new range of ids 
+        # as segment ids.
+        df.loc[selected_sentences, "seg_id"] = np.repeat(
+                                                        np.arange(len(selected_sentences)),
+                                                        sentence_lengths[selected_sentences]
+                                                        )
 
         # We create a dataframe where rows are segments instead of tokens
         seg_df = df.groupby("seg_id", sort = False).first()
@@ -137,13 +163,24 @@ class SentenceRandomBaseline(RandomBaseline):
         return df
 
 
-class MajorityLabelBaseline:
+class MajorityBaseline:
 
-    def __new__(self, majority_labels:dict,  random_seed:int ):
-        RandomBaseline(task_labels = majority_labels, random_seed = random_seed)
+    def __new__(self, task_label:dict,  random_seed:int):
+        task_label = {t:[l] for t,l in task_label.items()}
+
+        return RandomBaseline(
+                        task_labels = task_label, 
+                        random_seed = random_seed
+                        )
 
 
-class SentenceMajorityLabelBaseline:
+class SentenceMajorityBaseline:
 
-    def __new__(self, majority_labels:dict,  random_seed:int ):
-        SentenceRandomBaseline(task_labels = majority_labels, random_seed = random_seed)
+    def __new__(self, task_label:dict,  random_seed:int, p: float):
+        task_label = {t:[l] for t,l in task_label.items()}
+
+        return SentenceRandomBaseline(
+                            task_labels = task_label, 
+                            random_seed = random_seed, 
+                            p = p
+                            )

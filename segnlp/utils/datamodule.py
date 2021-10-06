@@ -49,8 +49,7 @@ class DataModule:
 
         self._metric = metric
 
-        with open(os.path.join(path_to_data, f"splits.pkl"), "rb") as f:
-            self._splits : dict = pickle.load(f)
+        self._splits : dict = utils.load_pickle_data(os.path.join(path_to_data, f"splits.pkl"))
         
         self.batch_size : int = batch_size
         self.split_id : int = cv

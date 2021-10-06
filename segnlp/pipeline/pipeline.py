@@ -6,7 +6,7 @@ import json
 import numpy as np
 import os
 import pwd
-
+import pandas as pd
 
 
 #pytorch
@@ -29,6 +29,11 @@ from segnlp.datasets.base import DataSet
 import segnlp.utils as utils
 from segnlp import models
 from segnlp.models.base import BaseModel
+from segnlp.utils.baselines import RandomBaseline
+from segnlp.utils.baselines import SentenceRandomBaseline
+from segnlp.utils.baselines import MajorityBaseline
+from segnlp.utils.baselines import SentenceMajorityBaseline
+
 
 logger = get_logger("PIPELINE")
 user_dir = pwd.getpwuid(os.getuid()).pw_dir
@@ -104,7 +109,96 @@ class Pipeline(
 
         # after we have processed data we will deactivate preprocessing so we dont keep
         # large models only using in preprocessing in memory
-        self.deactivate()
+        self.deactivate() 
+
+        base_lines_scores = self.__calc_baseline_scores()
+
+
+        
+    def __calc_baseline_scores(self):
+
+        def run_baseline(baseline, df:pd.DataFrame, kwargs:dict):
+
+            all_metrics  = []
+            for rs in utils.random_ints(6):
+
+                kwargs["random_seed"] = rs
+                
+                #init the baseline model
+                bl = baseline(**kwargs)
+
+                # run baseline
+                pred_df = bl(df.copy(deep=True))
+
+                #evaluate baseline
+                metrics = self.metric(
+                                        pred_df = pred_df, 
+                                        target_df = df ,
+                                        task_labels = self.task_labels
+                                    )
+
+                metrics["random_seed"] = rs
+                metrics["baseline"] = str(baseline)
+                all_metrics.append(metrics)
+
+
+            score_df = pd.DataFrame(all_metrics)
+            print(score_df)
+            return score_df
+
+
+        df = pd.read_csv(self._df_fp, index_col = 0)
+        splits = utils.load_pickle_data(self._path_to_splits)
+
+        val_df = df.loc[splits["val"]]
+        test_df = df.loc[splits["test"]]
+
+        print(val_df)
+
+        if self.dataset_name == "PE":
+            majority_labels = {"label":"Premise", "link_label":"PRO", "link":None}
+
+        if self.dataset_name == "MTC":
+            majority_labels = None
+
+        print(self.task_labels)
+
+
+        score_dfs = []
+        if "seg" in self.all_tasks:
+
+            for baseline in [SentenceMajorityBaseline, SentenceRandomBaseline]:
+
+                score_df = run_baseline(
+                                baseline = baseline,
+                                df = val_df,
+                                kwargs = dict(
+                                                task_labels = majority_labels if baseline == SentenceMajorityBaseline else self.task_labels, 
+                                                p = 1.0
+                                            )
+                            )
+                
+                score_dfs.append(score_df)
+
+        else:
+
+             for baseline in [MajorityBaseline, RandomBaseline]:
+
+                score_df = run_baseline(
+                                baseline = baseline,
+                                df = val_df,
+                                kwargs = dict(
+                                                task_labels = majority_labels if baseline == SentenceMajorityBaseline else self.task_labels, 
+                                            )
+                            )
+
+                score_dfs.append(score_df)
+
+
+        basline_score_df = pd.concat([score_dfs])
+        
+        print(basline_score_df)
+        
 
 
     def __init__dirs_and_files(self, overwrite : bool):
@@ -145,7 +239,6 @@ class Pipeline(
 
         if not os.path.exists(self._path_to_hp_list):
             open(self._path_to_hp_list, 'w')
-
 
 
     @property
