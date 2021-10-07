@@ -1,126 +1,166 @@
 
 # basics
 import random
+from typing import Callable, Dict
 import numpy as np
-
 
 # pytroch
 import torch
 
 # segnlp
-from .bio_decoder import BIODecoder
 from .array import ensure_numpy
 
 
-class RandomBaseline:
+def random_link_clf():
+
+    """ 
+    for link classification we do not select labels from a fixed distribution 
+    but instead we set labels to the number of possible segments in a sample.
+    I.e. we only predict a random link out of all the possible link paths in a sample.
+    """
+
+    def clf(labels, k:int):
+        return random.choices(
+                population = labels,
+                k = k
+                )
 
 
-    def __init__(self, task_labels: dict, random_seed:int, weights : dict = None):
-        random.seed(random_seed)
-        self._task_labels = task_labels
-        self._tasks = tuple(list(self._task_labels.keys()))
-        self._clfs  = {}
+    return clf
+
+
+def random_clf(
+                labels:list,
+                weights: list = None,
+                ):
+
+    if weights is None:
+        weights = [1 / len(labels)] * len(labels)
+
+    def clf(k:int):
+        return random.choices(
+                population = labels,
+                weights = weights,
+                k = k
+                )
+
+    return clf
+
+
+def random_majority_link_clf():
+
+    """ 
+    for link classification we do not select labels from a fixed distribution 
+    but instead we set labels to the number of possible segments in a sample.
+    I.e. we only predict a random link out of all the possible link paths in a sample.
+    """
+
+    def clf(labels, k:int):
         
+        ##only to self
+        #return np.arange(k)
 
-        for task, labels in task_labels.items():
+        # only one forward
+        #return [min(i+1, k-1) for i in range(k)]
 
-            if weights is None:
-                label_weights = None
-            else:
-                label_weights = weights[task]
+        # only one back
+        return [max(0, i-1) for i in range(k)]
 
-            
-            if task == "link":
-                self._clfs[task]  = self.__create_link_clf()
-            else:
-                self._clfs[task]  = self.__create_random_clf(labels = labels, weights = label_weights)
-
-
-    def __create_link_clf(self):
-
-        """ 
-        for link classification we do not select labels from a fixed distribution 
-        but instead we set labels to the number of possible segments in a sample.
-        I.e. we only predict a random link out of all the possible link paths in a sample.
-        """
-            
-        def clf(labels, k:int):
-            return random.choices(
-                    population = labels,
-                    k = k
-                    )
-
-        return clf
+        ## link to the segment behind or the one ahead.
+        ##  If i == k-1, we take i or i-1. if i == 0, we take i or i+1
+        #return [random.choice([max(0, i-1), i, min(i+1, k-1)]) for i in range(k)]
+        
+    return clf
 
 
-    def __create_random_clf(
-                            self,
-                            labels:list,
-                            weights: list = None,
-                            ):
+def majority_clf(label):
+
+    def clf(k:int):
+        return [label] * k
+
+    return clf
+
+
+def create_random_baseline_clfs(task_labels, weights):
+
+    clfs = {}
+
+    for task, labels in task_labels.items():
 
         if weights is None:
-            weights = [1 / len(labels)] * len(labels)
+            label_weights = None
+        else:
+            label_weights = weights[task]
 
-        def clf(k:int):
-            return random.choices(
-                    population = labels,
-                    weights = weights,
-                    k = k
-                    )
+        
+        if task == "link":
+            clfs[task]  = random_link_clf()
+        else:
+            clfs[task]  = random_clf(labels = labels, weights = label_weights)
 
-        return clf
+    return clfs
 
 
-    def pred(self, df):
+def create_majority_baseline_clfs(task_labels):
 
+    clfs = {}
+    for task, label in task_labels.items():
+        
+        if task == "link":
+            clfs[task]  = random_majority_link_clf()
+        else:
+            clfs[task]  = majority_clf(label = label)
+    return clfs
+
+
+class Baseline:
+
+    def __init__(self, clfs : Dict[str, Callable]):
+        self._clfs = clfs
+
+    def __call__(self, df):
+
+        df["seg_id"] = df.index.to_numpy()
+        
         k = len(df)
-        df["link"] = None
-        for task in self._task_labels:
+        for task, clf in self._clfs.items():
+            df["task"] = None
 
             if task ==  "link":
+                df["target_id"] = None
             
                 for si, sample_df in df.groupby("sample_id", sort = False):
+
                     n_segs = len(sample_df)
-                    values = self._clfs["link"](labels = list(range(n_segs)), k= n_segs)
-                    
-                    df.loc[df["sample_id"] == si,"link"] = values
-                    
+                    links = clf(
+                                labels = list(range(n_segs)),
+                                k = n_segs
+                                )
+                
+                    df.loc[df["sample_id"] == si,"link"] = links
+                
+                    # We also add target_id
+                    seg_ids = sample_df["seg_id"].to_numpy()
+                    df.loc[df["sample_id"] == si, "target_id"] = seg_ids[links]
+
             else:
-                df[task] = self._clfs[task](k=k)
-    
+                df[task] = clf(k=k)
+
+
         return df
 
 
-class SentenceRandomBaseline(RandomBaseline):
+class SentenceBaseline(Baseline):
 
-
-    def __init__(self, task_labels: dict,  random_seed:int, p:float, weights : dict = None):
-        super().__init__(
-                        task_labels = task_labels, 
-                        random_seed = random_seed, 
-                        weights = weights
-                        )
+    def __init__(self, clfs : Dict[str, Callable], p:float):
+        super().__init__(clfs = clfs)
+        self._tasks = list(clfs.keys())
         self._p = p
-        self._bio_decoder = BIODecoder()
+        
 
+    def __call__(self, df):
 
-    def pred(self, df):
-
-        df_size = len(df)
         o_index = df.index
-        
-        # # we randomly predict BIO segs
-        # segs = self._clfs["seg"](k=df_size)
-
-        # # we decode segments from the randomly segmented segemnts
-        # # we get the sample start indexes from sample lengths. We need this to tell de decoder where samples start
-        # sample_sizes = df.groupby("sample_id", sort = False).size().to_numpy()
-        # sample_end_idxs = np.cumsum(sample_sizes)
-        # sample_start_idxs = np.concatenate((np.zeros(1), sample_end_idxs))[:-1]
-        
-        # seg_ids = self._bio_decoder(segs, sample_start_idxs = sample_start_idxs.astype(int))
-
 
         # We set sentences as segments ids
         df["seg_id"] = None
@@ -129,58 +169,72 @@ class SentenceRandomBaseline(RandomBaseline):
         n_sentences = df["sentence_id"].nunique()
 
         # then we extract the length of each sentence
-        sentence_lengths = df.groupby("sentence_id", sort = False).size().to_numpy()
+        sent_groups = df.groupby("sentence_id", sort = False)
+        sentence_lengths = sent_groups.size().to_numpy()
+        sentences_ids = sent_groups.first().index.to_numpy()
 
         # then we set setting sentence_id to  index so we can filter easily
         df.set_index(["sentence_id"], inplace = True)
 
         # the we select sentences
         mask = ensure_numpy(torch.zeros(n_sentences).bernoulli_(self._p)).astype(bool)
-        selected_sentences = np.arange(n_sentences)[mask]
+        sentence_idx = np.arange(n_sentences)[mask]
+        sentences_ids = sentences_ids[mask]
+        n_selected = len(sentences_ids)
 
         # then we select rows using our selected sentences and add a new range of ids 
         # as segment ids.
-        df.loc[selected_sentences, "seg_id"] = np.repeat(
-                                                        np.arange(len(selected_sentences)),
-                                                        sentence_lengths[selected_sentences]
+        df.loc[sentences_ids, "seg_id"] = np.repeat(
+                                                        np.arange(n_selected),
+                                                        sentence_lengths[sentence_idx]
                                                         )
 
         # We create a dataframe where rows are segments instead of tokens
         seg_df = df.groupby("seg_id", sort = False).first()
         
         # we pass the seg_dataframe to the RandomBaseline.pred to predict labels for each segment
-        seg_df = super().pred(seg_df)
+        seg_df = super().__call__(seg_df)
     
         # set index to seg_id expand rows easier
         df = df.set_index(["seg_id"])
         df["seg_id"] = df.index
         
         for seg_id, row in seg_df.iterrows():
-            task_preds = [row[t] for t in self._tasks]
-            df.loc[seg_id, self._tasks] = task_preds
+            task_preds = [row[t] for t in self._tasks] + [row["target_id"]]
+            df.loc[seg_id, self._tasks+ ["target_id"]] = task_preds
         
         df.index = o_index
         return df
 
 
+class RandomBaseline:
+
+    def __new__(self, task_labels: dict, random_seed:int, weights : dict = None):
+        random.seed(random_seed)
+        clfs = create_random_baseline_clfs(task_labels, weights)
+        return Baseline(clfs = clfs)
+
+
 class MajorityBaseline:
 
-    def __new__(self, task_label:dict,  random_seed:int):
-        task_label = {t:[l] for t,l in task_label.items()}
-
-        return RandomBaseline(
-                        task_labels = task_label, 
-                        random_seed = random_seed
-                        )
+    def __new__(self, task_labels: dict, random_seed:int):
+        random.seed(random_seed)
+        clfs = create_majority_baseline_clfs(task_labels)
+        return Baseline(clfs = clfs)
 
 
-class SentenceMajorityBaseline:
+class SentenceRandomBaseline(RandomBaseline):
 
-    def __new__(self, task_label:dict,  random_seed:int, p: float):
-        task_label = {t:[l] for t,l in task_label.items()}
+    def __new__(self, task_labels: dict,  random_seed:int, p: float, weights:dict =  None):
+        random.seed(random_seed)
+        clfs = create_random_baseline_clfs(task_labels, weights)
+        return SentenceBaseline(clfs = clfs, p = p)
 
-        return SentenceRandomBaseline(
-                            task_labels = task_label, 
-                            random_seed = random_seed, 
-                            p = p
-                            )
+
+class SentenceMajorityBaseline(MajorityBaseline):
+
+    def __new__(self, task_labels: dict,  random_seed:int, p: float):
+        random.seed(random_seed)
+        clfs = create_majority_baseline_clfs(task_labels)
+        return SentenceBaseline(clfs = clfs, p = p)
+

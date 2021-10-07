@@ -93,7 +93,7 @@ class PE(DataSet):
                             # However, Against and attacks are functional equivalent so will use CON for both
                             # and for For and supports we will use PRO
                             #"stance":["For", "Against", "supports", "attacks"],
-                            "link_label": ["support", "attack", "root"],
+                            "link_label": ["root", "support", "attack"],
                             "link": list(range(-11,12,1))
                             }
 
@@ -146,8 +146,6 @@ class PE(DataSet):
         if not os.path.exists(zip_dump_path):
             desc = f"Downloading ArgumentAnnotatedEssays-2.0"
             u.download(url=self.download_url, save_path=zip_dump_path, desc=desc)
-
-        print("HELLLLO", zip_dump_path,  self.dump_path)
 
         u.unzip(zip_dump_path, self.dump_path)
         u.unzip(data_folder + ".zip", parent_folder)

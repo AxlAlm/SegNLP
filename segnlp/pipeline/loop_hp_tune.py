@@ -123,14 +123,16 @@ class HPTuneLoop:
 
     def find_best_hp(self, monitor_metric:str):
         score_dists = self.get_score_dists(monitor_metric = monitor_metric)
+        baseline_scores = self.baseline_scores()
 
         print(score_dists)
 
 
+        utils.stat
+
+
     def train(self,
                 hyperparamaters:dict,
-                n_random_seeds:int=6,
-                random_seed:int=None,
                 monitor_metric:str = "val_f1",
                 gpus : list = [],
                 overfit_n_batches : int = None
@@ -156,10 +158,10 @@ class HPTuneLoop:
             path_to_hp_models = os.path.join(self._path_to_models, hp_id)
             os.makedirs(path_to_hp_models, exist_ok=True)
 
-            if random_seed is not None and isinstance(random_seed, int):
-                random_seeds = [random_seed]
-            else:
-                random_seeds = utils.random_ints(n_random_seeds)
+            # if random_seed is not None and isinstance(random_seed, int):
+            #     random_seeds = [random_seed]
+            # else:
+            random_seeds = utils.random_ints(self.n_random_seeds)
 
             #done_random_seeds = []
             for random_seed in tqdm(random_seeds, desc = "Random Seeds", position=1):

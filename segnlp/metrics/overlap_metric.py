@@ -111,9 +111,6 @@ def link_label_confusion_matrix(
     # Then we look at FN, TP and FP
     for i, ratio in i2ratio.items():
 
-        # if there is no j for i,we counted it as a FN
-        # if i not in i2j:
-        #     continue
 
         # check if the source match
         if ratio < threshold:
@@ -261,6 +258,7 @@ def overlap_metric(pred_df:pd.DataFrame, target_df:pd.DataFrame, task_labels:dic
     js = target_df.index.to_numpy()
     j2ratio.update({j:0 for j in js if j not in j2ratio})
 
+
     #source to target mappings for target and predicted segments
     j2jt = dict(zip(target_df.index, target_df["target_id"]))
     i2it = dict(zip(pred_df.index, pred_df["target_id"]))
@@ -281,6 +279,7 @@ def overlap_metric(pred_df:pd.DataFrame, target_df:pd.DataFrame, task_labels:dic
         j2link_label = dict(zip(target_df.index, target_df["link_label"].astype(int)))
         i2link_label = dict(zip(pred_df.index, pred_df["link_label"].astype(int)))
 
+    
     assert len(set(j2ratio.keys()).difference(set(j2jt.keys()))) == 0
 
     
