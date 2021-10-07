@@ -2,6 +2,7 @@
 #basics
 import os
 from glob import glob
+from random import random
 import pandas as pd
 import re
 
@@ -12,8 +13,13 @@ from segnlp import utils
 class Logs:
 
     def _init_logs(self) -> None:
-        self._max_lines : int = 1000
+        self._max_lines : int = 10000
         self._current_lines : int = 0
+
+
+    def _remove_logs(self, hp_id, random_seed:int = None):
+        pass
+    
 
 
     def _load_logs(self) -> pd.DataFrame:
@@ -40,20 +46,20 @@ class Logs:
         return log_dfs
 
 
-    def __check_create_log_file(self, model_id:str):
-        
-        n_log_files = len(glob(self._path_to_logs + f"/{model_id}*"))
+    def __check_create_log_folder(self, folder_name:str):
+        folder_path = os.path.join(self._path_to_logs, folder_name)
+        os.makedirs(os.path.join(self._path_to_logs, folder_name), exist_ok = True)
+        return folder_path
 
-        is_too_big = self._current_lines == self._max_lines
-        is_first = not n_log_files
 
-        if is_too_big or is_first:
-            self.log_file = os.path.join(self._path_to_logs, f"{model_id}-{n_log_files}.log")
+    def __set_create_log_file(self, folder_path :str,  file_name:str):
 
-            # create the file
-            open(self.log_file, "w")
+        #set a file path
+        self.log_file = os.path.join(folder_path, f"{file_name}-{len(os.listdir(folder_path))}.log")
 
-            return True
+        #create the file
+        open(self.log_file, "w")
+
 
 
     def _log_epoch(self, 
@@ -79,8 +85,14 @@ class Logs:
                     }
         log_dict.update(epoch_metrics)
 
-        #setup file
-        new_file = self.__check_create_log_file(f"{hp_id}-{random_seed}")
+        new_file = False
+        if not hasattr(self, "log_file"):
+            log_folder_path = self.__check_create_log_folder(hp_id)
+            self.__set_create_log_file(
+                                            folder_path = log_folder_path, 
+                                            file_name = random_seed
+                                            )
+            new_file = True
 
         with open(self.log_file, "a") as f:
             

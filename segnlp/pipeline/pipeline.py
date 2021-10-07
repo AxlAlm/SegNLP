@@ -159,6 +159,10 @@ class Pipeline(
         hp_ids = [fp.replace(".json","") for fp in os.listdir(self._path_to_hps)]
         return hp_ids
 
+    @property
+    def hp_configs(self):
+        return [utils.load_json(fp) for fp in glob(self._path_to_hps + "/*.json")]
+
 
     def __check_config(self, config:dict):
 

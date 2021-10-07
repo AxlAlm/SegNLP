@@ -5,6 +5,7 @@ import itertools
 import json
 import os
 from copy import deepcopy
+from numpy.core.fromnumeric import product
 from numpy.lib.arraysetops import isin
 from tqdm.auto import tqdm
 from glob import glob
@@ -18,7 +19,7 @@ import torch
 #segnlp
 from segnlp import get_logger
 import segnlp.utils as utils
-
+from segnlp.utils.stat_sig import compare_dists
 
 logger = get_logger("LOOP HP TUNING")
 
@@ -26,7 +27,7 @@ logger = get_logger("LOOP HP TUNING")
 class HPTuneLoop:
 
 
-    def __create_hyperparam_sets(self, hyperparamaters:dict) -> List[dict]:
+    def __get_hyperparam_sets(self, hyperparamaters:dict) -> List[dict]:
         """
 
         Create a set of hyperparamaters
@@ -56,55 +57,63 @@ class HPTuneLoop:
         return hp_sets
 
 
-    def __id_hyperparamaters(self, set_hyperparamaters: List[dict]) -> List[Tuple[str, dict]]:
+    def __get_hyperparamaters_uid(self, set_hyperparamaters: List[dict]) -> List[Tuple[str, dict]]:
         """
         creates a unique hash id for each hyperparamater. Used to check if hyperparamaters are already tested
         """
 
         #give each hp an unique id
-        create_hp_id = lambda x: utils.create_uid("".join(list(map(str, x.keys())) + list(map(str, x.values()))))
-        hp_ids = [create_hp_id(hp) for hp in set_hyperparamaters]
-        return list(zip(hp_ids, set_hyperparamaters))
+        create_hp_uid = lambda x: utils.create_uid("".join(list(map(str, x.keys())) + list(map(str, x.values()))))
+        hp_uids = [create_hp_uid(hp) for hp in set_hyperparamaters]
+        return list(zip(hp_uids, set_hyperparamaters))
 
 
-    def __filter_hyperparamaters(self, identifed_hps: List[Tuple[str, dict]]) -> List[Tuple[str, dict]]:
+    def __filter_and_setup_hp_configs(self, identifed_hps: List[Tuple[str, dict]]) -> List[Tuple[str, dict]]:
         """
         check which hyperparamaters ids already exist and remove them  
         """
-        
-        # hp ids for hyperparamaters that is already tested
-        done_hp_ids = set([fp.replace(".json", "") for fp in os.listdir(self._path_to_hps)])
 
-        # filtered hyperparamaters
-        filtered_hps = [(id,hps) for id,hps in identifed_hps if id not in done_hp_ids]
-    
-        return filtered_hps
+        # get all configs
+        uid2config = {c["uid"]:c for c in self.hp_configs}
+
+        hp_configs = []
+        hp_id = len(uid2config)
+        for hp_uid, hp in identifed_hps:
 
 
-    def __dump_hps( self,
-                    hp_id:str,
-                    hyperparamaters: dict, 
-                    random_seeds: list,
-                    ):
+            if hp_uid in uid2config:
 
-        hyperparamaters = deepcopy(hyperparamaters)
-   
-        time = utils.get_time()
-        config = {
-                    "hp_id": hp_id,
-                    "time": str(time),
-                    "timestamp": str(time.timestamp()),
-                    "hyperparamaters": hyperparamaters,
-                    "random_seeds" : random_seeds
-                    }
+
+                if uid2config[hp_uid]["done"]:
+                    continue
+
+                config = uid2config[hp_uid]
+
+            else:
+                config = {
+                        "hp_id": hp_id,
+                        "hp_uid": hp_uid,
+                        "hyperparamaters": deepcopy(hp),
+                        "random_seeds_todo" : utils.random_ints(self.n_random_seeds),
+                        "random_seeds_done" : [],
+                        "path_to_models": os.path.join(self._path_to_models, hp_id),
+                        "done": False
+                        }
+                hp_id += 1
+
+            hp_configs.append(config)
+
+        return hp_configs
+
+
+    def __dump_hp_config(self, config:dict):
 
         #create file for the hyperparamaters
-        fp = os.path.join(self._path_to_hps, hp_id + ".json")
-        
-        #### check if the hp_ids are already tested and logged
-        with open(fp, "a") as f:
-            json.dump(config, f, indent=4)
+        fp = os.path.join(self._path_to_hps, config["hp_id"] + ".json")
 
+        #save config
+        utils.save_json(config, fp)
+   
 
 
     def get_score_dists(self, monitor_metric: str):
@@ -121,9 +130,16 @@ class HPTuneLoop:
         return score_dists
 
 
-    def find_best_hp(self, monitor_metric:str):
-        score_dists = self.get_score_dists(monitor_metric = monitor_metric)
+    def rank_hps(self, monitor_metric:str):
+        score_dists = self.get_score_dists(monitor_metric = monitor_metric).to_numpy()
         baseline_scores = self.baseline_scores()
+
+        score_dists["majority"] = baseline_scores.loc["majority", monitor_metric].to_numpy()
+        score_dists["random"] = baseline_scores.loc["random", monitor_metric].to_numpy()
+
+        model_names = score_dists.keys()
+
+        itertools.combinations(model_names, repeat=2)
 
         print(score_dists)
 
@@ -140,9 +156,10 @@ class HPTuneLoop:
 
         self.training = True
 
-        hp_sets = self.__create_hyperparam_sets(hyperparamaters)
-        id_hps_set = self.__id_hyperparamaters(hp_sets)
-        id_hps_set = self.__filter_hyperparamaters(id_hps_set)
+        hp_sets = self.__get_hyperparam_sets(hyperparamaters)
+        uid_hps_set = self.__get_hyperparamaters_uid(hp_sets)
+        hp_configs = self.__filter_and_setup_hp_configs(uid_hps_set)
+
 
         device  = "cpu"
         if gpus:      
@@ -152,18 +169,12 @@ class HPTuneLoop:
             torch.backends.cudnn.enabled = True
 
         
-        for hp_id, hps in tqdm(id_hps_set, desc="Hyperparamaters",  position=0):    
+        for hp_config in tqdm(hp_configs, desc="Hyperparamaters",  position=0):    
             
             #make a folder in models for the model
-            path_to_hp_models = os.path.join(self._path_to_models, hp_id)
-            os.makedirs(path_to_hp_models, exist_ok=True)
+            os.makedirs(hp_config["path_to_models"], exist_ok=True)
 
-            # if random_seed is not None and isinstance(random_seed, int):
-            #     random_seeds = [random_seed]
-            # else:
-            random_seeds = utils.random_ints(self.n_random_seeds)
-
-            #done_random_seeds = []
+            random_seeds = hp_config["random_seeds_todo"].copy()
             for random_seed in tqdm(random_seeds, desc = "Random Seeds", position=1):
                 
                 try:
@@ -175,26 +186,28 @@ class HPTuneLoop:
                             device = device,
                             overfit_n_batches = overfit_n_batches
                             )
+
+                    #update our config
+                    hp_config["random_seeds_todo"].pop(random_seed)
+                    hp_config["random_seeds_done"].append(random_seed)
+
+                    # check if all random_seeds are done
+                    if len(hp_config["random_seeds_todo"]) == 0:
+                        hp_config["done"]
+
+                    # write hyperparamters along with timestamps to a json
+                    self.__dump_hps(hp_config)
+
+
                 except BaseException as e:
                     # failed_models = glob(os.path.join(path_to_hp_models, random_seed + "*.ckpt"))
                     # for fp in failed_models:
                     #     os.remove(fp)
 
-                    shutil.rmtree(path_to_hp_models)
+                    shutil.rmtree(hp_config["path_to_models"])
                     raise e
-                
-                #done_random_seeds.append(random_seed)
- 
- 
-            # write hyperparamters along with timestamps to a json
-            self.__dump_hps(
-                            hp_id = hp_id, 
-                            hyperparamaters = hps,
-                            random_seeds = random_seeds
-                            )
-        
 
 
-        self.find_best_hp(
+        self.rank_hps(
                             monitor_metric = monitor_metric
                         )
