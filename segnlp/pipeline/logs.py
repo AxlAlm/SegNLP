@@ -15,53 +15,53 @@ class Logs:
     def _init_logs(self) -> None:
         self._max_lines : int = 10000
         self._current_lines : int = 0
+        self._current_random_seed = None
+        self._current_split = None
 
 
-    def _remove_logs(self, hp_id, random_seed:int = None):
-        pass
-    
+    # def _remove_logs(self, hp_id, random_seed:int = None):
+    #     pass
 
 
     def _load_logs(self) -> pd.DataFrame:
     
         log_dfs = {}
-        all_log_files = glob(self._path_to_logs + "/*")
-
         for hp_id in self.hp_ids:
 
-            # get the hyperparamater config
-            hp_info = utils.load_json(os.path.join(self._path_to_hps, hp_id + ".json"))
+            # log folder
+            log_folder_path = os.path.join(self._path_to_logs, hp_id)
 
-            # get the random seeds used
-            random_seeds = hp_info["random_seeds"]
+            # log files 
+            split_dfs = {}
+            for split in ["train", "val", "test"]:
+                log_files = glob(log_folder_path + f"/{split}/*")
 
-            log_files = []
-            for random_seed in random_seeds:
-                pattern = re.compile(f".*{self.hp_ids}-{random_seed}-.*.log")
-                log_files.extend(filter(pattern.match, all_log_files))
+                if not log_files:
+                    continue
 
+                # log dataframes
+                split_dfs[split] = pd.concat([pd.read_csv(fp) for fp in log_files])
 
-            log_dfs[hp_id] = pd.concat([pd.read_csv(fp) for fp in log_files])
+            log_dfs[hp_id] = split_dfs
 
         return log_dfs
 
 
-    def __check_create_log_folder(self, folder_name:str):
-        folder_path = os.path.join(self._path_to_logs, folder_name)
-        os.makedirs(os.path.join(self._path_to_logs, folder_name), exist_ok = True)
+    def __check_create_log_folder(self, hp_id:str, split:str):
+        folder_path = os.path.join(self._path_to_logs, hp_id, split)
+        os.makedirs(folder_path, exist_ok = True)
         return folder_path
 
 
     def __set_create_log_file(self, folder_path :str,  file_name:str):
 
-        #set a file path
-        self.log_file = os.path.join(folder_path, f"{file_name}-{len(os.listdir(folder_path))}.log")
+        #create log file
+        self.log_file = os.path.join(folder_path, f"{file_name}.log")
 
-        #create the file
+        # create the file
         open(self.log_file, "w")
-
-
-
+        
+    
     def _log_epoch(self, 
                 epoch : int,
                 split : str,
@@ -69,8 +69,8 @@ class Logs:
                 random_seed : int,
                 epoch_metrics : dict,
                 cv : int,
-                use_target_segs :bool,
-                freeze_segment_module : bool,
+                use_target_segs :bool = False,
+                freeze_segment_module : bool = False,
                 ):                            
 
         # create dict
@@ -85,14 +85,17 @@ class Logs:
                     }
         log_dict.update(epoch_metrics)
 
+        log_folder_path = self.__check_create_log_folder(hp_id, split)
+
         new_file = False
-        if not hasattr(self, "log_file"):
-            log_folder_path = self.__check_create_log_folder(hp_id)
+        if self._current_random_seed != random_seed or self._current_split != split:
             self.__set_create_log_file(
-                                            folder_path = log_folder_path, 
-                                            file_name = random_seed
-                                            )
+                                        folder_path = log_folder_path, 
+                                        file_name = random_seed
+                                        )
             new_file = True
+            self._current_random_seed = random_seed
+
 
         with open(self.log_file, "a") as f:
             

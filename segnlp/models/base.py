@@ -40,7 +40,6 @@ class BaseModel(nn.Module):
                     hyperparamaters:dict,
                     label_encoder: LabelEncoder,
                     feature_dims:dict,
-                    metric:Union[Callable,str],
                     inference:bool=False
                     ):
         super().__init__()

@@ -158,29 +158,37 @@ class Baseline:
     def baseline_scores(self):
 
         if os.path.exists(self._path_to_bs_scores):
-            return pd.read_csv(self._path_to_bs_scores, index_col = 0)
+            return utils.load_json(self._path_to_bs_scores)
         
         val_df, test_df = self.__load_data()   
         task_labels_ids = self.__get_task_labels_ids()
         majority_labels = self.__get_majority_labels(task_labels_ids)
         metric_f = getattr(metrics, self.metric)
 
+
         if "seg" in self.all_tasks:
             score_f = self.__get_sentence_baselines_scores
         else:
             score_f = self.__get__baseline_scores
 
-        score_dfs = score_f(
-                            df = val_df,
-                            metric_f = metric_f,
-                            task_labels_ids = task_labels_ids,
-                            majority_labels = majority_labels,
-                            )
+
+        baseline_scores = {}
+        for split, split_df in zip(["val", "test"], [val_df, test_df]):
+            score_dfs = score_f(
+                                df = split_df,
+                                metric_f = metric_f,
+                                task_labels_ids = task_labels_ids,
+                                majority_labels = majority_labels,
+                                )
 
 
-        basline_score_df = pd.concat(score_dfs)
-        basline_score_df.set_index(["baseline"], inplace = True)
-        basline_score_df.to_csv(self._path_to_bs_scores)
+            df = pd.concat(score_dfs)
+            df.set_index("baseline", inplace = True)
 
-        return basline_score_df
-
+            baseline_scores[split] = {
+                                        "random" : df.loc["random"].to_dict("list"),
+                                        "majority" : df.loc["majority"].to_dict("list")
+                                    }
+            
+        utils.save_json(baseline_scores, self._path_to_bs_scores)
+        return baseline_scores

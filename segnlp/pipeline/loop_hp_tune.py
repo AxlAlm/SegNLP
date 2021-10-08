@@ -1,5 +1,6 @@
     
 #basics
+from operator import pos
 from typing import List, Dict, Tuple, Union
 import itertools
 import json
@@ -7,9 +8,11 @@ import os
 from copy import deepcopy
 from numpy.core.fromnumeric import product
 from numpy.lib.arraysetops import isin
+from numpy.lib.shape_base import vsplit
 from tqdm.auto import tqdm
 from glob import glob
 import shutil
+import numpy as np
 
 
 # pytroch
@@ -91,12 +94,12 @@ class HPTuneLoop:
 
             else:
                 config = {
-                        "hp_id": hp_id,
-                        "hp_uid": hp_uid,
+                        "id": str(hp_id),
+                        "uid": hp_uid,
                         "hyperparamaters": deepcopy(hp),
                         "random_seeds_todo" : utils.random_ints(self.n_random_seeds),
                         "random_seeds_done" : [],
-                        "path_to_models": os.path.join(self._path_to_models, hp_id),
+                        "path_to_models": os.path.join(self._path_to_models, str(hp_id)),
                         "done": False
                         }
                 hp_id += 1
@@ -109,48 +112,16 @@ class HPTuneLoop:
     def __dump_hp_config(self, config:dict):
 
         #create file for the hyperparamaters
-        fp = os.path.join(self._path_to_hps, config["hp_id"] + ".json")
+        fp = os.path.join(self._path_to_hps, config["id"] + ".json")
 
         #save config
         utils.save_json(config, fp)
    
 
-
-    def get_score_dists(self, monitor_metric: str):
-        
-        score_dists = {}
-        log_dfs = self._load_logs()
-        for hp_id in self.hp_ids:
-
-            df = log_dfs[hp_id]
-            df.set_index(["split"], inplace = True)
-            top_scores = df.loc["val"].groupby("random_seed")[monitor_metric].max()
-            score_dists[hp_id] = top_scores
-
-        return score_dists
-
-
-    def rank_hps(self, monitor_metric:str):
-        score_dists = self.get_score_dists(monitor_metric = monitor_metric).to_numpy()
-        baseline_scores = self.baseline_scores()
-
-        score_dists["majority"] = baseline_scores.loc["majority", monitor_metric].to_numpy()
-        score_dists["random"] = baseline_scores.loc["random", monitor_metric].to_numpy()
-
-        model_names = score_dists.keys()
-
-        itertools.combinations(model_names, repeat=2)
-
-        print(score_dists)
-
-
-        utils.stat
-
-
     def train(self,
                 hyperparamaters:dict,
                 monitor_metric:str = "val_f1",
-                gpus : list = [],
+                gpus : list = None,
                 overfit_n_batches : int = None
                 ):
 
@@ -169,26 +140,26 @@ class HPTuneLoop:
             torch.backends.cudnn.enabled = True
 
         
-        for hp_config in tqdm(hp_configs, desc="Hyperparamaters",  position=0):    
+        for hp_config in tqdm(hp_configs, desc="Hyperparamaters",  position=0, leave = False):    
             
             #make a folder in models for the model
             os.makedirs(hp_config["path_to_models"], exist_ok=True)
 
             random_seeds = hp_config["random_seeds_todo"].copy()
-            for random_seed in tqdm(random_seeds, desc = "Random Seeds", position=1):
+            for random_seed in tqdm(random_seeds, desc = "Random Seeds", position=1, leave = False):
                 
                 try:
                     self.fit(
-                            hp_id = hp_id,
+                            hp_id = hp_config["id"],
                             random_seed = random_seed,
-                            hyperparamaters = deepcopy(hps),
+                            hyperparamaters = deepcopy(hp_config["hyperparamaters"]),
                             monitor_metric = monitor_metric,
                             device = device,
                             overfit_n_batches = overfit_n_batches
                             )
 
                     #update our config
-                    hp_config["random_seeds_todo"].pop(random_seed)
+                    hp_config["random_seeds_todo"].remove(random_seed)
                     hp_config["random_seeds_done"].append(random_seed)
 
                     # check if all random_seeds are done
@@ -196,15 +167,17 @@ class HPTuneLoop:
                         hp_config["done"]
 
                     # write hyperparamters along with timestamps to a json
-                    self.__dump_hps(hp_config)
+                    self.__dump_hp_config(hp_config)
 
 
                 except BaseException as e:
-                    # failed_models = glob(os.path.join(path_to_hp_models, random_seed + "*.ckpt"))
-                    # for fp in failed_models:
-                    #     os.remove(fp)
+                    
+                    files_to_remove = glob(os.path.join(hp_config["path_to_models"], str(random_seed) + "*.ckpt"))
+                    files_to_remove += glob(os.path.join(self._path_to_logs, str(hp_config["id"]), str(random_seed) + "*.log"))
 
-                    shutil.rmtree(hp_config["path_to_models"])
+                    for fp in files_to_remove:
+                        os.remove(fp)
+
                     raise e
 
 

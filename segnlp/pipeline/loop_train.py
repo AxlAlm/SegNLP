@@ -58,7 +58,6 @@ class TrainLoop:
                                 path_to_data = self._path_to_data,
                                 batch_size = batch_size,
                                 label_encoder = self.label_encoder,
-                                metric = self.metric,
                                 cv = cv,
                                 )
 
@@ -88,7 +87,6 @@ class TrainLoop:
                         hyperparamaters  = hyperparamaters,
                         label_encoder = self.label_encoder,
                         feature_dims = self.feature2dim,
-                        metric = self.metric,                    
                         )
         
 
@@ -119,8 +117,9 @@ class TrainLoop:
         
         #setup tqmd
         epoch_tqdm = tqdm(
-                        position=2, 
-                        postfix = postfix
+                        position = 2, 
+                        postfix = postfix,
+                        leave = False
                         )
 
         for epoch in range(max_epochs):
@@ -268,7 +267,7 @@ class TrainLoop:
 
             epoch_tqdm.set_postfix(postfix)
             epoch_tqdm.update(1)
-        
+                
 
 
     def __cv_loop(self,

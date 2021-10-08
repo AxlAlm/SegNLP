@@ -31,7 +31,6 @@ class Batch:
     def __init__(self, 
                 df: pd.DataFrame, 
                 label_encoder : LabelEncoder, 
-                metric : str,
                 pretrained_features: dict = {},
                 device = None
                 ):
@@ -46,8 +45,6 @@ class Batch:
         self._pred_df["target_id"] = None
         for task in label_encoder.task_labels:
             self._pred_df[task] = None
-
-        self._metric = metric
 
         #
         self.label_encoder : LabelEncoder = label_encoder

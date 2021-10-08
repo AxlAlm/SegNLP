@@ -39,7 +39,6 @@ class DataModule:
                 path_to_data : str, 
                 batch_size : int,
                 label_encoder : LabelEncoder,
-                metric : str,
                 cv : int = 0,
                 ):
 
@@ -47,7 +46,6 @@ class DataModule:
         self._pwf_fp : str = utils.check_file(os.path.join(path_to_data, "pwf.hdf5"))
         self._psf_fp : str = utils.check_file(os.path.join(path_to_data, "psf.hdf5"))
 
-        self._metric = metric
 
         self._splits : dict = utils.load_pickle_data(os.path.join(path_to_data, f"splits.pkl"))
         
@@ -61,7 +59,6 @@ class DataModule:
         return Batch(
                     df = self._df.loc[key],
                     label_encoder = self.label_encoder,
-                    metric = self._metric,
                     pretrained_features = self.__get_pretrained_features(key),
                     )
 

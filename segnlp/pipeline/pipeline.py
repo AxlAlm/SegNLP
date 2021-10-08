@@ -7,6 +7,7 @@ import numpy as np
 import os
 import pwd
 import pandas as pd
+from glob import glob
 
 
 #pytorch
@@ -24,12 +25,14 @@ from .pretrained_feature_extractor import PretrainedFeatureExtractor
 from .logs import Logs
 from .train_utils import TrainUtils
 from .baselines import Baseline
+from .ranking import Ranking
 
 from segnlp import get_logger
 from segnlp.datasets.base import DataSet
 import segnlp.utils as utils
 from segnlp import models
 from segnlp.models.base import BaseModel
+
 
 
 logger = get_logger("PIPELINE")
@@ -48,6 +51,7 @@ class Pipeline(
                 Logs,
                 TrainUtils,
                 Baseline,
+                Ranking
                 ):
     
     def __init__(self,
@@ -100,7 +104,7 @@ class Pipeline(
         self.config = self.__create_dump_config()
 
         #processed the data
-        self.__preprocess_dataset(dataset)
+        self._preprocess_dataset(dataset)
 
         # create split indexes 
         self._set_splits(
@@ -110,11 +114,6 @@ class Pipeline(
         # after we have processed data we will deactivate preprocessing so we dont keep
         # large models only using in preprocessing in memory
         self.deactivate() 
-
-        #logger.info("Calculating and storing baseline scores")
-        #self.baseline_scores()
-
-
 
 
     def __init__dirs_and_files(self, overwrite : bool):
@@ -151,7 +150,8 @@ class Pipeline(
         self._path_to_pwf : str = os.path.join(self._path_to_data, "pwf.hdf5") # for pretrained word features
         self._path_to_psf : str = os.path.join(self._path_to_data, "psf.hdf5") # for pretrained segment features
         self._path_to_splits : str = os.path.join(self._path_to_data, "splits.pkl") # for splits
-        self._path_to_bs_scores : str = os.path.join(self._path, "baseline_scores.csv") # for hp history
+        self._path_to_bs_scores : str = os.path.join(self._path, "baseline_scores.json") # for hp history
+        self._path_to_rankings : str = os.path.join(self._path, "rankings.csv") # for hp history
 
 
     @property
@@ -207,31 +207,6 @@ class Pipeline(
                 json.dump(config, f, indent=4)
 
         return config
-
-
-    def _check_data(self):
-        return all([
-                    os.path.exists(self._path_to_df),
-                    True if not self._use_psf else os.path.exists(self._path_to_psf),
-                    True if not self._use_pwf else os.path.exists(self._path_to_pwf)
-                    ])
-
-
-    def __preprocess_dataset(self, dataset:DataSet):
-    
-        if self._check_data():
-            return None
-
-        try:
-            df = self._process_dataset(dataset)
-
-            if self._use_psf or self._use_pwf:
-                self._preprocess_pretrained_features(df)
-        
-        #if it breaks we delete data and have to start over to ensure nothing is corrupted
-        except BaseException as e:
-            shutil.rmtree(self._path_to_data)
-            raise e
 
 
     def deactivate(self):
