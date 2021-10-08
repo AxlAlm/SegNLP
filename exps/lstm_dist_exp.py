@@ -1,10 +1,9 @@
 
 
-
+# segnlp
 from segnlp import Pipeline
 from segnlp.datasets.am import PE
 from segnlp.pretrained_features import ELMoEmbeddings
-
 
 
 hps = {
@@ -59,30 +58,40 @@ hps = {
         }
 
 
+def lstm_dist(dataset:str, mode:str, gpu = None):
+                
+    if dataset == "PE":
+        dataset = PE( 
+                    tasks=["label", "link", "link_label"],
+                    prediction_level="seg",
+                    sample_level="paragraph",
+                    )
 
 
-def run():
-
-    exp = Pipeline(
-                    id="lstm_dist_pe",
-                    dataset=PE( 
-                                tasks=["label", "link", "link_label"],
-                                prediction_level="seg",
-                                sample_level="paragraph",
-                                ),
+    pipe = Pipeline(
+                    id = "lstm_dist_pe",
+                    dataset = dataset,
                     pretrained_features = [
                                     ELMoEmbeddings(),
                                     ],
                     model = "LSTM_DIST",
                     other_levels = ["am"],
                     metric = "default_segment_metric",
-                    #overwrite = True
                 )
 
 
-    exp.train(
-                hyperparamaters = hps,
-                n_random_seeds=6,
-                gpus=[1],
-                monitor_metric="f1",
-                )
+    if mode == "train" or mode == "both":
+        pipe.train(
+                    hyperparamaters = hps,
+                    monitor_metric="f1",
+                    gpus = gpu
+                    )
+
+
+
+    if mode == "test" or mode == "both":
+        pipe.test(
+                    monitor_metric = "f1",
+                    batch_size = 16,
+                    gpus = gpu
+                    )

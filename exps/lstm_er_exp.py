@@ -1,14 +1,16 @@
 
 
+# gensim
 import gensim.downloader as api
+
+
+# segnlp
 from segnlp import Pipeline
 from segnlp.datasets.am import PE
 
 
-
 # Hyperparamaters
 # one set of hyperparamaters per layer + general hyperaparamaters
-
 hps = {
         "general":{
                 "optimizer": {
@@ -78,34 +80,36 @@ hps = {
         }
 
 
+def lstm_er(dataset:str, mode:str, gpu = None):
 
-def run(self, dataset:str, mode:str):
 
-
-    # setting up the pipeline      
-    pipe = Pipeline(
-                    id="lstm_er_pe_doc", # will create folder at with id as name at ~/.segnlp/<id>/ 
-                    dataset=PE(
+    if dataset == "PE":
+        dataset = PE(
                         tasks=["seg+label", "link", "link_label"],
                         prediction_level="token",
                         sample_level="document",
                     ),
-                    metric = "overlap_metric", # settting metric, can be found in segnlp.metrics
+
+
+    pipe = Pipeline(
+                    id = "lstm_er_pe_doc",
+                    dataset = dataset,
+                    metric = "overlap_metric",
                     model = "LSTM_ER",
-                    #overwrite = True, # will remove folder at ~/.segnlp/<id> and create new one
                     )
 
 
-        if mode == "train" or  mode == "both":
-            # Will train models for each random seed and each set of hyperparamaters given. All models are saved
-            # All outputs are also logged to ~/.segnlp/<id>/logs/<n>.log but havent fully test this either.
-            pipe.train(
-                                    hyperparamaters = hps,
-                                    n_random_seeds=6,
-                                    monitor_metric="0.5-f1-micro",
-                                    gpus = [1]
-                                    )
+    if mode == "train" or mode == "both":
+        pipe.train(
+                    hyperparamaters = hps,
+                    monitor_metric="f1-0.5-micro",
+                    gpus = gpu
+                    )
 
 
-        if mode == "test" or  mode == "both":
-            pipe.test()
+    if mode == "test" or mode == "both":
+        pipe.test(
+                    monitor_metric = "f1-0.5-micro",
+                    batch_size = 1,
+                    gpus = gpu
+                    )

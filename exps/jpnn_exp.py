@@ -48,7 +48,7 @@ hps = {
 
 
 
-def run(dataset:str, mode:str, gpu = None):
+def jpnn(dataset:str, mode:str, gpu = None):
 
 
     if dataset == "PE":
@@ -67,7 +67,6 @@ def run(dataset:str, mode:str, gpu = None):
                     pretrained_features =[
                                             GloveEmbeddings(),
                                             ],
-                    #overwrite = True,
                 )
     
 
@@ -78,8 +77,10 @@ def run(dataset:str, mode:str, gpu = None):
                 gpus = gpu
                 )
 
+
     if mode == "test" or mode == "both":
         pipe.test(
                     monitor_metric="link-f1",
-                    batch_size=16
+                    batch_size=16,
+                    gpu = gpu
                     )
