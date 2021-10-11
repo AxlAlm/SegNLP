@@ -146,7 +146,7 @@ class TrainLoop:
             use_target_segs = False
             if not freeze_segment_module and use_target_segs_k:
                 use_target_segs = target_seg_sampling(epoch)
-
+        
             #freeze modules
             model.freeze(freeze_segment_module = freeze_segment_module)
 

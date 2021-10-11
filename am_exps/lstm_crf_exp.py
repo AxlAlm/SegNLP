@@ -1,10 +1,15 @@
 
 
+# segnlp
 from segnlp import Pipeline
-from segnlp.datasets.am import PE
+from segnlp.datasets import PE
 from segnlp.pretrained_features import GloveEmbeddings
 from segnlp.pretrained_features import FlairEmbeddings
 from segnlp.pretrained_features import BertEmbeddings
+
+# from models
+from am_exps.models.lstm_crf import LSTM_CRF
+
 
 hps = {
         "general":{
@@ -43,14 +48,13 @@ hps = {
 
 
 
-def lstm_crf(dataset:str, mode:str, gpu = None):
+def lstm_crf(mode:str, gpu = None):
 
-    if dataset == "PE":
-        dataset  = PE( 
-                    tasks=["seg+label"],
-                    prediction_level="token",
-                    sample_level="sentence",
-                    )
+    dataset  = PE( 
+                tasks=["seg+label"],
+                prediction_level="token",
+                sample_level="sentence",
+                )
 
     pipe = Pipeline(
                     id="pe_lstm_crf_seg+label",
@@ -60,7 +64,7 @@ def lstm_crf(dataset:str, mode:str, gpu = None):
                                 FlairEmbeddings(),
                                 BertEmbeddings(),
                                 ],
-                    model = "LSTM_CRF",
+                    model = LSTM_CRF,
                     metric = "default_token_metric"
                 )
 

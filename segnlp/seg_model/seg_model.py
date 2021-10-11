@@ -5,7 +5,6 @@ import numpy as np
 import os
 from typing import List, Dict, Union, Tuple, Callable
 
-
 #pytroch
 import torch
 import torch.nn as nn
@@ -16,7 +15,6 @@ from segnlp import get_logger
 from segnlp import utils
 from segnlp.utils import Batch
 from segnlp.utils import LabelEncoder
-
 from segnlp.layers import link_labelers
 from segnlp.layers import linkers
 from segnlp.layers import segmenters
@@ -33,7 +31,7 @@ from segnlp.layers import dropouts
 logger = get_logger("BaseModel")
 
 
-class BaseModel(nn.Module):
+class SegModel(nn.Module):
 
 
     def __init__(   self,  
@@ -339,7 +337,7 @@ class BaseModel(nn.Module):
         
     def freeze(self, freeze_token_module: bool = False, freeze_segment_module: bool = False):
 
-         #make sure to reset them on each epoch call
+        # make sure to reset them on each epoch call
         self._token_layers_are_frozen  = False
         self._segment_layers_are_frozen = False
 
@@ -356,21 +354,6 @@ class BaseModel(nn.Module):
 
             for submodule in self._segment_layers:
                 utils.freeze_module(submodule)
-
-
-
-    # def train(self, freeze_token_module: bool = False, freeze_segment_module: bool = False):
-    #     super().train()
-    #     print("CALLLLLLED")
-
-   
-
-    # def eval(self):
-    #     super().eval()
-
-    #     # #make sure to reset them on each epoch call
-    #     # self._token_layers_are_frozen  = False
-    #     # self._segment_layers_are_frozen = False
 
 
 

@@ -121,7 +121,7 @@ class HPTuneLoop:
     def train(self,
                 hyperparamaters:dict,
                 monitor_metric:str = "val_f1",
-                gpus : list = None,
+                gpus : Union[list, int] = None,
                 overfit_n_batches : int = None
                 ):
 
@@ -134,7 +134,8 @@ class HPTuneLoop:
 
         device  = "cpu"
         if gpus:      
-            device =  f"cuda:{gpus[0]}"
+            gpu = gpus[0] if isinstance(gpus,list) else gpus
+            device =  f"cuda:{gpu}"
             torch.backends.cudnn.deterministic = True
             torch.backends.cudnn.benchmark = True
             torch.backends.cudnn.enabled = True

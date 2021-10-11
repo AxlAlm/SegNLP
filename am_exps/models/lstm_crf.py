@@ -8,12 +8,11 @@
 from torch import Tensor
 
 #segnlp
-from .base import BaseModel
-from segnlp import utils
+from segnlp.seg_model import SegModel
 from segnlp.utils import Batch
 
 
-class LSTM_CRF(BaseModel):
+class LSTM_CRF(SegModel):
 
     """
 

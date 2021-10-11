@@ -217,7 +217,6 @@ class Batch:
         last_df.reset_index(inplace=True)
 
 
-
         if pred:
             first_target_df = self._df.groupby("seg_id", sort=False).first()
             j2link_label = {j:row["link_label"] for j, row in first_target_df.iterrows()}
@@ -230,7 +229,7 @@ class Batch:
         # the total mumber of segments
         p1, p2 = [], []
         j = 0
-        for _, gdf in df.groupby(level = 0, sort = False):
+        for _, gdf in df.groupby("sample_id", sort = False):
             n = len(gdf.loc[:, "seg_id"].dropna().unique())
             sample_seg_ids = np.arange(
                                         start= j,
@@ -245,17 +244,18 @@ class Batch:
                                 "p1": p1,
                                 "p2": p2,
                                 })
-                                
+        
+
 
         if not len(pair_df.index):
             return pd.DataFrame()
-
 
         # create ids for each NON-directional pair
         pair_df["id"] = pair_df.apply(set_id_fn(), axis=1)
 
         #set the sample id for each pair
         pair_df["sample_id"] = first_df.loc[pair_df["p1"], "sample_id"].to_numpy()
+
 
         #set true the link_label
         #pair_df["link_label"] = first_df.loc[pair_df["p1"], "link_label"].to_numpy()
@@ -282,6 +282,7 @@ class Batch:
         pair_df.loc[p2_source_mask, "link_label"] = first_df.loc[pair_df.loc[p2_source_mask, "p2"], "link_label"].to_numpy()
 
 
+
         self.__add_link_matching_info(pair_df, j2i)
 
 
@@ -291,6 +292,7 @@ class Batch:
         else:
             pair_df["p1-ratio"] = 1
             pair_df["p2-ratio"] = 1
+
 
         return pair_df
 
@@ -365,7 +367,7 @@ class Batch:
                                                 )
 
         pair_df = self._pair_df
-
+        
         if not len(self._pair_df.index):
             return []
 
@@ -373,7 +375,9 @@ class Batch:
             pair_df = pair_df[pair_df["direction"].isin([0,1]).to_numpy()]
 
         if key == "lengths":
-            data = pair_df.groupby("sample_id", sort=False).size().to_list()
+            sample_ids = list(self._df.groupby("sample_id", sort = False).groups.keys())
+            sample_pair_lens = pair_df.groupby("sample_id", sort = False).size().to_dict()
+            data = [sample_pair_lens.get(i, 0) for i in sample_ids]
 
         else:
             data = torch.LongTensor(pair_df[key].to_numpy())

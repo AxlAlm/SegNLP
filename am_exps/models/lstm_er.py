@@ -5,12 +5,12 @@ import torch.nn as nn
 from torch import Tensor
 
 #segnlp
-from .base import BaseModel
-from segnlp import utils
+from segnlp.seg_model import SegModel
 from segnlp.utils import Batch
+from segnlp import utils
 
 
-class LSTM_ER(BaseModel):
+class LSTM_ER(SegModel):
 
     """
     Paper:
@@ -193,7 +193,7 @@ class LSTM_ER(BaseModel):
         # If we have the segments A,B,C. E.g. embeddings for the pairs (A,A), (A,B), (A,C), (B,B), (B,C)
         tree_pair_embs = self.deptreelstm(    
                                             input = token_embs,
-                                            roots = batch.get("token", "root_idx"),
+                                            #roots = batch.get("token", "root_idx"),
                                             deplinks = batch.get("token", "dephead"),
                                             token_mask = batch.get("token", "mask"),
                                             starts = batch.get("pair", "p1_end", bidir = True),

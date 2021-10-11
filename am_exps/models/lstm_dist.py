@@ -14,12 +14,11 @@ from torch import Tensor
 import torch.nn as nn
 
 #segnlp
-from .base import BaseModel
-from segnlp import utils
+from segnlp.seg_model import SegModel
 from segnlp.utils import Batch
 
 
-class LSTM_DIST(BaseModel):
+class LSTM_DIST(SegModel):
 
     """
 
@@ -284,11 +283,14 @@ class LSTM_DIST(BaseModel):
                                 targets = batch.get("seg", "link")
                                 )
 
+
+
         ## this is the reported loss aggregation in the paper, but...
         #total_loss = -((self.loss_weight * link_loss) + (self.loss_weight * label_loss) + ( (1 - self.loss_weight- self.loss_weight) * link_label_loss))
         ## in the code the loss is different
         ## https://github.com/kuribayashi4/span_based_argumentation_parser/blob/614343b18e7d98293a2b020f9ab05b86355e18df/src/classifier/parsing_loss.py#L88-L91
-        tw = self.hps["general"]["task_weight"]
-        total_loss = ((1 - tw - tw) * link_loss) + (tw * label_loss) + (tw * link_label_loss)
+        a = self.hps["general"]["alpha"]
+        b = self.hps["general"]["beta"]
+        total_loss = ((1 - a - b) * link_loss) + (a * label_loss) + (b * link_label_loss)
 
         return total_loss

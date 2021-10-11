@@ -2,10 +2,12 @@
 # genism
 import gensim.downloader as api
 
-
 # segnlp
 from segnlp import Pipeline
-from segnlp.datasets.am import PE
+from segnlp.datasets import PE
+
+# models
+from am_exps.models.lstm_cnn_crf import LSTM_CNN_CRF
 
 
 hps = {
@@ -45,21 +47,19 @@ hps = {
         }
 
 
-def lstm_cnn_crf(dataset:str, mode:str, gpu = None):
-
+def lstm_cnn_crf(sample_level:str, mode:str, gpu = None):
                 
-    if dataset == "PE":
-        dataset = PE( 
+    dataset = PE( 
                     tasks=["seg+label+link+link_label"],
                     prediction_level="token",
-                    sample_level="document",
+                    sample_level=sample_level,
                     )
 
 
     pipe = Pipeline(
-                id="pe_lstm_cnn_crf_doc",
-                dataset=dataset,
-                model = "LSTM_CNN_CRF",
+                id=f"lstm_cnn_crf_{sample_level}",
+                dataset = dataset,
+                model = LSTM_CNN_CRF,
                 metric = "overlap_metric",
             )
 
@@ -67,14 +67,14 @@ def lstm_cnn_crf(dataset:str, mode:str, gpu = None):
     if mode == "train" or mode == "both":
         pipe.train(
                     hyperparamaters = hps,
-                    monitor_metric="f1-0.5-micro",
+                    monitor_metric="0.5-f1-micro",
                     gpus = gpu
                     )
 
 
     if mode == "test" or mode == "both":
         pipe.test(
-                    monitor_metric = "f1-0.5-micro",
+                    monitor_metric = "0.5-f1-micro",
                     batch_size = 10,
                     gpus = gpu
                     )

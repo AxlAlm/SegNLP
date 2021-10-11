@@ -37,6 +37,9 @@ class Ranking:
         log_dfs = self._load_logs()
         for hp_id in self.hp_ids:
 
+            if split not in log_dfs[hp_id]:
+                continue
+
             df = log_dfs[hp_id][split]
             max_df = df.groupby("random_seed")[monitor_metric].max()
             hp_score_dists[hp_id] = {
@@ -169,7 +172,7 @@ class Ranking:
                                     monitor_metric = monitor_metric,
                                     split = "test"
                                 )
-
+        
         # if we dont have rankings we create a new list and add random and
         #  majoirty baseline to the rankings as a start
         rankings = self.__set_baseline_ranks(score_dists, monitor_metric)

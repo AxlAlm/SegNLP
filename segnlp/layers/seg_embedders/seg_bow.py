@@ -15,6 +15,12 @@ from segnlp import utils
 
 class SegBOW(nn.Module):
 
+    """
+    Creates BOW features vectors for segments.
+
+    Features can either be one-hot encodings or count vectors
+    """
+
     def __init__(   
                 self,
                 vocab: Union[str, list],

@@ -1,18 +1,14 @@
 
 #pytroch
 import torch
-from torch.functional import Tensor
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.nn.modules import module
+from torch import Tensor
 
 #segnlp
-from .base import BaseModel
-from segnlp import utils
+from segnlp.seg_model import SegModel
 from segnlp.utils import Batch
 
 
-class JointPN(BaseModel):
+class JointPointerNN(SegModel):
 
     """
     Original Paper:

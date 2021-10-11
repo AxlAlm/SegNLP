@@ -1,13 +1,12 @@
 
 
-
-
-
-
-
+# segnlp
 from segnlp import Pipeline
-from segnlp.datasets.am import PE
+from segnlp.datasets import PE
 from segnlp.pretrained_features import GloveEmbeddings
+
+# models
+from am_exps.models.jpnn import JointPointerNN
 
 
 hps = {
@@ -15,7 +14,7 @@ hps = {
                 "optimizer": "Adam",
                 "lr": 0.001,
                 "batch_size": 16,
-                "max_epochs":1,
+                "max_epochs":4000,
                 "patience": 10,
                 "task_weight": 0.5,
                 },
@@ -48,21 +47,19 @@ hps = {
 
 
 
-def jpnn(dataset:str, mode:str, gpu = None):
+def jpnn(sample_level:str, mode:str, gpu = None):
 
-
-    if dataset == "PE":
-        dataset = PE( 
-                tasks=["label", "link"],
-                prediction_level="seg",
-                sample_level="paragraph",
-                )
+    dataset = PE( 
+            tasks=["label", "link"],
+            prediction_level="seg",
+            sample_level=sample_level,
+            )
 
         
     pipe = Pipeline(
-                    id="jp_nn_pe_para",
+                    id=f"jpnn_{sample_level}",
                     dataset=dataset,
-                    model = "JointPN",
+                    model = JointPointerNN,
                     metric = "default_segment_metric",
                     pretrained_features =[
                                             GloveEmbeddings(),
@@ -82,5 +79,5 @@ def jpnn(dataset:str, mode:str, gpu = None):
         pipe.test(
                     monitor_metric="link-f1",
                     batch_size=16,
-                    gpu = gpu
+                    gpus = gpu
                     )

@@ -61,8 +61,11 @@ def find_overlap(pred_df : pd.DataFrame, target_df : pd.DataFrame) -> Tuple[dict
                         }, 
                         index = target_df["seg_id"].to_numpy(),
                         )
+    
     tdf = tdf[~tdf.index.isna()]
-
+    
+    if tdf.shape[0] == 0:
+        return {}, {}, {}, {}
 
     # extract information about overlaps
     overlap_info = np.vstack([ _overlap(j, tsdf, pdf) for j, tsdf in tdf.groupby("seg_id", sort=False)])    

@@ -8,12 +8,8 @@ from string import punctuation
 import warnings
 import spacy
 from pprint import pprint
+import subprocess
 
-# networkx
-import networkx as nx
-from networkx import Graph as nxGraph
-
-from networkx.algorithms.tree.recognition import is_tree
 
 # DGL
 import dgl
@@ -79,7 +75,6 @@ class TextProcessor:
         self._prune_hiers()
 
 
-
     def __paragraph_tokenize(self, doc:str) -> List[str]:
         """ Tokenizes document into paragraphs by splitting by new line ("\n"). 
     
@@ -96,7 +91,6 @@ class TextProcessor:
             list of paragraphs
         """
         return [p for p in doc.split("\n") if p]
-
 
 
     def __get_global_id(self, level:str) -> int:
@@ -502,7 +496,11 @@ class TextProcessor:
 
 
     def _load_nlp_model(self):
-        return spacy.load("en_core_web_lg", disable=["ner"])
+        try:
+            return spacy.load("en_core_web_lg", disable=["ner"])
+        except OSError:
+            subprocess.run(["python -m spacy download en_core_web_lg"])
+            return spacy.load("en_core_web_lg", disable=["ner"])
 
 
     def __fix_deps(self, df:pd.DataFrame):
@@ -531,21 +529,7 @@ class TextProcessor:
                 sent_depheads = sent_df["dephead"].to_numpy() + current_position
                 deprel_set = set(sent_df["deprel"].to_list())
 
-
-                # n = list(range(len(sent_depheads)))
-                # e = sent_df["dephead"].to_list()
-                # sent_graph = dgl.graph((n, e)).to_networkx().to_undirected()
-                # if not nx.is_connected(sent_graph):
-                #     pprint(list(zip(n, e, sent_df["str"], sent_df["deprel"].to_list())))
-                #     print(LOOOL)
-
-                #if not "ROOT" in deprel_set:
-
-    
-                
                 sent_root_idx = sent_df["deprel"].to_list().index("ROOT")
-
-                #print(sent_root_idx)
     
                 # we change the index of the HEAD of the root be the idx of the previous ROOT
                 if sent_roots:

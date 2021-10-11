@@ -2,32 +2,28 @@
 import re
 from glob import glob
 from tqdm import tqdm
-import pandas as pd
 import numpy as np
-import sys
-import random
 import os
-
 import time
 from pathlib import Path
 from typing import Tuple, List, Dict
+
+
+# string
+from string import punctuation
+punctuation += "’‘,`'" + '"'
 
 # segnlp
 from segnlp import get_logger
 import segnlp.utils as u
 from segnlp.utils import RangeDict
-from segnlp.datasets.base import DataSet
+from .base import DataSet
 
-#
-# string
-from string import punctuation
-punctuation += "’‘,`'" + '"'
 
 logger = get_logger(__name__)
 
 #data example
 ''' 
-
 Data example
 
 T1  MajorClaim 503 575  we should attach more importance to cooperation during primary education
@@ -55,15 +51,14 @@ R6  supports Arg1:T8 Arg2:T7
 Dataset Specs:
 
 1) contain 4 subtasks:
-    seg
-    ac
-    relation
-    stance
+    segmentation of argument components
+    classification of argument components 
+    linking of argument components
+    classification of links (type of links)
 
 2) Each claim is related to the major claims. MajorClaims are paraphrases of the same majorClaim
 
 3) All relations are within paragraphs
-
 
 ''' 
 

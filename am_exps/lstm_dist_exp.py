@@ -2,8 +2,11 @@
 
 # segnlp
 from segnlp import Pipeline
-from segnlp.datasets.am import PE
+from segnlp.datasets import PE
 from segnlp.pretrained_features import ELMoEmbeddings
+
+# from models
+from am_exps.models.lstm_dist import LSTM_DIST
 
 
 hps = {
@@ -15,7 +18,8 @@ hps = {
                 "batch_size": 16,
                 "max_epochs":500,
                 "patience": 10,
-                "task_weight": 0.5,
+                "alpha": [0.5, 0.25],
+                "beta": 0.25,  
                 },
         "embedding_dropout":{
                         "p":0.1,
@@ -31,13 +35,13 @@ hps = {
                 "mode": "counts",
                 },
         "bow_linear":{
-                        "out_dim": 512,
+                        "hidden_size": 512,
                         "weight_init": {
                                         "name":"uniform_",
                                         "a": -0.05, 
                                         "b": 0.05
                                         },
-                        "activation" : "sigmoid"
+                        "activation" : "Sigmoid"
                         },
         "lstms": {   
                 "dropout":0.1,
@@ -47,7 +51,7 @@ hps = {
                 "weight_init": "orthogonal_",
                 },
         "Pairer": {
-                    "mode": ["cat", "multi"],
+                    "mode": "cat+multi",
                     "n_rel_pos": 25,
                     },
         "linear_cf":  {
@@ -58,23 +62,22 @@ hps = {
         }
 
 
-def lstm_dist(dataset:str, mode:str, gpu = None):
+def lstm_dist(sample_level:str, mode:str, gpu = None):
                 
-    if dataset == "PE":
-        dataset = PE( 
-                    tasks=["label", "link", "link_label"],
-                    prediction_level="seg",
-                    sample_level="paragraph",
-                    )
+    dataset = PE( 
+            tasks=["label", "link", "link_label"],
+            prediction_level="seg",
+            sample_level=sample_level,
+            )
 
 
     pipe = Pipeline(
-                    id = "lstm_dist_pe",
+                    id = f"lstm_dist_{sample_level}",
                     dataset = dataset,
                     pretrained_features = [
                                     ELMoEmbeddings(),
                                     ],
-                    model = "LSTM_DIST",
+                    model = LSTM_DIST,
                     other_levels = ["am"],
                     metric = "default_segment_metric",
                 )

@@ -4,15 +4,13 @@
 import torch
 from torch.functional import Tensor
 import torch.nn as nn
-import torch.nn.functional as F
 
 #segnlp
-from .base import BaseModel
-from segnlp import utils
+from segnlp.seg_model import SegModel
 from segnlp.utils import Batch
 
 
-class LSTM_CNN_CRF(BaseModel):
+class LSTM_CNN_CRF(SegModel):
 
     """
     BiLSTM CNN CRF network

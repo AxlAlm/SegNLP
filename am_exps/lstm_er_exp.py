@@ -3,11 +3,12 @@
 # gensim
 import gensim.downloader as api
 
-
 # segnlp
 from segnlp import Pipeline
-from segnlp.datasets.am import PE
+from segnlp.datasets import PE
 
+# models
+from am_exps.models.lstm_er import LSTM_ER
 
 # Hyperparamaters
 # one set of hyperparamaters per layer + general hyperaparamaters
@@ -18,12 +19,12 @@ hps = {
                                 "lr": 0.001,
                                 "weight_decay":1e-5
                                 },
-                "batch_size": 1,
+                "batch_size": 5,
                 "max_epochs":100,
                 "patience": 10,
                 "task_weight": 0.5,
-                "use_target_segs_k": 10, # sampling
-                "freeze_segment_module_k": 25, # Havent tested this fully yet. (Next on the list)
+                "use_target_segs_k": 10, 
+                "freeze_segment_module_k": 1,
                 "gradient_clip_val": 10.0
                 },
         "dropout": {
@@ -40,7 +41,6 @@ hps = {
                         "vocab": "Pos",
                         "embedding_dim":25,
                         "weight_init": "uniform_" #random from uniform
-
                 },
         "dep_embs":{
                         "vocab": "Pos",
@@ -52,12 +52,10 @@ hps = {
                         "num_layers":1,
                         "bidir":True,
                         "weight_init": "uniform_" #random from uniform
-
                     },
         "BigramSeg": {
                         "hidden_size": 512,
                         "weight_init": "uniform_" #random from uniform
-
                 },
         "Agg":{
                 "mode":"mean",
@@ -67,7 +65,6 @@ hps = {
                         "bidir":True,
                         "mode": "shortest_path",
                         "weight_init": "uniform_" #random from uniform
-
                         },
         "LinearPairEnc": {
                         "hidden_size":100,
@@ -80,36 +77,34 @@ hps = {
         }
 
 
-def lstm_er(dataset:str, mode:str, gpu = None):
+def lstm_er(sample_level:str, mode:str, gpu = None):
 
-
-    if dataset == "PE":
-        dataset = PE(
-                        tasks=["seg+label", "link", "link_label"],
-                        prediction_level="token",
-                        sample_level="document",
-                    ),
+    dataset = PE(
+                    tasks=["seg+label", "link", "link_label"],
+                    prediction_level="token",
+                    sample_level=sample_level,
+                )
 
 
     pipe = Pipeline(
-                    id = "lstm_er_pe_doc",
+                    id = f"lstm_er_{sample_level}",
                     dataset = dataset,
                     metric = "overlap_metric",
-                    model = "LSTM_ER",
+                    model = LSTM_ER,
                     )
 
 
     if mode == "train" or mode == "both":
         pipe.train(
                     hyperparamaters = hps,
-                    monitor_metric="f1-0.5-micro",
+                    monitor_metric="0.5-f1-micro",
                     gpus = gpu
                     )
 
 
     if mode == "test" or mode == "both":
         pipe.test(
-                    monitor_metric = "f1-0.5-micro",
+                    monitor_metric = "0.5-f1-micro",
                     batch_size = 1,
                     gpus = gpu
                     )

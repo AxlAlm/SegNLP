@@ -3,6 +3,8 @@
 from tqdm.auto import tqdm
 from glob import glob
 import os
+from typing import Union
+from copy import deepcopy
 
 # pytorch 
 import torch
@@ -17,8 +19,16 @@ class TestLoop:
 
     def test(self, 
             monitor_metric : str, 
-            batch_size : int = 32, 
+            batch_size : int = 32,
+            gpus : Union[list, str] = None
             ) -> None:
+
+
+        device  = "cpu"
+        if gpus:      
+            gpu = gpus[0] if isinstance(gpus,list) else gpus
+            device =  f"cuda:{gpu}"
+        
 
         #loading our preprocessed dataset
         datamodule  = utils.DataModule(
@@ -48,12 +58,21 @@ class TestLoop:
 
         for random_seed in tqdm(random_seeds, desc= "random_seeds"):
 
+
+            if "cuda" in device:
+                device_id = device[-1]
+                #os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+                os.environ['CUDA_DEVICE_ORDER'] = "PCI_BUS_ID" 
+                os.environ['CUDA_VISIBLE_DEVICES'] = device_id
+                torch.cuda.set_device(int(device_id))
+
+
             #model path 
-            model_path = glob(os.path.join(self._path_to_models, best_hp_id, f"{random_seeds}*"))[0]
+            model_path = glob(os.path.join(self._path_to_models, best_hp_id, f"{random_seed}*"))[0]
             
             #setup model
             model = self.model(
-                        hyperparamaters  = hyperparamaters,
+                        hyperparamaters  = deepcopy(hyperparamaters),
                         label_encoder = self.label_encoder,
                         feature_dims = self.feature2dim,
                         )
@@ -61,12 +80,19 @@ class TestLoop:
             #load model weights
             model.load_state_dict(torch.load(model_path))
 
+    
+            # move model to specified device
+            model = model.to(device)
+
             # set model to model to evaluation mode
             model.eval()
             with torch.no_grad():
 
                 for test_batch in tqdm(test_dataset, desc = "Testing", total = len(test_dataset), leave = False):
                     
+                    # set device for batch
+                    test_batch.to(device)
+
                     #pass the batch to model
                     model(test_batch)
 

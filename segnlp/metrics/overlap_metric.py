@@ -239,6 +239,7 @@ def overlap_metric(pred_df:pd.DataFrame, target_df:pd.DataFrame, task_labels:dic
 
     """
 
+
     calc_lable_metric = "label" in task_labels
     calc_link_lable_metric = True
     #calc_link_lable_metric = "link_label" in task_labels and len(pred_df["target_id"].unique()) != 0
@@ -253,6 +254,7 @@ def overlap_metric(pred_df:pd.DataFrame, target_df:pd.DataFrame, task_labels:dic
     #groupby seg_id
     target_df = target_df.groupby("seg_id", sort = False).first()
     pred_df = pred_df.groupby("seg_id", sort = False).first()
+
 
     #update js with stuff we didnt find matches for 
     js = target_df.index.to_numpy()

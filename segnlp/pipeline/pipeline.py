@@ -14,6 +14,7 @@ from glob import glob
 import torch
 
 # segnlp
+from segnlp import get_logger
 from .loop_train import TrainLoop
 from .loop_test import TestLoop
 from .loop_hp_tune import HPTuneLoop
@@ -27,11 +28,9 @@ from .train_utils import TrainUtils
 from .baselines import Baseline
 from .ranking import Ranking
 
-from segnlp import get_logger
 from segnlp.datasets.base import DataSet
 import segnlp.utils as utils
-from segnlp import models
-from segnlp.models.base import BaseModel
+from segnlp.seg_model import SegModel
 
 
 
@@ -57,7 +56,7 @@ class Pipeline(
     def __init__(self,
                 id:str,
                 dataset:Union[str, DataSet],
-                model:Union[torch.nn.Module, str],
+                model: SegModel,
                 metric:str,
                 pretrained_features:list = [],
                 other_levels:list = [],
@@ -69,7 +68,7 @@ class Pipeline(
 
         #general
         self.id : str = id
-        self.model : BaseModel = getattr(models, model) if isinstance(model,str) else model
+        self.model : SegModel = model
         self.model_name = str(self.model)
         self.evaluation_method : str = evaluation_method
         self.metric : str = metric
