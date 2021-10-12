@@ -17,14 +17,14 @@ hps = {
                 "optimizer": {
                                 "name":"Adam",
                                 "lr": 0.001,
-                                "weight_decay":1e-5
+                                "weight_decay":1e-5,
+                                "eps": 1e-6
                                 },
-                "batch_size": 5,
+                "batch_size": 1,
                 "max_epochs":100,
                 "patience": 10,
-                "task_weight": 0.5,
                 "use_target_segs_k": 10, 
-                "freeze_segment_module_k": 1,
+                "freeze_segment_module_k": 25,
                 "gradient_clip_val": 10.0
                 },
         "dropout": {
@@ -54,7 +54,7 @@ hps = {
                         "weight_init": "uniform_" #random from uniform
                     },
         "BigramSeg": {
-                        "hidden_size": 512,
+                        "hidden_size": 100,
                         "weight_init": "uniform_" #random from uniform
                 },
         "Agg":{
