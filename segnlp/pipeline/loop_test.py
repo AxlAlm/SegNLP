@@ -5,6 +5,7 @@ from glob import glob
 import os
 from typing import Union
 from copy import deepcopy
+import pandas as pd
 
 # pytorch 
 import torch
@@ -113,3 +114,13 @@ class TestLoop:
 
 
         self.rank_test(monitor_metric)
+
+        print(" _______________  Mean Scores  _______________")
+        mean_df = pd.DataFrame(self._load_logs()[self.best_hp]["test"]).mean().to_frame()
+        filter_list = set(["epoch", "hp_id", "random_seed", "cv", "use_target_segs", "freeze_segment_module"])
+        index = [c for c in mean_df.index if c not in filter_list]
+        mean_df = mean_df.loc[index]
+
+        mean_df["majority"] = pd.DataFrame(self.baseline_scores()["test"]["majority"]).mean()
+        mean_df["random"] = pd.DataFrame(self.baseline_scores()["test"]["random"]).mean()
+        print(mean_df)

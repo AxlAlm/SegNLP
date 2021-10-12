@@ -48,16 +48,16 @@ hps = {
 
 
 
-def lstm_crf(mode:str, gpu = None):
+def lstm_crf(sample_level:str, mode:str, gpu = None):
 
     dataset  = PE( 
-                tasks=["seg+label"],
+                tasks=["seg"],
                 prediction_level="token",
-                sample_level="sentence",
+                sample_level=sample_level,
                 )
 
     pipe = Pipeline(
-                    id="pe_lstm_crf_seg+label",
+                    id=f"lstm_crf_{sample_level}",
                     dataset= dataset,
                     pretrained_features =[
                                 GloveEmbeddings(),
@@ -67,7 +67,6 @@ def lstm_crf(mode:str, gpu = None):
                     model = LSTM_CRF,
                     metric = "default_token_metric"
                 )
-
 
 
     if mode == "train" or mode == "both":

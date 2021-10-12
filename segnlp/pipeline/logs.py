@@ -22,6 +22,7 @@ class Logs:
     # def _remove_logs(self, hp_id, random_seed:int = None):
     #     pass
 
+
     def _load_logs(self) -> pd.DataFrame:
     
         log_dfs = {}

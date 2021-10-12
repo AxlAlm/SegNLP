@@ -173,12 +173,11 @@ class Ranking:
                                     split = "test"
                                 )
         
-        # if we dont have rankings we create a new list and add random and
-        #  majoirty baseline to the rankings as a start
+        # # if we dont have rankings we create a new list and add random and
+        # #  majoirty baseline to the rankings as a start
         rankings = self.__set_baseline_ranks(score_dists, monitor_metric)
-
         
-         # ranking will place all hps in hp_score_dist
+        # ranking will place all hps in hp_score_dist
         rankings = self.__rank(
                         hp_ids = [self.best_hp],
                         rankings = rankings, 
@@ -186,7 +185,7 @@ class Ranking:
                         monitor_metric = monitor_metric
                         )
 
+        
         rankings = pd.DataFrame(rankings)
         print(" _______________ Test Rankings ________________ ")
         print(rankings)
-
