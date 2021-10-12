@@ -58,10 +58,10 @@ class ScheduleSampling():
         return bool(epsilon >= coin_flip)
 
 
-if __name__ == "__main__":
-    test = False
-    if test:
-        schedule = ScheduleSampling(.5, "exponential")
-        for i in range(10):
-            print(schedule(i))
-            print()
+# if __name__ == "__main__":
+#     test = False
+#     if test:
+#         schedule = ScheduleSampling(.5, "exponential")
+#         for i in range(10):
+#             print(schedule(i))
+#             print()

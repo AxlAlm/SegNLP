@@ -1,13 +1,18 @@
     
 #basics
+from operator import pos
 from typing import List, Dict, Tuple, Union
 import itertools
 import json
 import os
 from copy import deepcopy
+from numpy.core.fromnumeric import product
+from numpy.lib.arraysetops import isin
+from numpy.lib.shape_base import vsplit
 from tqdm.auto import tqdm
 from glob import glob
 import shutil
+import numpy as np
 
 
 # pytroch
@@ -17,7 +22,7 @@ import torch
 #segnlp
 from segnlp import get_logger
 import segnlp.utils as utils
-
+from segnlp.utils.stat_sig import compare_dists
 
 logger = get_logger("LOOP HP TUNING")
 
@@ -25,139 +30,158 @@ logger = get_logger("LOOP HP TUNING")
 class HPTuneLoop:
 
 
-    def __create_hyperparam_sets(self, hyperparamaters:dict) -> Dict[str, dict]:
-        """creates a set of hyperparamaters for hyperparamaters based on given hyperparamaters lists.
-        takes a hyperparamaters and create a set of new paramaters given that any
-        paramater values are list of values.
+    def __get_hyperparam_sets(self, hyperparamaters:dict) -> List[dict]:
         """
-        group_variations = []
-        for _, gdict in hyperparamaters.items():
-            vs = [[v] if not isinstance(v, list) else v for v in gdict.values()]
-            group_sets = [dict(zip(gdict.keys(),v)) for v in itertools.product(*vs)]
-            group_variations.append(group_sets)
 
-        hp_sets = [dict(zip(hyperparamaters.keys(),v)) for v in itertools.product(*group_variations)]
+        Create a set of hyperparamaters
+
+        """
+        to_list = lambda x: [x] if not isinstance(x, list) else x
+        variations = []
+        for type_, type_dict in hyperparamaters.items():
+
+            sub_type_vars = []
+
+            for k, v in type_dict.items():
+
+                if isinstance(v, dict):
+
+                    subsub_type_vars = [to_list(vv) for vv in v.values()]
+                    subsub_type_groups = [dict(zip(v.keys(), x)) for x in itertools.product(*subsub_type_vars)]
+                    sub_type_vars.append(subsub_type_groups)
+
+                else:
+                    sub_type_vars.append(to_list(v))
+            
+            variations.append([dict(zip(type_dict.keys(), x)) for x in itertools.product(*sub_type_vars)])
+
+        hp_sets = [dict(zip(hyperparamaters.keys(),v)) for v in itertools.product(*variations)]
+
+        return hp_sets
+
+
+    def __get_hyperparamaters_uid(self, set_hyperparamaters: List[dict]) -> List[Tuple[str, dict]]:
+        """
+        creates a unique hash id for each hyperparamater. Used to check if hyperparamaters are already tested
+        """
 
         #give each hp an unique id
-        create_hp_id = lambda x: utils.create_uid("".join(list(map(str, x.keys())) + list(map(str, x.values()))))
-        hp_ids = [create_hp_id(hp) for hp in hp_sets]
+        create_hp_uid = lambda x: utils.create_uid("".join(list(map(str, x.keys())) + list(map(str, x.values()))))
+        hp_uids = [create_hp_uid(hp) for hp in set_hyperparamaters]
+        return list(zip(hp_uids, set_hyperparamaters))
 
 
-        # add ids
-        hp_dicts = dict(zip(hp_ids,hp_sets))
-        
-        # hp_ids of the saved hyperparamaters
-        done_hp_ids = set([fp.replace(".json", "") for fp in os.listdir(self._path_to_hps)])
+    def __filter_and_setup_hp_configs(self, identifed_hps: List[Tuple[str, dict]]) -> List[Tuple[str, dict]]:
+        """
+        check which hyperparamaters ids already exist and remove them  
+        """
 
-        for hp_id in list(hp_dicts.keys()):
-            if hp_id in done_hp_ids:
-                logger.info(f"WARNING! Hyperparamater with id {hp_id} has already been run. Will remove from hyperparamter tuning.")
-                hp_dicts.pop(hp_id)
+        # get all configs
+        uid2config = {c["uid"]:c for c in self.hp_configs}
 
-    
-        return hp_dicts
+        hp_configs = []
+        hp_id = len(uid2config)
+        for hp_uid, hp in identifed_hps:
 
 
-    def __dump_hps( self,
-                    hp_id:str,
-                    hyperparamaters: dict, 
-                    random_seeds: list,
-                    ):
+            if hp_uid in uid2config:
 
-        hyperparamaters = deepcopy(hyperparamaters)
 
-        # #fix objects
-        # for group, hps in hyperparamaters.items():
-        #     for k,v in hps.items():
+                if uid2config[hp_uid]["done"]:
+                    continue
 
-        #         if isinstance(v, dict):
-        #             pass
+                config = uid2config[hp_uid]
 
-        #         elif not isinstance(v, (str, int, float)):
-        #             hyperparamaters[group][k] = str(hyperparamaters[group][k])
-                
-        #         else:
-        #             hyperparamaters[group][k]
-        
-   
-        time = utils.get_time()
-        config = {
-                    "hp_id": hp_id,
-                    "time": str(time),
-                    "timestamp": str(time.timestamp()),
-                    "hyperparamaters": hyperparamaters,
-                    "random_seeds" : random_seeds
-                    }
+            else:
+                config = {
+                        "id": str(hp_id),
+                        "uid": hp_uid,
+                        "hyperparamaters": deepcopy(hp),
+                        "random_seeds_todo" : utils.random_ints(self.n_random_seeds),
+                        "random_seeds_done" : [],
+                        "path_to_models": os.path.join(self._path_to_models, str(hp_id)),
+                        "done": False
+                        }
+                hp_id += 1
+
+            hp_configs.append(config)
+
+        return hp_configs
+
+
+    def __dump_hp_config(self, config:dict):
 
         #create file for the hyperparamaters
-        fp = os.path.join(self._path_to_hps, hp_id + ".json")
-        
-        #### check if the hp_ids are already tested and logged
-        with open(fp, "a") as f:
-            json.dump(config, f, indent=4)
+        fp = os.path.join(self._path_to_hps, config["id"] + ".json")
 
-
+        #save config
+        utils.save_json(config, fp)
+   
 
     def train(self,
                 hyperparamaters:dict,
-                n_random_seeds:int=6,
-                random_seed:int=None,
                 monitor_metric:str = "val_f1",
-                gpus : list = [],
+                gpus : Union[list, int] = None,
                 overfit_n_batches : int = None
                 ):
 
         self.training = True
 
-        hp_dicts = self.__create_hyperparam_sets(hyperparamaters)
+        hp_sets = self.__get_hyperparam_sets(hyperparamaters)
+        uid_hps_set = self.__get_hyperparamaters_uid(hp_sets)
+        hp_configs = self.__filter_and_setup_hp_configs(uid_hps_set)
 
 
-        if not gpus:
-            device = "cpu"
-        else:
-            device =  f"cuda:{gpus[0]}"
+        device  = "cpu"
+        if gpus:      
+            gpu = gpus[0] if isinstance(gpus,list) else gpus
+            device =  f"cuda:{gpu}"
             torch.backends.cudnn.deterministic = True
             torch.backends.cudnn.benchmark = True
             torch.backends.cudnn.enabled = True
 
         
-        for hp_id, hps in tqdm(hp_dicts.items(), desc="Hyperparamaters",  position=0):    
+        for hp_config in tqdm(hp_configs, desc="Hyperparamaters",  position=0, leave = False):    
             
             #make a folder in models for the model
-            path_to_hp_models = os.path.join(self._path_to_models, hp_id)
-            os.makedirs(path_to_hp_models, exist_ok=True)
+            os.makedirs(hp_config["path_to_models"], exist_ok=True)
 
-            if random_seed is not None and isinstance(random_seed, int):
-                random_seeds = [random_seed]
-            else:
-                random_seeds = utils.random_ints(n_random_seeds)
-
-            #done_random_seeds = []
-            for random_seed in tqdm(random_seeds, desc = "Random Seeds", position=1):
+            random_seeds = hp_config["random_seeds_todo"].copy()
+            for random_seed in tqdm(random_seeds, desc = "Random Seeds", position=1, leave = False):
                 
                 try:
                     self.fit(
-                            hp_id = hp_id,
+                            hp_id = hp_config["id"],
                             random_seed = random_seed,
-                            hyperparamaters = hps,
+                            hyperparamaters = deepcopy(hp_config["hyperparamaters"]),
                             monitor_metric = monitor_metric,
                             device = device,
                             overfit_n_batches = overfit_n_batches
                             )
-                except BaseException as e:
-                    # failed_models = glob(os.path.join(path_to_hp_models, random_seed + "*.ckpt"))
-                    # for fp in failed_models:
-                    #     os.remove(fp)
 
-                    shutil.rmtree(path_to_hp_models)
+                    #update our config
+                    hp_config["random_seeds_todo"].remove(random_seed)
+                    hp_config["random_seeds_done"].append(random_seed)
+
+                    # check if all random_seeds are done
+                    if len(hp_config["random_seeds_todo"]) == 0:
+                        hp_config["done"]
+
+                    # write hyperparamters along with timestamps to a json
+                    self.__dump_hp_config(hp_config)
+
+
+                except BaseException as e:
+                    
+                    files_to_remove = glob(os.path.join(hp_config["path_to_models"], str(random_seed) + "*.ckpt"))
+                    files_to_remove += glob(os.path.join(self._path_to_logs, str(hp_config["id"]), str(random_seed) + "*.log"))
+
+                    for fp in files_to_remove:
+                        os.remove(fp)
+
                     raise e
-                
-                #done_random_seeds.append(random_seed)
- 
- 
-            # write hyperparamters along with timestamps to a json
-            self.__dump_hps(
-                            hp_id = hp_id, 
-                            hyperparamaters = hps,
-                            random_seeds = random_seeds
-                            )
+
+
+        self.rank_hps(
+                            monitor_metric = monitor_metric
+                        )

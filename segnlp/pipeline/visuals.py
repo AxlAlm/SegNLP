@@ -16,14 +16,14 @@ class Visuals:
             key : Union[list, str], 
             split : Union[list, str],
             ):
+        pass
 
+        # df = self._load_logs()
+        # df.set_index(["hp_id", "random_seed", "split"], inplace = True)
 
-        df = self._load_logs()
-        df.set_index(["hp_id", "random_seed", "split"], inplace = True)
+        # for hp_id in self.hp_ids:
 
-        for hp_id in self.hp_ids:
-            
-            df.loc[(hp_id, split)]
+        #     df.loc[(hp_id, split)]
 
 
     

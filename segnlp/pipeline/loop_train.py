@@ -12,10 +12,8 @@ import torch
 
 #segnlp
 from segnlp import utils
-from segnlp.utils import datamodule
 
-
-from pynvml.smi import nvidia_smi
+#rom pynvml.smi import nvidia_smi
 
 
 
@@ -32,6 +30,15 @@ class TrainLoop:
                     overfit_n_batches : int = None,
                     suffix : str = ""
                     ):
+
+
+        if "cuda" in device:
+            device_id = device[-1]
+            #os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+            os.environ['CUDA_DEVICE_ORDER'] = "PCI_BUS_ID" 
+            os.environ['CUDA_VISIBLE_DEVICES'] = device_id
+            torch.cuda.set_device(int(device_id))
+
 
         #set the random seed
         utils.set_random_seed(random_seed)
@@ -80,7 +87,6 @@ class TrainLoop:
                         hyperparamaters  = hyperparamaters,
                         label_encoder = self.label_encoder,
                         feature_dims = self.feature2dim,
-                        metric = self.metric,                    
                         )
         
 
@@ -88,9 +94,15 @@ class TrainLoop:
         model = model.to(device)
 
 
-        # after model is initialized we can setup out optimizers and learning schedulers
-        optimizer, lr_scheduler  = utils.configure_optimizers(
+        # after model is initialized we can setup optimizer
+        optimizer = self._configure_optimizers(
                                         model = model, 
+                                        hyperparamaters = hyperparamaters
+                                        )
+
+        # setup learning scheduler
+        lr_scheduler = self._configure_learning_scheduler(
+                                        opt = optimizer,
                                         hyperparamaters = hyperparamaters
                                         )
 
@@ -105,20 +117,12 @@ class TrainLoop:
         
         #setup tqmd
         epoch_tqdm = tqdm(
-                        position=2, 
-                        postfix = postfix
+                        position = 2, 
+                        postfix = postfix,
+                        leave = False
                         )
 
         for epoch in range(max_epochs):
-            
-            #NOTE not needed
-            #print(torch.cuda.memory_allocated())
-            #torch.cuda.empty_cache()
-
-            # uncomment to print memory usage
-            #nvsmi = nvidia_smi.getInstance()
-            #print(nvsmi.DeviceQuery('memory.free, memory.total')["gpu"])
-
 
             # we make sure to generate our batches each epoch so that we can shuffle 
             # the whole dataset so we dont keep feeding the model the same batches each epoch
@@ -142,9 +146,9 @@ class TrainLoop:
             use_target_segs = False
             if not freeze_segment_module and use_target_segs_k:
                 use_target_segs = target_seg_sampling(epoch)
-
+        
             #freeze modules
-            model.freeze(freeze_segment_module = freeze_segment_module,)
+            model.freeze(freeze_segment_module = freeze_segment_module)
 
             # Sets the model to training mode.
             model.train()
@@ -217,7 +221,9 @@ class TrainLoop:
                                 hp_id = hp_id,
                                 random_seed = random_seed,
                                 epoch_metrics = train_epoch_metrics,
-                                cv = cv
+                                cv = cv,
+                                use_target_segs = use_target_segs,
+                                freeze_segment_module = freeze_segment_module
                                 )
 
             postfix[f"train_{monitor_metric}"] = train_epoch_metrics[monitor_metric]
@@ -231,7 +237,9 @@ class TrainLoop:
                                 hp_id = hp_id,
                                 random_seed = random_seed,
                                 epoch_metrics = val_epoch_metrics,
-                                cv = cv
+                                cv = cv,
+                                use_target_segs = use_target_segs,
+                                freeze_segment_module = freeze_segment_module
                                 )
             postfix[f"val_{monitor_metric}"] = val_epoch_metrics[monitor_metric]
 
@@ -239,24 +247,27 @@ class TrainLoop:
             # fetch the score we will decide saving and early stoping on
             score = val_epoch_metrics[monitor_metric]
 
-            # save model
-            checkpointer(model, score)
-
-            #set the top score
-            postfix[f"top_val_{monitor_metric}"] = checkpointer._top_score
-
-            # stop if model is not better after n times, set by patience
-            if early_stopper(score):
-                break
-            
             # if we use a learning scheduler we call step() to make it do its thing 
             # with the optimizer, i.e. change the learning rate in some way
             if lr_scheduler is not None:
-                lr_scheduler.step(total_val_loss)
+                lr_scheduler.step(score)
+
+            if not use_target_segs and not freeze_segment_module:
+
+                # save best model
+                checkpointer(model, score)
+
+                #set the top score
+                postfix[f"top_val_{monitor_metric}"] = checkpointer._top_score
+
+                # stop if model is not better after n times, set by patience
+                if early_stopper(score):
+                    break
+            
 
             epoch_tqdm.set_postfix(postfix)
             epoch_tqdm.update(1)
-        
+                
 
 
     def __cv_loop(self,

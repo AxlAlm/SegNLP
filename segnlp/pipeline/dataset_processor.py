@@ -11,15 +11,10 @@ from collections import Counter
 import pandas as pd
 import shutil
 
-
-#h5py
-import h5py
-
 # segnlp
 from segnlp.datasets.base import DataSet
 import segnlp.utils as utils
 from segnlp import get_logger
-from segnlp.utils import H5PY_STORAGE
 
 logger = get_logger("DatasetPreprocessor")
 
@@ -46,7 +41,7 @@ class DatasetProcessor:
         self._removed : int = 0
 
 
-    def _process_dataset(self, dataset : DataSet) -> pd.DataFrame:
+    def __process_dataset(self, dataset : DataSet) -> pd.DataFrame:
 
         self._n_samples = 0
 
@@ -110,3 +105,27 @@ class DatasetProcessor:
         df.to_csv(self._path_to_df)
 
         return df
+
+
+    def __check_data(self):
+        return all([
+                    os.path.exists(self._path_to_df),
+                    True if not self._use_psf else os.path.exists(self._path_to_psf),
+                    True if not self._use_pwf else os.path.exists(self._path_to_pwf)
+                    ])
+
+    def _preprocess_dataset(self, dataset:DataSet):
+    
+        if self.__check_data():
+            return None
+
+        try:
+            df = self.__process_dataset(dataset)
+
+            if self._use_psf or self._use_pwf:
+                self._preprocess_pretrained_features(df)
+        
+        #if it breaks we delete data and have to start over to ensure nothing is corrupted
+        except BaseException as e:
+            shutil.rmtree(self._path_to_data)
+            raise e

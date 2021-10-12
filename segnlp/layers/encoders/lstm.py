@@ -26,10 +26,7 @@ class LSTM(nn.Module):
                     num_layers:int, 
                     bidir:bool, 
                     dropout:float=0.0,
-                    input_dropout:float=0.0,
-                    output_dropout:float=0.0,
-                    weight_init:str = "xavier_uniform",
-                    weight_init_kwargs: dict = {}
+                    weight_init : Union[str, dict] = None,
                     ):
         super().__init__()
 
@@ -42,14 +39,12 @@ class LSTM(nn.Module):
                                 batch_first=True,
                                 dropout = dropout
                             )
-        self.input_dropout = nn.Dropout(input_dropout)
-        self.output_dropout = nn.Dropout(output_dropout)
 
         self.bidir = bidir
         self.hidden_size = hidden_size
         self.output_size = hidden_size * (2 if bidir else 1)
 
-        self.apply(utils.get_weight_init_fn(weight_init, weight_init_kwargs))
+        utils.init_weights(self, weight_init)
 
 
 
@@ -88,8 +83,6 @@ class LSTM(nn.Module):
             _ , original_idxs = torch.sort(sorted_idxs, descending=False)
             input = input[sorted_idxs]
 
-        # dropout on input
-        input = self.input_dropout(input)
 
         # if a sample is length == 0, we assume its filled with zeros. So, we remove the sample,
         # and then extend the dims later
@@ -124,8 +117,6 @@ class LSTM(nn.Module):
 
         if not sorted:
             output = output[original_idxs]
-        
-        #dropout on output
-        output = self.output_dropout(output)
+   
 
         return output, states

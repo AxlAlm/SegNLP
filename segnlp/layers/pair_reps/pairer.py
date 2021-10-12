@@ -81,28 +81,28 @@ class Pairer(torch.nn.Module):
 
     def __init__(self, 
                 input_size:int, 
-                mode:list=["cat", "multi"], 
+                mode:str = "cat+multi", 
                 n_rel_pos:int=None,
                 ):
         super().__init__()
 
-        self.mode = mode
+        self.mode = mode.split("+")
         self.n_rel_pos = n_rel_pos
 
         self.output_size = 0
         if n_rel_pos:
             self.output_size += (self.n_rel_pos*2)-1
 
-        if "cat" in mode:
+        if "cat" in self.mode :
             self.output_size += input_size*2
 
-        if "multi" in mode:
+        if "multi" in self.mode :
             self.output_size += input_size
 
-        if "sum" in mode:
+        if "sum" in self.mode :
             self.output_size += input_size
 
-        if "mean" in mode:
+        if "mean" in self.mode :
             self.output_size += input_size
 
 

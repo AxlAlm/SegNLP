@@ -21,8 +21,7 @@ from .array import ensure_numpy
 from .array import ensure_list
 from .array import create_mask
 from .array import np_cumsum_zero
-from .cache import Memorize
-from .find_overlap import find_overlap
+from .overlap import find_overlap
 from .misc import timer
 
 
@@ -36,9 +35,9 @@ class Batch:
                 device = None
                 ):
 
-
         self._df : pd.DataFrame = df
         self._pred_df : pd.DataFrame = df.copy(deep=True)
+
 
         if "seg" in label_encoder.task_labels:
             self._pred_df["seg_id"] = None
@@ -55,11 +54,14 @@ class Batch:
         self.__ok_levels = set(["seg", "token", "span", "pair"])
 
         if "am_id" in self._df.columns:
-            self.__ok_levels.update(["am_id", "adu_id"])
+            self.__ok_levels.update(["am", "adu"])
 
         self._size = self._df["sample_id"].nunique()
 
         self.use_target_segs : bool = False
+
+        # cache
+        self.__cache = {}
 
 
     def __len__(self):
@@ -78,7 +80,7 @@ class Batch:
         
         return wrapped_get
 
-
+    
     def __get_column_values(self, df: pd.DataFrame, level: str, key:str):
 
         if level == "token":
@@ -144,7 +146,7 @@ class Batch:
         return torch.tensor(embs, dtype = torch.float)
 
 
-    def __add_link_matching_info(self, pair_df):
+    def __add_link_matching_info(self, pair_df:pd.DataFrame, j2i:dict):
 
 
         def check_true_pair(row, mapping):
@@ -167,7 +169,7 @@ class Batch:
 
         # maps a true source to the correct target using the ids of predicted pairs
         source2target = {
-                        self._j2i.get(j, "NONE"): self._j2i.get(jt, "NONE")
+                        j2i.get(j, "NONE"): j2i.get(jt, "NONE")
                         for j,jt in zip(j_jt["seg_id"], j_jt["target_id"])
                         }
 
@@ -198,7 +200,16 @@ class Batch:
 
             return set_id
 
-        
+
+        # we also have information about whether the seg_id is a true segments 
+        # and if so, which TRUE segmentent id it overlaps with, and how much
+        i2ratio, j2ratio, i2j, j2i = find_overlap(
+                                                target_df = self._df,  
+                                                pred_df = self._pred_df
+                                                )
+
+
+
         first_df = df.groupby("seg_id", sort=False).first()
         first_df.reset_index(inplace=True)
 
@@ -206,11 +217,10 @@ class Batch:
         last_df.reset_index(inplace=True)
 
 
-
         if pred:
             first_target_df = self._df.groupby("seg_id", sort=False).first()
             j2link_label = {j:row["link_label"] for j, row in first_target_df.iterrows()}
-            link_labels = [-1 if i not in self._i2j else j2link_label.get(self._i2j[i], -1) for i in first_df.index.to_numpy()]
+            link_labels = [-1 if i not in i2j else j2link_label.get(i2j[i], -1) for i in first_df.index.to_numpy()]
             first_df["link_label"] = link_labels
 
 
@@ -219,7 +229,7 @@ class Batch:
         # the total mumber of segments
         p1, p2 = [], []
         j = 0
-        for _, gdf in df.groupby(level = 0, sort = False):
+        for _, gdf in df.groupby("sample_id", sort = False):
             n = len(gdf.loc[:, "seg_id"].dropna().unique())
             sample_seg_ids = np.arange(
                                         start= j,
@@ -234,17 +244,18 @@ class Batch:
                                 "p1": p1,
                                 "p2": p2,
                                 })
-                                
+        
+
 
         if not len(pair_df.index):
             return pd.DataFrame()
-
 
         # create ids for each NON-directional pair
         pair_df["id"] = pair_df.apply(set_id_fn(), axis=1)
 
         #set the sample id for each pair
         pair_df["sample_id"] = first_df.loc[pair_df["p1"], "sample_id"].to_numpy()
+
 
         #set true the link_label
         #pair_df["link_label"] = first_df.loc[pair_df["p1"], "link_label"].to_numpy()
@@ -271,15 +282,17 @@ class Batch:
         pair_df.loc[p2_source_mask, "link_label"] = first_df.loc[pair_df.loc[p2_source_mask, "p2"], "link_label"].to_numpy()
 
 
-        self.__add_link_matching_info(pair_df)
+
+        self.__add_link_matching_info(pair_df, j2i)
 
 
         if pred:
-            pair_df["p1-ratio"] = pair_df["p1"].map(self._i2ratio)
-            pair_df["p2-ratio"] = pair_df["p2"].map(self._i2ratio)
+            pair_df["p1-ratio"] = pair_df["p1"].map(i2ratio)
+            pair_df["p2-ratio"] = pair_df["p2"].map(i2ratio)
         else:
             pair_df["p1-ratio"] = 1
             pair_df["p2-ratio"] = 1
+
 
         return pair_df
 
@@ -354,7 +367,7 @@ class Batch:
                                                 )
 
         pair_df = self._pair_df
-
+        
         if not len(self._pair_df.index):
             return []
 
@@ -362,39 +375,17 @@ class Batch:
             pair_df = pair_df[pair_df["direction"].isin([0,1]).to_numpy()]
 
         if key == "lengths":
-            data = pair_df.groupby("sample_id", sort=False).size().to_list()
+            sample_ids = list(self._df.groupby("sample_id", sort = False).groups.keys())
+            sample_pair_lens = pair_df.groupby("sample_id", sort = False).size().to_dict()
+            data = [sample_pair_lens.get(i, 0) for i in sample_ids]
 
         else:
             data = torch.LongTensor(pair_df[key].to_numpy())
 
         return data
 
-
-    def __add_overlap_info(self):
-
-        # we also have information about whether the seg_id is a true segments 
-        # and if so, which TRUE segmentent id it overlaps with, and how much
-        i2ratio, j2ratio, i2j, j2i = find_overlap(
-                                                target_df = self._df,  
-                                                pred_df = self._pred_df
-                                                )
-
-        #hacky temporary solution
-        self._i2ratio = i2ratio
-        self._i2j = i2j
-        self._j2i = j2i
-
-        # adding matching info to _df 
-        self._df["i"] = self._df["seg_id"].map(j2i)
-        self._df["i_ratio"] = self._df["seg_id"].map(j2ratio)
-
-        # adding matching info to pred_df 
-        self._pred_df["j"] = self._pred_df["seg_id"].map(i2j)
-        self._pred_df["j_ratio"] = self._pred_df["seg_id"].map(i2ratio)
-
     
     @__sampling_wrapper
-    #@Memorize
     def get(self, 
             level : str, 
             key : str, 
@@ -402,6 +393,14 @@ class Batch:
             pred : bool = False,
             bidir : bool = True
             ):
+
+        # create a key for string in cache
+        cache_key = (level, key, flat, pred, bidir)
+
+        # fetched cached data
+        if cache_key in self.__cache:
+            return self.__cache[cache_key]
+
 
         if level not in self.__ok_levels:
             raise KeyError
@@ -445,7 +444,7 @@ class Batch:
             for subtask in key.split("+"):
                 self._pred_df[subtask] = self._df[subtask].to_numpy()
 
-            self.__add_overlap_info()
+            #self.__add_overlap_info()
             return
             
         
@@ -492,12 +491,13 @@ class Batch:
                                                     )
         
 
-        if "seg" in key:
-            self.__add_overlap_info()
-
-
         # creating target_ids for links
-        if key == "link":
+        if key == "link" or "link" in key.split("+"):
+
+
+            # remove rows outside segments
+            is_not_nan = ~self._pred_df["seg_id"].isna()
+
             
             for si, sample_df in self._pred_df.groupby("sample_id", sort = False):
                 
@@ -512,11 +512,13 @@ class Batch:
 
                 target_ids = seg_first.index.to_numpy()[links]
 
-                # remove rows outside segments
-                is_not_nan = ~sample_df["seg_id"].isna()
+                #print(np.repeat(target_ids, segs.size().to_numpy()))
+
+                is_sample_row = self._pred_df["sample_id"] == si
+                row_mask = is_not_nan & is_sample_row
 
                 # exapnd target_id over the rows
-                self._pred_df.loc[si].loc[is_not_nan, "target_id"] = np.repeat(target_ids, segs.size().to_numpy())
+                self._pred_df.loc[row_mask, "target_id"] = np.repeat(target_ids, segs.size().to_numpy())
         
 
     def to(self, device):

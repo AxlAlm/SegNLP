@@ -27,7 +27,7 @@ class BIODecoder:
         if apply_correction:
             B = f"{B}|(?<={O}){I}|{self.start_value}{I}"
             
-        self.pattern = re.compile(f"(?P<UNIT>({B})({I})*)|(?P<NONE>({O})+|({I})+)")
+        self.pattern = re.compile(f"(?P<SEG>({B})({I})*)|(?P<NONE>({O})+|({I})+)")
         
         
     def __call__(self, encoded_bios:List[str], sample_start_idxs:np.ndarray=None):
@@ -56,7 +56,7 @@ class BIODecoder:
             if length == 0:
                 continue
 
-            if not m.groupdict()["UNIT"] is None:
+            if not m.groupdict()["SEG"] is None:
         
                 tok_seg_ids[p:p+length] = seg_id
                 seg_id += 1

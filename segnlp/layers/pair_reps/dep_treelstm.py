@@ -311,7 +311,6 @@ class TypeTreeLSTM(nn.Module):
         self,
         embedding_dim,
         h_size,
-        dropout=0,
         bidirectional=True,
     ):
 
@@ -319,7 +318,7 @@ class TypeTreeLSTM(nn.Module):
 
         self.bidirectional = bidirectional
         self.TeeLSTM_cell = TreeLSTMCell(embedding_dim, h_size)
-        # self.dropout = nn.Dropout(dropout)
+
 
     def forward(self, g: DGLGraph, h0: Tensor, c0: Tensor):
         """A modified N-ary tree-lstm (LSTM-ER) network
@@ -375,7 +374,6 @@ class DepGraph:
     def __init__(self,
                  token_embs: Tensor,
                  deplinks: Tensor,
-                 roots: Tensor,
                  token_mask: Tensor,
                  starts: Tensor,
                  ends: Tensor,
@@ -388,17 +386,7 @@ class DepGraph:
         assert mode in set([
             "shortest_path"
         ]), f"{mode} is not a supported mode for DepPairingLayer"
-        self.device = device
         batch_size = deplinks.size(0)
-
-        # # creat sample graphs G(U, V) tensor on CPU
-        # U, V, M = self.get_sample_graph(
-        #                                 deplinks=deplinks,
-        #                                 roots=roots,
-        #                                 token_mask=token_mask,
-        #                                 lengths = lengths,
-        #                                 assertion=assertion
-        #                                 )
 
         # creat sub_graph for each pair
         dep_graphs = []
@@ -407,8 +395,7 @@ class DepGraph:
         starts = torch.split(starts, lengths, dim=0)
         ends  = torch.split(ends, lengths, dim=0)
 
-        #token_mask = token_mask.type(torch.bool)
-        
+
         for i in range(batch_size):
 
             if lengths[i] == 0:  # no candidate pair
@@ -416,26 +403,23 @@ class DepGraph:
             
             # u are the token indexes
             # v are the indexes of the heads for each token
-            v = deplinks[i][token_mask[i]]
-            u = torch.arange(v.size(0), device=device)
+            v = utils.ensure_numpy(deplinks[i][token_mask[i]])
+            u = utils.ensure_numpy(torch.arange(v.shape[0], device=device))
 
             ## filter out self loops at root noodes, THIS BECAUSE?
             self_loop = u == v
             u = u[~self_loop]
             v = v[~self_loop]
 
-
-            # creat sample DGLGraph, convert it to an undirected graph.
+            # create sample DGLGraph, convert it to an undirected graph.
             graph = dgl.graph((u,v))
             graph_unidir = graph.to_networkx().to_undirected()
-
 
             # we take the start id and end ids for the sample
             start = utils.ensure_numpy(starts[i])
             end = utils.ensure_numpy(ends[i])
 
-
-
+            # find shortest paths
             subgraph_func = functools.partial(
                                             self.get_subgraph,
                                             g=graph,
@@ -452,53 +436,10 @@ class DepGraph:
         # batch graphs, move to model device, update nodes data by tokens
         # embedding
         nodes_emb = torch.cat(nodes_emb, dim=0)
-        self.graphs = dgl.batch(dep_graphs).to(self.device)
+        self.graphs = dgl.batch(dep_graphs).to(device)
         self.graphs.ndata["emb"] = nodes_emb
 
-    # def assert_graph(self, u: Tensor, v: Tensor, roots: Tensor,
-    #                  self_loop: Tensor) -> None:
-
-    #     # check that self loops do not exist in places other than roots
-    #     self_loop_check = u == roots[:, None]
-    #     if not torch.all(self_loop == self_loop_check):
-    #         # we have a problem. Get samples ids where we have more than one
-    #         # self loop
-    #         problem_id = torch.where(torch.sum(self_loop, 1) > 1)[0]
-    #         self_loop_id = v[problem_id, :][self_loop[problem_id, :]].tolist()
-    #         theroot = roots[problem_id].tolist()
-    #         error_msg_1 = f"Self loop found in sample(s): {problem_id}, "
-    #         error_msg_2 = f"Node(s) {self_loop_id}. Root(s): {theroot}."
-    #         raise Exception(error_msg_1 + error_msg_2)
-
-
-    # def get_sample_graph(self, 
-    #                     deplinks: Tensor, 
-    #                     roots: Tensor,
-    #                     token_mask: Tensor,
-    #                     lengths: Tensor,
-    #                     assertion: bool
-    #                     ) -> List[Tensor]:
-
-    #     batch_size = deplinks.size(0)
-    #     max_lenght = deplinks.size(1)
-    #     device = torch.device("cpu")
-
-    #     # G(U, V)
-    #     U = torch.arange(max_lenght, device=self.device).repeat(batch_size, 1)
-    #     V = deplinks.clone()
-    #     M = token_mask.clone()
-
-    #     # remove self loops at root nodes
-    #     self_loop = U == V
-    #     if assertion:
-    #         self.assert_graph(U, V, roots, self_loop)
-
-    #     U = torch.split(U[~self_loop].to(device), lengths)
-    #     V = torch.split(V[~self_loop].to(device), lengths)
-    #     M = torch.split(M[~self_loop].to(device), lengths)
-
-    #     return U, V, M
-
+ 
     def get_subgraph(self,
                      start: int,
                      end: int,
@@ -552,7 +493,7 @@ class DepTreeLSTM(nn.Module):
                  hidden_size: int,
                  bidir: bool,
                  mode : str = "shortest_path",
-                 dropout: int = 0.0
+                 weight_init : Union[str, dict] = None,
                  ):
         super().__init__()
 
@@ -564,11 +505,11 @@ class DepTreeLSTM(nn.Module):
         self.tree_lstm = TypeTreeLSTM(
                                         embedding_dim=input_size,
                                         h_size=hidden_size,
-                                        dropout=dropout,
                                         bidirectional=True
                                       )
         
         self.output_size = hidden_size * 3
+        utils.init_weights(self, weight_init)
 
 
     def split_nested_list(self,
@@ -584,7 +525,6 @@ class DepTreeLSTM(nn.Module):
 
     def forward(self,
                 input: Union[Tensor, Sequence[Tensor]],
-                roots: Tensor,
                 token_mask: Tensor,
                 deplinks: Tensor,
                 starts: Tensor,
@@ -598,12 +538,10 @@ class DepTreeLSTM(nn.Module):
         if not isinstance(input, Tensor): 
             input = torch.cat(input, dim=-1)
 
-
         # 1) Build graph from dependecy data
         G = DepGraph(
                     token_embs = input,
                     deplinks = deplinks,
-                    roots = roots,
                     token_mask = token_mask,
                     starts = starts,
                     ends = ends,

@@ -3,7 +3,7 @@
 
 
 # basics
-from typing import List, Tuple, DefaultDict, Dict
+from typing import List, Tuple, DefaultDict, Dict, Union
 from collections import defaultdict
 import pandas as pd
 import numpy as np
@@ -11,7 +11,6 @@ import numpy as np
 # pytorch
 import torch
 from torch import Tensor
-from torch._C import dtype
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -31,9 +30,9 @@ class DirLinkLabeler(nn.Module):
                 input_size:int, 
                 output_size:int, 
                 match_threshold : float = 0.5,
-                dropout:float=0.0,
                 loss_reduction = "mean",
                 ignore_index = -1,
+                weight_init : Union[str, dict] = None,
                 ):
         super().__init__()
         self.loss_reduction = loss_reduction
@@ -48,8 +47,8 @@ class DirLinkLabeler(nn.Module):
         self.rev_label_treshhold = output_size
         output_size = ((output_size -1) * 2 ) + 2
 
-        self.dropout = nn.Dropout(dropout)
         self.clf = nn.Linear(input_size, output_size)
+        utils.init_weights(self, weight_init)
 
 
     def __get_preds(self, 
@@ -143,7 +142,7 @@ class DirLinkLabeler(nn.Module):
                 sample_id: Tensor,
                 ):
 
-        logits = self.clf(self.dropout(input))
+        logits = self.clf(input)
         link_labels, links = self.__get_preds(
                                     logits = logits,
                                     pair_p1 = pair_p1,

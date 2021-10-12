@@ -46,15 +46,15 @@ class DataModule:
         self._pwf_fp : str = utils.check_file(os.path.join(path_to_data, "pwf.hdf5"))
         self._psf_fp : str = utils.check_file(os.path.join(path_to_data, "psf.hdf5"))
 
-        with open(os.path.join(path_to_data, f"splits.pkl"), "rb") as f:
-            self._splits : dict = pickle.load(f)
+
+        self._splits : dict = utils.load_pickle_data(os.path.join(path_to_data, f"splits.pkl"))
         
         self.batch_size : int = batch_size
         self.split_id : int = cv
         self.label_encoder : LabelEncoder = label_encoder
         self._df = pd.read_csv(self._df_fp, index_col = 0)
 
-        
+
     def __getitem__(self, key:Union[np.ndarray, list]) -> Batch:
         return Batch(
                     df = self._df.loc[key],

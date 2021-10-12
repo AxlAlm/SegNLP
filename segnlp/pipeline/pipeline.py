@@ -6,13 +6,15 @@ import json
 import numpy as np
 import os
 import pwd
-
+import pandas as pd
+from glob import glob
 
 
 #pytorch
 import torch
 
 # segnlp
+from segnlp import get_logger
 from .loop_train import TrainLoop
 from .loop_test import TestLoop
 from .loop_hp_tune import HPTuneLoop
@@ -22,12 +24,15 @@ from .text_processor import TextProcessor
 from .splitter import Splitter
 from .pretrained_feature_extractor import PretrainedFeatureExtractor
 from .logs import Logs
+from .train_utils import TrainUtils
+from .baselines import Baseline
+from .ranking import Ranking
 
-from segnlp import get_logger
 from segnlp.datasets.base import DataSet
 import segnlp.utils as utils
-from segnlp import models
-from segnlp.models.base import BaseModel
+from segnlp.seg_model import SegModel
+
+
 
 logger = get_logger("PIPELINE")
 user_dir = pwd.getpwuid(os.getuid()).pw_dir
@@ -43,23 +48,27 @@ class Pipeline(
                 TrainLoop, 
                 TestLoop,
                 Logs,
+                TrainUtils,
+                Baseline,
+                Ranking
                 ):
     
     def __init__(self,
                 id:str,
                 dataset:Union[str, DataSet],
-                model:Union[torch.nn.Module, str],
+                model: SegModel,
                 metric:str,
                 pretrained_features:list = [],
                 other_levels:list = [],
                 evaluation_method:str = "default",
+                n_random_seeds: int = 6,
                 root_dir:str =f"{user_dir}/.segnlp/", #".segnlp/pipelines"  
                 overwrite: bool = False,
                 ):
 
         #general
         self.id : str = id
-        self.model : BaseModel = getattr(models, model) if isinstance(model,str) else model
+        self.model : SegModel = model
         self.model_name = str(self.model)
         self.evaluation_method : str = evaluation_method
         self.metric : str = metric
@@ -68,6 +77,7 @@ class Pipeline(
         self.root_dir = root_dir
         self.other_levels = other_levels
         self.dataset_name = dataset.name()
+        self.n_random_seeds = n_random_seeds
 
         # task info
         self.dataset_level : str = dataset.level
@@ -79,7 +89,7 @@ class Pipeline(
         self.task_labels : Dict[str,list] = dataset.task_labels
         self.all_tasks : list = sorted(set(self.tasks + self.subtasks))
         self.label_encoder : utils.LabelEncoder = utils.LabelEncoder(task_labels = self.task_labels)
-   
+        
         # init files
         self.__init__dirs_and_files(overwrite = overwrite)
 
@@ -93,7 +103,7 @@ class Pipeline(
         self.config = self.__create_dump_config()
 
         #processed the data
-        self.__preprocess_dataset(dataset)
+        self._preprocess_dataset(dataset)
 
         # create split indexes 
         self._set_splits(
@@ -102,7 +112,7 @@ class Pipeline(
 
         # after we have processed data we will deactivate preprocessing so we dont keep
         # large models only using in preprocessing in memory
-        self.deactivate()
+        self.deactivate() 
 
 
     def __init__dirs_and_files(self, overwrite : bool):
@@ -139,20 +149,18 @@ class Pipeline(
         self._path_to_pwf : str = os.path.join(self._path_to_data, "pwf.hdf5") # for pretrained word features
         self._path_to_psf : str = os.path.join(self._path_to_data, "psf.hdf5") # for pretrained segment features
         self._path_to_splits : str = os.path.join(self._path_to_data, "splits.pkl") # for splits
-        self._path_to_hp_list : str = os.path.join(self._path, "hp_list.txt") # for hp history
-
-        if not os.path.exists(self._path_to_hp_list):
-            open(self._path_to_hp_list, 'w')
-
+        self._path_to_bs_scores : str = os.path.join(self._path, "baseline_scores.json") # for hp history
+        self._path_to_rankings : str = os.path.join(self._path, "rankings.csv") # for hp history
 
 
     @property
     def hp_ids(self):
-
-        with open(self._path_to_hp_hist, "r") as f:
-            hp_ids = [line.strip() for line in f.read().split("\n")]
-        
+        hp_ids = [fp.replace(".json","") for fp in os.listdir(self._path_to_hps)]
         return hp_ids
+
+    @property
+    def hp_configs(self):
+        return [utils.load_json(fp) for fp in glob(self._path_to_hps + "/*.json")]
 
 
     def __check_config(self, config:dict):
@@ -198,31 +206,6 @@ class Pipeline(
                 json.dump(config, f, indent=4)
 
         return config
-
-
-    def _check_data(self):
-        return all([
-                    os.path.exists(self._path_to_df),
-                    True if not self._use_psf else os.path.exists(self._path_to_psf),
-                    True if not self._use_pwf else os.path.exists(self._path_to_pwf)
-                    ])
-
-
-    def __preprocess_dataset(self, dataset:DataSet):
-    
-        if self._check_data():
-            return None
-
-        try:
-            df = self._process_dataset(dataset)
-
-            if self._use_psf or self._use_pwf:
-                self._preprocess_pretrained_features(df)
-        
-        #if it breaks we delete data and have to start over to ensure nothing is corrupted
-        except BaseException as e:
-            shutil.rmtree(self._path_to_data)
-            raise e
 
 
     def deactivate(self):

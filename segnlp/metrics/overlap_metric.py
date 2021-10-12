@@ -9,117 +9,132 @@ from typing import List
 #sklearn
 from sklearn.metrics import confusion_matrix
 
-
-def count_missing(
-                target_df:pd.DataFrame, 
-                task:str, 
-                mask:bool, 
-                labels:list
-                ) -> np.ndarray:
-    
-    """
-    Creates a Confusion Matrix and fills the rows representing 
-    where for a TARGET/TRUE segment there is no PREDICTED segment. 
-
-    Which segments these are are dictated but the match_mask input
-    
-    IF we have the following confusion matrix, we fill the cells filled with X
-
-    # T\P | A | B | C | NO |
-    # ----------------------
-    # A   |   |   |   |  X |
-    #-----------------------
-    # B   |   |   |   |  X |
-    #-----------------------
-    # C   |   |   |   |  X | 
-    #-----------------------
-    # NO  |   |   |   |    | 
+#segnlp
+from segnlp.utils.overlap import find_overlap
 
 
-    These will be the FN
+def label_confusion_matrix(
+                            labels : list,
+                            threshold : float,
+                            i2ratio : dict,
+                            j2ratio : dict,
+                            i2j : dict,
+                            j2label : dict,
+                            i2label : dict,
+                            ) -> np.ndarray:
+
 
     """
+    Creates a Confusion Matrix for label predictions
+    """
+
     #we add 1 for NO MATCH
     n_labels = len(labels) + 1
 
     #empty confusion matrix
     cm = np.zeros((n_labels, n_labels))
 
-    #  To make sure we have an index in our counts vector for all labels
-    # we create a zero vector
-    zeros = pd.Series(data=[0]*(n_labels-1), index=labels)
 
-    # We get the counts of label for each TARGET segments where there is no matching
-    # PREDICTED segment (~match_mask). 
-    # EXAMPLE: How many times did we miss to find a matching segment for  a segment with label A?
-    counts = (target_df.loc[~mask, task].value_counts() + zeros).fillna(0)
+    # First we look at all the FN
+    for j, ratio in j2ratio.items():
 
-    cm[:-1,-1] = counts[labels].to_numpy()
+        if ratio >= threshold:
+            continue
+        
+        cm[j2label[j], -1] += 1
+
+
+    # Then we look at FN, TP and FP
+    for i, ratio in i2ratio.items():
+
+        # if a predicted segment is below ratio we 
+        # dont count it
+        if ratio < threshold:
+            continue
+    
+        j = i2j[i]
+        target_label = j2label[j]
+        pred_label = i2label[i]
+
+        cm[target_label, pred_label] += 1
 
     return cm
 
 
-def count_predicted(
-                    pred_df: pd.DataFrame,
-                    target_df:pd.DataFrame, 
-                    task:str, 
-                    labels:list, 
-                    target_mask: np.ndarray,
-                    pred_mask: np.ndarray
-                    ) -> np.ndarray:
+def link_label_confusion_matrix( 
+                                labels : list,
+                                threshold : float,
+                                i2ratio : dict,
+                                j2ratio : dict,
+                                i2j : dict,
+                                j2i : dict,
+                                j2jt : dict,
+                                i2it : dict,
+                                j2link_label : dict,
+                                i2link_label : dict,
+                               ) -> np.ndarray:
 
-    """
-    Creates a Confusion Matrix and fills the rows representing
-    PREDICTED segments
-
-    
-    IF we have the following confusion matrix we fill it with two types
-    of values: 
-
-    + = Predicted Segments which match a TARGET segment
-    - = Predicted Segments which DO NOT match a TARGET segment
-
-    # T\P | A | B | C | NO |
-    # ----------------------
-    # A   | + | + | + |    |
-    #-----------------------
-    # B   | + | + | + |    |
-    #-----------------------
-    # C   | + | + | + |    | 
-    #-----------------------
-    # NO  | - | - | - |    | 
-
-    """
     #we add 1 for NO MATCH
     n_labels = len(labels) + 1
 
     #empty confusion matrix
     cm = np.zeros((n_labels, n_labels))
 
-    #  ADDING +
-    # First we count the predictions for all predicted segments
-    # which DO have a matching TARGET segment
-    # we sort both based on j
-    matching_targets = target_df.loc[target_mask].sort_values(by="seg_id")[task].to_numpy()
-    matching_preds = pred_df.loc[pred_mask].sort_values(by="j")[task].to_numpy()
 
-    if len(matching_targets) and len(matching_preds):
-        cm[:-1, :-1] +=  confusion_matrix(
-                                            y_true = matching_targets,
-                                            y_pred = matching_preds,
-                                            labels = list(range(len(labels)))
-                                            )
+    # First we look at all the FN
+    for j, ratio in j2ratio.items():
+        
+        # if there is no i for j, we can count it as a FN
+        if j not in j2i:
+            cm[j2link_label[j], -1] += 1
+            continue
+
+        # make sure the source doesn't match over threshold
+        if ratio < threshold:
+            cm[j2link_label[j], -1] += 1
+            continue     
+
+        # check if the target has a match over the threshold
+        jt = j2jt[j]
+        if j2ratio[jt] < threshold:
+            cm[j2link_label[j], -1] += 1
+            continue     
+
+        # # check if the target and the source are truly linked
+        ji = j2i[j]
+        jit = i2it[ji]
+        ijt = i2j.get(jit, "NO MATCH") #i2j only contain cases were there is an overlap.
+        if ijt != jt:
+            cm[j2link_label[j], -1] += 1
 
 
-    #  To make sure we have an index in our counts vector for all labels
-    # we create a zero vector
-    zeros = pd.Series(data=[0] * (n_labels-1), index=labels)
+    # Then we look at FN, TP and FP
+    for i, ratio in i2ratio.items():
 
-    # ADDING -
-    # then we need to to look at all the predicted segments which 
-    # DO NOT do not count as having a true match/a target segment match
-    counts = (pred_df.loc[~pred_mask, task].value_counts() + zeros).fillna(0)
-    cm[-1, :-1] += counts[labels].to_numpy()
+
+        # check if the source match
+        if ratio < threshold:
+            continue
+        
+        # check if the target match
+        # j's target
+        j = i2j[i]
+        jt = j2jt[j]
+        if j2ratio[jt] < threshold:
+            continue
+
+        # check if the target and the source are truly linked
+        jt = j2jt[j]
+        it = i2it[i]
+        ijt = i2j.get(it, "NO MATCH") #i2j only contain cases were there is an overlap.
+        if  ijt != jt:
+            continue
+
+        #find target and predicted labels
+        target_link_label = j2link_label[j]
+        pred_link_label = i2link_label[i]
+
+        cm[target_link_label, pred_link_label] += 1
 
     return cm
 
@@ -184,22 +199,23 @@ def calc_f1(cm:np.array, labels:list, prefix:str, task:str):
         FN = sum(cm[i]) - TP
     
         f1 = (2*TP) / ((2*TP) + FP + FN)
-        scores[f"{prefix}{label}-f1"] = f1
+        scores[f"{prefix}{label}-f1"] = 0 if np.isnan(f1) else f1
 
         task_TP += TP
         task_FP += FP
         task_FN += FN
-    
+
     scores[f"{prefix}f1"] = np.mean(list(scores.values()))
 
     # When the the metric is used in https://arxiv.org/pdf/1704.06104.pdf,
     # they use the micro f1, as they sum the TP and FP and FNs over all labels
-    scores[f"{prefix}f1-micro"] = (2*task_TP) / ((2*task_TP) + task_FP + task_FN)
+    f1_micro = (2*task_TP) / ((2*task_TP) + task_FP + task_FN)
+    scores[f"{prefix}f1-micro"] = 0 if np.isnan(f1_micro) else f1_micro 
 
     return scores
 
 
-def overlap_metric(pred_df:pd.DataFrame, target_df:pd.DataFrame, task_labels:dict, ratios: List[float] = [0.5, 1.0]):
+def overlap_metric(pred_df:pd.DataFrame, target_df:pd.DataFrame, task_labels:dict, thresholds: List[float] = [0.5, 1.0]):
 
     """
     Metric is from the following paper ( chapt. 6.1 Experimental Setup, p. 1390):
@@ -208,119 +224,141 @@ def overlap_metric(pred_df:pd.DataFrame, target_df:pd.DataFrame, task_labels:dic
     
 
     NOTE!
-            i = predicted segments (source)
-            j = TARGET/ground truth/True segment (source)
+            i = predicted segments
+            j = TARGET/ground truth/True segment
 
-            i-t = target of i (in target in source -> target)
-            j-t = target of j (in target in source -> target)
+            it = target of the predicted segment, i.e. i = source and it = target
+            jt = target of the target segment ,  i.e. j = source and jt = target
+
+            ji = the predicted segment i that match with target segment j
+            ij = the target segment that match with the predicetd segment i
+
+            ijt = the TARGET of the target segment that match with i
+            jit = the TARGET of the predicted segment i that match with j
+
+
     """
 
-    calc_lable_metric = "label" in task_labels
-    calc_link_lable_metric = "link_label" in task_labels and len(pred_df["target_id"].unique()) == 0
-    
 
+    calc_lable_metric = "label" in task_labels
+    calc_link_lable_metric = True
+    #calc_link_lable_metric = "link_label" in task_labels and len(pred_df["target_id"].unique()) != 0
+
+    # we also have information about whether the seg_id is a true segments 
+    # and if so, which TRUE segmentent id it overlaps with, and how much
+    i2ratio, j2ratio, i2j, j2i = find_overlap(
+                                            target_df = target_df,  
+                                            pred_df = pred_df
+                                            )
+
+    #groupby seg_id
     target_df = target_df.groupby("seg_id", sort = False).first()
     pred_df = pred_df.groupby("seg_id", sort = False).first()
 
+
+    #update js with stuff we didnt find matches for 
+    js = target_df.index.to_numpy()
+    j2ratio.update({j:0 for j in js if j not in j2ratio})
+
+
+    #source to target mappings for target and predicted segments
+    j2jt = dict(zip(target_df.index, target_df["target_id"]))
+    i2it = dict(zip(pred_df.index, pred_df["target_id"]))
+
+    # labels
+    j2label = dict(zip(target_df.index, target_df["label"].astype(int)))
+    i2label = dict(zip(pred_df.index, pred_df["label"].astype(int)))
+
+
+    #UGLY QUCKIFIX
+    calc_link_lable_metric = len(list(set(pred_df["link_label"]))) == 0
+
+    if not calc_link_lable_metric:
+        calc_link_lable_metric = list(set(pred_df["link_label"]))[0] is not None
+
+    if calc_link_lable_metric:
+        # link labels
+        j2link_label = dict(zip(target_df.index, target_df["link_label"].astype(int)))
+        i2link_label = dict(zip(pred_df.index, pred_df["link_label"].astype(int)))
+
+    
+    assert len(set(j2ratio.keys()).difference(set(j2jt.keys()))) == 0
+
     
     metrics = {}
-    metric_stack  = {}
-    metric_stack.update({f"f1-{ratio}-micro":[] for ratio in ratios})
-    metric_stack.update({f"f1-{ratio}":[] for ratio in ratios})
 
-    for ratio in ratios:
+    for threshold in thresholds:
 
-        # TARGET seg that overlap with some PREDICTED seg
-        # where j has a i which match over ratio
-        source_mask = target_df["i_ratio"].to_numpy() >= ratio
+        #if calc_lable_metric:
 
-        # PREDICTED seg overlap with some TARGET seg
-        # i match a j over a ratio
-        p_source_mask = pred_df["j_ratio"].to_numpy() >= ratio
+        ### LABEL METRICS
+        label_cm = label_confusion_matrix(
+                                labels = task_labels["label"],
+                                threshold = threshold,
+                                i2ratio = i2ratio,
+                                j2ratio = j2ratio,
+                                i2j = i2j,
+                                j2label = j2label,
+                                i2label = i2label,
+                                )
 
-        if calc_lable_metric:
-
-            label_cm = count_missing(
-                    target_df = target_df,
-                    task = "label", 
-                    labels = task_labels["label"],
-                    mask = source_mask
-                    )
-
-
-            label_cm += count_predicted(
-                            pred_df = pred_df,
-                            target_df = target_df,
-                            task = "label", 
-                            labels = task_labels["label"], 
-                            target_mask = source_mask,
-                            pred_mask = p_source_mask
-                            )
-
-
-            metrics.update(calc_f1( 
+        label_metrics = calc_f1( 
                         label_cm, 
                         labels = task_labels["label"],
-                        prefix =f"label-{ratio}-",
+                        prefix =f"label-{threshold}-",
                         task = "label",
-                        ))
-
-            metric_stack[f"f1-{ratio}"].append(metrics[f"label-{ratio}-f1"])
-            metric_stack[f"f1-{ratio}-micro"].append(metrics[f"label-{ratio}-f1-micro"])
-
-
-
-
-        if calc_link_lable_metric:
-
-            # TARGET seg target whih is the same as PREDICTED seg target
-            # for each j-t we check the target i-t of all i that is match for j
-            i_t = pred_df.loc[target_df["i"].to_numpy(), "target_id"].to_numpy()
-            link_mask = target_df["target_id"].to_numpy() == pred_df.loc[i_t, "j"].to_numpy()
-
-            # PREDICTED seg target is matching a TARGET seg
-            # if the i-t of j match over the ratio threshold
-            target_match = pred_df.loc[i_t, "j_ratio"].to_numpy() >= ratio
-
-
-            # PREDICTED seg target is the same as TARGET seg target
-            # if i-t is the same as j-t
-            p_link_mask = pred_df.loc[pred_df["target_id"], "j"].to_numpy()  == target_df.loc[pred_df["j"].to_numpy(), "target_id"].to_numpy()
-
-            # PREDICTED seg target overlap with some TARGET SEG
-            # if the segment target/link destination of the predicted segments is overlapping with a target segment
-            p_target_match = pred_df.loc[pred_df["target_id"], "j_ratio"].to_numpy() >= ratio
-
-
-            link_label_cm = count_missing(
-                        target_df = target_df,
-                        task = "link_label", 
-                        labels = task_labels["link_label"],
-                        mask = source_mask * link_mask * target_match
                         )
 
+        metrics.update(label_metrics)
 
-            link_label_cm += count_predicted(
-                            pred_df = pred_df,
-                            target_df = target_df, 
-                            task = "link_label", 
-                            labels = task_labels["link_label"], 
-                            target_mask = source_mask * link_mask * target_match,
-                            pred_mask = p_source_mask * p_link_mask * p_target_match
+
+        ### LINK LABEL METRICS
+        if calc_link_lable_metric:
+            link_label_cm = link_label_confusion_matrix(
+                                    labels = task_labels["link_label"],
+                                    threshold = threshold,
+                                    i2ratio = i2ratio,
+                                    j2ratio = j2ratio,
+                                    i2j = i2j,
+                                    j2i = j2i,
+                                    j2jt = j2jt,
+                                    i2it = i2it,
+                                    j2link_label = j2link_label,
+                                    i2link_label = i2link_label,
+                                    )
+
+            link_label_metrics = calc_f1( 
+                            link_label_cm, 
+                            labels = task_labels["link_label"],
+                            prefix = f"link_label-{threshold}-",
+                            task = "link_label"
                             )
-
-            metrics.update(calc_f1( 
-                    link_label_cm, 
-                    labels = task_labels["link_label"],
-                    prefix = f"link_label-{ratio}-",
-                    task = "link_label"
-                    ))
-
-            metric_stack[f"f1-{ratio}"].append(metrics[f"link_label-{ratio}-f1"])
-            metric_stack[f"f1-{ratio}-micro"].append(metrics[f"link_label-{ratio}-f1-micro"])
+            metrics.update(link_label_metrics)
 
 
-    for k,v in metric_stack.items():
-        metrics[k] = np.mean(v)
 
+        #ugly quick fix
+        if calc_link_lable_metric:
+
+            metrics[f"{threshold}-f1"] = np.mean([
+                                                    metrics[f"link_label-{threshold}-f1"],
+                                                    metrics[f"label-{threshold}-f1"],
+                                                ])
+
+            metrics[f"{threshold}-f1-micro"] = np.mean([
+                                                    metrics[f"link_label-{threshold}-f1-micro"],
+                                                    metrics[f"label-{threshold}-f1-micro"],
+                                                ])
+        else:
+            metrics[f"{threshold}-f1"] = np.mean([
+                                                    0,
+                                                    metrics[f"label-{threshold}-f1"],
+                                                ])
+
+            metrics[f"{threshold}-f1-micro"] = np.mean([
+                                                    0,
+                                                    metrics[f"label-{threshold}-f1-micro"],
+                                                ])
+
+    
     return metrics

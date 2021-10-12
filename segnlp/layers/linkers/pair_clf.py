@@ -1,5 +1,7 @@
 
-import numpy as np
+#basics
+from typing import Union
+
 
 #pytorch
 import torch
@@ -8,10 +10,10 @@ import torch.nn.functional as F
 import torch.nn as nn
 
 #segnlp
-from segnlp.layers.general import LinearCLF
+from segnlp import utils
 
 
-class PairCLF(LinearCLF):
+class PairCLF(nn.Module):
 
     """
     Input is assumed to be pair embedding.
@@ -25,20 +27,17 @@ class PairCLF(LinearCLF):
 
     def __init__(self,
                 input_size:int, 
-                dropout:float=0.0,
                 loss_reduction = "mean",
                 ignore_index = -1,
-                weight_init = "normal",
-                weight_init_kwargs : dict = {}):
-        super().__init__(
-                        input_size = input_size, 
-                        output_size = 1, 
-                        dropout = dropout,
-                        loss_reduction = loss_reduction,
-                        ignore_index = ignore_index,
-                        weight_init = weight_init,
-                        weight_init_kwargs = weight_init_kwargs
-                        )
+                weight_init : Union[str, dict] = None,
+                ):
+        super().__init__()
+        self.clf = nn.Linear(input_size, 1)
+        self.loss_reduction = loss_reduction
+        self.ignore_index = ignore_index
+        
+        utils.init_weights(self, weight_init)
+
 
     def forward(self, 
                 input:torch.tensor, 
@@ -46,7 +45,7 @@ class PairCLF(LinearCLF):
                 ):
 
         #predict links
-        pair_logits = self.clf(self.dropout(input)).squeeze(-1)
+        pair_logits = self.clf(input).squeeze(-1)
     
     
         # for all samples we set the probs for non existing segments to inf and the prob for all

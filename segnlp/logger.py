@@ -2,11 +2,9 @@ import logging
 import os
 import sys
 from logging.handlers import TimedRotatingFileHandler
-from tqdm import tqdm
 
 FORMATTER = logging.Formatter("%(asctime)s — %(name)s — %(levelname)s — %(message)s")
 
-#logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
 
 def get_log_file(suffix:str):
     # if 'LOG_FILE' in os.environ and os.environ['LOG_FILE']:

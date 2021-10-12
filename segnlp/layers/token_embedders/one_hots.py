@@ -1,6 +1,7 @@
 
 #basics
 from typing import Sequence, Union
+from numpy.lib.arraysetops import isin
 from torch.functional import Tensor
 
 # pytorch
@@ -11,29 +12,25 @@ from torch.nn.utils.rnn import pad_sequence
 
 
 # segnlp
-from segnlp.resources.pos import spacy_pos 
-from segnlp.resources.deps import spacy_dep 
 from segnlp import utils
+from segnlp.resources import vocabs
 
 
 class OneHots(nn.Module):
 
-    def __init__(self, labels:list = None):
+    def __init__(self, vocab: Union[str, list]) -> None:
         super().__init__()
-        self.vocab = {l.lower():i for i,l in enumerate(labels)}
+        self.vocab = getattr(vocabs, vocab)() if isinstance(vocab, str) else vocab
         self.output_size = len(self.vocab)
     
-
-    def __encode(self, input:Sequence):
-        return torch.LongTensor([self.vocab[x.lower()] for x in input])
-
 
     def forward(self, 
                 input: Sequence,
                 lengths : Tensor = None,
                 device : Union[str, torch.device] = "cpu"
                 ):
-        ids = self.__encode(input)
+
+        ids = torch.LongTensor(self.vocab[input]).to(device)
         one_hots = F.one_hot(ids, num_classes=self.output_size)
 
         if lengths is not None:
@@ -48,17 +45,4 @@ class OneHots(nn.Module):
 
 
         return one_hots.to(device)
-
-
-class PosOneHots(OneHots):
-
-    def __init__(self):
-        super().__init__(labels=spacy_pos)
-
-
-class DepOneHots(OneHots):
-
-    def __init__(self):
-        super().__init__(labels=spacy_dep)
-
  
