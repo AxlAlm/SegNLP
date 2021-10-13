@@ -57,8 +57,9 @@ class TestLoop:
         hyperparamaters = hp_config["hyperparamaters"]
         random_seeds = hp_config["random_seeds_done"]
 
+        #best_pred_dfs = None
+        #top_score = 0
         for random_seed in tqdm(random_seeds, desc= "random_seeds"):
-
 
             if "cuda" in device:
                 device_id = device[-1]
@@ -71,6 +72,7 @@ class TestLoop:
             #model path 
             model_path = glob(os.path.join(self._path_to_models, best_hp_id, f"{random_seed}*"))[0]
             
+
             #setup model
             model = self.model(
                         hyperparamaters  = deepcopy(hyperparamaters),
@@ -87,15 +89,19 @@ class TestLoop:
 
             # set model to model to evaluation mode
             model.eval()
+            #pred_batch_dfs = []
             with torch.no_grad():
 
                 for test_batch in tqdm(test_dataset, desc = "Testing", total = len(test_dataset), leave = False):
-                    
+                        
                     # set device for batch
                     test_batch.to(device)
 
                     #pass the batch to model
                     model(test_batch)
+
+                    #add pred_df
+                    #pred_batch_dfs.append(test_batch._pred_df)
 
                     #calculate the metrics
                     metric_container.calc_add(test_batch, "test")
@@ -112,6 +118,11 @@ class TestLoop:
                                 cv = 0
                                 )
 
+        #     if test_epoch_metrics[monitor_metric] > top_score:
+        #         top_score = test_epoch_metrics[monitor_metric]
+        #         best_pred_dfs = pred_batch_dfs
+        # pred_df = pd.concat(best_pred_dfs)
+        # pred_df.to_csv(self._path_to_test_preds)
 
         self.rank_test(monitor_metric)
 
@@ -121,6 +132,7 @@ class TestLoop:
         index = [c for c in mean_df.index if c not in filter_list]
         mean_df = mean_df.loc[index]
 
-        mean_df["majority"] = pd.DataFrame(self.baseline_scores()["test"]["majority"]).mean()
-        mean_df["random"] = pd.DataFrame(self.baseline_scores()["test"]["random"]).mean()
+        for baseline in self._baselines:
+            mean_df[baseline] = pd.DataFrame(self.baseline_scores()["test"][baseline]).mean()
+            
         print(mean_df)

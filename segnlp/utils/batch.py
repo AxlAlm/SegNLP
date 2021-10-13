@@ -38,6 +38,21 @@ class Batch:
         self._df : pd.DataFrame = df
         self._pred_df : pd.DataFrame = df.copy(deep=True)
 
+        self.label_encoder : LabelEncoder = label_encoder
+        self._task_regexp = re.compile("seg|link|label|link_label")
+        self._pretrained_features = pretrained_features
+        self.device = device
+        self.__ok_levels = set(["seg", "token", "span", "pair"])
+        self.use_target_segs : bool = False
+        self._size = self._df["sample_id"].nunique()
+
+        # cache
+        self.__cache = {}
+
+
+        if "am_id" in self._df.columns:
+            self.__ok_levels.update(["am", "adu"])
+
 
         if "seg" in label_encoder.task_labels:
             self._pred_df["seg_id"] = None
@@ -46,24 +61,15 @@ class Batch:
         for task in label_encoder.task_labels:
             self._pred_df[task] = None
 
-        #
-        self.label_encoder : LabelEncoder = label_encoder
-        self._task_regexp = re.compile("seg|link|label|link_label")
-        self._pretrained_features = pretrained_features
-        self.device = device
-        self.__ok_levels = set(["seg", "token", "span", "pair"])
 
-        if "am_id" in self._df.columns:
-            self.__ok_levels.update(["am", "adu"])
+        # #remove columns we dont need
+        # for c in list(self._pred_df.columns):
 
-        self._size = self._df["sample_id"].nunique()
+        #     if self._task_regexp.search(c) and c not in label_encoder.task_labels:
+        #         del self._df[c]
+        #         del self._pred_df[c]
 
-        self.use_target_segs : bool = False
-
-        # cache
-        self.__cache = {}
-
-
+ 
     def __len__(self):
         return self._size
  
@@ -431,6 +437,7 @@ class Batch:
 
     def add(self, level:str, key:str, value:str):
 
+
         if key not in self.label_encoder.task_labels:
             raise KeyError(f"cannot add values to key ='{key}'")
 
@@ -520,6 +527,7 @@ class Batch:
                 # exapnd target_id over the rows
                 self._pred_df.loc[row_mask, "target_id"] = np.repeat(target_ids, segs.size().to_numpy())
         
+
 
     def to(self, device):
         self.device = device

@@ -32,7 +32,7 @@ class BIODecoder:
         
     def __call__(self, encoded_bios:List[str], sample_start_idxs:np.ndarray=None):
 
-        encoded_bios = ensure_numpy(encoded_bios)
+        encoded_bios = ensure_numpy(encoded_bios).astype(int)
 
         if sample_start_idxs is not None:
             # we insert an arbitrary value 9999 to be used as a start pattern so we can seperate samples
@@ -42,7 +42,7 @@ class BIODecoder:
 
         else:
             encoded_bios_str = self.start_value + "-".join(encoded_bios.astype(str)) + "-"
-        
+
         all_matches = re.finditer(self.pattern, encoded_bios_str)
 
         tok_seg_ids = np.full(encoded_bios.shape, fill_value=np.nan)

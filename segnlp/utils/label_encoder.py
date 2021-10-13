@@ -27,7 +27,7 @@ class LabelEncoder:
         if task == "seg":
             self.__decode_segs(df)
 
-        if level == "token":
+        if level == "token" and task != "seg":
             self.__ensure_homogeneous(task, df)
 
         if task == "link":
@@ -41,7 +41,6 @@ class LabelEncoder:
                             df = df,
                             level = level
                             )
-
         return df
         
 
@@ -131,6 +130,10 @@ class LabelEncoder:
         count_df.rename(columns={0:"counts"}, inplace=True)
         count_df.drop_duplicates(subset=['seg_id'], inplace=True)
 
+        print(count_df)
+        print(count_df[task].to_numpy())
+        print(lol)
+
         seg_lengths = df.groupby("seg_id", sort=False).size()
         most_common = np.repeat(count_df[task].to_numpy(), seg_lengths)
 
@@ -189,7 +192,7 @@ class LabelEncoder:
             # for links we add the decoded label, i.e. value indicates number of segments plus or minus the head segment is positioned.
             # so we need to encode these links so they refer to the specific segment index in a sample. Do do this we need to 
             # first let the segmentation create segment ids. See below where this is done
-            if "link" == subtask:
+            if subtask == "link":
 
                 df.loc[:,subtask] = subtask_preds[:,i]
                 self.encode(

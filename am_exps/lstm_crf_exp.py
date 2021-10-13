@@ -30,7 +30,7 @@ hps = {
                 "gradient_clip_val": 5.0
                 },
         "linear_finetuner":{},
-        "word_dropout": {
+        "token_dropout": {
                         "p":0.05
                         },
         "paramater_dropout": {

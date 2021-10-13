@@ -10,7 +10,13 @@ from segnlp.utils.stat_sig import compare_dists
 
 class RankItem(dict):
     
-    def __init__(self, id:str, v:float, scores:np.ndarray, metric:str):
+    def __init__(self, 
+                id:str, 
+                v:float, 
+                scores:np.ndarray, 
+                metric:str,
+                random_seeds : np.ndarray,
+                ):
         self["id"] = id
         self["v"] = v
         self["max"] = np.max(scores)
@@ -18,6 +24,7 @@ class RankItem(dict):
         self["mean"] = np.mean(scores)
         self["std"] = np.std(scores)
         self["metric"] = metric
+        self["top_random_seed"] = random_seeds[np.argmax(scores)]
 
 
 class Ranking:
@@ -57,6 +64,22 @@ class Ranking:
 
 
     def __set_baseline_ranks(self, score_dists:dict, monitor_metric:str):
+        """
+        init the rankings with a baseline classificer. If ther are two baselines
+        we also compare these two and rank them.
+        """
+
+        if self._baselines[0] == "sentence_bio":
+            scores = score_dists["sentence_bio"][monitor_metric]
+            return [
+                    RankItem(
+                            id = "sentence_bio", 
+                            v = -1, 
+                            scores = scores,
+                            metric = monitor_metric,
+                            random_seeds = score_dists["sentence_bio"]["random_seed"]
+                            ),
+                    ] 
 
         a = score_dists["majority"][monitor_metric]
         b = score_dists["random"][monitor_metric]
@@ -65,21 +88,57 @@ class Ranking:
         majority_is_best, m_v = compare_dists(a, b)
         if majority_is_best:
             return [
-                    RankItem(id = "majority", v = m_v, scores = a, metric = monitor_metric),
-                    RankItem(id = "random", v = -1, scores = b, metric = monitor_metric),
+                    RankItem(
+                            id = "majority", 
+                            v = m_v, 
+                            scores = a, 
+                            metric = monitor_metric,
+                            random_seeds = score_dists["majority"]["random_seed"]
+                            ),
+                    RankItem(
+                            id = "random", 
+                            v = -1, 
+                            scores = b, 
+                            metric = monitor_metric,
+                            random_seeds = score_dists["random"]["random_seed"]
+                            ),
                     ]
                     
         # we see if random is better than majority
         random_is_best, r_v = compare_dists(b, a)
         if random_is_best:
             return [
-                    RankItem(id = "random", v = r_v, scores = b, metric = monitor_metric),
-                    RankItem(id = "majority", v = -1, scores = a, metric = monitor_metric),
+                    RankItem(
+                            id = "random", 
+                            v = r_v, 
+                            scores = b, 
+                            metric = monitor_metric,
+                            random_seeds = score_dists["random"]["random_seed"]
+                            ),
+                    RankItem(
+                            id = "majority", 
+                            v = -1, 
+                            scores = a, 
+                            metric = monitor_metric,
+                            random_seeds = score_dists["majority"]["random_seed"]
+                            ),
                     ]
 
         return [
-                    RankItem(id = "random", v = -1, scores = b, metric = monitor_metric),
-                    RankItem(id = "majority", v = -1, scores = a, metric = monitor_metric),
+                    RankItem(
+                            id = "random", 
+                            v = -1, 
+                            scores = b, 
+                            metric = monitor_metric,
+                            random_seeds = score_dists["random"]["random_seed"]
+                            ),
+                    RankItem(
+                            id = "majority",
+                            v = -1, 
+                            scores = a, 
+                            metric = monitor_metric,
+                            random_seeds = score_dists["majority"]["random_seed"]
+                            ),
                     ]
 
 
@@ -98,7 +157,8 @@ class Ranking:
                                                     id = hp_id, 
                                                     v = -1, 
                                                     scores = a, 
-                                                    metric = monitor_metric
+                                                    metric = monitor_metric,
+                                                    random_seeds = score_dists[hp_id]["random_seed"],
                                                     )
                                         )
                     break
@@ -114,7 +174,8 @@ class Ranking:
                                                         id = hp_id, 
                                                         v = v, 
                                                         scores = a,
-                                                        metric = monitor_metric
+                                                        metric = monitor_metric,
+                                                        random_seeds = score_dists[hp_id]["random_seed"],
                                                         ))
                     break
 
