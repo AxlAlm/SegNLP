@@ -51,6 +51,8 @@ SegNLP will provide preprocessing, data handling, logging, training, evaluation,
 
 The diagram below gives a very simplified overview over the APIs and core Classes.
 
+![](/docs/overview.png)
+
 The "only" things you have to do to use SegNLP is to:
 
 1) select a dataset and define the configuration of it
