@@ -51,7 +51,7 @@ SegNLP will provide preprocessing, data handling, logging, training, evaluation,
 
 The diagram below gives a very simplified overview over the APIs and core Classes.
 
-![](/docs/overview.png)
+![](https://github.com/AxlAlm/SegNLP/chaining/docs/api_overview.md)
 
 The "only" things you have to do to use SegNLP is to:
 
@@ -89,8 +89,7 @@ TBA
 TBA
 
 
-## Replication study in Argument Mining
-
+## [Replication study in Argument Mining](https://github.com/AxlAlm/SegNLP/chaining/am_exps/am_exps.md)
 
 ## An example
 
