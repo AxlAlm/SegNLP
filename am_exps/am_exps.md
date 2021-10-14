@@ -48,7 +48,7 @@ possible LEVEL values are a bit specific to the various models:
 
 different modes are:
 
-    train, test or both (does both train and test)
+train, test or both (does both train and test)
 
 
 for GPU you simply pass the device id of the GPU you want to use. NOTE! lstm_er will currently break on GPU due to Deep Graph Library..
