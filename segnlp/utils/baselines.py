@@ -9,6 +9,7 @@ import torch
 
 # segnlp
 from .array import ensure_numpy
+from .array import np_cumsum_zero
 
 
 def random_link_clf():
@@ -155,6 +156,7 @@ class SentenceBaseline(Baseline):
     def __init__(self, clfs : Dict[str, Callable], p:float):
         super().__init__(clfs = clfs)
         self._tasks = list(clfs.keys())
+        self._columns = set(self._tasks + ["target_id"])
         self._p = p
         
 
@@ -198,11 +200,14 @@ class SentenceBaseline(Baseline):
         # set index to seg_id expand rows easier
         df = df.set_index(["seg_id"])
         df["seg_id"] = df.index
+
+        # find the columns we want
+        columns = [c for c in seg_df.columns if c in self._columns]
+    
+        # for seg_id, row in seg_df.iterrows():
+        #     task_preds = row[columns]
         
-        for seg_id, row in seg_df.iterrows():
-            task_preds = [row[t] for t in self._tasks] + [row["target_id"]]
-            df.loc[seg_id, self._tasks+ ["target_id"]] = task_preds
-        
+        df.loc[seg_df.index.to_numpy(), columns] = seg_df[columns]
         df.index = o_index
         return df
 
@@ -238,3 +243,54 @@ class SentenceMajorityBaseline(MajorityBaseline):
         clfs = create_majority_baseline_clfs(task_labels)
         return SentenceBaseline(clfs = clfs, p = p)
 
+
+
+class SentenceBIOBaseline:
+
+    def __init__(self, p: float, random_seed:int):
+        random.seed(random_seed)
+        self._p = p
+        
+
+    def __call__(self, df):
+
+        o_index = df.index
+
+        # We set sentences as segments ids
+        df["seg_id"] = None
+
+        # then we selected sentences 
+        n_sentences = df["sentence_id"].nunique()
+
+        # then we extract the length of each sentence
+        sent_groups = df.groupby("sentence_id", sort = False)
+        sentence_lengths = sent_groups.size().to_numpy()
+        sentences_ids = sent_groups.first().index.to_numpy()
+
+        # then we set setting sentence_id to  index so we can filter easily
+        df.set_index(["sentence_id"], inplace = True)
+
+        # the we select sentences
+        mask = ensure_numpy(torch.zeros(n_sentences).bernoulli_(self._p)).astype(bool)
+        sentence_idx = np.arange(n_sentences)[mask]
+        sentences_ids = sentences_ids[mask]
+        n_selected = len(sentences_ids)
+
+        # then we select rows using our selected sentences and add a new range of ids 
+        # as segment ids.
+        df.loc[sentences_ids, "seg_id"] = np.repeat(
+                                                        np.arange(n_selected),
+                                                        sentence_lengths[sentence_idx]
+                                                        )
+
+        # then we create a vector full of 2 for "I"
+        bi = np.full(np.sum(sentence_lengths[sentence_idx]), fill_value=2)
+
+        # then we set 1 at each start
+        start_idxs = np_cumsum_zero(sentence_lengths).astype(int)
+        bi[start_idxs] = 1
+
+        #then we add segmentation labeling
+        df.loc[sentences_ids, "seg"] = bi
+
+        return df

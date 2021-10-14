@@ -14,6 +14,7 @@ from segnlp.utils.baselines import MajorityBaseline
 from segnlp.utils.baselines import RandomBaseline
 from segnlp.utils.baselines import SentenceMajorityBaseline
 from segnlp.utils.baselines import SentenceRandomBaseline
+from segnlp.utils.baselines import SentenceBIOBaseline
 
 
 class Baseline:
@@ -123,7 +124,14 @@ class Baseline:
             
             score_dfs.append(score_df)
 
-        return score_dfs
+
+        sdf = pd.concat(score_dfs)
+        sdf.set_index("baseline", inplace = True)
+
+        return {
+                "random" : sdf.loc["random"].to_dict("list"),
+                "majority" : sdf.loc["majority"].to_dict("list")
+                }
 
 
     def __get__baseline_scores(self,
@@ -152,43 +160,73 @@ class Baseline:
 
             score_dfs.append(score_df)
 
-        return score_dfs
+
+        sdf = pd.concat(score_dfs)
+        sdf.set_index("baseline", inplace = True)
+
+        return {
+                "random" : sdf.loc["random"].to_dict("list"),
+                "majority" : sdf.loc["majority"].to_dict("list")
+                }
+
+
+    def __get_sentence_bio_baseline_score(self,
+                                        df: pd.DataFrame,
+                                        metric_f: Callable,
+                                        task_labels_ids : dict,
+                                        majority_labels : dict
+                                        ):
+
+        score_df = self.__run_baseline(
+                        baseline = SentenceBIOBaseline,
+                        name = "sentence_bio",
+                        df = df,
+                        kwargs = dict(
+                                        p = 1.0
+                                    ),
+                        metric_f = metric_f,
+                        task_labels = self.task_labels
+                    )
+
+        score_df.set_index("baseline", inplace = True)
+        return {
+                "sentence_bio" : score_df.loc["sentence_bio"].to_dict("list"),
+                }
 
 
     def baseline_scores(self):
 
         if os.path.exists(self._path_to_bs_scores):
-            return utils.load_json(self._path_to_bs_scores)
+            baseline_scores  = utils.load_json(self._path_to_bs_scores)
+            self._baselines = list(baseline_scores["val"].keys())
+            return baseline_scores
         
         val_df, test_df = self.__load_data()   
         task_labels_ids = self.__get_task_labels_ids()
         majority_labels = self.__get_majority_labels(task_labels_ids)
         metric_f = getattr(metrics, self.metric)
 
-
-        if "seg" in self.all_tasks:
+        if self.all_tasks == ["seg"]:
+            score_f = self.__get_sentence_bio_baseline_score
+            self._baselines = ["sentence_bio"]
+        elif "seg" in self.all_tasks:
             score_f = self.__get_sentence_baselines_scores
+            self._baselines = ["majority", "random"]
         else:
             score_f = self.__get__baseline_scores
+            self._baselines = ["majority", "random"]
 
 
         baseline_scores = {}
         for split, split_df in zip(["val", "test"], [val_df, test_df]):
-            score_dfs = score_f(
-                                df = split_df,
-                                metric_f = metric_f,
-                                task_labels_ids = task_labels_ids,
-                                majority_labels = majority_labels,
-                                )
 
+            baseline_scores[split] = score_f(
+                                                df = split_df,
+                                                metric_f = metric_f,
+                                                task_labels_ids = task_labels_ids,
+                                                majority_labels = majority_labels,
+                                                )
 
-            df = pd.concat(score_dfs)
-            df.set_index("baseline", inplace = True)
-
-            baseline_scores[split] = {
-                                        "random" : df.loc["random"].to_dict("list"),
-                                        "majority" : df.loc["majority"].to_dict("list")
-                                    }
             
         utils.save_json(baseline_scores, self._path_to_bs_scores)
         return baseline_scores

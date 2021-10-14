@@ -151,7 +151,7 @@ class Pipeline(
         self._path_to_splits : str = os.path.join(self._path_to_data, "splits.pkl") # for splits
         self._path_to_bs_scores : str = os.path.join(self._path, "baseline_scores.json") # for hp history
         self._path_to_rankings : str = os.path.join(self._path, "rankings.csv") # for hp history
-
+        self._path_to_test_preds :str = os.path.join(self._path, "test_preds.csv") # for hp history
 
     @property
     def hp_ids(self):

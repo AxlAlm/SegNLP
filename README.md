@@ -5,15 +5,95 @@
 
 A NLP framework for Neural Networks for segmentation and linking tasks such as Argument Mining and Named Entity Recognition and Linking.
 
+The goal for the network is to:
 
-## Setup and Installation
+1) Collect layers and techniques in the form of torch.nn.Modules which anyone can import and use.
+
+2) Provide a easy and quick way to build models for Segmentation and Linking tasks.
+
+3) Provide a unified framework for preprocessing, training, metrics and evaluation which used the currently recommended techniques in research and tech.
+
+
+Long term goals is to:
+
+1) support more datasets and an easy way to add costum datasets
+
+2) support automated model building by hypertuning the selection and combination of layers
+
+3) add more layers
+
+
+### Setup and Installation
 
 - clone repo
 - install the packages using environment.yml or requirements.txt.
 
 NOTE! only tested with python==3.7.4 
 
-## Get Started
+### What is SegNLP
+
+SegNLP is a higher order API providing everything you need to build, train and evaluate models solving 1 or more of the following tasks:
+
+1) segmentation (seg): Identifying segments in text
+2) labeling (label): Labeling/classifying segments into a type
+3) linking (link): linking segments to eachother
+4) link labeling (link_label): labeling the link between two segments
+
+Under this higher order abstraction of NLP tasks falls for example tasks such as Argument Mining, Named Entity Recognition and Linking/relation extraction.
+
+Currently, only Argument Mining is supported and tested.
+
+SegNLP will provide preprocessing, data handling, logging, training, evaluation, metric, model building tools as well as modular layers specific to a task or a type of technique for encoding, embedding, aggregation, attention, dropout etc..
+
+
+
+### Overview
+
+The diagram below gives a very simplified overview over the APIs and core Classes.
+
+![](https://github.com/AxlAlm/SegNLP/chaining/docs/api_overview.md)
+
+The "only" things you have to do to use SegNLP is to:
+
+1) select a dataset and define the configuration of it
+
+2) create a SegModel
+
+3) set up a pipeline
+
+4) run Pipeline.train() to tune hyperparamaters and rank them
+
+5) run Pipeline.test() to test the best hyperparamaters on the test set
+
+6) TBA compare different models with eachother 
+
+
+
+#### how does SegNLP.Pipeline work?
+
+TBA
+
+
+#### how does SegNLP.SegModel work?
+
+TBA
+
+
+#### what layers are there?
+
+TBA
+
+
+#### How is Evaluation done?
+
+TBA
+
+
+#### [Replication study in Argument Mining](https://github.com/AxlAlm/SegNLP/chaining/am_exps/am_exps.md)
+
+
+#### An example
+
 
 ##### Pick a dataset
 
@@ -138,7 +218,6 @@ hps = {
 # All outputs are also logged to ~/.segnlp/<id>/logs/<n>.log
 exp.train(
         hyperparamaters = hps,
-        n_random_seeds=6,
         monitor_metric="f1-0.5",
         #overfit_n_batches = 1
         )
@@ -150,9 +229,6 @@ exp.train(
 ##### Testing some models
 
 
-### Information
-
-TBA
 
 ### Mentions / References
 
@@ -171,4 +247,4 @@ TBA
 
 ### TODO
 
-- installing by Pip
+-  make pip package
