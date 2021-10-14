@@ -89,7 +89,9 @@ TBA
 TBA
 
 
-#### [Replication study in Argument Mining](https://github.com/AxlAlm/SegNLP/chaining/am_exps/am_exps.md)
+#### [Replication study in Argument Mining](https://github.com/AxlAlm/SegNLP/blob/main/am_exps/am_exps.md)
+
+We replicate SOTA models in Argument Mining using SegNLP and extend some SOTA models with segmentation capabilities.
 
 
 #### An example
