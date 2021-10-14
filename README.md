@@ -23,14 +23,14 @@ Long term goals is to:
 3) add more layers
 
 
-## Setup and Installation
+### Setup and Installation
 
 - clone repo
 - install the packages using environment.yml or requirements.txt.
 
 NOTE! only tested with python==3.7.4 
 
-## What is SegNLP
+### What is SegNLP
 
 SegNLP is a higher order API providing everything you need to build, train and evaluate models solving 1 or more of the following tasks:
 
@@ -47,7 +47,7 @@ SegNLP will provide preprocessing, data handling, logging, training, evaluation,
 
 
 
-## Overview
+### Overview
 
 The diagram below gives a very simplified overview over the APIs and core Classes.
 
@@ -69,29 +69,30 @@ The "only" things you have to do to use SegNLP is to:
 
 
 
-## how does SegNLP.Pipeline work?
+#### how does SegNLP.Pipeline work?
 
 TBA
 
 
-## how does SegNLP.SegModel work?
+#### how does SegNLP.SegModel work?
 
 TBA
 
 
-## what layers are there?
+#### what layers are there?
 
 TBA
 
 
-## How is Evaluation done?
+#### How is Evaluation done?
 
 TBA
 
 
-## [Replication study in Argument Mining](https://github.com/AxlAlm/SegNLP/chaining/am_exps/am_exps.md)
+#### [Replication study in Argument Mining](https://github.com/AxlAlm/SegNLP/chaining/am_exps/am_exps.md)
 
-## An example
+
+#### An example
 
 
 ##### Pick a dataset
@@ -217,7 +218,6 @@ hps = {
 # All outputs are also logged to ~/.segnlp/<id>/logs/<n>.log
 exp.train(
         hyperparamaters = hps,
-        n_random_seeds=6,
         monitor_metric="f1-0.5",
         #overfit_n_batches = 1
         )
