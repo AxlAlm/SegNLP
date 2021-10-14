@@ -51,7 +51,7 @@ SegNLP will provide preprocessing, data handling, logging, training, evaluation,
 
 The diagram below gives a very simplified overview over the APIs and core Classes.
 
-![](https://github.com/AxlAlm/SegNLP/chaining/docs/api_overview.md)
+![](https://github.com/AxlAlm/SegNLP/blob/main/docs/api_overview.png)
 
 The "only" things you have to do to use SegNLP is to:
 
