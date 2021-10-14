@@ -62,30 +62,29 @@ TBA
 
 ### Segmentation Model
 
-    - lstm_crf is a model aimed to solve segmentation, i.e. task 1 (seg)
+lstm_crf is a model aimed to solve segmentation, i.e. task 1 (seg)
 
 
 ### Models on Segment Level
 
-    - jpnn is aims to solve task 2 and 3
+jpnn is aims to solve task 2 and 3
 
-    - lstm_dist aim to solve task 1,2 and 3
+lstm_dist aim to solve task 1,2 and 3
 
 ### End-to-End models
 
-    - lstm_cnn_crf aim to solve all tasks
+lstm_cnn_crf aim to solve all tasks
 
-    - lstm_er aim to solve all tasks
+lstm_er aim to solve all tasks
 
 
 ## Experiment 2: Extending
 
+To understand how jpnn and lstm_dist perform given that we instead of giving these models gold segments, we give them
+predicted segments, i.e. output of the lstm_crf.
 
-    To understand how jpnn and lstm_dist perform given that we instead of giving these models gold segments, we give them
-    predicted segments, i.e. output of the lstm_crf.
-
-    We do this by creating a new model which is lstm_crf + jpnn and lstm_crf + lstm_dist. i.e. we add the layers (the whole token_module) of the lstm_crf to the jpnn and lstm_dist. Then we can load in the pretrained weights for lstm_crf into the lstm_crf part of the new model and load the weights of jpnn/lstm-dist into the jpnn/lstm-dist part. hence, we get a model
-    which can all task (almsot for jpnn).
+We do this by creating a new model which is lstm_crf + jpnn and lstm_crf + lstm_dist. i.e. we add the layers (the whole token_module) of the lstm_crf to the jpnn and lstm_dist. Then we can load in the pretrained weights for lstm_crf into the lstm_crf part of the new model and load the weights of jpnn/lstm-dist into the jpnn/lstm-dist part. hence, we get a model
+which can all task (almsot for jpnn).
 
 
     TBA
