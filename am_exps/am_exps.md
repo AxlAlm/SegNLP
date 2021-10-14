@@ -19,7 +19,7 @@ To the best of our knowledge the only Argument Mining dataset which contain all 
 all experiments are run using the following commoand:
 
 
-python run.py -model <MODEL> -level <LEVEL> -mode <MODE>  -gpu <ID>
+    python run.py -model <MODEL> -level <LEVEL> -mode <MODE>  -gpu <ID>
 
 selectign a model will select a specifc experiment using a specific model. These experiement files end on "_exp.py".
 Hyperparamaters are selected from the papers we are trying to replicate.
