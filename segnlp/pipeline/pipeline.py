@@ -89,7 +89,7 @@ class Pipeline(
         self.task_labels : Dict[str,list] = dataset.task_labels
         self.all_tasks : list = sorted(set(self.tasks + self.subtasks))
         self.label_encoder : utils.LabelEncoder = utils.LabelEncoder(task_labels = self.task_labels)
-        
+
         # init files
         self.__init__dirs_and_files(overwrite = overwrite)
 

@@ -58,9 +58,14 @@ class DataSet:
         if sample_level not in self._supported_sample_levels:
             raise RuntimeError(f"'{sample_level}' is not in supported sample levels: {self._supported_sample_levels}")
 
-        if prediction_level == "seg":
+        if prediction_level != "seg":
+            
             if "label" in supported_task_labels:
-                supported_task_labels["label"].remove("None")
+                supported_task_labels["label"].insert(0, "None")
+
+            if "link_label" in supported_task_labels:
+                supported_task_labels["link_label"].insert(0, "None")
+
 
         data_dir = self._download_data()
         data = self._process_data(data_dir)

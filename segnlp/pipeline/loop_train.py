@@ -50,8 +50,7 @@ class TrainLoop:
         batch_size = hyperparamaters["general"]["batch_size"]
         patience = hyperparamaters["general"].get("patience", None)
         use_target_segs_k = hyperparamaters["general"].get("use_target_segs_k", None)
-        #token_module_freeze_k = hyperparamaters["general"].get("token_module_freeze", False)
-        freeze_segment_module_k = hyperparamaters["general"].get("freeze_segment_module_k", False)            
+        pretrain_seg = hyperparamaters["general"].get("pretrain_seg", False)            
 
         #loading our preprocessed dataset
         datamodule  = utils.DataModule(
@@ -136,9 +135,9 @@ class TrainLoop:
 
 
             # will also freeze and set modules to skip if needed
-            cond1 = epoch < freeze_segment_module_k
-            cond2 = freeze_segment_module_k == -1
-            freeze_segment_module = (cond1 or cond2) and freeze_segment_module_k != False
+            cond1 = epoch < pretrain_seg
+            cond2 = pretrain_seg == -1
+            freeze_segment_module = (cond1 or cond2) and pretrain_seg != False
 
 
             # We can can help tasks which are dependent on the segmentation to be feed

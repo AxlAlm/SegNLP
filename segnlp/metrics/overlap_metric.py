@@ -3,9 +3,8 @@
 import numpy as np
 import pandas as pd
 from collections import Counter
-from pandas.core.frame import DataFrame
 from typing import List
-
+import re
 #sklearn
 from sklearn.metrics import confusion_matrix
 
@@ -84,50 +83,50 @@ def link_label_confusion_matrix(
     # First we look at all the FN
     for j, ratio in j2ratio.items():
         
-        # if there is no i for j, we can count it as a FN
-        if j not in j2i:
-            cm[j2link_label[j], -1] += 1
-            continue
-
+    
         # make sure the source doesn't match over threshold
-        if ratio < threshold:
-            cm[j2link_label[j], -1] += 1
-            continue     
+        j_overlap = ratio >= threshold
 
         # check if the target has a match over the threshold
-        jt = j2jt[j]
-        if j2ratio[jt] < threshold:
-            cm[j2link_label[j], -1] += 1
-            continue     
+        jt = j2jt.get(j, 0.0)
+        jt_overlap = j2ratio[jt] >= threshold
 
         # # check if the target and the source are truly linked
-        ji = j2i[j]
-        jit = i2it[ji]
+        ji = j2i.get(j, "")
+        jit = i2it.get(ji,"")
         ijt = i2j.get(jit, "NO MATCH") #i2j only contain cases were there is an overlap.
-        if ijt != jt:
-            cm[j2link_label[j], -1] += 1
+        ijt_match_jt = ijt == jt
+
+        # we only look for the FNs so
+        if j_overlap and jt_overlap and ijt_match_jt:
+            continue
+
+        cm[j2link_label[j], -1] += 1
+
 
 
     # Then we look at FN, TP and FP
     for i, ratio in i2ratio.items():
 
+        # make sure the source doesn't match over threshold
+        i_overlap = ratio >= threshold
 
-        # check if the source match
-        if ratio < threshold:
-            continue
-        
         # check if the target match
         # j's target
-        j = i2j[i]
-        jt = j2jt[j]
-        if j2ratio[jt] < threshold:
-            continue
-
+        j = i2j.get(i, "")
+        jt = j2jt.get(j, "")
+        jt_ratio = j2ratio.get(jt, 0)
+        it_overlap = jt_ratio >= threshold
+      
         # check if the target and the source are truly linked
-        jt = j2jt[j]
-        it = i2it[i]
-        ijt = i2j.get(it, "NO MATCH") #i2j only contain cases were there is an overlap.
-        if  ijt != jt:
+        jt = j2jt.get(j,"")
+        it = i2it.get(i, "")
+        ijt = i2j.get(it, "-") #i2j only contain cases were there is an overlap.
+        ijt_match_jt = ijt == jt
+
+        # if non of the above match we dont look at the link label, as we view
+        # the segments as missed, i.e. FN which is accounted for in above loop
+        if not (i_overlap and it_overlap and ijt_match_jt):
             continue
 
         #find target and predicted labels
@@ -136,7 +135,90 @@ def link_label_confusion_matrix(
 
         cm[target_link_label, pred_link_label] += 1
 
+    
+
     return cm
+
+
+def link_confusion_matrix( 
+                                threshold : float,
+                                i2ratio : dict,
+                                j2ratio : dict,
+                                i2j : dict,
+                                j2i : dict,
+                                j2jt : dict,
+                                i2it : dict,
+                               ) -> np.ndarray:
+
+    # t\p | P  | N 
+    # ---------------
+    #  P  | TP | FN
+    #-----------------
+    # N   | FP | TN
+    # empty confusion matrix
+    cm = np.zeros((2, 2))
+
+
+     # First we look at all the FN
+    for j, ratio in j2ratio.items():
+        
+        
+        # make sure the source doesn't match over threshold
+        j_overlap = ratio >= threshold
+
+        # check if the target has a match over the threshold
+        jt = j2jt.get(j, 0.0)
+        jt_overlap = j2ratio[jt] >= threshold
+
+
+        # # check if the target and the source are truly linked
+        ji = j2i.get(j, "")
+        jit = i2it.get(ji, "")
+        ijt = i2j.get(jit, "NO MATCH") #i2j only contain cases were there is an overlap.
+        ijt_match_jt = ijt == jt
+
+        # we only look for the FNs so if we have a link 
+        # match we do not count it as we do it in the next loop
+        if j_overlap and jt_overlap and ijt_match_jt:
+            continue
+        
+        # FN
+        cm[0, 1] += 1
+
+
+
+    # Then we look at FN, TP and FP
+    for i, ratio in i2ratio.items():
+
+        
+        # make sure the source doesn't match over threshold
+        i_overlap = ratio >= threshold
+
+        # check if the target match
+        # j's target
+        j = i2j.get(i, "")
+        jt = j2jt.get(j, "")
+        jt_ratio = j2ratio.get(jt, 0)
+        it_overlap = jt_ratio >= threshold
+      
+   
+        # check if the target and the source are truly linked
+        jt = j2jt.get(j,"")
+        it = i2it.get(i, "")
+        ijt = i2j.get(it, "-") #i2j only contain cases were there is an overlap.
+        ijt_match_jt = ijt == jt
+
+        # if we have a overlap with the correct link we have a TP link
+        if i_overlap and it_overlap and ijt_match_jt:
+            # TP
+            cm[0, 0] += 1
+        else:
+            # FP
+            cm[1, 0] += 1
+
+    
+    return cm
+
 
 
 def calc_f1(cm:np.array, labels:list, prefix:str, task:str):
@@ -170,13 +252,15 @@ def calc_f1(cm:np.array, labels:list, prefix:str, task:str):
      ----------------------
      NO  |   | FP|   |    |  
 
-
-    then we se the following formula fot the the f1
     
-    f1 = (2*TP) / ((2*TP) + FP + FN)
+    
+
+    We calculate the f1-micro using the forumla described here ( https://aclanthology.org/P17-1002.pdf):
+    
+        f1-micro = (2*TP) / ((2*TP) + FP + FN)
 
 
-    We then average the f1 across the labels to get the f1-macro
+    For F1 macro we calculate the f1 from the harmonic mean from Precision and Recall for each class label
     """
 
     scores = {}
@@ -184,6 +268,10 @@ def calc_f1(cm:np.array, labels:list, prefix:str, task:str):
     task_TP = 0
     task_FP = 0
     task_FN = 0
+
+    ps = []
+    rs = []
+    f1s = []
 
     for i,label in enumerate(labels):
 
@@ -197,23 +285,68 @@ def calc_f1(cm:np.array, labels:list, prefix:str, task:str):
 
         # total miss + 
         FN = sum(cm[i]) - TP
-    
-        f1 = (2*TP) / ((2*TP) + FP + FN)
-        scores[f"{prefix}{label}-f1"] = 0 if np.isnan(f1) else f1
+
+        # # precison
+        p = TP / (TP + FP)
+
+        # # recall
+        r = TP / (TP + FN)
+
+        f1 = 2 * ((p * r) / (p + r))
+
+        p = 0 if np.isnan(f1) else p
+        r = 0 if np.isnan(f1) else r
+        f1 = 0 if np.isnan(f1) else f1
+
+        scores[f"{prefix}-{label}-precision"] = p
+        scores[f"{prefix}-{label}-recall"] = r
+        scores[f"{prefix}-{label}-f1"] = f1
+
+        ps.append(p)
+        rs.append(r)
+        f1s.append(f1)
+
 
         task_TP += TP
         task_FP += FP
         task_FN += FN
 
-    scores[f"{prefix}f1"] = np.mean(list(scores.values()))
+
+    scores[f"{prefix}-precision"] = np.mean(ps)
+    scores[f"{prefix}-recall"] = np.mean(rs)
+    scores[f"{prefix}-f1"] = np.mean(f1s)
 
     # When the the metric is used in https://arxiv.org/pdf/1704.06104.pdf,
     # they use the micro f1, as they sum the TP and FP and FNs over all labels
     f1_micro = (2*task_TP) / ((2*task_TP) + task_FP + task_FN)
-    scores[f"{prefix}f1-micro"] = 0 if np.isnan(f1_micro) else f1_micro 
+    scores[f"{prefix}-f1-micro"] = 0 if np.isnan(f1_micro) else f1_micro 
 
     return scores
 
+
+def calc_link_f1(cm : np.ndarray, threshold:float):
+
+    TP = cm[0,0]
+    FP = cm[1,0]
+    FN = cm[0,1]
+
+    p = TP / (TP + FP)
+    r = TP / (TP + FN)
+
+    f1 = 2 * ((p * r) / (p + r))
+
+
+    p = 0 if np.isnan(f1) else p
+    r = 0 if np.isnan(f1) else r
+    f1 = 0 if np.isnan(f1) else f1
+
+
+    return {
+            f"link-{threshold}-precision": p,
+            f"link-{threshold}-recall": r, 
+            f"link-{threshold}-f1": f1
+            }
+    
 
 def overlap_metric(pred_df:pd.DataFrame, target_df:pd.DataFrame, task_labels:dict, thresholds: List[float] = [0.5, 1.0]):
 
@@ -240,8 +373,11 @@ def overlap_metric(pred_df:pd.DataFrame, target_df:pd.DataFrame, task_labels:dic
     """
 
 
-    calc_lable_metric = "label" in task_labels
-    calc_link_lable_metric = True
+    do_label = "label" in task_labels
+    do_link = "link" in task_labels and pred_df["target_id"].dropna().nunique()
+    do_link_label = "link_label" in task_labels and pred_df["link_label"].dropna().nunique()
+
+
     #calc_link_lable_metric = "link_label" in task_labels and len(pred_df["target_id"].unique()) != 0
 
     # we also have information about whether the seg_id is a true segments 
@@ -265,55 +401,67 @@ def overlap_metric(pred_df:pd.DataFrame, target_df:pd.DataFrame, task_labels:dic
     j2jt = dict(zip(target_df.index, target_df["target_id"]))
     i2it = dict(zip(pred_df.index, pred_df["target_id"]))
 
-    # labels
     j2label = dict(zip(target_df.index, target_df["label"].astype(int)))
     i2label = dict(zip(pred_df.index, pred_df["label"].astype(int)))
 
-
-    #UGLY QUCKIFIX
-    calc_link_lable_metric = len(list(set(pred_df["link_label"]))) == 0
-
-    if not calc_link_lable_metric:
-        calc_link_lable_metric = list(set(pred_df["link_label"]))[0] is not None
-
-    if calc_link_lable_metric:
+    if do_link_label:
         # link labels
         j2link_label = dict(zip(target_df.index, target_df["link_label"].astype(int)))
         i2link_label = dict(zip(pred_df.index, pred_df["link_label"].astype(int)))
 
-    
-    assert len(set(j2ratio.keys()).difference(set(j2jt.keys()))) == 0
-
-    
+        
     metrics = {}
-
+    avrg_f1s = {f"{t}-f1":[] for t in thresholds}
     for threshold in thresholds:
 
-        #if calc_lable_metric:
 
         ### LABEL METRICS
-        label_cm = label_confusion_matrix(
-                                labels = task_labels["label"],
-                                threshold = threshold,
-                                i2ratio = i2ratio,
-                                j2ratio = j2ratio,
-                                i2j = i2j,
-                                j2label = j2label,
-                                i2label = i2label,
-                                )
 
-        label_metrics = calc_f1( 
-                        label_cm, 
-                        labels = task_labels["label"],
-                        prefix =f"label-{threshold}-",
-                        task = "label",
-                        )
+        if do_label:
+            label_cm = label_confusion_matrix(
+                                    labels = task_labels["label"],
+                                    threshold = threshold,
+                                    i2ratio = i2ratio,
+                                    j2ratio = j2ratio,
+                                    i2j = i2j,
+                                    j2label = j2label,
+                                    i2label = i2label,
+                                    )
 
-        metrics.update(label_metrics)
+            label_metrics = calc_f1( 
+                            label_cm, 
+                            labels = task_labels["label"],
+                            prefix =f"label-{threshold}",
+                            task = "label",
+                            )
+
+            metrics.update(label_metrics)
+            avrg_f1s[f"{threshold}-f1"].append(metrics[f"label-{threshold}-f1"])
+
+        
+        print(metrics)
+
+        if do_link:
+            link_cm = link_confusion_matrix(
+                                        threshold = threshold,
+                                        i2ratio = i2ratio,
+                                        j2ratio = j2ratio,
+                                        i2j = i2j,
+                                        j2i = j2i,
+                                        j2jt = j2jt,
+                                        i2it = i2it,
+                                        )
+            link_metrics = calc_link_f1(link_cm, threshold=threshold)
+            metrics.update(link_metrics)  
+
+
+            print(metrics)
+            avrg_f1s[f"{threshold}-f1"].append(metrics[f"link-{threshold}-f1"])         
+
 
 
         ### LINK LABEL METRICS
-        if calc_link_lable_metric:
+        if do_link_label:
             link_label_cm = link_label_confusion_matrix(
                                     labels = task_labels["link_label"],
                                     threshold = threshold,
@@ -330,35 +478,18 @@ def overlap_metric(pred_df:pd.DataFrame, target_df:pd.DataFrame, task_labels:dic
             link_label_metrics = calc_f1( 
                             link_label_cm, 
                             labels = task_labels["link_label"],
-                            prefix = f"link_label-{threshold}-",
+                            prefix = f"link_label-{threshold}",
                             task = "link_label"
                             )
             metrics.update(link_label_metrics)
+            avrg_f1s[f"{threshold}-f1"].append(metrics[f"link_label-{threshold}-f1"])         
 
-
-
-        #ugly quick fix
-        if calc_link_lable_metric:
-
-            metrics[f"{threshold}-f1"] = np.mean([
-                                                    metrics[f"link_label-{threshold}-f1"],
-                                                    metrics[f"label-{threshold}-f1"],
-                                                ])
-
-            metrics[f"{threshold}-f1-micro"] = np.mean([
-                                                    metrics[f"link_label-{threshold}-f1-micro"],
-                                                    metrics[f"label-{threshold}-f1-micro"],
-                                                ])
-        else:
-            metrics[f"{threshold}-f1"] = np.mean([
-                                                    0,
-                                                    metrics[f"label-{threshold}-f1"],
-                                                ])
-
-            metrics[f"{threshold}-f1-micro"] = np.mean([
-                                                    0,
-                                                    metrics[f"label-{threshold}-f1-micro"],
-                                                ])
 
     
+    for k,v in avrg_f1s.items():
+        mean_f1 = np.mean(v)
+        metrics[k] = 0 if np.isnan(mean_f1) else mean_f1 
+
+
+    print("HELLLO", metrics)
     return metrics

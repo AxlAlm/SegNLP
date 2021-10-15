@@ -1,6 +1,5 @@
 
 #basics
-from gensim import utils
 import numpy as np
 from numpy.lib.utils import deprecate
 import pandas as pd
@@ -123,10 +122,6 @@ class Batch:
 
     def __get_mask(self, level:str, pred : bool = False):
         return create_mask(self.get(level, "lengths", pred = pred), as_bool = True)
-
-
-    # def __seg_tok_lengths(self, df: pd.DataFrame, level:str):
-    #     return df.groupby(level, sort=False).size().to_numpy()
 
 
     def __get_lengths(self, df: pd.DataFrame, level:str):
@@ -461,7 +456,7 @@ class Batch:
 
 
         elif level == "seg":
-            mask = ensure_numpy(self.get("seg", "mask")).astype(bool)
+            mask = ensure_numpy(self.get("seg", "mask", pred = True)).astype(bool)
             seg_preds = ensure_numpy(value)[mask]
 
             # get the length of tokens for each seg 
@@ -528,10 +523,82 @@ class Batch:
                 self._pred_df.loc[row_mask, "target_id"] = np.repeat(target_ids, segs.size().to_numpy())
         
 
-
     def to(self, device):
         self.device = device
 
-        # for k, level_class in self.items():
-        #     level_class.device = device
+
+    def get_overlapping_targets(self, level:str, key:str, threshold:float = 0.5):
+
+        preds = self.get(level, key, pred =True)
+        targets = self.get(level, key)
+
+        # we also have information about whether the seg_id is a true segments 
+        # and if so, which TRUE segmentent id it overlaps with, and how much
+        i2ratio, j2ratio, i2j, j2i = find_overlap(
+                                                target_df = self._df,  
+                                                pred_df = self._pred_df
+                                                )
+
+
+        # we figure out which segments are overlaping over 50%  with a target segment
+        # each target segment will then only match with at most one predicted segment
+        overlap_mask = torch.tensor([i2ratio.get(i, 0) > threshold for i, _ in self._pred_df.groupby("seg_id", sort=False)])
+
+
+        # we havent included paddings to we will split,pad and the flatten to include padding
+        plens = ensure_list(self.get("seg", "lengths", pred = True))
+        overlap_mask = pad_sequence(torch.split(overlap_mask, plens)).view(-1)
+
+
+        # # we also need to figure out which target we are ignoring
+        target_overlap_mask = torch.tensor([j2ratio.get(j,0) > threshold for j, _ in self._df.groupby("seg_id", sort=False)])
+
+        # we havent included paddings to we will split,pad and the flatten to include padding
+        tlens = ensure_list(self.get("seg","lengths"))
+        target_overlap_mask = pad_sequence(torch.split(target_overlap_mask, tlens)).view(-1)
+        
+
+        # then we create a new target tensor which match the shape of the preds
+        # here the default label will be 0 for all task except link where the 
+        # label will be the index of of the segment, i.e. pointing to itself
+        if key == "link":
+            new_targets = torch.arange(preds.size(-1)).repeat(preds.size(0)).type(torch.long)
+
+            overlap_mask
+            overlap_mask = torch.tensor([i2ratio.get(it, 0) > threshold for it, _ in self._pred_df.groupby("target_id", sort=False)])
+
+
+            targets.view(-1)[target_overlap_mask]
+
+
+            seg_ids = self._df.groupby("seg_id", sort=False).groups.keys()
+            target_ids = self._df.groupby("seg_id", sort=False).groups.keys()
+
+
+            target_ids[overlap_mask]
+
+
+
+            targets.view(-1)[target_overlap_mask]
+
+
+
+
+            new_targets[overlap_mask] = targets.view(-1)[target_overlap_mask]
+
+        else:
+            new_targets = torch.zeros(preds.shape, dtype=torch.long).view(-1)
+
+            # then we set the target labels for all spaces where there is an overlap to the target label
+            new_targets[overlap_mask] = targets.view(-1)[target_overlap_mask]
+
+
+        #lastly we set the padding target values to -1, so we can ignore them in the loss function
+        new_targets[~self.get("seg","mask", pred = True).view(-1)] = -1
+
+        new_targets = new_targets.view(preds.shape)
+
+        return new_targets
+
+
 

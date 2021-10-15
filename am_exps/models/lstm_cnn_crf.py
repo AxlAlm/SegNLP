@@ -18,6 +18,8 @@ class LSTM_CNN_CRF(SegModel):
     ARGUMENT MINING PAPER
     paper1:
     https://arxiv.org/pdf/1704.06104.pdf
+    (https://aclanthology.org/P17-1002.pdf)
+
 
     original code:
     https://github.com/UKPLab/acl2017-neural_end2end_AM

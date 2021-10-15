@@ -93,9 +93,11 @@ class SegModel(nn.Module):
             if not self.inference:
                 total_loss += self.token_loss(batch, token_clf_out)
 
+        # we also only run the segment module if there are predicted segments
+        no_pred_segs = batch._pred_df["seg_id"].dropna().nunique() == 0
 
         # we freeze the segment module
-        if not self._segment_layers_are_frozen and self._have_seg_module:
+        if not self._segment_layers_are_frozen and self._have_seg_module and not no_pred_segs:
 
             # 3) represent segments
             if token_rep_out is None:
