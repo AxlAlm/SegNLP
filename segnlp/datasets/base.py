@@ -183,7 +183,8 @@ class DataSet:
                 labels = ["O"] + ["_".join(x) for x in itertools.product(seg_labels, *labels) if "None" not in x]
 
             task_labels[task] = labels
-    
+
+        print(task_labels)
         return task_labels
 
     

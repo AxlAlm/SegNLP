@@ -239,6 +239,7 @@ class PE(DataSet):
             sample = self.nlp(text)
             sample.add_span_labels(span2label, task_labels = self.task_labels)
 
+            print(dir(sample))
             samples.extend(sample.split(self.sample_level))
 
   
@@ -457,7 +458,7 @@ class PE(DataSet):
 
 
             if "label" in self.task_labels:
-                span_label_dict["label"] = ac_id2ac.get(ac_id, -1)
+                span_label_dict["label"] = ac_id2ac.get(ac_id, "None")
 
 
             if "link" in self.task_labels:
@@ -465,7 +466,7 @@ class PE(DataSet):
     
     
             if "link_label" in self.task_labels:
-                span_label_dict["link_label"] =  stance = self._stance2new_stance.get(ac_id2stance.get(ac_id, -1), -1)
+                span_label_dict["link_label"] =  stance = self._stance2new_stance.get(ac_id2stance.get(ac_id, "None"), "None")
     
             
             span2label[span] = span_label_dict
