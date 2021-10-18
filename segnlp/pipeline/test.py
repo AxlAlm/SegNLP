@@ -12,7 +12,7 @@ import torch
 
 #segnlp
 from segnlp import get_logger
-import segnlp.utils as utils
+#import segnlp.utils as utils
 
 
 class TestLoop:

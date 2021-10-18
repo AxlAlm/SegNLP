@@ -1,8 +1,6 @@
 
 
-import pandas as pd
-from collections import Counter
-from pprint import pprint
+# basics
 import itertools
 
 
@@ -67,15 +65,19 @@ class DataSet:
                 supported_task_labels["link_label"].insert(0, "None")
 
 
-        data_dir = self._download_data()
-        data = self._process_data(data_dir)
-        self._splits = self._premade_splits(data)
-        self.data = pd.DataFrame(data)
-        self._stats = self.__calc_label_stats()
+        #self._stats = self.__calc_label_stats()
         self._task_labels = self.__get_task_labels(tasks, supported_task_labels)
 
+        # download data
+        data_dir = self._download_data()
 
-        assert isinstance(self.data, pd.DataFrame)
+        # create samples
+        self._samples = self._process_data(data_dir)
+
+        # 
+        self._splits = self._splits(self._samples)
+
+
         
 
     def __getitem__(self, key):
@@ -171,41 +173,45 @@ class DataSet:
             for st in subtasks:
                 task_labels[st] = supported_task_labels[st]
 
-            labels = [k for k,v in self.stats[task].items()]
+
+            labels = [self._supported_task_labels[t] for t in subtasks]
             
             if "seg+" in task:
-                none_label = "_".join(["O"] + ["None" if s != "link" else "0" for s in task.split("+") if s != "seg"])
-                seg_labels = supported_task_labels["seg"].copy()
+                none_label = "_".join(["O"] + ["None" if s != "link" else "0" for s in subtasks if s != "seg"])
+                seg_labels = labels.pop(0)
                 seg_labels.remove("O")
-                labels = [none_label] + ["_".join(x) for x in itertools.product(seg_labels, labels)]
+
+                print(seg_labels, labels)
+
+                labels = [none_label] + ["_".join(x) for x in itertools.product(seg_labels, *labels)]
 
             task_labels[task] = labels
             
         return task_labels
 
     
-    def __calc_label_stats(self):
+    # def __calc_label_stats(self):
 
-        collected_counts = {task:Counter() for task in self.tasks}
+    #     collected_counts = {task:Counter() for task in self.tasks}
 
-        if "span_labels" in self.data.columns:
-            for i, row in self.data.iterrows():
-                span_labels = row["span_labels"]
-                sdf = pd.DataFrame(list(span_labels.values()))
-                sdf = sdf[~sdf["seg_id"].isna()]
+    #     if "span_labels" in self.data.columns:
+    #         for i, row in self.data.iterrows():
+    #             span_labels = row["span_labels"]
+    #             sdf = pd.DataFrame(list(span_labels.values()))
+    #             sdf = sdf[~sdf["seg_id"].isna()]
 
-                for task in self.tasks:
+    #             for task in self.tasks:
                     
-                    if task == "seg":
-                        continue
+    #                 if task == "seg":
+    #                     continue
 
-                    if task != sdf.columns.tolist():
-                        sdf[task] = ["_".join(map(str,x)) for x in zip(*[sdf[t].tolist() for t in task.split("+") if t != "seg"])]
+    #                 if task != sdf.columns.tolist():
+    #                     sdf[task] = ["_".join(map(str,x)) for x in zip(*[sdf[t].tolist() for t in task.split("+") if t != "seg"])]
 
-                    counts = sdf[task].value_counts().to_dict()
-                    collected_counts[task] += counts
+    #                 counts = sdf[task].value_counts().to_dict()
+    #                 collected_counts[task] += counts
         
-        return {t:dict(c) for t,c in collected_counts.items()}
+    #     return {t:dict(c) for t,c in collected_counts.items()}
 
 
     def info(self):

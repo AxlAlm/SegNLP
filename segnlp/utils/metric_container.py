@@ -6,7 +6,7 @@ from typing import Callable, Union
 
 #segnlp
 from segnlp import metrics
-from .batch import Batch
+from segnlp.data import Batch
 
 
 class MetricContainer(dict):

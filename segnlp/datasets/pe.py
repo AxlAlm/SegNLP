@@ -15,9 +15,12 @@ punctuation += "’‘,`'" + '"'
 
 # segnlp
 from segnlp import get_logger
-import segnlp.utils as u
+from segnlp import utils
 from segnlp.utils import RangeDict
 from .base import DataSet
+
+
+from segnlp.nlp import NLP
 
 
 logger = get_logger(__name__)
@@ -99,6 +102,8 @@ class PE(DataSet):
                                     "attacks": "attack",
                                     "root": "root"
                                     }
+        self.nlp = NLP()
+
         super().__init__(
                         name="pe",
                         tasks=tasks,
@@ -121,6 +126,43 @@ class PE(DataSet):
         return "PE"
 
 
+    def _splits(self) -> Dict[int, Dict[str, np.ndarray]]:
+        """creates a dict of split ids from the premade splits
+
+        Returns
+        -------
+        Dict[int, Dict[str, np.ndarray]]
+            a dict of split ids. First level is for CV splits, if one want to split multiple times.
+        """
+    	# NOTE! we are provided with a test and train split but not a dev split
+    	# approach after the original paper.
+
+        try:
+            split_path = str(list(Path(self.dump_path).rglob("train-test-split.csv"))[0])
+        except IndexError as e:
+            self._dataset_path = self._download_data(force=True)
+            split_path = str(list(Path(self.dump_path).rglob("train-test-split.csv"))[0])
+
+        train = []
+        test = []
+       	with open(split_path, "r") as f:
+       		for i,line in enumerate(f):
+
+       			if not i:
+       				continue
+
+       			essay, split = line.replace('"',"").strip().split(";")
+       			essay_idx = int(re.findall(r"(?!0)\d+", essay)[0]) - 1
+
+       			if split == "TRAIN":
+       				train.append(essay_idx)
+       			else:
+       				test.append(essay_idx)
+
+     
+        return {"train":train, "test":test}
+      
+
     def _download_data(self, force=False) -> str:
         """downloads the data from sourse website
 
@@ -140,14 +182,71 @@ class PE(DataSet):
         
         if not os.path.exists(zip_dump_path):
             desc = f"Downloading ArgumentAnnotatedEssays-2.0"
-            u.download(url=self.download_url, save_path=zip_dump_path, desc=desc)
+            utils.download(url=self.download_url, save_path=zip_dump_path, desc=desc)
 
-        u.unzip(zip_dump_path, self.dump_path)
-        u.unzip(data_folder + ".zip", parent_folder)
+        utils.unzip(zip_dump_path, self.dump_path)
+        utils.unzip(data_folder + ".zip", parent_folder)
 
         return data_folder
 
 
+    def _process_data(self, path_to_data):
+
+        #    if self.num > self.end:
+        #         raise StopIteration
+        #     else:
+        #         self.num += 1
+        #         return self.num - 1
+
+
+        """loads the Pursuasive Essay data and parse it into a DataSet. Also dumps the dataset 
+        locally so that one does not need to parse it again, only load the parsed data.
+
+        if the dumppath exist data will be loaded from the pkl file and no parsing will be done
+
+        Returns
+        -------
+        DataSet
+            
+        """
+        ann_files = sorted(glob(path_to_data+"/*.ann"))
+        text_files = sorted(glob(path_to_data+"/*.txt"))
+        number_files = len(ann_files) + len(text_files)
+
+        samples = []
+        global_seg_id = 0
+        grouped_files = list(zip(ann_files, text_files))
+        for ann_file, txt_file in grouped_files:
+
+            # -1 one as we want index 0 to be sample 1
+            file_id = int(re.sub(r'[^0-9]', "", ann_file.rsplit("/",1)[-1])) -1
+
+            text = self.__read_file(txt_file)
+            ann = self.__read_file(ann_file)
+
+            # extract annotation spans
+            ac_id2span, ac_id2ac,ac_id2stance, ac_id2relation = self.__parse_ann_file(ann, len(text))
+
+            span2label, global_seg_id = self.__get_label_dict(
+                                                            ac_id2span, 
+                                                            ac_id2ac,
+                                                            ac_id2stance, 
+                                                            ac_id2relation,
+                                                            global_seg_id
+                                                            )
+            
+
+            sample = self.nlp(text)
+            sample.add_span_labels(span2label, task_labels = self.task_labels)
+            sample.task_labels
+            sample.fuse_task(self.tasks)
+
+            samples.extend(sample.split(self.sample_level))
+
+  
+        return samples
+
+    
     def __read_file(self,file:str) -> str:
         """read data file
 
@@ -367,86 +466,3 @@ class PE(DataSet):
 
         return span2label, global_seg_id
 
-
-    def _premade_splits(self, data:list) -> Dict[int, Dict[str, np.ndarray]]:
-        """creates a dict of split ids from the premade splits
-
-        Returns
-        -------
-        Dict[int, Dict[str, np.ndarray]]
-            a dict of split ids. First level is for CV splits, if one want to split multiple times.
-        """
-    	# NOTE! we are provided with a test and train split but not a dev split
-    	# approach after the original paper.
-
-        try:
-            split_path = str(list(Path(self.dump_path).rglob("train-test-split.csv"))[0])
-        except IndexError as e:
-            self._dataset_path = self._download_data(force=True)
-            split_path = str(list(Path(self.dump_path).rglob("train-test-split.csv"))[0])
-
-        train = []
-        test = []
-       	with open(split_path, "r") as f:
-       		for i,line in enumerate(f):
-
-       			if not i:
-       				continue
-
-       			essay, split = line.replace('"',"").strip().split(";")
-       			essay_idx = int(re.findall(r"(?!0)\d+", essay)[0]) - 1
-
-       			if split == "TRAIN":
-       				train.append(essay_idx)
-       			else:
-       				test.append(essay_idx)
-
-     
-        return {"train":train, "test":test}
-      
-  
-    def _process_data(self, path_to_data):
-        """loads the Pursuasive Essay data and parse it into a DataSet. Also dumps the dataset 
-        locally so that one does not need to parse it again, only load the parsed data.
-
-        if the dumppath exist data will be loaded from the pkl file and no parsing will be done
-
-        Returns
-        -------
-        DataSet
-            
-        """
-        ann_files = sorted(glob(path_to_data+"/*.ann"))
-        text_files = sorted(glob(path_to_data+"/*.txt"))
-        number_files = len(ann_files) + len(text_files)
-
-        data = []
-        global_seg_id = 0
-        grouped_files = list(zip(ann_files, text_files))
-        for ann_file, txt_file in grouped_files:
-
-            # -1 one as we want index 0 to be sample 1
-            file_id = int(re.sub(r'[^0-9]', "", ann_file.rsplit("/",1)[-1])) -1
-
-            text = self.__read_file(txt_file)
-            ann = self.__read_file(ann_file)
-
-            # extract annotation spans
-            ac_id2span, ac_id2ac,ac_id2stance, ac_id2relation = self.__parse_ann_file(ann, len(text))
-
-            span2label, global_seg_id = self.__get_label_dict(
-                                                            ac_id2span, 
-                                                            ac_id2ac,
-                                                            ac_id2stance, 
-                                                            ac_id2relation,
-                                                            global_seg_id
-                                                            )
-                        
-            data.append({
-                            #"sample_id":file_id,
-                            "text":text, 
-                            "text_type":"document",
-                            "span_labels": span2label
-                            })
-
-        return data

@@ -1,7 +1,6 @@
 
 
 #basics
-from segnlp.utils.array import ensure_numpy
 from tqdm.auto import tqdm
 from typing import Union
 import os
@@ -11,7 +10,7 @@ from time import time
 import torch
 
 #segnlp
-from segnlp import utils
+#from segnlp import utils
 
 #rom pynvml.smi import nvidia_smi
 

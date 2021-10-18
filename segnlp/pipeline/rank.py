@@ -27,7 +27,7 @@ class RankItem(dict):
         self["top_random_seed"] = random_seeds[np.argmax(scores)]
 
 
-class Ranking:
+class Rank:
 
     @property
     def rankings(self):

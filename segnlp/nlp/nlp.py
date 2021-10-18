@@ -5,25 +5,20 @@ import pandas as pd
 from typing import List, Tuple, Dict
 from tqdm import tqdm
 from string import punctuation
-import warnings
-import spacy
 from pprint import pprint
 import subprocess
 
-
-# DGL
-import dgl
-from dgl import DGLGraph
-from dgl.traversal import topological_nodes_generator as traverse_topo
-
 #spacy
+import spacy
 from spacy.language import Language
-
 
 #nltk
 import nltk
 
 #segnlp
+from segnlp.data import Sample
+
+
 from segnlp.utils import timer
 from segnlp import get_logger
 logger = get_logger("PREPROCESSOR")
@@ -48,31 +43,12 @@ strange_characters = {
 #     nltk.download('averaged_perceptron_tagger')
 
 
-class TextProcessor:
+class NLP:
 
 
-    def _init_text_processor(self):
-
-        # storing the current row for each level, used to fetch ids etc for lower lever data
-        self._level_row_cache : dict = {}
+    def __init__(self):
         self._nlp_name = "Spacy"
-        self.nlp : Language = self._load_nlp_model()
-
-        # Text Processing
-        self.level2parents : dict = {
-                                "token": ["sentence", "paragraph", "document"],
-                                "sentence": ["paragraph", "document"],
-                                "paragraph": ["document"],
-                                "document": []
-                                }
-
-        self.parent2children : dict = {
-                                "document": ["paragraph","sentence", "token"],
-                                "paragraph": ["sentence", "token"],
-                                "sentence": ["token"],
-                                "token": []
-                                }
-        self._prune_hiers()
+        self._nlp : Language = self._load_nlp_model()
 
 
     def __paragraph_tokenize(self, doc:str) -> List[str]:
@@ -338,47 +314,6 @@ class TextProcessor:
 
             current_token_idx = end
 
-            #i += 1
-
-        # stanza_doc = self.nlp(sentence)
-        # spacy_doc = self.nlp(sentence)
-        # s_toks = [t.text for t in stanza_doc.iter_tokens()]
-        
-        # tokens = nltk.word_tokenize(sentence)
-        # token_pos = nltk.pos_tag(tokens)
-        # for i, (token,pos) in enumerate(token_pos):
-        #     token_len = len(token)
-        #     token = strange_characters.get(token, token)
-
-        #     if current_token_idx == 0:
-        #         start = 0
-        #     else:
-        #         start = doc.find(token, max(0, current_token_idx-2))
-        #     end = start + token_len
-
-        #     row =  {
-        #             "id": self.__get_global_id("token"),
-        #             "sentence_token_id": i,
-        #             "char_start": start,
-        #             "char_end": end,
-        #             "str": token.lower(),
-        #             #"pos": token_dict["xpos"],
-        #             #"dephead": token_dict["head"],
-        #             #"deprel": token_dict["deprel"]
-        #             #
-        #             }
-
-        #     for parent in self.level2parents["token"][1:]:
-        #         parent_info[f"{parent}_token_id"] += 1
-
-        #     row.update(parent_info)
-
-        #     self._level_row_cache["token"] = row
-
-        #     self._data_stack.append(row)
-
-        #     current_token_idx = end
-
 
     def __build_sentences(self):
         """
@@ -395,7 +330,7 @@ class TextProcessor:
         current_sent_idx = self.__get_char_idx("sentence")
         #paragraph, current_sent_id,  current_sent_idx = self.__get_text_id_idx("sentence")
 
-        spacy_doc = self.nlp(paragraph)
+        spacy_doc = self._nlp(paragraph)
         
 
         removed_sents = 0
@@ -478,7 +413,7 @@ class TextProcessor:
             self.__build_sentences()
 
 
-    def _prune_hiers(self):
+    def __prune_and_set(self):
         """
         Given the dataset level we set the hierarchy. For now the heirarchy dicts, found in the Datset Class,
         are containing the full supported hierarchiy; from document to tokens. But if our datset level is for
@@ -486,13 +421,31 @@ class TextProcessor:
         what to process.
         """
 
-        new_level2parents = {self.input_level:[]}
-        for k, v in self.level2parents.items():
+        # Text Processing
+        level2parents : dict = {
+                                "token": ["sentence", "paragraph", "document"],
+                                "sentence": ["paragraph", "document"],
+                                "paragraph": ["document"],
+                                "document": []
+                                }
 
-            if k in self.parent2children[self.input_level]:
+        parent2children : dict = {
+                                "document": ["paragraph","sentence", "token"],
+                                "paragraph": ["sentence", "token"],
+                                "sentence": ["token"],
+                                "token": []
+                                }
+
+
+
+        new_level2parents = {self.input_level:[]}
+        for k, v in level2parents.items():
+
+            if k in parent2children[self.input_level]:
                 new_level2parents[k] = v[:v.index(self.input_level)+1]
         
         self.level2parents = new_level2parents
+        self.parent2children = parent2children
 
 
     def _load_nlp_model(self):
@@ -515,7 +468,7 @@ class TextProcessor:
         df["root_idx"] = None
 
 
-        for _, sample in df.groupby(f"{self.sample_level}_id", sort=False):
+        for _, sample in df.groupby(f"{self.input_level}_id", sort=False):
             
             sentences  = sample.groupby("sentence_id", sort=False)
 
@@ -554,7 +507,37 @@ class TextProcessor:
         return df
 
 
-    def _process_text(self, doc:str):
+    def __infer_text_unit(self, doc:str) -> str:
+        """infer the unit type of the text naively. 
+
+        if the text contains \n its a document
+        else if the text contains more than 2 fullstops its a paragraph
+        else if the text contain spaces its a sentence
+        else its a token
+
+        Parameters
+        ----------
+        text : str
+            text
+
+        Returns
+        -------
+        str
+            text type
+        """
+        if "\n" in doc.strip():
+            return "document"
+        elif len(re.findall(r"((?<!\.\w)\.|\?|!|$)", doc.strip())) >= 2: # will fail on sentence which send on acronyms with fullstops.
+            return  "paragraph"
+        elif " " in doc.strip():
+            return "sentence"
+        else:
+            raise RuntimeError("Could not infer text type")
+    
+    
+
+    def __call__(self, doc:str) -> pd.DataFrame:
+
         """given a text string processes it appropriately. Meaning, if the string is a document
         we will process the document into document, paragraphs, documents and tokens. Creating 
         dataframes for each of the levels. 
@@ -575,6 +558,13 @@ class TextProcessor:
             has to be either document, paragraph or sentence.
         """
 
+        # storing the current row for each level, used to fetch ids etc for lower lever data
+        self._level_row_cache : dict = {}
+
+        self.input_level = self.__infer_text_unit(doc)
+
+        self.__prune_and_set()
+
         if self.input_level in self._level_row_cache:
             text_id = self._level_row_cache[self.input_level]["id"] + 1
         else:
@@ -590,49 +580,18 @@ class TextProcessor:
         elif self.input_level == "paragraph":
             self.__build_sentences()      
         elif self.input_level == "sentence":
-            self.__build_tokens(next(self.nlp(doc).sents))   
+            self.__build_tokens(next(self._nlp(doc).sents))   
         else:
             raise NotImplementedError(f'"{self.input_level}" is not a understood type')
 
         df = pd.DataFrame(self.__data_stack)
 
-        if self.sample_level != "sentence":
+        if self.input_level != "sentence":
             df = self.__fix_deps(df)
 
-        return df
+        return Sample(df)
 
 
 
 
 
-
-
-    # def __infer_text_type(self, text:str) -> str:
-    #     """infer the unit type of the text naively. 
-
-    #     if the text contains \n its a document
-    #     else if the text contains more than 2 fullstops its a paragraph
-    #     else if the text contain spaces its a sentence
-    #     else its a token
-
-    #     Parameters
-    #     ----------
-    #     text : str
-    #         text
-
-    #     Returns
-    #     -------
-    #     str
-    #         text type
-    #     """
-    #     if "\n" in text.strip():
-    #         t =  "doc"
-    #     elif text.count(".") >= 2:
-    #         t = "paragraph"
-    #     elif " " in text.strip():
-    #         t = "sentence"
-    #     else:
-    #         t = "token"
-        
-    #     warnings.warn(f"No text_type was passed. text_type infered to '{t}'")
-    #     return t

@@ -8,7 +8,7 @@ __author__ = ""
 __author_email__ = ""
 __license__ = ""
 __url__ = ""
-__description__ = description
+__description__ = "description"
 
 #python -m spacy download en_core_web_lg
 

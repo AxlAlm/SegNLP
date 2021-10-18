@@ -15,18 +15,14 @@ import torch
 
 # segnlp
 from segnlp import get_logger
-from .loop_train import TrainLoop
-from .loop_test import TestLoop
-from .loop_hp_tune import HPTuneLoop
-from .dataset_processor import DatasetProcessor
-from .labeler import Labeler
-from .text_processor import TextProcessor
-from .splitter import Splitter
-from .pretrained_feature_extractor import PretrainedFeatureExtractor
+from .train import TrainLoop
+from .test import TestLoop
+from .hp_tune import HPTuneLoop
+#from .splitter import Splitter
 from .logs import Logs
 from .train_utils import TrainUtils
 from .baselines import Baseline
-from .ranking import Ranking
+from .rank import Rank
 
 from segnlp.datasets.base import DataSet
 import segnlp.utils as utils
@@ -39,18 +35,13 @@ user_dir = pwd.getpwuid(os.getuid()).pw_dir
 
 
 class Pipeline(
-                TextProcessor, 
-                DatasetProcessor,
-                PretrainedFeatureExtractor,
-                Labeler, 
-                Splitter,
                 HPTuneLoop,
                 TrainLoop, 
                 TestLoop,
                 Logs,
                 TrainUtils,
                 Baseline,
-                Ranking
+                Rank
                 ):
     
     def __init__(self,

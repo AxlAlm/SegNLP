@@ -13,8 +13,7 @@ import torch.nn.functional as F
 #segnlp
 from segnlp import get_logger
 from segnlp import utils
-from segnlp.utils import Batch
-from segnlp.utils import LabelEncoder
+from segnlp.data import Batch
 from segnlp.layers import link_labelers
 from segnlp.layers import linkers
 from segnlp.layers import segmenters
@@ -36,7 +35,6 @@ class SegModel(nn.Module):
 
     def __init__(   self,  
                     hyperparamaters:dict,
-                    label_encoder: LabelEncoder,
                     feature_dims:dict,
                     inference:bool=False
                     ):
