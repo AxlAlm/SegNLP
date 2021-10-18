@@ -2,6 +2,7 @@
 # basic
 from typing import Sequence
 import pandas as pd
+import numpy as np
 
 
 # segnlp
@@ -23,8 +24,6 @@ class Sample:
     def __init__(self, df: pd.DataFrame) -> None:
         self.df = df
         self._size = len(df)
-        #self._pred_df = pd.DataFrame()
-        #self._pred_df = pd.
     
 
     def __len__(self):
@@ -34,21 +33,40 @@ class Sample:
     def __repr__(self) -> str:
         return " ".join(self.df["str"])
 
+    def length(self):
+        return self._size
     
+
     def pairs(self):
         pass
 
     
-    def sentences(self):
-        pass
+    def pairs_lengths(self):
+        return len(self.pairs())
+
+
 
 
     def segs(self):
-        pass
+        for i, seg_df in self.df.groupby("seg_id", sort=False):
 
+            if i == -1:
+                continue
+
+            yield i, seg_df
+
+
+
+    def seg_ids(self):
+        return [i for i in self.segs()]
+
+
+    def seg_lengths(self):
+        return len(self.segs())
+    
     
     def split(self, level):
-        return [Sample(df) for df in self.df.groupby(f"{level}_id", sort = False)]
+        return [Sample(df) for _, df in self.df.groupby(f"{level}_id", sort = False)]
 
 
     def get(self, level, key):
@@ -98,6 +116,62 @@ class Sample:
         #self.df.astype({'seg_id': 'float64'})
 
 
+    def __fuse_tasks(self):
+
+        for task in self.task_labels:
+            subtasks = task.split("+")
+            
+            if len(subtasks) <= 1:
+                continue
+
+            subtask_labels  = self.df[subtasks].apply(lambda row: '_'.join([str(x) for x in row]), axis=1)
+            self.df[task] = subtask_labels
+        
+
+    def __label_segs(self):
+        self.df["seg"] = "O"
+        segs = self.segs()
+        for _, seg_df in segs:
+            self.df.loc[seg_df.index, "seg"] = ["B"] +  (["I"] * (seg_df.shape[0]-1))
+
+
+    def __encode(self, task):
+        
+        # if task  == "link":
+        #     return 
+            # #get the nr of segments per sample
+            # seg_ids = self.df["seg_id"].nunique()
+
+            # # length in token 
+            # seg_tok_lens = self.df.groupby("seg_id", sort=False).size().to_numpy()
+
+            # #repeat the indexes of each segment id per sample for number of tokens in each segment
+            # seg_id_per_token = np.repeat(seg_ids, seg_tok_lens)
+
+            # #nan seg_id mask
+            # nan_mask = ~self.df["seg_id"].isna()
+            
+            # #links
+            # links = self.df.loc[nan_mask, "link"].to_numpy()
+
+            # # encode links and add them 
+            # # links are assumed to be in 
+            # self.df.loc[nan_mask, "link"] = seg_id_per_token + links
+
+        encode_fn = lambda x: self.label2id[task].get(str(x), -1)
+        self.df.loc[:,task] = self.df[task].apply(encode_fn)
+
+
+    def __encode_tasks(self):
+
+        for task in self.task_labels:
+
+            if task == "link":
+                continue
+
+            self.__encode(task)
+
+
     def add_span_labels(self, span_labels:dict, task_labels:dict):
 
         self.task_labels = task_labels
@@ -106,9 +180,13 @@ class Sample:
         self.__label_spans(span_labels)
 
         self.seg_task = None
-        if "seg" in self.task_labels.keys():
+        if "seg" in self.task_labels:
+            self.__label_segs()
             self.seg_task = sorted([task for task in self.task_labels.keys() if "seg" in task], key = lambda x: len(x))[-1]
             self.seg_decoder = BIODecoder()
+        
+        self.__fuse_tasks()
+        self.__encode_tasks()
 
 
     def __ensure_possible_links(self) -> None:
@@ -117,11 +195,11 @@ class Sample:
         Any link that is outside of the actuall text, e.g. when predicted link > max segs, is set to predicted_link == max_idx -1
         """
 
-        max_segs = self.df["seg_id"].nunique()
+        max_segs = self.seg_lengths()
 
         self.df.loc[:, "max_seg"] = max_segs
 
-        above = self.df["link"] >= df["max_seg"]
+        above = self.df["link"] >= self.df["max_seg"]
         below = self.df["link"] < 0
 
         self.df.loc[above | below, "link"] = self.df.loc[above | below, "max_seg"] - 1
@@ -143,7 +221,7 @@ class Sample:
         print(count_df[task].to_numpy())
         print(lol)
 
-        seg_lengths = self.df.groupby("seg_id", sort=False).size()
+        seg_lengths = OKOK
         most_common = np.repeat(count_df[task].to_numpy(), seg_lengths)
 
         self.df.loc[~self.df["seg_id"].isna(), task] = most_common
@@ -151,29 +229,6 @@ class Sample:
 
     def __decode_segs(self):
         self.df.loc[:, "seg_id"] = self.seg_decoder(self.df["seg"].to_numpy())
-
-
-    def __encode(self, task):
-        
-        if task  == "link":
-
-            #get the nr of segments per sample
-            seg_per_sample = self.df["seg_id"].nunique()
-
-            # get the indexes of each segments per sample
-            seg_sample_idxes = np.hstack([np.arange(a) for a in seg_per_sample])
-            
-            #repeat the indexes of each segment id per sample for number of tokens in each segment
-            seg_sample_idxes_per_token = np.repeat(seg_sample_idxes, df.groupby("seg_id", sort=False).size().to_numpy())
-            
-            # make the link labels encoded to be pointing instead of being difference in nr segments
-            enc_tok_links = seg_sample_idxes_per_token + df.loc[~df["seg_id"].isna(), "link"].to_numpy()
-
-            df.loc[~df["seg_id"].isna(), "link"] = enc_tok_links
-
-        else:
-            encode_fn = lambda x: self.label2id[task].get(str(x), -1)
-            self.df.loc[:,task] = self.df[task].apply(encode_fn)
 
 
     def _label_ams(self, df: pd.DataFrame, mode="pre"):
@@ -246,20 +301,6 @@ class Sample:
         return df
 
 
-    def fuse_tasks(self):
-
-        for task in self.tasks:
-            subtasks = task.split("+")
-            
-            if len(subtasks) <= 1:
-                continue
-
-            subtask_labels  = self.df[subtasks].apply(lambda row: '_'.join([str(x) for x in row]), axis=1)
-            self.df[task] = subtask_labels
-        
-        return df
-
-
     def __create_decouple_mapping(self):
         
         decouplers = {}
@@ -274,12 +315,15 @@ class Sample:
             subtasks = task.split("+")
 
             for i,label in enumerate(labels):
+                    
 
-                sublabels = label.split("_")
+                if "seg" in task and label == "O":
+                    sublabels = ["O"] + (["None"]* (len(subtasks) -1))
+                else:
+                    sublabels = label.split("_")
 
-                encode_fn = lambda x,y: self.label2id[x].get(str(y), -1)
-
-                decouplers[task][i] = [encode_fn(st, sl) if st != "link" else int(sl) for st, sl in zip(subtasks, sublabels)]
+                encode_fn = lambda task, label: self.label2id[task].get(label, -1)
+                decouplers[task][i] = [encode_fn(st, sl) for st, sl in zip(subtasks, sublabels)]
 
         self._decouple_mapping = decouplers
     

@@ -75,7 +75,7 @@ class DataSet:
         self._samples = self._process_data(data_dir)
 
         # 
-        self._splits = self._splits(self._samples)
+        self._splits = self._get_splits()
 
 
         
@@ -148,7 +148,7 @@ class DataSet:
         raise NotImplementedError
 
 
-    def _premade_splits(self):
+    def _get_splits(self):
         return None
 
 
@@ -177,16 +177,13 @@ class DataSet:
             labels = [self._supported_task_labels[t] for t in subtasks]
             
             if "seg+" in task:
-                none_label = "_".join(["O"] + ["None" if s != "link" else "0" for s in subtasks if s != "seg"])
-                seg_labels = labels.pop(0)
+                seg_labels = labels.pop(0).copy()
                 seg_labels.remove("O")
 
-                print(seg_labels, labels)
-
-                labels = [none_label] + ["_".join(x) for x in itertools.product(seg_labels, *labels)]
+                labels = ["O"] + ["_".join(x) for x in itertools.product(seg_labels, *labels) if "None" not in x]
 
             task_labels[task] = labels
-            
+    
         return task_labels
 
     

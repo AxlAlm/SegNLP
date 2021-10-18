@@ -1,7 +1,7 @@
 #basic
 import re
 from glob import glob
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import numpy as np
 import os
 import time
@@ -126,7 +126,7 @@ class PE(DataSet):
         return "PE"
 
 
-    def _splits(self) -> Dict[int, Dict[str, np.ndarray]]:
+    def _get_splits(self) -> Dict[int, Dict[str, np.ndarray]]:
         """creates a dict of split ids from the premade splits
 
         Returns
@@ -216,7 +216,7 @@ class PE(DataSet):
         samples = []
         global_seg_id = 0
         grouped_files = list(zip(ann_files, text_files))
-        for ann_file, txt_file in grouped_files:
+        for ann_file, txt_file in tqdm(grouped_files, desc = "Preprocessing Persuasive Essays"):
 
             # -1 one as we want index 0 to be sample 1
             file_id = int(re.sub(r'[^0-9]', "", ann_file.rsplit("/",1)[-1])) -1
@@ -238,8 +238,6 @@ class PE(DataSet):
 
             sample = self.nlp(text)
             sample.add_span_labels(span2label, task_labels = self.task_labels)
-            sample.task_labels
-            sample.fuse_task(self.tasks)
 
             samples.extend(sample.split(self.sample_level))
 
@@ -388,8 +386,12 @@ class PE(DataSet):
         # sort the span
         ac_id2span_storted = sorted(ac_id2span.items(), key= lambda x:x[1][0])
         ac_id2idx = {AC_ID:i for i, (AC_ID, *_) in enumerate(ac_id2span_storted)}
-        ac_id2relation = {AC_ID: ac_id2idx[AC_REL_ID] - ac_id2idx[AC_ID]  for AC_ID, AC_REL_ID in ac_id2relation.items()}
         
+        # For all AC_ID whcih are in no relation we set the relation to itself.
+        ac_id2relation = {AC_ID: ac_id2relation.get(AC_ID, AC_ID)  for AC_ID, _ in ac_id2idx.items()}
+
+        # then we calculate the relation by idx of the related AC_ID
+        ac_id2relation = {AC_ID: AC_ID_IDX + (ac_id2idx[ac_id2relation[AC_ID]] - AC_ID_IDX)  for AC_ID, AC_ID_IDX in ac_id2idx.items()}
 
         # fill in some spans
         prev_span_end = 0
@@ -442,27 +444,32 @@ class PE(DataSet):
         span2label = RangeDict()
         for i, (ac_id, span) in enumerate(ac_id2span.items()):
 
-            relation = ac_id2relation.get(ac_id, 0)
+            span_label_dict = {}
 
-            ac = ac_id2ac.get(ac_id,"None")
-            stance = self._stance2new_stance.get(ac_id2stance.get(ac_id,"root"), "root")
+            span_label_dict["span_id"] = i
+
 
             if "None" in ac_id:
-                seg_id = np.nan
+                span_label_dict["seg_id"] = -1
             else:
-                seg_id = global_seg_id
+                span_label_dict["seg_id"] = global_seg_id
                 global_seg_id += 1
-            
-            label = {   
-                        "label": ac_id2ac.get(ac_id,"None"), 
-                        "link_label": stance,
-                        "link": relation,
-                        "span_id": i,
-                        "seg_id": seg_id,
-                    }
-            
 
-            span2label[span] = label #[label, ac_id]
+
+            if "label" in self.task_labels:
+                span_label_dict["label"] = ac_id2ac.get(ac_id, -1)
+
+
+            if "link" in self.task_labels:
+                span_label_dict["link"] = ac_id2relation.get(ac_id, -1)
+    
+    
+            if "link_label" in self.task_labels:
+                span_label_dict["link_label"] =  stance = self._stance2new_stance.get(ac_id2stance.get(ac_id, -1), -1)
+    
+            
+            span2label[span] = span_label_dict
+
 
         return span2label, global_seg_id
 

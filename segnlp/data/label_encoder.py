@@ -22,6 +22,56 @@ class LabelEncoder:
             self.seg_decoder = utils.BIODecoder()
 
 
+
+    def __create_decouple_mapping(self):
+        
+        decouplers = {}
+        for task in self.task_labels:
+
+            if "+" not in task:
+                continue
+            
+            decouplers[task] = {}
+
+            labels = list(self.label2id[task].keys())
+            subtasks = task.split("+")
+
+            for i,label in enumerate(labels):
+
+                sublabels = label.split("_")
+
+                encode_fn = lambda x,y: self.label2id[x].get(str(y), -1)
+
+                decouplers[task][i] = [encode_fn(st, sl) if st != "link" else int(sl) for st, sl in zip(subtasks, sublabels)]
+
+        self._decouple_mapping = decouplers
+    
+
+    def __create_label_id_mappings(self):
+        
+        self.label2id = {}
+        self.id2label = {}
+
+        for task in self.task_labels:
+            
+            if task == "link":
+                continue
+            
+            # if "seg" in task:
+            #     if  "O" not in self.task_labels[task][0]:
+            #         raise Warning(f"Label at position 0 is not / does not contain 'O' for {task}: {self.task_labels[task]}")
+            # else:
+            #     if self.prediction_level == "token":
+            #         if "None" not in self.task_labels[task][0]:
+            #             raise Warning(f"Label at position 0 is not / does not contain 'None' for {task}: {self.task_labels[task]}")
+
+            self.id2label[task] = dict(enumerate(self.task_labels[task]))
+            self.label2id[task] = {l:i for i,l in self.id2label[task].items()}
+    
+
+
+
+
     def validate(self, task :str, df:pd.DataFrame, level:str):
             
         if task == "seg":
