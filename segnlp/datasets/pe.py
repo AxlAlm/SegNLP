@@ -81,9 +81,12 @@ class PE(DataSet):
                 tasks:list,
                 prediction_level:str="token", 
                 sample_level:str="document", 
+                label_ams : bool = False,
                 dump_path:str="/tmp/"
                 ):
-        task_labels = {
+
+        self.label_ams = label_ams
+        task_labels : dict = {
                             "seg": ["O","B","I"],
                             "label":["MajorClaim", "Claim", "Premise"],
                             # Originally stance labels are For and Against for Claims and MajorClaims
@@ -95,7 +98,7 @@ class PE(DataSet):
                             "link": list(range(-11,12,1))
                             }
 
-        self._stance2new_stance = {
+        self._stance2new_stance : dict = {
                                     "supports": "support", 
                                     "For": "support", 
                                     "Against": "attack", 
@@ -237,9 +240,11 @@ class PE(DataSet):
             
 
             sample = self.nlp(text)
-            sample.add_span_labels(span2label, task_labels = self.task_labels)
-
-            print(dir(sample))
+            sample.add_span_labels(
+                                    span2label, 
+                                    task_labels = self.task_labels, 
+                                    label_ams = self.label_ams
+                                    )
             samples.extend(sample.split(self.sample_level))
 
   

@@ -78,13 +78,10 @@ class DataSet:
         self._splits = self._get_splits()
 
 
-        
 
     def __getitem__(self, key):
-        if isinstance(key, int):
-            return self.data.iloc[key].to_dict()
-        else:
-            return self.data.loc[key].to_dict("record")
+        pass
+        #self._samples
 
 
     def __len__(self):
@@ -188,6 +185,10 @@ class DataSet:
         return task_labels
 
     
+
+
+
+
     # def __calc_label_stats(self):
 
     #     collected_counts = {task:Counter() for task in self.tasks}

@@ -5,10 +5,11 @@ import pandas as pd
 import numpy as np
 from collections import Counter
 from copy import deepcopy
+import itertools
 
 # segnlp
 from segnlp.utils import BIODecoder
-
+from segnlp.utils import create_uid
 
 # from .label_encoder import LabelEncoder
 # from .array import ensure_numpy
@@ -25,6 +26,7 @@ class Sample:
     def __init__(self, df: pd.DataFrame) -> None:
         self.df = df
         self._size : int = len(df)
+        self.uid : str = create_uid(str(self))
     
 
     def __len__(self) -> int:
@@ -35,74 +37,124 @@ class Sample:
         return " ".join(self.df["str"])
 
 
-    def copy(self, clean_labels:bool =  False) -> "Sample":
+    def copy(self, clean:bool =  False) -> "Sample":
+
+        # copy the dataframe
         df = self.df.copy(deep = True)
         
-        for task in self.__task_labels:
-            df[task] = -1
+        # clean labels and seg_ids
+        if clean:
+            for task in self._task_labels:
+                df[task] = -1
 
-        df["seg_id"] = -1
-        df["target_id"] = -1
+            df["seg_id"] = -1
+            df["target_id"] = -1
 
+        
         # __init__ new
         copy_sample = Sample(df)
         
+        # copy over important variables
+        self.__copy_vars(sample=copy_sample)
+
+        return copy_sample
+
+
+    def __copy_vars(self, sample: "Sample"):
+
         # copy over some needed vars
-        for var in ["__task_labels", "__decouple_mapping", "__id2label", "__label2id"]:
+        for var in ["_task_labels", "_decouple_mapping", "_id2label", "_label2id"]:
+
             if not hasattr(self, var):
                 continue
             
-            setattr(copy_sample, var, deepcopy(getattr(self, var)))
+            setattr(sample, var, deepcopy(getattr(self, var)))
 
-
-        return copy_sample
+        return sample
 
 
     def length(self) -> int:
         return self._size
     
 
-    def pairs(self):
-        pass
-
+    def pairs(self, bidir=False):
+        if bidir:
+            return list(itertools.product(self.seg_ids(), repeat=2))
+        else:
+            return list(itertools.combinations(self.seg_ids()))
     
     def n_pairs(self) -> int:
         return len(self.pairs())
 
 
-    def segs(self) -> Generator:
-        for i, seg_df in self.df.groupby("seg_id", sort=False):
+    def __groups(self, key:str) -> Generator:
+        for i, df in self.df.groupby(key, sort=False):
 
             if i == -1:
                 continue
 
-            yield i, seg_df
+            yield i, df
+
+
+    def segs(self):
+        return self.__groups("seg_id")
+
+
+    def ams(self):
+        return self.__groups("am_id")
+
+
+    def adus(self):
+        return self.__groups("adu_id")
 
 
     def seg_ids(self) -> List[int]:
-        return [i for i in self.segs()]
+        return np.array([i for i, _ in self.segs()])
 
 
     def n_segs(self) -> int:
-        return len(self.segs())
+        return len(list(self.segs()))
     
     
     def seg_lengths(self) -> int:
-        return len(self.segs())
+        return np.array([len(seg_df) for i, seg_df in self.segs()])
     
 
     def seg_span_idxs(self) -> List[Tuple[int, int]]:
-        return [(seg_df.first()["id"], seg_df.last()["id"]) for i, seg_df in self.segs()]
+        return [[seg_df["id"].to_numpy()[0], seg_df["id"].to_numpy()[-1]] for _, seg_df in self.segs()]
+
+
+    def am_span_idxs(self) -> List[Tuple[int, int]]:
+        # return the span idxes for Argumentative Markers
+        span_idxs = []
+        for i, adu_df in self.adus():
+
+            am_mask  = adu_df["am_id"] != -1
+            tok_ids = adu_df.loc[am_mask,"id"].to_numpy()
+
+            if len(tok_ids) == 0:
+                si = [0,0]
+            else:
+                si = [tok_ids[0], tok_ids[-1]]
+
+            span_idxs.append(si)
+
+        return span_idxs
 
 
     def split(self, level:str) -> List["Sample"]:
-        return [Sample(df) for _, df in self.df.groupby(f"{level}_id", sort = False)]
+        return [self.__copy_vars(Sample(df)) for _, df in self.df.groupby(f"{level}_id", sort = False)]
 
 
     def get(self, level:str, key:str):
-
+        
         if key in self.df.columns:
-            return self.df[key].to_numpy()
+
+            if level == "seg":
+                return np.array([seg_df[key].to_numpy()[0] for i,seg_df in self.segs()])
+            else:
+                return self.df[key].to_numpy()
+            
 
         if key == "length":
 
@@ -114,6 +166,17 @@ class Sample:
 
             if level == "pair":
                 return self.n_pairs()
+
+
+        if key == "span_idxs":
+
+            if level == "seg":
+                return self.seg_span_idxs()
+            
+            if level == "am":
+                return self.am_span_idxs()
+
+            #if level == "am":
 
 
         raise KeyError(f"Could not find values for {key} as level {level}")
@@ -155,12 +218,11 @@ class Sample:
             return span_labels.get(int(row["char_end"]),{})
 
         self.df = pd.concat([self.df, self.df.apply(label_f, axis=1, result_type="expand", args=(span_labels,))], axis=1)
-        #self.df.astype({'seg_id': 'float64'})
 
 
     def __fuse_tasks(self):
 
-        for task in self.__task_labels:
+        for task in self._task_labels:
             subtasks = task.split("+")
             
             if len(subtasks) <= 1:
@@ -182,13 +244,13 @@ class Sample:
 
 
     def __encode(self, task):
-        encode_fn = lambda x: self.__label2id[task].get(str(x), -1)
+        encode_fn = lambda x: self._label2id[task].get(str(x), -1)
         self.df.loc[:,task] = self.df[task].apply(encode_fn)
 
 
     def __encode_tasks(self):
 
-        for task in self.__task_labels:
+        for task in self._task_labels:
 
             if task == "link":
                 continue
@@ -197,24 +259,44 @@ class Sample:
 
 
     def __set_seg_target_id(self):
-        pass
+        
+        self.df["target_id"] = -1
+
+        # get links and seg ids
+        links = self.get("seg", "link")
+        seg_id = self.seg_ids()
+
+        # pick target ids
+        target_ids = seg_id[links]
+
+        # select rows which belong to a seg
+        mask = self.df["seg_id"] != -1
+
+        # add target ids
+        self.df.loc[mask, "target_id"] = np.repeat(target_ids, self.seg_lengths())
 
 
-    def add_span_labels(self, span_labels:dict, task_labels:dict):
+    def add_span_labels(self, span_labels:dict, task_labels:dict, label_ams :bool = False):
 
-        self.__task_labels = task_labels
+        self._task_labels = task_labels
         self.__create_label_id_mappings()
         self.__create_decouple_mapping()
         self.__label_spans(span_labels)
 
         self.seg_task = None
-        if "seg" in self.__task_labels:
+        if "seg" in self._task_labels:
             self.__label_segs()
-            self.seg_task = sorted([task for task in self.__task_labels.keys() if "seg" in task], key = lambda x: len(x))[-1]
+            self.seg_task = sorted([task for task in self._task_labels.keys() if "seg" in task], key = lambda x: len(x))[-1]
             self.seg_decoder = BIODecoder()
         
         self.__fuse_tasks()
         self.__encode_tasks()
+
+        if "link" in self._task_labels:
+            self.__set_seg_target_id()
+
+        if label_ams:
+            self.__label_ams()
 
 
     def __ensure_possible_links(self) -> None:
@@ -239,94 +321,63 @@ class Sample:
         """
         most_common_label = [Counter(seg_df[task]).most_common(0)[0] for i, seg_df in self.segs()]
         most_common = np.repeat(most_common_label, self.seg_lengths())
-        self.df.loc[self.seg_ids(), task] = most_common
+        non_seg_mask = ~self.df["seg_id"] == -1
+        self.df.loc[non_seg_mask, task] = most_common
 
 
     def __decode_segs(self):
         self.df.loc[:, "seg_id"] = self.seg_decoder(self.df["seg"].to_numpy())
 
 
-    def _label_ams(self, df: pd.DataFrame, mode="pre"):
-
-        if mode == "pre":
-            df = self.__ams_as_pre(df)
-
-        elif mode == "from_list":
-            df = self.__ams_from_list(df)
-
-        elif mode == "list_pre":
-            raise NotImplementedError()
-
-        return df
-
-
-    def __ams_as_pre(self, df: pd.DataFrame):
-        df["am_id"] = np.nan
-        df["adu_id"] = df["seg_id"].to_numpy()
-        groups = df.groupby("sentence_id", sort=False)
-
-        for sent_id, sent_df in groups:
+    def __label_ams(self):
+        #print("_______ \n\n\n")
+        self.df["am_id"] = -1
+        self.df["adu_id"] =  -1
+        #s = self.df["seg_id"].to_numpy()
+        #print(s)
+        for sent_id, sent_df in self.df.groupby("sentence_id", sort=False):
             
-            acs = sent_df.groupby("seg_id", sort=False)
-            prev_ac_end = 0
-            for ac_id, ac_df in acs:
+            prev_ac_end = min(sent_df["char_start"])
+            for ac_id, ac_df in sent_df.groupby("seg_id", sort=False):
+
+                if ac_id == -1:
+                    continue
                 
                 ac_start = min(ac_df["char_start"])
                 ac_end = max(ac_df["char_end"])
 
                 # more than previous end of ac and less than ac start
-                cond1 = sent_df["char_start"] >= prev_ac_end 
-                cond2 = sent_df["char_start"] < ac_start
-                idxs = sent_df[cond1 & cond2].index
+                post_last_ac = self.df["char_start"] >= prev_ac_end 
+                pre_ac = self.df["char_start"] < ac_start
+                am_mask = post_last_ac & pre_ac
 
+                #print(am_mask.to_numpy())
+                #print(s[am_mask])
                 #set the id to ac_id
-                df.loc[idxs,["am_id", "adu_id"]] = ac_id
+                self.df.loc[am_mask, "am_id"] = ac_id
+                
 
-                # text = " ".join(df.loc[idxs, "text"].to_numpy())
-                # if text:
-                #     with open("/tmp/pe_ams.txt","a") as f:
-                #         f.write(text+"\n")
+                # more than previous end of the ac and less than end of ac
+                pre_ac_end = self.df["char_end"] <= ac_end
+                adu_mask = post_last_ac & pre_ac_end
 
-                prev_ac_end = ac_end
+                #print(s[adu_mask])
+                self.df.loc[adu_mask, "adu_id"] = ac_id
 
-        return df
-
-
-    def __ams_from_list(self, df: pd.DataFrame):
-
-        df["am_id"] = np.nan
-        groups = df.groupby("sentence_id", sort=False)
-
-        for sent_id, sent_df in groups:
-            
-            acs = sent_df.groupby("seg_id", sort=False)
-
-            for ac_id, ac_df in acs:
-
-                tokens = ac_df["text"].to_list()
-                am, am_indexes = find_am(tokens)
-
-                if not am:
-                    continue
-
-                idx = ac_df.iloc[am_indexes].index
-                df.loc[idx, "am_id"] = ac_id
-                df.loc[idx, "ac_id"] = None
-
-        return df
+                prev_ac_end =  max(ac_df["char_end"])
 
 
     def __create_decouple_mapping(self):
         
         decouplers = {}
-        for task in self.__task_labels:
+        for task in self._task_labels:
 
             if "+" not in task:
                 continue
             
             decouplers[task] = {}
 
-            labels = list(self.__label2id[task].keys())
+            labels = list(self._label2id[task].keys())
             subtasks = task.split("+")
 
             for i,label in enumerate(labels):
@@ -337,18 +388,18 @@ class Sample:
                 else:
                     sublabels = label.split("_")
 
-                encode_fn = lambda task, label: self.__label2id[task].get(label, -1)
+                encode_fn = lambda task, label: self._label2id[task].get(label, -1)
                 decouplers[task][i] = [encode_fn(st, sl) for st, sl in zip(subtasks, sublabels)]
 
-        self.__decouple_mapping = decouplers
+        self._decouple_mapping = decouplers
 
 
     def __create_label_id_mappings(self):
         
-        self.__label2id = {}
-        self.__id2label = {}
+        self._label2id = {}
+        self._id2label = {}
 
-        for task in self.__task_labels:
+        for task in self._task_labels:
             
             if task == "link":
                 continue
@@ -361,8 +412,8 @@ class Sample:
             #         if "None" not in self.task_labels[task][0]:
             #             raise Warning(f"Label at position 0 is not / does not contain 'None' for {task}: {self.task_labels[task]}")
 
-            self.__id2label[task] = dict(enumerate(self.__task_labels[task]))
-            self.__label2id[task] = {l:i for i,l in self.__id2label[task].items()}
+            self._id2label[task] = dict(enumerate(self._task_labels[task]))
+            self._label2id[task] = {l:i for i,l in self._id2label[task].items()}
     
 
     def overlap(self, sample:"Sample"):
@@ -376,76 +427,74 @@ class Sample:
 
 
 
-def _overlap(j:int, target_seg_df: pd.DataFrame, pdf: pd.DataFrame) -> np.ndarray:
+# def _overlap(j:int, target_seg_df: pd.DataFrame, pdf: pd.DataFrame) -> np.ndarray:
 
-    # target segment id
-    #j = target_seg_df["seg_id"].to_list()[0]
+#     # target segment id
+#     #j = target_seg_df["seg_id"].to_list()[0]
 
-    # predicted segments in the sample target df
-    pred_seg_ids = target_seg_df["PRED-seg_id"].dropna().to_list()
+#     # predicted segments in the sample target df
+#     pred_seg_ids = target_seg_df["PRED-seg_id"].dropna().to_list()
 
-    if not pred_seg_ids:
-        return np.array([None, None, None])
+#     if not pred_seg_ids:
+#         return np.array([None, None, None])
     
-    #best pred segment id
-    i = Counter(pred_seg_ids).most_common(1)[0][0]
+#     #best pred segment id
+#     i = Counter(pred_seg_ids).most_common(1)[0][0]
 
-    #get token indexes
-    ps_token_ids = set(pdf.loc[[i], "token_id"]) #slowest part
-    ts_token_ids = set(target_seg_df["token_id"])
+#     #get token indexes
+#     ps_token_ids = set(pdf.loc[[i], "token_id"]) #slowest part
+#     ts_token_ids = set(target_seg_df["token_id"])
 
-    #calculate the overlap
-    overlap_ratio = len(ts_token_ids.intersection(ps_token_ids)) / max(len(ps_token_ids), len(ts_token_ids))
+#     #calculate the overlap
+#     overlap_ratio = len(ts_token_ids.intersection(ps_token_ids)) / max(len(ps_token_ids), len(ts_token_ids))
 
-    return np.array([i, j, overlap_ratio])
+#     return np.array([i, j, overlap_ratio])
 
 
-def find_overlap(pred_df : pd.DataFrame, target_df : pd.DataFrame) -> Tuple[dict]:
+# def find_overlap(pred_df : pd.DataFrame, target_df : pd.DataFrame) -> Tuple[dict]:
 
-    # Create a new dfs which contain the information we need
-    pdf = pd.DataFrame({
-                        "token_id": pred_df["id"].to_numpy()
-                        }, 
-                        index = pred_df["seg_id"].to_numpy(),
-                        )
-    pdf = pdf[~pdf.index.isna()]
+#     # Create a new dfs which contain the information we need
+#     pdf = pd.DataFrame({
+#                         "token_id": pred_df["id"].to_numpy()
+#                         }, 
+#                         index = pred_df["seg_id"].to_numpy(),
+#                         )
+#     pdf = pdf[~pdf.index.isna()]
 
-    tdf = pd.DataFrame({
-                        "token_id": target_df["id"].to_numpy(),
-                        "seg_id": target_df["seg_id"].to_numpy(),
-                        "PRED-seg_id": pred_df["seg_id"].to_numpy(),
-                        }, 
-                        index = target_df["seg_id"].to_numpy(),
-                        )
+#     tdf = pd.DataFrame({
+#                         "token_id": target_df["id"].to_numpy(),
+#                         "seg_id": target_df["seg_id"].to_numpy(),
+#                         "PRED-seg_id": pred_df["seg_id"].to_numpy(),
+#                         }, 
+#                         index = target_df["seg_id"].to_numpy(),
+#                         )
     
-    tdf = tdf[~tdf.index.isna()]
+#     tdf = tdf[~tdf.index.isna()]
     
-    if tdf.shape[0] == 0:
-        return {}, {}, {}, {}
+#     if tdf.shape[0] == 0:
+#         return {}, {}, {}, {}
 
-    # extract information about overlaps
-    overlap_info = np.vstack([ _overlap(j, tsdf, pdf) for j, tsdf in tdf.groupby("seg_id", sort=False)])    
+#     # extract information about overlaps
+#     overlap_info = np.vstack([ _overlap(j, tsdf, pdf) for j, tsdf in tdf.groupby("seg_id", sort=False)])    
   
 
-    # we then filter out all Nones, and filter out all cases where j match with more than one i.
-    # i.e. for each j we only selec the best i 
-    df = pd.DataFrame(overlap_info, columns = ["i", "j", "ratio"])
-    df = df.dropna()
-    df = df.sort_values("ratio")
-    top_matches = df.groupby("j", sort = False).first()
+#     # we then filter out all Nones, and filter out all cases where j match with more than one i.
+#     # i.e. for each j we only selec the best i 
+#     df = pd.DataFrame(overlap_info, columns = ["i", "j", "ratio"])
+#     df = df.dropna()
+#     df = df.sort_values("ratio")
+#     top_matches = df.groupby("j", sort = False).first()
 
-    i  = top_matches["i"].to_numpy(int)
-    j = top_matches.index.to_numpy(int)
-    ratio = top_matches["ratio"].to_numpy(float)
+#     i  = top_matches["i"].to_numpy(int)
+#     j = top_matches.index.to_numpy(int)
+#     ratio = top_matches["ratio"].to_numpy(float)
 
-    i2ratio = dict(zip(i, ratio))
-    j2ratio = dict(zip(j, ratio))
-    i2j = dict(zip(i, j))
-    j2i = dict(zip(j, i))
+#     i2ratio = dict(zip(i, ratio))
+#     j2ratio = dict(zip(j, ratio))
+#     i2j = dict(zip(i, j))
+#     j2i = dict(zip(j, i))
 
-    return i2ratio, j2ratio, i2j, j2i
-
-
+#     return i2ratio, j2ratio, i2j, j2i
 
 
 
@@ -454,7 +503,9 @@ def find_overlap(pred_df : pd.DataFrame, target_df : pd.DataFrame) -> Tuple[dict
 
 
 
-    # def __correct_links(self, df:pd.DataFrame):
+
+
+#     # def __correct_links(self, df:pd.DataFrame):
     #     """
     #     This function perform correction 3 mentioned in https://arxiv.org/pdf/1704.06104.pdf  (Appendix)
     #     Any link that is outside of the actuall text, e.g. when predicted link > max_idx, is set to predicted_link== max_idx
