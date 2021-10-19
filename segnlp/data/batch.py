@@ -1,6 +1,7 @@
 
 
 #basics
+from numpy.lib.arraysetops import isin
 import pandas as pd
 from functools import wraps
 from typing import Sequence, Union, List, Dict
@@ -24,8 +25,9 @@ class Batch:
                 device = None
                 ):
 
-        #
-        self._samples = self._samples
+        #target and pred samples
+        self._target_samples = samples
+        self._pred_samples = [s.copy(clean=True) for s in samples]
 
         # device
         self.device = device
@@ -42,11 +44,9 @@ class Batch:
     
  
     def __len__(self):
-        return len(self.samples)
+        return len(self._target_samples)
  
-    @property
-    def samples(self):
-        return self._samples
+
 
     def __use_targets_wrapper(func):
 
@@ -80,6 +80,9 @@ class Batch:
         # create a key for string in cache
         cache_key = (level, key, flat, pred, bidir)
 
+
+        samples = self._pred_samples if pred else self._target_samples
+
         # fetched cached data
         if cache_key in self.__cache:
             return self.__cache[cache_key]
@@ -88,16 +91,27 @@ class Batch:
         if level not in self.__ok_levels:
             raise KeyError
 
-        data = [sample.get(level, key, pred = pred, bidir = bidir) for sample in self._samples]
+        data = [sample.get(level, key) for sample in samples]
 
-        try:
-            data = torch.tensor(data)
-            pad_sequence(data, batch_first = True, padding_value = 0)
-            data.to(self.device)
-        except:
-            pass
-
+        print(data)
         
+        if not isinstance(data[0], int):
+            
+            # for creatin keys we get string
+            try:
+                data = pad_sequence(data, batch_first = True, padding_value = 0)
+            except TypeError:
+                pass
+
+        else:
+            data = torch.LongTensor(data)
+
+        # check to see if we can add data to tensor
+        try:
+            data.to(self.device)
+        except AttributeError:
+            pass
+  
         self.__cache[cache_key] = data
 
         return data

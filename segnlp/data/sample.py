@@ -7,6 +7,9 @@ from collections import Counter
 from copy import deepcopy
 import itertools
 
+#pytorch
+import torch
+
 # segnlp
 from segnlp.utils import BIODecoder
 from segnlp.utils import create_uid
@@ -60,7 +63,10 @@ class Sample:
         return copy_sample
 
 
-    def __copy_vars(self, sample: "Sample"):
+    def __copy_vars(self, sample: "Sample") -> "Sample":
+        """
+        just copying over some needed variables to the new sample
+        """
 
         # copy over some needed vars
         for var in ["_task_labels", "_decouple_mapping", "_id2label", "_label2id"]:
@@ -73,17 +79,53 @@ class Sample:
         return sample
 
 
-    def length(self) -> int:
+    def __fix_links(self, sample: "Sample", seg_id_start) -> "Sample":
+        """
+        as we are splitting up the original sample we need to change the 
+        links as they are relative to the number of segments in the sample.
+        As number of segments in sample is reduced the links needs
+        to be normalized to the number of segments in the new sample
+        """
+        
+        if "link" not in self._task_labels:
+            return sample
+
+        mask = sample.df["link"] != -1
+        sample.df.loc[mask, "link"] -= seg_id_start
+        return sample
+
+
+    def split(self, level:str) -> List["Sample"]:
+        """
+        split the sample into new samples on a lower level. E.g. from documents
+        to sentences.
+        """
+        
+        samples = []
+        seg_id_start = 0
+        for _, df in self.df.groupby(f"{level}_id", sort = False):
+            new_sample = Sample(df)
+            new_sample = self.__copy_vars(new_sample)
+            new_sample = self.__fix_links(new_sample, seg_id_start)
+            seg_id_start += new_sample._n_segs()
+            samples.append(new_sample)
+
+        return samples
+
+
+
+    def _length(self) -> int:
         return self._size
     
 
-    def pairs(self, bidir=False):
+    def _pairs(self, bidir=False):
         if bidir:
             return list(itertools.product(self.seg_ids(), repeat=2))
         else:
             return list(itertools.combinations(self.seg_ids()))
     
-    def n_pairs(self) -> int:
+
+    def _n_pairs(self) -> int:
         return len(self.pairs())
 
 
@@ -96,35 +138,35 @@ class Sample:
             yield i, df
 
 
-    def segs(self):
+    def _segs(self):
         return self.__groups("seg_id")
 
 
-    def ams(self):
+    def _ams(self):
         return self.__groups("am_id")
 
 
-    def adus(self):
+    def _adus(self):
         return self.__groups("adu_id")
 
 
-    def seg_ids(self) -> List[int]:
-        return np.array([i for i, _ in self.segs()])
+    def _seg_ids(self) -> List[int]:
+        return np.array([i for i, _ in self._segs()])
 
 
-    def n_segs(self) -> int:
-        return len(list(self.segs()))
+    def _n_segs(self) -> int:
+        return len(list(self._segs()))
     
     
-    def seg_lengths(self) -> int:
-        return np.array([len(seg_df) for i, seg_df in self.segs()])
+    def _seg_lengths(self) -> torch.LongTensor:
+        return torch.LongTensor([len(seg_df) for i, seg_df in self._segs()])
     
 
-    def seg_span_idxs(self) -> List[Tuple[int, int]]:
-        return [[seg_df["id"].to_numpy()[0], seg_df["id"].to_numpy()[-1]] for _, seg_df in self.segs()]
+    def _seg_span_idxs(self) -> torch.LongTensor:
+        return torch.LongTensor([[seg_df["id"].to_numpy()[0], seg_df["id"].to_numpy()[-1]] for _, seg_df in self._segs()])
 
 
-    def am_span_idxs(self) -> List[Tuple[int, int]]:
+    def _am_span_idxs(self) -> np.ndarray:
         # return the span idxes for Argumentative Markers
         span_idxs = []
         for i, adu_df in self.adus():
@@ -142,19 +184,27 @@ class Sample:
         return span_idxs
 
 
-    def split(self, level:str) -> List["Sample"]:
-        return [self.__copy_vars(Sample(df)) for _, df in self.df.groupby(f"{level}_id", sort = False)]
-
-
     def get(self, level:str, key:str):
         
         if key in self.df.columns:
 
             if level == "seg":
-                return np.array([seg_df[key].to_numpy()[0] for i,seg_df in self.segs()])
+
+                if key not in self._task_labels and key != "seg":
+                    raise KeyError(f"Getting values for {key} is not supported for seg level.")
+
+                data = [seg_df[key].to_numpy()[0] for i,seg_df in self._segs()]
             else:
-                return self.df[key].to_numpy()
+                data = self.df[key].to_numpy()
             
+            try:
+                data = torch.LongTensor(data)
+            except (TypeError, ValueError) as e:
+                pass
+        
+
+            return data
+
 
         if key == "length":
 
@@ -162,19 +212,31 @@ class Sample:
                 return len(self)
             
             if level == "seg":
-                return self.n_segs()
+                return self._n_segs()
 
             if level == "pair":
-                return self.n_pairs()
+                return self._n_pairs()
+
+
+        # if key == "tok_lengths":
+
+        #     if level == "token":
+        #         return len(self)
+            
+        #     if level == "seg":
+        #         return self.n_segs()
+
+        #     if level == "pair":
+        #         return self.n_pairs()
 
 
         if key == "span_idxs":
 
             if level == "seg":
-                return self.seg_span_idxs()
+                return self._seg_span_idxs()
             
             if level == "am":
-                return self.am_span_idxs()
+                return self._am_span_idxs()
 
             #if level == "am":
 
@@ -238,14 +300,13 @@ class Sample:
 
     def __label_segs(self):
         self.df["seg"] = "O"
-        segs = self.segs()
+        segs = self._segs()
         for _, seg_df in segs:
             self.df.loc[seg_df.index, "seg"] = ["B"] +  (["I"] * (seg_df.shape[0]-1))
 
 
     def __encode(self, task):
-        encode_fn = lambda x: self._label2id[task].get(str(x), -1)
-        self.df.loc[:,task] = self.df[task].apply(encode_fn)
+        self.df.loc[:, task] = [self._label2id[task].get(str(x), -1) for x in self.df[task].to_numpy()]
 
 
     def __encode_tasks(self):
@@ -264,7 +325,7 @@ class Sample:
 
         # get links and seg ids
         links = self.get("seg", "link")
-        seg_id = self.seg_ids()
+        seg_id = self._seg_ids()
 
         # pick target ids
         target_ids = seg_id[links]
@@ -273,7 +334,7 @@ class Sample:
         mask = self.df["seg_id"] != -1
 
         # add target ids
-        self.df.loc[mask, "target_id"] = np.repeat(target_ids, self.seg_lengths())
+        self.df.loc[mask, "target_id"] = np.repeat(target_ids, self._seg_lengths())
 
 
     def add_span_labels(self, span_labels:dict, task_labels:dict, label_ams :bool = False):
@@ -319,8 +380,8 @@ class Sample:
         ensures that the labels inside a segments are the same. For each segment we take the majority label 
         and use it for the whole span.
         """
-        most_common_label = [Counter(seg_df[task]).most_common(0)[0] for i, seg_df in self.segs()]
-        most_common = np.repeat(most_common_label, self.seg_lengths())
+        most_common_label = [Counter(seg_df[task]).most_common(0)[0] for i, seg_df in self._segs()]
+        most_common = np.repeat(most_common_label, self._seg_lengths())
         non_seg_mask = ~self.df["seg_id"] == -1
         self.df.loc[non_seg_mask, task] = most_common
 
@@ -417,9 +478,9 @@ class Sample:
     
 
     def overlap(self, sample:"Sample"):
-        for i, seg_df in self.segs():
+        for i, seg_df in self._segs():
 
-            for i2, seg_df2 in sample.segs():
+            for i2, seg_df2 in sample._segs():
 
                 ratio = len(set(seg_df["str"]).intersection(set(seg_df2["str"]))) / max(len(seg_df), len(seg_df2))
 

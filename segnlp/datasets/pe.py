@@ -195,13 +195,6 @@ class PE(DataSet):
 
     def _process_data(self, path_to_data):
 
-        #    if self.num > self.end:
-        #         raise StopIteration
-        #     else:
-        #         self.num += 1
-        #         return self.num - 1
-
-
         """loads the Pursuasive Essay data and parse it into a DataSet. Also dumps the dataset 
         locally so that one does not need to parse it again, only load the parsed data.
 
@@ -219,10 +212,11 @@ class PE(DataSet):
         samples = []
         global_seg_id = 0
         grouped_files = list(zip(ann_files, text_files))
+        x = 0
         for ann_file, txt_file in tqdm(grouped_files, desc = "Preprocessing Persuasive Essays"):
 
             # -1 one as we want index 0 to be sample 1
-            file_id = int(re.sub(r'[^0-9]', "", ann_file.rsplit("/",1)[-1])) -1
+            #file_id = int(re.sub(r'[^0-9]', "", ann_file.rsplit("/",1)[-1])) -1
 
             text = self.__read_file(txt_file)
             ann = self.__read_file(ann_file)
@@ -238,7 +232,6 @@ class PE(DataSet):
                                                             global_seg_id
                                                             )
             
-
             sample = self.nlp(text)
             sample.add_span_labels(
                                     span2label, 
@@ -246,7 +239,10 @@ class PE(DataSet):
                                     label_ams = self.label_ams
                                     )
             samples.extend(sample.split(self.sample_level))
+            x += 1
 
+            if x > 10:
+                break
   
         return samples
 
