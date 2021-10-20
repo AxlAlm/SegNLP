@@ -30,6 +30,11 @@ class Sample:
         self.df = df
         self._size : int = len(df)
         self.uid : str = create_uid(str(self))
+        self._str_keys = {"str", "pos", "deprel"}
+        self._df_keys = set(list(self.df.columns))
+        self._all_keys = self._df_keys | {"length", "span_idxs"}
+        self._supported_levels = set(["token", "seg"])
+        self._task_labels = {}
     
 
     def __len__(self) -> int:
@@ -67,9 +72,17 @@ class Sample:
         """
         just copying over some needed variables to the new sample
         """
-
+        vars_to_copy = [
+                        "_task_labels", 
+                        "_decouple_mapping", 
+                        "_id2label", 
+                        "_label2id",
+                        "_supported_levels",
+                        "_all_keys",
+                        "_df_keys"
+                    ]
         # copy over some needed vars
-        for var in ["_task_labels", "_decouple_mapping", "_id2label", "_label2id"]:
+        for var in vars_to_copy:
 
             if not hasattr(self, var):
                 continue
@@ -89,7 +102,7 @@ class Sample:
         
         if "link" not in self._task_labels:
             return sample
-
+    
         mask = sample.df["link"] != -1
         sample.df.loc[mask, "link"] -= seg_id_start
         return sample
@@ -111,7 +124,6 @@ class Sample:
             samples.append(new_sample)
 
         return samples
-
 
 
     def _length(self) -> int:
@@ -169,7 +181,7 @@ class Sample:
     def _am_span_idxs(self) -> np.ndarray:
         # return the span idxes for Argumentative Markers
         span_idxs = []
-        for i, adu_df in self.adus():
+        for i, adu_df in self._adus():
 
             am_mask  = adu_df["am_id"] != -1
             tok_ids = adu_df.loc[am_mask,"id"].to_numpy()
@@ -181,67 +193,7 @@ class Sample:
 
             span_idxs.append(si)
 
-        return span_idxs
-
-
-    def get(self, level:str, key:str):
-        
-        if key in self.df.columns:
-
-            if level == "seg":
-
-                if key not in self._task_labels and key != "seg":
-                    raise KeyError(f"Getting values for {key} is not supported for seg level.")
-
-                data = [seg_df[key].to_numpy()[0] for i,seg_df in self._segs()]
-            else:
-                data = self.df[key].to_numpy()
-            
-            try:
-                data = torch.LongTensor(data)
-            except (TypeError, ValueError) as e:
-                pass
-        
-
-            return data
-
-
-        if key == "length":
-
-            if level == "token":
-                return len(self)
-            
-            if level == "seg":
-                return self._n_segs()
-
-            if level == "pair":
-                return self._n_pairs()
-
-
-        # if key == "tok_lengths":
-
-        #     if level == "token":
-        #         return len(self)
-            
-        #     if level == "seg":
-        #         return self.n_segs()
-
-        #     if level == "pair":
-        #         return self.n_pairs()
-
-
-        if key == "span_idxs":
-
-            if level == "seg":
-                return self._seg_span_idxs()
-            
-            if level == "am":
-                return self._am_span_idxs()
-
-            #if level == "am":
-
-
-        raise KeyError(f"Could not find values for {key} as level {level}")
+        return torch.LongTensor(span_idxs)
 
 
     def add_preds(self):
@@ -335,29 +287,6 @@ class Sample:
 
         # add target ids
         self.df.loc[mask, "target_id"] = np.repeat(target_ids, self._seg_lengths())
-
-
-    def add_span_labels(self, span_labels:dict, task_labels:dict, label_ams :bool = False):
-
-        self._task_labels = task_labels
-        self.__create_label_id_mappings()
-        self.__create_decouple_mapping()
-        self.__label_spans(span_labels)
-
-        self.seg_task = None
-        if "seg" in self._task_labels:
-            self.__label_segs()
-            self.seg_task = sorted([task for task in self._task_labels.keys() if "seg" in task], key = lambda x: len(x))[-1]
-            self.seg_decoder = BIODecoder()
-        
-        self.__fuse_tasks()
-        self.__encode_tasks()
-
-        if "link" in self._task_labels:
-            self.__set_seg_target_id()
-
-        if label_ams:
-            self.__label_ams()
 
 
     def __ensure_possible_links(self) -> None:
@@ -476,6 +405,109 @@ class Sample:
             self._id2label[task] = dict(enumerate(self._task_labels[task]))
             self._label2id[task] = {l:i for i,l in self._id2label[task].items()}
     
+
+    def add_span_labels(self, span_labels:dict, task_labels:dict, label_ams :bool = False):
+
+        self._task_labels = task_labels
+        self._all_keys.update(list(self._task_labels.keys()))
+        self._df_keys.update(list(self._task_labels.keys()))
+        self.__create_label_id_mappings()
+        self.__create_decouple_mapping()
+        self.__label_spans(span_labels)
+
+        self.seg_task = None
+        if "seg" in self._task_labels:
+            self.__label_segs()
+            self.seg_task = sorted([task for task in self._task_labels.keys() if "seg" in task], key = lambda x: len(x))[-1]
+            self.seg_decoder = BIODecoder()
+        
+        self.__fuse_tasks()
+        self.__encode_tasks()
+
+        if "link" in self._task_labels:
+            self.__set_seg_target_id()
+            self._all_keys.add("target_id")
+            self._df_keys.add("target_id")
+
+        if label_ams:
+            self.__label_ams()
+            self._all_keys.update(["am_id", "adu_id"])
+            self._df_keys.update(["am_id", "adu_id"])
+            self._supported_levels.add("am")
+
+
+        self._all_keys.update(["seg_id", "span_id"])
+        self._df_keys.update(["seg_id", "span_id"])
+
+
+    def get(self, level:str, key:str):
+
+
+        if key not in self._all_keys:
+            raise KeyError(f"'{key}' is not a supported key")
+
+        if level not in self._supported_levels:
+            raise KeyError(f"'{level}' is not a supported level, try any of {self._supported_levels}")
+
+
+
+        if level == "seg":
+
+            if key in self._df_keys:
+                
+                if key not in self._task_labels:
+                    raise KeyError(f"Getting values for {key} is not supported for seg level")
+
+                return torch.LongTensor([seg_df[key].to_numpy()[0] for i,seg_df in self._segs()])
+
+            if key == "length":
+                return self._n_segs()
+
+            if key == "span_idxs":
+                return self._seg_span_idxs()
+            
+
+
+
+        if level == "am":
+
+            if key == "span_idxs":
+                return self._am_span_idxs()
+
+
+
+
+
+        if level == "token":
+
+            if key in self._df_keys:
+                data = self.df[key].to_list()
+
+                if key in self._str_keys:
+                    return data
+                else:
+                    return torch.LongTensor(data)
+
+            if key  == "length":
+                return len(self)
+        
+
+
+
+        # if key == "tok_lengths":
+
+        #     if level == "token":
+        #         return len(self)
+            
+        #     if level == "seg":
+        #         return self.n_segs()
+
+        #     if level == "pair":
+        #         return self.n_pairs()
+
+        #raise KeyError(f"Could not find values for {key} as level {level}")
+
+
 
     def overlap(self, sample:"Sample"):
         for i, seg_df in self._segs():

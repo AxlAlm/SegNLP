@@ -32,9 +32,6 @@ class Batch:
         # device
         self.device = device
 
-        # levels which are ok
-        self.__ok_levels : set = set(["seg", "token", "span", "pair", "am", "adu"])
-
         # if we should use target segments for this batch
         self.use_target_segs : bool = False
 
@@ -42,10 +39,8 @@ class Batch:
         self.__cache : Dict[tuple, Union[Sequence, Tensor]] = {}
 
     
- 
     def __len__(self):
         return len(self._target_samples)
- 
 
 
     def __use_targets_wrapper(func):
@@ -72,14 +67,12 @@ class Batch:
     def get(self, 
             level : str, 
             key : str, 
-            flat : bool = False, 
             pred : bool = False,
             bidir : bool = True
             ):
 
         # create a key for string in cache
-        cache_key = (level, key, flat, pred, bidir)
-
+        cache_key = (level, key, pred, bidir) 
 
         samples = self._pred_samples if pred else self._target_samples
 
@@ -87,14 +80,8 @@ class Batch:
         if cache_key in self.__cache:
             return self.__cache[cache_key]
 
-
-        if level not in self.__ok_levels:
-            raise KeyError
-
         data = [sample.get(level, key) for sample in samples]
 
-        print(data)
-        
         if not isinstance(data[0], int):
             
             # for creatin keys we get string
@@ -124,7 +111,6 @@ class Batch:
             raise KeyError(f"cannot add values to key ='{key}'")
 
         (sample.add(level, key, data) for sample in self._sample)
-
 
 
     def to(self, device):
