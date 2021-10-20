@@ -7,6 +7,7 @@ import numpy as np
 
 #pytroch
 import torch
+from torch._C import Value
 
 
 # segnlp
@@ -151,3 +152,58 @@ class TestSample(unittest.TestCase):
         self._raise_get_error(KeyError, "lollll", "label")
         self._raise_get_error(KeyError, 10, "label")
         self._raise_get_error(KeyError, "hello", 20)
+
+
+    def test_copy_sample(self):
+        sample  = self.utils.create_and_label_sample()
+        sample_copy = sample.copy(clean=True)
+        self.assertFalse(sample.df.equals(sample_copy.df))
+
+
+    def test_add_seg_label(self):
+        sample = self.utils.create_and_label_sample()
+        sample_pred = sample.copy(clean=True)
+
+        # using the gold labels
+        token_bio = sample.get("token", "seg")
+        seg_links = sample.get("seg", "link")
+
+        # do segmentation, so we can add labels to segments
+        sample_pred.add("token", "seg", token_bio)
+
+        # add links to segments
+        sample_pred.add("seg", "link", seg_links)
+
+        # make sure we have the same labels we added
+        is_equal = torch.equal(seg_links, sample_pred.get("seg", "link"))
+        self.assertTrue(is_equal)
+
+
+
+    def test_add_seg_labels_inb4_segmentation(self):
+        sample = self.utils.create_and_label_sample()
+        sample_pred = sample.copy(clean=True)
+
+        # using the gold labels
+        seg_links = sample.get("seg", "link")
+
+        # as we have removed all previous labels, this include segmentation information
+        # hence we cannot add anything to segment level yet, we first need to do segmentaion
+        with self.assertRaises(RuntimeError):
+            sample_pred.add("seg", "link", seg_links)
+
+
+
+    def test_add_decouple_seg(self):
+        sample  = self.utils.create_and_label_sample()
+        sample_pred = sample.copy(clean=True)
+
+        # using the gold labels
+        seg_label_preds = sample.get("token", "seg+label")
+
+        # label pred with true labels
+        sample_pred.add("token", "seg+label", seg_label_preds)
+
+        # make sure we have the same labels we added
+        is_equal = torch.equal(seg_label_preds, sample_pred.get("token", "seg+label"))
+        self.assertTrue(is_equal)

@@ -32,6 +32,7 @@ class Utils:
         })
         task_labels = {
                         "seg": ["O", "B", "I"],
+                        "seg+label": ["O", "B_A", "I_A", "B_B", "I_B"],
                         "label": ["None", "A", "B"],
                         "link_label": ["root", "A", "B"],
                         "link": []

@@ -110,7 +110,7 @@ class Batch:
         if key not in self.label_encoder.task_labels:
             raise KeyError(f"cannot add values to key ='{key}'")
 
-        (sample.add(level, key, data) for sample in self._sample)
+        (sample.add(level, key, data) for sample in self._pred_samples)
 
 
     def to(self, device):

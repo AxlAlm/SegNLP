@@ -1,6 +1,6 @@
 
 # basic
-from typing import Generator, Sequence, List, Tuple
+from typing import Generator, Iterator, Sequence, List, Tuple, Union
 import pandas as pd
 import numpy as np
 from collections import Counter
@@ -9,18 +9,12 @@ import itertools
 
 #pytorch
 import torch
+from torch import Tensor
 
 # segnlp
-from segnlp.utils import BIODecoder
 from segnlp.utils import create_uid
-
-# from .label_encoder import LabelEncoder
-# from .array import ensure_numpy
-# from .array import ensure_list
-# from .array import create_mask
-# from .array import np_cumsum_zero
-# from .overlap import find_overlap
-# from .misc import timer
+from segnlp.utils import ensure_numpy
+from segnlp.utils import decode_bio
 
 
 
@@ -170,7 +164,11 @@ class Sample:
         return len(list(self._segs()))
     
     
-    def _seg_lengths(self) -> torch.LongTensor:
+    def _seg_mask(self):
+        return (self.df["seg_id"] != -1).to_numpy()
+    
+
+    def _seg_tok_lengths(self) -> torch.LongTensor:
         return torch.LongTensor([len(seg_df) for i, seg_df in self._segs()])
     
 
@@ -194,36 +192,6 @@ class Sample:
             span_idxs.append(si)
 
         return torch.LongTensor(span_idxs)
-
-
-    def add_preds(self):
-        pass
-
-
-    def add_segs(self, segs: Sequence):
-
-        if "+" in self.seg_task:
-            self.__decouple(segs)
-
-            return 
-
-        self.df["seg"] = segs
-        self.__decode_segs()
-
-
-    def add_links(self, links: Sequence) -> None:
-        self.df["link"] = links
-        self.__ensure_possible_links()
-
-
-    def add_labels(self, labels : Sequence) -> None:
-        self.df["label"] = labels
-        self.__ensure_homogeneous("label")
-
-
-    def add_link_labels(self, link_label: Sequence) -> None:
-        self.df["link_label"] = link_label
-        self.__ensure_homogeneous
 
 
     def __label_spans(self, span_labels:dict):
@@ -286,22 +254,22 @@ class Sample:
         mask = self.df["seg_id"] != -1
 
         # add target ids
-        self.df.loc[mask, "target_id"] = np.repeat(target_ids, self._seg_lengths())
+        self.df.loc[mask, "target_id"] = np.repeat(target_ids, self._seg_tok_lengths())
 
 
-    def __ensure_possible_links(self) -> None:
-        """
-        This function perform correction 3 mentioned in https://arxiv.org/pdf/1704.06104.pdf  (Appendix)
-        Any link that is outside of the actuall text, e.g. when predicted link > max segs, is set to predicted_link == max_idx -1
-        """
+    # def __ensure_possible_links(self) -> None:
+    #     """
+    #     This function perform correction 3 mentioned in https://arxiv.org/pdf/1704.06104.pdf  (Appendix)
+    #     Any link that is outside of the actuall text, e.g. when predicted link > max segs, is set to predicted_link == max_idx -1
+    #     """
 
-        self.df.loc[:, "max_seg"] = self.n_segs()
+    #     self.df.loc[:, "max_seg"] = self.n_segs()
 
-        above = self.df["link"] >= self.df["max_seg"]
-        below = self.df["link"] < 0
+    #     above = self.df["link"] >= self.df["max_seg"]
+    #     below = self.df["link"] < 0
 
-        self.df.loc[above | below, "link"] = self.df.loc[above | below, "max_seg"] - 1
-        self.df.pop("max_seg")
+    #     self.df.loc[above | below, "link"] = self.df.loc[above | below, "max_seg"] - 1
+    #     self.df.pop("max_seg")
 
 
     def __ensure_homogeneous(self, task:str):
@@ -309,14 +277,18 @@ class Sample:
         ensures that the labels inside a segments are the same. For each segment we take the majority label 
         and use it for the whole span.
         """
-        most_common_label = [Counter(seg_df[task]).most_common(0)[0] for i, seg_df in self._segs()]
-        most_common = np.repeat(most_common_label, self._seg_lengths())
-        non_seg_mask = ~self.df["seg_id"] == -1
-        self.df.loc[non_seg_mask, task] = most_common
+        most_common_label = [Counter(seg_df[task].to_numpy()).most_common()[0][0] for i, seg_df in self._segs()]
+        most_common = np.repeat(most_common_label, ensure_numpy(self._seg_tok_lengths()))
+        self.df.loc[self._seg_mask(), task] = most_common
 
 
     def __decode_segs(self):
-        self.df.loc[:, "seg_id"] = self.seg_decoder(self.df["seg"].to_numpy())
+        self.df.loc[:, "seg_id"] = decode_bio(self.df["seg"].to_numpy())
+
+
+    def __decouple(self, task:str, data: np.ndarray) -> Iterator:
+        subtasks = task.split("+")
+        return  zip(subtasks,zip(*[self._decouple_mapping[task][d] for d in data]))
 
 
     def __label_ams(self):
@@ -415,11 +387,10 @@ class Sample:
         self.__create_decouple_mapping()
         self.__label_spans(span_labels)
 
-        self.seg_task = None
+        self._seg_task = None
         if "seg" in self._task_labels:
+            #self._seg_tasks = sorted([task for task in self._task_labels.keys() if "seg" in task], key = lambda x: len(x))
             self.__label_segs()
-            self.seg_task = sorted([task for task in self._task_labels.keys() if "seg" in task], key = lambda x: len(x))[-1]
-            self.seg_decoder = BIODecoder()
         
         self.__fuse_tasks()
         self.__encode_tasks()
@@ -440,7 +411,7 @@ class Sample:
         self._df_keys.update(["seg_id", "span_id"])
 
 
-    def get(self, level:str, key:str):
+    def get(self, level:str, key:str) -> Union[int, list, Tensor]:
 
 
         if key not in self._all_keys:
@@ -476,8 +447,6 @@ class Sample:
 
 
 
-
-
         if level == "token":
 
             if key in self._df_keys:
@@ -492,21 +461,35 @@ class Sample:
                 return len(self)
         
 
+    def add(self, level:str, key: str , data: Sequence) -> None:
+
+        data = ensure_numpy(data)
+
+        if level == "token":
+            self.df[key] = data
+
+            if "seg" not in key:
+                self.__ensure_homogeneous(key)
+
+            # if key == "link":s
+            #     self.__ensure_possible_links()
+
+        if level == "seg":
+
+            if not self._n_segs():
+                raise RuntimeError("There are no segment to add labels to. Make sure segmentation is done before adding labels to segments.")
+
+            ## NOTE! should we reset the df[key]?
+            self.df.loc[self._seg_mask(), key] = np.repeat(data, self._seg_tok_lengths())
 
 
-        # if key == "tok_lengths":
+        if "+" in key:
+            for key, data in self.__decouple(key, data):
+                self.add(level, key, data)
 
-        #     if level == "token":
-        #         return len(self)
-            
-        #     if level == "seg":
-        #         return self.n_segs()
-
-        #     if level == "pair":
-        #         return self.n_pairs()
-
-        #raise KeyError(f"Could not find values for {key} as level {level}")
-
+        
+        if "seg" == key:
+            self.__decode_segs()
 
 
     def overlap(self, sample:"Sample"):
