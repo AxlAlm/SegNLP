@@ -1,7 +1,7 @@
 
 
 #basics
-from typing import Sequence, Union
+from typing import Sequence, Union, Tuple
 import numpy as np
 
 #pytorch
@@ -47,8 +47,9 @@ class LSTM(nn.Module):
         utils.init_weights(self, weight_init)
 
 
-
-    def forward(self, input:Union[Tensor, Sequence[Tensor]], lengths:Tensor, padding_value=0.0):
+    def __solve_input(self, input:Union[Tensor, Sequence[Tensor]]) -> Tensor:
+        
+        h_0, c_0 = None, None,
 
         # if input in a sequence we concatentate the tensors
         # if the second input element is a tuple its assumed its the states (h0,c0)
@@ -74,7 +75,13 @@ class LSTM(nn.Module):
         
             else:
                 input = torch.cat(input, dim = -1)
+        
 
+        return input, h_0, c_0, pass_states
+
+
+    def __sort_input(self, input:Tensor, lengths:int) -> Tensor:
+        
         sorted_lengths, sorted_idxs = torch.sort(lengths, descending=True)
         sorted = torch.equal(sorted_lengths, lengths)
 
@@ -83,11 +90,22 @@ class LSTM(nn.Module):
             _ , original_idxs = torch.sort(sorted_idxs, descending=False)
             input = input[sorted_idxs]
 
+        return input, original_idxs
+
+
+    def forward(self, input:Union[Tensor, Sequence[Tensor]], lengths:Tensor, padding_value=0.0) -> Tuple[Tensor,Tuple[Tensor,Tensor]]:
+
+        # fix the input 
+        input, h_0,c_0, pass_states =  self.___solve_input(input)
+
+        # sort the input tensors by lengths
+        input, original_idxs = self.__sort_input(input, lengths)
 
         # if a sample is length == 0, we assume its filled with zeros. So, we remove the sample,
         # and then extend the dims later
         non_zero_lens = lengths != 0
 
+        # remove paddings and pack it, turn to 2d
         packed_embs = pack_padded_sequence(
                                             input[non_zero_lens], 
                                             utils.ensure_numpy(lengths[non_zero_lens]),
@@ -100,12 +118,14 @@ class LSTM(nn.Module):
         else:
             lstm_packed, states = self.lstm(packed_embs)
 
+        # return to 3D and pad
         output, _ = pad_packed_sequence(
                                             lstm_packed, 
                                             batch_first=True, 
                                             padding_value=padding_value,
                                             )
 
+        # If we had sample of 0 length, we pad outputs so we are back to the original shape
         # we pad on the ends of dim 0 and dim 1
         output = pad(   
                     output, 

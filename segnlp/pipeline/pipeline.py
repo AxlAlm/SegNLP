@@ -46,11 +46,10 @@ class Pipeline(
     
     def __init__(self,
                 id:str,
-                dataset:Union[str, DataSet],
+                dataset: DataSet,
                 model: SegModel,
                 metric:str,
-                pretrained_features:list = [],
-                other_levels:list = [],
+                #other_levels:list = [],
                 evaluation_method:str = "default",
                 n_random_seeds: int = 6,
                 root_dir:str =f"{user_dir}/.segnlp/", #".segnlp/pipelines"  
@@ -66,7 +65,6 @@ class Pipeline(
         self.training : bool = True
         self.testing : bool = True
         self.root_dir = root_dir
-        self.other_levels = other_levels
         self.dataset_name = dataset.name()
         self.n_random_seeds = n_random_seeds
 
@@ -79,27 +77,15 @@ class Pipeline(
         self.subtasks : list = dataset.subtasks
         self.task_labels : Dict[str,list] = dataset.task_labels
         self.all_tasks : list = sorted(set(self.tasks + self.subtasks))
-        self.label_encoder : utils.LabelEncoder = utils.LabelEncoder(task_labels = self.task_labels)
 
         # init files
         self.__init__dirs_and_files(overwrite = overwrite)
 
         # init modules
-        self._init_dataset_processor()
-        self._init_pretrained_feature_extractor(pretrained_features)
-        self._init_text_processor()
         self._init_logs()
 
         # create config
         self.config = self.__create_dump_config()
-
-        #processed the data
-        self._preprocess_dataset(dataset)
-
-        # create split indexes 
-        self._set_splits(
-                        premade_splits = dataset.splits,
-                        )
 
         # after we have processed data we will deactivate preprocessing so we dont keep
         # large models only using in preprocessing in memory
@@ -123,26 +109,18 @@ class Pipeline(
 
         # Setup the main folder names
         self._path_to_models  : str = os.path.join(self._path, "models")
-        self._path_to_data : str = os.path.join(self._path, "data")
         self._path_to_logs : str = os.path.join(self._path, "logs")
         self._path_to_hps : str = os.path.join(self._path, "hps")
 
 
         # create the main folders
         os.makedirs(self._path_to_models, exist_ok=True)
-        os.makedirs(self._path_to_data, exist_ok=True)
         os.makedirs(self._path_to_logs, exist_ok=True)
         os.makedirs(self._path_to_hps, exist_ok=True)
 
-
         # set up files paths
-        self._path_to_df : str = os.path.join(self._path_to_data, "df.csv") # for dataframe
-        self._path_to_pwf : str = os.path.join(self._path_to_data, "pwf.hdf5") # for pretrained word features
-        self._path_to_psf : str = os.path.join(self._path_to_data, "psf.hdf5") # for pretrained segment features
-        self._path_to_splits : str = os.path.join(self._path_to_data, "splits.pkl") # for splits
         self._path_to_bs_scores : str = os.path.join(self._path, "baseline_scores.json") # for hp history
         self._path_to_rankings : str = os.path.join(self._path, "rankings.csv") # for hp history
-        self._path_to_test_preds :str = os.path.join(self._path, "test_preds.csv") # for hp history
 
     @property
     def hp_ids(self):
@@ -185,8 +163,6 @@ class Pipeline(
                             prediction_level = self.prediction_level,
                             sample_level = self.sample_level,
                             input_level = self.input_level,
-                            feature2dim = self.feature2dim,
-                            pretrained_features = self.feature2param, 
                             )
         
         self.__check_config(config)
