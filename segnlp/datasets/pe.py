@@ -18,8 +18,6 @@ from segnlp import get_logger
 from segnlp import utils
 from segnlp.utils import RangeDict
 from .base import DataSet
-
-
 from segnlp.nlp import NLP
 
 
@@ -129,7 +127,7 @@ class PE(DataSet):
         return "PE"
 
 
-    def _get_splits(self) -> Dict[int, Dict[str, np.ndarray]]:
+    def _get_premade_split(self) -> Dict[int, Dict[str, np.ndarray]]:
         """creates a dict of split ids from the premade splits
 
         Returns
@@ -164,7 +162,7 @@ class PE(DataSet):
 
      
         return {"train":train, "test":test}
-      
+
 
     def _download_data(self, force=False) -> str:
         """downloads the data from sourse website
@@ -212,7 +210,6 @@ class PE(DataSet):
         samples = []
         global_seg_id = 0
         grouped_files = list(zip(ann_files, text_files))
-        x = 0
         for ann_file, txt_file in tqdm(grouped_files, desc = "Preprocessing Persuasive Essays"):
 
             # -1 one as we want index 0 to be sample 1
@@ -239,11 +236,7 @@ class PE(DataSet):
                                     label_ams = self.label_ams
                                     )
             samples.extend(sample.split(self.sample_level))
-            x += 1
-
-            if x > 10:
-                break
-  
+     
         return samples
 
     

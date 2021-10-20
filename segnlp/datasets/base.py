@@ -1,7 +1,16 @@
 
 
 # basics
+from typing import Generator
 import itertools
+import numpy as np
+import random
+
+#sklearn
+from sklearn.model_selection import train_test_split
+
+#
+from segnlp.data import Batch
 
 
 class DataSet:
@@ -28,8 +37,8 @@ class DataSet:
         self._supported_tasks = supported_tasks
         self._supported_prediction_levels = supported_prediction_levels
         self._supported_sample_levels = supported_sample_levels
-        self._prediction_level=prediction_level
-        self._sample_level=sample_level
+        self._prediction_level = prediction_level
+        self._sample_level = sample_level
         self.dump_path = dump_path
 
         self.url = url
@@ -74,19 +83,38 @@ class DataSet:
         # create samples
         self._samples = self._process_data(data_dir)
 
-        # 
-        self._splits = self._get_splits()
+        # create splits
+        self._splits = self.__get_splits()
 
-
-
-    def __getitem__(self, key):
-        pass
-        #self._samples
-
-
+    
     def __len__(self):
-        return self.data.shape[0]
+        return len(self._samples)
         
+
+    def __iter__batches(self, batch_size: int, shuffle:bool, split:str):
+        
+        #get split indexes
+        samples = self.splits[split]
+
+        # shuffle idexes
+        if shuffle:
+            random.shuffle(samples)
+
+        for i in range(0, len(samples), batch_size):
+            yield Batch(samples[i:i+batch_size])
+
+
+    def train_batches(self, batch_size:int, shuffle = True) -> Generator:
+        return self.__iter__batches(batch_size=batch_size, shuffle=shuffle, split="train")
+
+
+    def val_batches(self, batch_size:int, shuffle = True) -> Generator:
+        return self.__iter__batches(batch_size=batch_size, shuffle=shuffle, split="val")
+
+
+    def test_batches(self, batch_size:int, shuffle = True) -> Generator:
+        return self.__iter__batches(batch_size=batch_size, shuffle=shuffle, split="test")
+
 
     @property
     def level(self):
@@ -137,18 +165,6 @@ class DataSet:
         return self._stats
 
 
-    def _download_data(self):
-        raise NotImplementedError
- 
-
-    def _process_data(self):
-        raise NotImplementedError
-
-
-    def _get_splits(self):
-        return None
-
-
     def __get_subtasks(self, tasks):
         subtasks = []
         for task in tasks:
@@ -181,10 +197,35 @@ class DataSet:
 
             task_labels[task] = labels
 
-        print(task_labels)
         return task_labels
 
     
+    def __get_splits(self):
+
+        if self.level != self.sample_level:
+            idxs = np.arange(len(self))
+            train_idxs, test_idxs = train_test_split(idxs, test_size = 0.33, shuffle =True)
+            train_idxs, val_idxs = train_test_split(idxs, test_size = 0.2, shuffle =True)
+        else:
+            train_idxs, val_idxs, test_idxs = self._get_premade_split()
+
+        return {
+                "train": [self._samples[i] for i in train_idxs],
+                "val": [self._samples[i] for i in val_idxs],
+                "test": [self._samples[i] for i in test_idxs],
+            }
+
+
+    def _download_data(self):
+        raise NotImplementedError
+ 
+
+    def _process_data(self):
+        raise NotImplementedError
+
+
+    def _get_premade_split(self):
+        raise NotImplementedError
 
 
 
@@ -213,21 +254,21 @@ class DataSet:
     #     return {t:dict(c) for t,c in collected_counts.items()}
 
 
-    def info(self):
-        doc = f"""
-            Info:
+    # def info(self):
+    #     doc = f"""
+    #         Info:
 
-            {self.about}
+    #         {self.about}
 
-            Tasks: 
-            {self.tasks}
+    #         Tasks: 
+    #         {self.tasks}
 
-            Task Labels:
-            {self.task_labels}
+    #         Task Labels:
+    #         {self.task_labels}
 
-            Source:
-            {self.url}
-            """
-        print(doc)
+    #         Source:
+    #         {self.url}
+    #         """
+    #     print(doc)
 
 
