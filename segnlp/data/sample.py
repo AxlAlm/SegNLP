@@ -6,6 +6,7 @@ import numpy as np
 from collections import Counter
 from copy import deepcopy
 import itertools
+import os
 
 #pytorch
 import torch
@@ -15,18 +16,23 @@ from torch import Tensor
 from segnlp.utils import create_uid
 from segnlp.utils import ensure_numpy
 from segnlp.utils import decode_bio
+from segnlp.nlp import NLP
 
+
+# init the text processor 
+NLP_BACKEND = NLP(os.environ["NLP_BACKEND"])
 
 
 class Sample:
 
-    def __init__(self, df: pd.DataFrame) -> None:
-        self.df = df
-        self._size : int = len(df)
+
+    def __init__(self, doc:str) -> None:
+        self.df = NLP_BACKEND(doc)
         self.uid : str = create_uid(str(self))
+        self._size = len(self.df)
         self._str_keys = {"str", "pos", "deprel"}
         self._df_keys = set(list(self.df.columns))
-        self._all_keys = self._df_keys | {"length", "span_idxs"}
+        self._non_df_keys = {"length", "span_idxs"} # key we get from other places then just df columns, e.g length
         self._supported_levels = set(["token", "seg"])
         self._task_labels = {}
     
@@ -39,51 +45,48 @@ class Sample:
         return " ".join(self.df["str"])
 
 
-    def copy(self, clean:bool =  False) -> "Sample":
+    def copy(self, clean:bool =  False, df : pd.DataFrame = None) -> "Sample":
 
-        # copy the dataframe
-        df = self.df.copy(deep = True)
+        # sample and variables
+        sample_copy = deepcopy(self)
+
+        # overwrite the sample df with a given df
+        if df is not None:
+            sample_copy.df = df.copy(deep = True)
         
         # clean labels and seg_ids
         if clean:
             for task in self._task_labels:
-                df[task] = -1
+                sample_copy.df[task] = -1
 
-            df["seg_id"] = -1
-            df["target_id"] = -1
-
-        
-        # __init__ new
-        copy_sample = Sample(df)
-        
-        # copy over important variables
-        self.__copy_vars(sample=copy_sample)
-
-        return copy_sample
+            sample_copy.df["seg_id"] = -1
+            sample_copy.df["target_id"] = -1
 
 
-    def __copy_vars(self, sample: "Sample") -> "Sample":
+        # we update the uid and the _df_keys
+        sample_copy.uid = create_uid(str(sample_copy))
+        sample_copy._df_keys = set(list(sample_copy.df.columns))
+        sample_copy._size = len(sample_copy.df)
+
+        return sample_copy
+
+
+
+    def split(self, level:str) -> List["Sample"]:
         """
-        just copying over some needed variables to the new sample
+        split the sample into new samples on a lower level. E.g. from documents
+        to sentences.
         """
-        vars_to_copy = [
-                        "_task_labels", 
-                        "_decouple_mapping", 
-                        "_id2label", 
-                        "_label2id",
-                        "_supported_levels",
-                        "_all_keys",
-                        "_df_keys"
-                    ]
-        # copy over some needed vars
-        for var in vars_to_copy:
+        
+        samples = []
+        seg_id_start = 0
+        for _, df in self.df.groupby(f"{level}_id", sort = False):
+            new_sample = self.copy(df = df)
+            new_sample = self.__fix_links(new_sample, seg_id_start)
+            seg_id_start += new_sample._n_segs()
+            samples.append(new_sample)
 
-            if not hasattr(self, var):
-                continue
-            
-            setattr(sample, var, deepcopy(getattr(self, var)))
-
-        return sample
+        return samples
 
 
     def __fix_links(self, sample: "Sample", seg_id_start) -> "Sample":
@@ -100,24 +103,6 @@ class Sample:
         mask = sample.df["link"] != -1
         sample.df.loc[mask, "link"] -= seg_id_start
         return sample
-
-
-    def split(self, level:str) -> List["Sample"]:
-        """
-        split the sample into new samples on a lower level. E.g. from documents
-        to sentences.
-        """
-        
-        samples = []
-        seg_id_start = 0
-        for _, df in self.df.groupby(f"{level}_id", sort = False):
-            new_sample = Sample(df)
-            new_sample = self.__copy_vars(new_sample)
-            new_sample = self.__fix_links(new_sample, seg_id_start)
-            seg_id_start += new_sample._n_segs()
-            samples.append(new_sample)
-
-        return samples
 
 
     def _length(self) -> int:
@@ -381,7 +366,7 @@ class Sample:
     def add_span_labels(self, span_labels:dict, task_labels:dict, label_ams :bool = False):
 
         self._task_labels = task_labels
-        self._all_keys.update(list(self._task_labels.keys()))
+        self._non_df_keys.update(list(self._task_labels.keys()))
         self._df_keys.update(list(self._task_labels.keys()))
         self.__create_label_id_mappings()
         self.__create_decouple_mapping()
@@ -397,24 +382,19 @@ class Sample:
 
         if "link" in self._task_labels:
             self.__set_seg_target_id()
-            self._all_keys.add("target_id")
             self._df_keys.add("target_id")
 
         if label_ams:
             self.__label_ams()
-            self._all_keys.update(["am_id", "adu_id"])
             self._df_keys.update(["am_id", "adu_id"])
             self._supported_levels.add("am")
 
-
-        self._all_keys.update(["seg_id", "span_id"])
         self._df_keys.update(["seg_id", "span_id"])
 
 
     def get(self, level:str, key:str) -> Union[int, list, Tensor]:
 
-
-        if key not in self._all_keys:
+        if not (key in self._df_keys or key in self._non_df_keys):
             raise KeyError(f"'{key}' is not a supported key")
 
         if level not in self._supported_levels:
@@ -500,6 +480,10 @@ class Sample:
                 ratio = len(set(seg_df["str"]).intersection(set(seg_df2["str"]))) / max(len(seg_df), len(seg_df2))
 
                 yield i, i2, ratio
+
+
+
+
 
 
 

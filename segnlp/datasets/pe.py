@@ -14,14 +14,10 @@ from string import punctuation
 punctuation += "’‘,`'" + '"'
 
 # segnlp
-from segnlp import get_logger
 from segnlp import utils
 from segnlp.utils import RangeDict
 from .base import DataSet
-from segnlp.nlp import NLP
-
-
-logger = get_logger(__name__)
+from segnlp.data import Sample
 
 #data example
 ''' 
@@ -103,7 +99,6 @@ class PE(DataSet):
                                     "attacks": "attack",
                                     "root": "root"
                                     }
-        self.nlp = NLP()
 
         super().__init__(
                         name="pe",
@@ -229,7 +224,7 @@ class PE(DataSet):
                                                             global_seg_id
                                                             )
             
-            sample = self.nlp(text)
+            sample = Sample(text)
             sample.add_span_labels(
                                     span2label, 
                                     task_labels = self.task_labels, 

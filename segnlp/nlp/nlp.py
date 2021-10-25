@@ -1,29 +1,20 @@
 #basic
+from typing import List, Tuple, Dict
 import re
 import numpy as np
 import pandas as pd
-from typing import List, Tuple, Dict
-from tqdm import tqdm
 from string import punctuation
-from pprint import pprint
 import subprocess
 
 #spacy
 import spacy
 from spacy.language import Language
 
-#nltk
-import nltk
 
-#segnlp
-from segnlp.data import Sample
-
-
-from segnlp.utils import timer
+# segnlp
 from segnlp import get_logger
 logger = get_logger("PREPROCESSOR")
 
-#import multiprocessing as mp
 
 # punctuation fixes
 punctuation += "’‘,`'" + '"'
@@ -33,21 +24,11 @@ strange_characters = {
                     }
 
 
-# nltk download checking
-# # TODO: move this to a better spot and maybe not where its called upon importing.
-# try:
-#     nltk.data.find('tokenizers/punkt')
-#     nltk.download('tokenizers/averaged_perceptron_tagger')
-# except LookupError:
-#     nltk.download("punkt")
-#     nltk.download('averaged_perceptron_tagger')
-
-
 class NLP:
 
 
-    def __init__(self):
-        self._nlp_name = "Spacy"
+    def __init__(self, backend:str):
+        self._backend = backend.lower()
         self._nlp : Language = self._load_nlp_model()
 
 
@@ -449,11 +430,15 @@ class NLP:
 
 
     def _load_nlp_model(self):
-        try:
-            return spacy.load("en_core_web_lg", disable=["ner"])
-        except OSError:
-            subprocess.run(["python -m spacy download en_core_web_lg"])
-            return spacy.load("en_core_web_lg", disable=["ner"])
+
+        if self._backend == "spacy":
+            try:
+                return spacy.load("en_core_web_lg", disable=["ner"])
+            except OSError:
+                subprocess.run(["python -m spacy download en_core_web_lg"])
+                return spacy.load("en_core_web_lg", disable=["ner"])
+        else:
+            raise KeyError(f"'{self._backend}' is not a supported nlp backend")
 
 
     def __fix_deps(self, df:pd.DataFrame):
@@ -589,7 +574,7 @@ class NLP:
         if self.input_level != "sentence":
             df = self.__fix_deps(df)
 
-        return Sample(df)
+        return df
 
 
 

@@ -4,19 +4,15 @@ import os
 import pandas as pd
 
 # segnlp
-from segnlp.nlp import NLP
+from segnlp.data import Sample
 from segnlp.utils import RangeDict
 from segnlp.data import Batch
 
 class Utils:
 
-    def __init__(self):
-        self.nlp = NLP() 
-
-
     def create_sample(self):
         doc = "This is a paragrap which is also a segments. \nThis is a not a segment. However, here starts a segement. This, right after this comma, is also a segment."
-        return self.nlp(doc)
+        return Sample(doc)
 
 
     def create_and_label_sample(self):
