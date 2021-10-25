@@ -14,13 +14,9 @@ from glob import glob
 import torch
 
 # segnlp
-from segnlp import get_logger
 from .train import TrainLoop
 from .test import TestLoop
 from .hp_tune import HPTuneLoop
-#from .splitter import Splitter
-from .logs import Logs
-from .train_utils import TrainUtils
 from .baselines import Baseline
 from .rank import Rank
 
@@ -29,8 +25,6 @@ import segnlp.utils as utils
 from segnlp.seg_model import SegModel
 
 
-
-logger = get_logger("PIPELINE")
 user_dir = pwd.getpwuid(os.getuid()).pw_dir
 
 
@@ -38,8 +32,6 @@ class Pipeline(
                 HPTuneLoop,
                 TrainLoop, 
                 TestLoop,
-                Logs,
-                TrainUtils,
                 Baseline,
                 Rank
                 ):
@@ -47,9 +39,7 @@ class Pipeline(
     def __init__(self,
                 id:str,
                 dataset: DataSet,
-                model: SegModel,
                 metric:str,
-                #other_levels:list = [],
                 evaluation_method:str = "default",
                 n_random_seeds: int = 6,
                 root_dir:str =f"{user_dir}/.segnlp/", #".segnlp/pipelines"  
@@ -58,8 +48,6 @@ class Pipeline(
 
         #general
         self.id : str = id
-        self.model : SegModel = model
-        self.model_name = str(self.model)
         self.evaluation_method : str = evaluation_method
         self.metric : str = metric
         self.training : bool = True
@@ -87,17 +75,12 @@ class Pipeline(
         # create config
         self.config = self.__create_dump_config()
 
-        # after we have processed data we will deactivate preprocessing so we dont keep
-        # large models only using in preprocessing in memory
-        self.deactivate() 
-
 
     def __init__dirs_and_files(self, overwrite : bool):
 
         self._path = os.path.join(self.root_dir, self.id)
 
         if overwrite:
-            #logger.info(f"Overriding all data in {self._path} by moving existing folder to /tmp/ and creating a new folder")
 
             new_loc = os.path.join("/tmp/", self.id)
             if os.path.exists(new_loc):
@@ -122,10 +105,12 @@ class Pipeline(
         self._path_to_bs_scores : str = os.path.join(self._path, "baseline_scores.json") # for hp history
         self._path_to_rankings : str = os.path.join(self._path, "rankings.csv") # for hp history
 
+
     @property
     def hp_ids(self):
         hp_ids = [fp.replace(".json","") for fp in os.listdir(self._path_to_hps)]
         return hp_ids
+
 
     @property
     def hp_configs(self):
@@ -153,8 +138,6 @@ class Pipeline(
         config = dict(
                             id = self.id,
                             dataset = self.dataset_name,
-                            model = self.model_name,
-                            other_levels = self.other_levels,
                             evaluation_method = self.evaluation_method,
                             tasks = self.tasks,
                             subtasks =  self.subtasks,
@@ -175,16 +158,26 @@ class Pipeline(
         return config
 
 
-    def deactivate(self):
-        del self.feature2model
-        del self.nlp
+    def _load_logs(self) -> pd.DataFrame:
+    
+        log_dfs = {}
+        for hp_id in self.hp_ids:
+
+            # log folder
+            log_folder_path = os.path.join(self._path_to_logs, hp_id)
+
+            # log files 
+            split_dfs = {}
+            for split in ["train", "val", "test"]:
+                log_files = glob(log_folder_path + f"/{split}/*")
 
 
-    def activate(self):
-        raise NotImplementedError
+                if not log_files:
+                    continue
 
-        # self.nlp = self._load_nlp_model()
+                # log dataframes
+                split_dfs[split] = pd.concat([pd.read_csv(fp) for fp in log_files])
 
-        # pretrained_features = [getattr(segnlp.features, "name")(**params) in self.config["features"].items()]
-        # self.feature2model = {fm.name:fm for fm in pretrained_features}
+            log_dfs[hp_id] = split_dfs
 
+        return log_dfs

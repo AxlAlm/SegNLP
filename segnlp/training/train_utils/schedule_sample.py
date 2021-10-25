@@ -46,8 +46,7 @@ class ScheduleSampling():
             epsilon = lambda epoch: k / (k + exp(epoch / k))  # noqa: E731
 
         else:
-            # error
-            pass
+            raise KeyError(f'"{schedule}" is not a supported schedule')
 
         self.calc_sampling_prob = epsilon
 
@@ -58,10 +57,3 @@ class ScheduleSampling():
         return bool(epsilon >= coin_flip)
 
 
-# if __name__ == "__main__":
-#     test = False
-#     if test:
-#         schedule = ScheduleSampling(.5, "exponential")
-#         for i in range(10):
-#             print(schedule(i))
-#             print()

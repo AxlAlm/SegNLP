@@ -14,17 +14,12 @@ from glob import glob
 import shutil
 import numpy as np
 
-
 # pytroch
 import torch
 
-
 #segnlp
-from segnlp import get_logger
 import segnlp.utils as utils
-from segnlp.utils.stat_sig import compare_dists
-
-logger = get_logger("LOOP HP TUNING")
+from segnlp.training import Trainer
 
 
 class HPTuneLoop:
@@ -100,6 +95,7 @@ class HPTuneLoop:
                         "random_seeds_todo" : utils.random_ints(self.n_random_seeds),
                         "random_seeds_done" : [],
                         "path_to_models": os.path.join(self._path_to_models, str(hp_id)),
+                        "path_to_logs": os.path.join(self._path_to_logs, str(hp_id)),
                         "done": False
                         }
                 hp_id += 1
@@ -118,12 +114,13 @@ class HPTuneLoop:
         utils.save_json(config, fp)
    
 
-    def train(self,
-                hyperparamaters:dict,
-                monitor_metric:str = "val_f1",
+    def fit(self,
+                model : torch.nn.Module,
+                hyperparamaters : dict,
+                monitor_metric : str = "val_f1",
                 gpus : Union[list, int] = None,
-                overfit_n_batches : int = None
-                ):
+                overfit_batches_k : int = None
+                ) -> None:
 
         self.training = True
 
@@ -148,16 +145,31 @@ class HPTuneLoop:
 
             random_seeds = hp_config["random_seeds_todo"].copy()
             for random_seed in tqdm(random_seeds, desc = "Random Seeds", position=1, leave = False):
+
+                hyperparamaters = hp_config["hyperparamaters"]
+                model = model(**hyperparamaters)
                 
+                trainer = Trainer(  
+                                name = str(random_seed),
+                                model = model,
+                                dataset = self.dataset,
+                                metric_fn = self.metric,
+                                monitor_metric = monitor_metric, 
+                                optimizer_config = hyperparamaters["general"]["optimizer"], 
+                                max_epochs = hyperparamaters["general"]["max_epoch"],
+                                patience = hyperparamaters["general"].get("patience", None),
+                                lr_scheduler_config = hyperparamaters["general"].get("lr_scheduler", None),
+                                ground_truth_sampling_k = hyperparamaters["general"].get("ground_truth_sampling_k", None),
+                                pretrain_segmenation_k = hyperparamaters["general"].get("pretrain_segmentation_k", None),
+                                overfit_batches_k = overfit_batches_k,
+                                path_to_models  = hp_config["path_to_models"],
+                                path_to_logs = hp_config["path_to_logs"],
+                                device = device
+                                )
+
                 try:
-                    self.fit(
-                            hp_id = hp_config["id"],
-                            random_seed = random_seed,
-                            hyperparamaters = deepcopy(hp_config["hyperparamaters"]),
-                            monitor_metric = monitor_metric,
-                            device = device,
-                            overfit_n_batches = overfit_n_batches
-                            )
+                    #run trainer
+                    trainer.fit()
 
                     #update our config
                     hp_config["random_seeds_todo"].remove(random_seed)
@@ -169,7 +181,6 @@ class HPTuneLoop:
 
                     # write hyperparamters along with timestamps to a json
                     self.__dump_hp_config(hp_config)
-
 
                 except BaseException as e:
                     
