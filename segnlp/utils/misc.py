@@ -5,7 +5,7 @@ import numpy as np
 from time import time
 import _pickle as pkl
 import json
-from typing import List, Dict, Tuple
+from typing import Callable, List, Dict, Tuple
 from datetime import datetime
 import pytz
 from tqdm.auto import tqdm
@@ -225,3 +225,15 @@ def freeze_module(module : torch.nn.Module):
     for name, param in module.named_parameters():
         param.requires_grad = False
 
+
+def write_data(fp:str, data:str, mode:str):
+    with open(fp, mode) as f:
+        f.write(data)
+
+
+
+def read_file(fp:str, line_fn : Callable = None):
+    with open(fp, "r") as f:
+        return [l if line_fn is None else line_fn(l) for l in f.read().split("\n") if l.strip()]
+
+    

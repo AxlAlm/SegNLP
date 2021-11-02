@@ -71,7 +71,6 @@ class Sample:
         return sample_copy
 
 
-
     def split(self, level:str) -> List["Sample"]:
         """
         split the sample into new samples on a lower level. E.g. from documents

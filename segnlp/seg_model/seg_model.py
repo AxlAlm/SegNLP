@@ -35,15 +35,15 @@ class SegModel(nn.Module):
 
     def __init__(   self,  
                     hyperparamaters:dict,
-                    feature_dims:dict,
+                    task_dims: dict,
+                    seg_tasks: str = None,
                     inference:bool=False
                     ):
         super().__init__()
-        self.hps : dict = hyperparamaters
-        self.feature_dims : Dict[str, int] = feature_dims
-        self.task_dims : Dict[str, int] = {task: len(labels) for task, labels in label_encoder.task_labels.items()}
-        self.inference : bool = inference
-        self.seg_task : dict = label_encoder.seg_task
+        self.hps = hyperparamaters
+        self.task_dims = task_dims
+        self.seg_task  = seg_tasks
+        self.inference = inference
 
         # make sure we know which module we have
         self._have_token_module : bool = hasattr(self, "token_rep")

@@ -1,20 +1,15 @@
     
 #basics
-from operator import pos
 from typing import List, Dict, Tuple, Union
 import itertools
-import json
 import os
 from copy import deepcopy
-from numpy.core.fromnumeric import product
-from numpy.lib.arraysetops import isin
-from numpy.lib.shape_base import vsplit
 from tqdm.auto import tqdm
 from glob import glob
 import shutil
-import numpy as np
+import pandas as pd
 
-# pytroch
+# pytorch 
 import torch
 
 #segnlp
@@ -22,7 +17,7 @@ import segnlp.utils as utils
 from segnlp.training import Trainer
 
 
-class HPTuneLoop:
+class ModelEval:
 
 
     def __get_hyperparam_sets(self, hyperparamaters:dict) -> List[dict]:
@@ -114,7 +109,7 @@ class HPTuneLoop:
         utils.save_json(config, fp)
    
 
-    def fit(self,
+    def train(self,
                 model : torch.nn.Module,
                 hyperparamaters : dict,
                 monitor_metric : str = "val_f1",
@@ -147,7 +142,11 @@ class HPTuneLoop:
             for random_seed in tqdm(random_seeds, desc = "Random Seeds", position=1, leave = False):
 
                 hyperparamaters = hp_config["hyperparamaters"]
-                model = model(**hyperparamaters)
+                model = model(
+                                hyperparamaters  = hyperparamaters,
+                                task_dims = self.dataset.task_dims,
+                                seg_task = self.dataset.seg_task
+                                )
                 
                 trainer = Trainer(  
                                 name = str(random_seed),
@@ -196,3 +195,79 @@ class HPTuneLoop:
         self.rank_hps(
                             monitor_metric = monitor_metric
                         )
+
+
+    def test(self, 
+            monitor_metric : str, 
+            batch_size : int = 32,
+            gpus : Union[list, str] = None
+            ) -> None:
+
+
+        device  = "cpu"
+        if gpus:      
+            gpu = gpus[0] if isinstance(gpus,list) else gpus
+            device =  f"cuda:{gpu}"
+        
+
+        # we only test the best hp setting
+        best_hp_id = self.best_hp
+
+        # load hyperparamaters
+        hp_config = utils.load_json(os.path.join(self._path_to_hps, best_hp_id + ".json"))
+
+        hyperparamaters = hp_config["hyperparamaters"]
+        random_seeds = hp_config["random_seeds_done"]
+
+        #best_pred_dfs = None
+        #top_score = 0
+        for random_seed in tqdm(random_seeds, desc= "random_seeds"):
+
+            #model path 
+            model_path = glob(os.path.join(self._path_to_models, best_hp_id, f"{random_seed}*"))[0]
+            
+            #setup model
+            model = self.model(
+                        hyperparamaters  = deepcopy(hyperparamaters),
+                        label_encoder = self.label_encoder,
+                        feature_dims = self.feature2dim,
+                        )
+            
+            #load model weights
+            model.load_state_dict(torch.load(model_path))
+
+            #init trainer
+            trainer = Trainer(  
+                            name = str(random_seed),
+                            model = model,
+                            dataset = self.dataset,
+                            metric_fn = self.metric,
+                            monitor_metric = monitor_metric, 
+                            optimizer_config = hyperparamaters["general"]["optimizer"], 
+                            max_epochs = hyperparamaters["general"]["max_epoch"],
+                            patience = hyperparamaters["general"].get("patience", None),
+                            lr_scheduler_config = hyperparamaters["general"].get("lr_scheduler", None),
+                            ground_truth_sampling_k = hyperparamaters["general"].get("ground_truth_sampling_k", None),
+                            pretrain_segmenation_k = hyperparamaters["general"].get("pretrain_segmentation_k", None),
+                            path_to_models  = hp_config["path_to_models"],
+                            path_to_logs = hp_config["path_to_logs"],
+                            device = device
+                            )
+
+            # test
+            trainer.test()
+
+
+
+        self.rank_test(monitor_metric)
+
+        print(" _______________  Mean Scores  _______________")
+        mean_df = pd.DataFrame(self._load_logs()[self.best_hp]["test"]).mean().to_frame()
+        filter_list = set(["epoch", "hp_id", "random_seed", "cv", "use_target_segs", "freeze_segment_module"])
+        index = [c for c in mean_df.index if c not in filter_list]
+        mean_df = mean_df.loc[index]
+
+        for baseline in self._baselines:
+            mean_df[baseline] = pd.DataFrame(self.baseline_scores()["test"][baseline]).mean()
+            
+        print(mean_df)

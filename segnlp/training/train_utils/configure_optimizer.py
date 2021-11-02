@@ -6,7 +6,7 @@ from torch import optim
 import torch.nn as nn
 
 
-def configure_optimizers(model: nn.Module, config:dict) -> optim.Optimizer:
+def configure_optimizer(model: nn.Module, config:dict) -> optim.Optimizer:
 
     # get the name
     opt_name = config.pop("name")

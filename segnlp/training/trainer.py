@@ -1,4 +1,5 @@
 # basics
+from random import shuffle
 from typing import Callable
 from tqdm.auto import tqdm
 from collections import Counter
@@ -9,6 +10,7 @@ import torch
 
 # segnlp
 from segnlp.datasets.base import DataSet
+from segnlp.data import Batch
 from .train_utils import EarlyStopping
 from .train_utils import SaveBest
 from .train_utils import ScheduleSampling
@@ -85,59 +87,84 @@ class Trainer:
             torch.cuda.set_device(int(device_id))
 
 
+    def step(self, batch : Batch) -> dict:
 
-    def epoch(self, split:str,  backwards : bool = True, use_target_segs:bool = False):
+        #set device
+        batch.to(self.device)
+        
+        #if we are using sampling
+        batch.use_target_segs = self.use_target_segmentation
+
+        # pass the batch
+        loss = self.model(batch)
+
+        # calc grads
+        if self.split == "train":
+
+            # reset the opt grads
+            self.optimizer.zero_grad()
+
+            # backward
+            loss.backward()
+
+            # clip gradients
+            if self.gradient_clip_val is not None:
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.gradient_clip_val)
+
+            # update paramaters
+            self.optimizer.step()
+
+
+        # calculate the metrics
+        scores = self.metric_fn(batch)
+        scores["loss"] += loss.item()
+
+        # update tqdm
+        self.postfix[f"{self.split}_loss"] = loss.item()
+        self.epoch_tqdm.set_postfix(self.postfix)
+        self.epoch_tqdm.update(1)
+
+        return scores
+
+
+    def epoch(self) -> dict:
+        
+        # collect the sum of all scores
+        sum_scores = Counter()
+        
+        # get iterator of batches, will shuffle the data before batching
+        batches = getattr(self.dataset, f"{self.split}_batches")(shuffle=True)
+
+        for j, batch in enumerate(batches):
             
-        sum_metrics = Counter()
-        batch_iter = getattr(self.dataset, f"{split}_batches")
-        for j, batch in enumerate(batch_iter):
-            
-            #set device
-            batch.to(self.device)
-            
-            #if we are using sampling
-            batch.use_target_segs = use_target_segs
+            sum_scores += self.step(batch)
 
-            # pass the batch
-            loss = self.model(batch)
-
-            # calc grads
-            if backwards:
-
-                # reset the opt grads
-                self.optimizer.zero_grad()
-
-                # backward
-                loss.backward()
-
-                # clip gradients
-                if self.gradient_clip_val is not None:
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.gradient_clip_val)
-
-                # update paramaters
-                self.optimizer.step()
-
-
-            # calculate the metrics
-            sum_metrics += self.metric_fn(batch)
-            sum_metrics["loss"] += loss.item()
-
-            # update tqdm
-            self.postfix[f"{split}_loss"] = loss.item()
-            self.epoch_tqdm.set_postfix(self.postfix)
-            self.epoch_tqdm.update(1)
-
-
-            if j+1 == self.overfit_batches_k:
+            # for debugging purposes
+            if self.overfit_batches_k:
                 break
 
 
-        avrg_metrics = sum_metrics / (j+1)
+        # average the scores
+        avrg_scores = sum_scores / (j+1)
       
-        return avrg_metrics
+
+        # log epoch
+        self.logger.log(
+                        {**dict(
+                            epoch = self.current_epoch,
+                            split = self.split,
+                            use_target_segs = self.use_target_segs,
+                            seg_pretraining = self.seg_pretraining
+                            ),
+                        **avrg_scores
+                        }
+                        )
+
+
+        return dict(avrg_scores)
 
     
-    def fit(self):
+    def fit(self) -> None:
 
         # keeping track of scores
         self.postfix = { 
@@ -157,21 +184,30 @@ class Trainer:
 
         for i in range(self.max_epochs):
 
+            # set the current epoch
+            self.current_epoch = i
+
             #if we are pretraining or not
-            is_pretraining = i < self.pretrain_segmenation_k 
-            is_using_target_segs = False if is_pretraining else self.target_seg_sampling(i)
+            self.seg_pretraining = i < self.pretrain_segmenation_k 
+            self.use_target_segs = False if self.seg_pretraining else self.target_seg_sampling(i)
+
 
             #freeze modules
-            self.model.freeze(freeze_segment_module = is_pretraining)
+            self.model.freeze(freeze_segment_module = self.seg_pretraining)
             
+
             # training
+            self.split = "train"
             self.model.train()
-            train_scores = self.epoch("train", is_using_target_segs)
+            _ = self.epoch()
         
+
             # validation
+            self.split = "val"
             self.model.eval()
             with torch.no_grad():
                val_scores  = self.epoch()
+
 
             # get the monitor score
             monitor_score = val_scores[self.monitor_metric]
@@ -182,7 +218,7 @@ class Trainer:
                 self.lr_scheduler.step(monitor_score)
 
             # if we are pretraining segmentation or using target segmentation we dont update stuff
-            if is_pretraining or is_using_target_segs:
+            if self.seg_pretraining or self.use_target_segs:
 
                 # save best model
                 self.checkpointer(self.model, monitor_score)
@@ -198,33 +234,8 @@ class Trainer:
             self.epoch_tqdm.update(1)
 
 
-            # log train
-            self.logger.log(
-                            {**dict(
-                                epoch = i,
-                                split = "train",
-                                is_using_target_segs = is_using_target_segs,
-                                is_pretraining = is_pretraining
-                                ),
-                            **train_scores
-                            }
-                            )
-
-            # log val
-            self.logger.log(
-                            {**dict(
-                                    epoch = i,
-                                    split = "val",
-                                    is_using_target_segs = is_using_target_segs,
-                                    is_pretraining = is_pretraining
-                                    ),
-                            **val_scores,
-                            }
-                            )
-
-
-
-    def test(self):
-        pass
+    def test(self) -> None:
+        self.split = "test"
+        self.epoch()
 
 

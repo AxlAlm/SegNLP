@@ -77,6 +77,17 @@ class DataSet:
         #self._stats = self.__calc_label_stats()
         self._task_labels = self.__get_task_labels(tasks, supported_task_labels)
 
+
+        # task_dims 
+        self._task_dims = {k:len(v) for k,v in self._task_labels.items()}
+
+
+        # set the seg task
+        self._seg_task = None 
+        if "seg" in  self._task_labels:
+            self._seg_task = sorted([t for t in  self._task_labels.keys() if "seg" in t], key = lambda x: len(x))
+
+
         # download data
         data_dir = self._download_data()
 
@@ -85,6 +96,9 @@ class DataSet:
 
         # create splits
         self._splits = self.__get_splits()
+
+
+
 
     
     def __len__(self):
@@ -163,6 +177,14 @@ class DataSet:
     @property
     def stats(self):
         return self._stats
+
+    @property
+    def task_dims(self):
+        return self._task_dims
+
+    @property
+    def seg_task(self):
+        return self._seg_task
 
 
     def __get_subtasks(self, tasks):

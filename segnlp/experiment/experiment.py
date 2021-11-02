@@ -14,9 +14,7 @@ from glob import glob
 import torch
 
 # segnlp
-from .train import TrainLoop
-from .test import TestLoop
-from .hp_tune import HPTuneLoop
+from .model_eval import ModelEval
 from .baselines import Baseline
 from .rank import Rank
 
@@ -28,10 +26,8 @@ from segnlp.seg_model import SegModel
 user_dir = pwd.getpwuid(os.getuid()).pw_dir
 
 
-class Pipeline(
-                HPTuneLoop,
-                TrainLoop, 
-                TestLoop,
+class Experiment(
+                ModelEval,
                 Baseline,
                 Rank
                 ):
@@ -53,6 +49,7 @@ class Pipeline(
         self.training : bool = True
         self.testing : bool = True
         self.root_dir = root_dir
+        self.dataset = dataset
         self.dataset_name = dataset.name()
         self.n_random_seeds = n_random_seeds
 
@@ -68,9 +65,6 @@ class Pipeline(
 
         # init files
         self.__init__dirs_and_files(overwrite = overwrite)
-
-        # init modules
-        self._init_logs()
 
         # create config
         self.config = self.__create_dump_config()

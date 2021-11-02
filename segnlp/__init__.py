@@ -11,7 +11,6 @@ if "NLP_BACKEND" not in os.environ:
 
 #segnlp
 from .logger import get_logger
-from .pipeline import Pipeline
 from .utils import set_random_seed
 
 #sklearn
