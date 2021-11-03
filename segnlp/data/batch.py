@@ -15,6 +15,7 @@ from torch.nn.utils.rnn import pad_sequence
 
 # segnlp
 from segnlp.data import Sample
+from segnlp import utils
 
 
 class Batch:
@@ -28,6 +29,9 @@ class Batch:
         #target and pred samples
         self._target_samples = samples
         self._pred_samples = [s.copy(clean=True) for s in samples]
+
+        # set task labels
+        self.task_labels = samples[0]._task_labels
 
         # device
         self.device = device
@@ -68,11 +72,12 @@ class Batch:
             level : str, 
             key : str, 
             pred : bool = False,
-            bidir : bool = True
+            bidir : bool = True,
+            flat : bool = False
             ):
 
         # create a key for string in cache
-        cache_key = (level, key, pred, bidir) 
+        cache_key = (level, key, pred, bidir, flat) 
 
         samples = self._pred_samples if pred else self._target_samples
 
@@ -80,18 +85,29 @@ class Batch:
         if cache_key in self.__cache:
             return self.__cache[cache_key]
 
-        data = [sample.get(level, key) for sample in samples]
+        # create a mask from lengths
+        if key == "mask":
+            data = utils.create_mask([sample.get(level, "length") for sample in samples])
 
-        if not isinstance(data[0], int):
-            
-            # for creatin keys we get string
-            try:
-                data = pad_sequence(data, batch_first = True, padding_value = 0)
-            except TypeError:
-                pass
 
         else:
-            data = torch.LongTensor(data)
+            data = [sample.get(level, key) for sample in samples]
+
+            if flat:
+                data = [item for sublist in data for item in sublist]
+
+
+            if not isinstance(data[0], int):
+                
+                # for creatin keys we get string
+                try:
+                    data = pad_sequence(data, batch_first = True, padding_value = 0)
+                except TypeError:
+                    pass
+
+            else:
+                data = torch.LongTensor(data)
+
 
         # check to see if we can add data to tensor
         try:
@@ -107,7 +123,7 @@ class Batch:
     def add(self, level:str, key:str, data: Union[Sequence, Tensor]):
 
 
-        if key not in self.label_encoder.task_labels:
+        if key not in self.task_labels:
             raise KeyError(f"cannot add values to key ='{key}'")
 
         (sample.add(level, key, data) for sample in self._pred_samples)

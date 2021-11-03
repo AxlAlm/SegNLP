@@ -34,7 +34,9 @@ class ScheduleSampling():
                  schedule: str = "linear",
                  c: float = 1e-3,
                  e: float = 0.0):
-
+        
+        self.k = k
+        
         # TODO Assert conditions of k and others
         if schedule == "linear":
             epsilon = lambda epoch: max(e, k - c * epoch)  # noqa: E731
@@ -51,6 +53,10 @@ class ScheduleSampling():
         self.calc_sampling_prob = epsilon
 
     def __call__(self, epoch):
+
+        if self.k is None:
+            return False
+            
         epsilon = self.calc_sampling_prob(epoch)
         coin_flip = floor(random() * 10) / 10
 

@@ -36,13 +36,13 @@ class SegModel(nn.Module):
     def __init__(   self,  
                     hyperparamaters:dict,
                     task_dims: dict,
-                    seg_tasks: str = None,
-                    inference:bool=False
+                    seg_task: str = None,
+                    inference:bool = False
                     ):
         super().__init__()
         self.hps = hyperparamaters
         self.task_dims = task_dims
-        self.seg_task  = seg_tasks
+        self.seg_task  = seg_task
         self.inference = inference
 
         # make sure we know which module we have
@@ -91,11 +91,9 @@ class SegModel(nn.Module):
             if not self.inference:
                 total_loss += self.token_loss(batch, token_clf_out)
 
-        # we also only run the segment module if there are predicted segments
-        no_pred_segs = batch._pred_df["seg_id"].dropna().nunique() == 0
 
         # we freeze the segment module
-        if not self._segment_layers_are_frozen and self._have_seg_module and not no_pred_segs:
+        if not self._segment_layers_are_frozen and self._have_seg_module: #and not no_pred_segs:
 
             # 3) represent segments
             if token_rep_out is None:

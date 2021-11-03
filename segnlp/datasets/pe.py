@@ -76,7 +76,6 @@ class PE(DataSet):
                 prediction_level:str="token", 
                 sample_level:str="document", 
                 label_ams : bool = False,
-                dump_path:str="/tmp/"
                 ):
 
         self.label_ams = label_ams
@@ -100,6 +99,7 @@ class PE(DataSet):
                                     "root": "root"
                                     }
 
+        self.dump_path = "/tmp/"
         super().__init__(
                         name="pe",
                         tasks=tasks,
@@ -113,7 +113,6 @@ class PE(DataSet):
                         about="""The corpus consists of argument annotated persuasive essays including annotations of argument components and argumentative relations.""",
                         url="https://www.informatik.tu-darmstadt.de/ukp/research_6/data/argumentation_mining_1/argument_annotated_essays_version_2/index.en.jsp",
                         download_url= "https://tudatalib.ulb.tu-darmstadt.de/bitstream/handle/tudatalib/2422/ArgumentAnnotatedEssays-2.0.zip?sequence=1&isAllowed=y",
-                        dump_path=dump_path,
                         )
 
 

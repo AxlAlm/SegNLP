@@ -90,16 +90,16 @@ class LSTM(nn.Module):
             _ , original_idxs = torch.sort(sorted_idxs, descending=False)
             input = input[sorted_idxs]
 
-        return input, original_idxs
+        return input, lengths, original_idxs
 
 
     def forward(self, input:Union[Tensor, Sequence[Tensor]], lengths:Tensor, padding_value=0.0) -> Tuple[Tensor,Tuple[Tensor,Tensor]]:
 
         # fix the input 
-        input, h_0,c_0, pass_states =  self.___solve_input(input)
+        input, h_0,c_0, pass_states =  self.__solve_input(input)
 
         # sort the input tensors by lengths
-        input, original_idxs = self.__sort_input(input, lengths)
+        input, lengths, original_idxs = self.__sort_input(input, lengths)
 
         # if a sample is length == 0, we assume its filled with zeros. So, we remove the sample,
         # and then extend the dims later

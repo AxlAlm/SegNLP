@@ -140,14 +140,22 @@ class ModelEval:
 
             random_seeds = hp_config["random_seeds_todo"].copy()
             for random_seed in tqdm(random_seeds, desc = "Random Seeds", position=1, leave = False):
-
+                
                 hyperparamaters = hp_config["hyperparamaters"]
+
+                # init model
                 model = model(
                                 hyperparamaters  = hyperparamaters,
                                 task_dims = self.dataset.task_dims,
                                 seg_task = self.dataset.seg_task
                                 )
-                
+
+                # init folders
+                os.makedirs(hp_config["path_to_logs"], exist_ok = True)
+                os.makedirs(hp_config["path_to_models"], exist_ok = True)
+            
+
+                # init trainer
                 trainer = Trainer(  
                                 name = str(random_seed),
                                 model = model,
@@ -155,8 +163,10 @@ class ModelEval:
                                 metric_fn = self.metric,
                                 monitor_metric = monitor_metric, 
                                 optimizer_config = hyperparamaters["general"]["optimizer"], 
-                                max_epochs = hyperparamaters["general"]["max_epoch"],
+                                max_epochs = hyperparamaters["general"]["max_epochs"],
+                                batch_size = hyperparamaters["general"]["batch_size"],
                                 patience = hyperparamaters["general"].get("patience", None),
+                                gradient_clip_val = hyperparamaters["general"].get("gradient_clip_val", None),
                                 lr_scheduler_config = hyperparamaters["general"].get("lr_scheduler", None),
                                 ground_truth_sampling_k = hyperparamaters["general"].get("ground_truth_sampling_k", None),
                                 pretrain_segmenation_k = hyperparamaters["general"].get("pretrain_segmentation_k", None),
@@ -244,7 +254,7 @@ class ModelEval:
                             metric_fn = self.metric,
                             monitor_metric = monitor_metric, 
                             optimizer_config = hyperparamaters["general"]["optimizer"], 
-                            max_epochs = hyperparamaters["general"]["max_epoch"],
+                            max_epochs = hyperparamaters["general"]["max_epochs"],
                             patience = hyperparamaters["general"].get("patience", None),
                             lr_scheduler_config = hyperparamaters["general"].get("lr_scheduler", None),
                             ground_truth_sampling_k = hyperparamaters["general"].get("ground_truth_sampling_k", None),

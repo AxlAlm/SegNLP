@@ -22,7 +22,7 @@ from sklearn.exceptions import UndefinedMetricWarning
 # warnings.filterwarnings("ignore", category=UserWarning)
 # warnings.filterwarnings("ignore", category=FutureWarning)
 
-warnings.filterwarnings("ignore")
+#warnings.filterwarnings("ignore")
 
 settings = {
             "dl_n_workers": 0 #multiprocessing.cpu_count()

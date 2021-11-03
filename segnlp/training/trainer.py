@@ -29,9 +29,11 @@ class Trainer:
                 monitor_metric :str, 
                 optimizer_config : dict, 
                 max_epochs : int,
+                batch_size : int,
                 path_to_models : str,
                 path_to_logs : str,
                 patience: int = None,
+                gradient_clip_val : float = None,
                 lr_scheduler_config : dict = None,
                 ground_truth_sampling_k: int = None,
                 pretrain_segmenation_k: int = 0,
@@ -48,8 +50,10 @@ class Trainer:
         self.overfit_batches_k = overfit_batches_k
         self.monitor_metric = monitor_metric
         self.pretrain_segmenation_k = pretrain_segmenation_k
+        self.batch_size = batch_size
+        self.gradient_clip_val = gradient_clip_val
         self.device = device
-        
+
         # init logger
         self.logger = CSVLogger(log_file = os.path.join(path_to_logs, f"{name}.log"))
 
@@ -93,12 +97,12 @@ class Trainer:
         batch.to(self.device)
         
         #if we are using sampling
-        batch.use_target_segs = self.use_target_segmentation
+        batch.use_target_segs = self.use_target_segs
 
         # pass the batch
         loss = self.model(batch)
 
-        # calc grads
+        # some more stuff for training steps
         if self.split == "train":
 
             # reset the opt grads
@@ -133,7 +137,7 @@ class Trainer:
         sum_scores = Counter()
         
         # get iterator of batches, will shuffle the data before batching
-        batches = getattr(self.dataset, f"{self.split}_batches")(shuffle=True)
+        batches = getattr(self.dataset, f"{self.split}_batches")(batch_size = self.batch_size, shuffle=True)
 
         for j, batch in enumerate(batches):
             
@@ -182,14 +186,16 @@ class Trainer:
                         leave = False
                         )
 
-        for i in range(self.max_epochs):
+        for epoch in range(self.max_epochs):
+            
+            print(epoch)
 
             # set the current epoch
-            self.current_epoch = i
+            self.current_epoch = epoch
 
             #if we are pretraining or not
-            self.seg_pretraining = i < self.pretrain_segmenation_k 
-            self.use_target_segs = False if self.seg_pretraining else self.target_seg_sampling(i)
+            self.seg_pretraining = False if self.pretrain_segmenation_k is None else epoch < self.pretrain_segmenation_k 
+            self.use_target_segs = False if self.seg_pretraining else self.target_seg_sampling(epoch)
 
 
             #freeze modules

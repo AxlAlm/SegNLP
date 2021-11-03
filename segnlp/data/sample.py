@@ -7,6 +7,7 @@ from collections import Counter
 from copy import deepcopy
 import itertools
 import os
+from spacy import util
 
 #pytorch
 import torch
@@ -20,20 +21,20 @@ from segnlp.nlp import NLP
 
 
 # init the text processor 
-NLP_BACKEND = NLP(os.environ["NLP_BACKEND"])
+nlp = NLP(os.environ["NLP_BACKEND"])
 
 
 class Sample:
 
 
     def __init__(self, doc:str) -> None:
-        self.df = NLP_BACKEND(doc)
+        self.df = nlp(doc)
         self.uid : str = create_uid(str(self))
         self._size = len(self.df)
         self._str_keys = {"str", "pos", "deprel"}
         self._df_keys = set(list(self.df.columns))
-        self._non_df_keys = {"length", "span_idxs"} # key we get from other places then just df columns, e.g length
-        self._supported_levels = set(["token", "seg"])
+        self._non_df_keys = {"length", "span_idxs", "tok_length"} # key we get from other places then just df columns, e.g length
+        self._supported_levels = set(["token", "seg"]) | set([c.split("_")[0] for c in self.df.columns if "_id" in c])
         self._task_labels = {}
     
 
@@ -67,6 +68,7 @@ class Sample:
         sample_copy.uid = create_uid(str(sample_copy))
         sample_copy._df_keys = set(list(sample_copy.df.columns))
         sample_copy._size = len(sample_copy.df)
+        sample_copy._supported_levels = set(["token", "seg"]) | set([c.split("_")[0] for c in sample_copy.df.columns if "_id" in c])
 
         return sample_copy
 
@@ -417,13 +419,10 @@ class Sample:
                 return self._seg_span_idxs()
             
 
-
-
         if level == "am":
 
             if key == "span_idxs":
                 return self._am_span_idxs()
-
 
 
         if level == "token":
@@ -438,7 +437,16 @@ class Sample:
 
             if key  == "length":
                 return len(self)
-        
+
+
+        if key  == "str":
+            return [" ".join(sent_df["str"].to_list()) for _, sent_df in self.df.groupby(f"{level}_id", sort = False)]
+
+
+        if key  == "tok_length":
+           return self.df.groupby(f"{level}_id", sort = False).size().to_numpy()
+
+
 
     def add(self, level:str, key: str , data: Sequence) -> None:
 

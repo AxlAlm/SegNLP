@@ -2,10 +2,15 @@
 
 #pytroch
 from torch import Tensor
+import torch
+from torch.nn.utils.rnn import pad_sequence
+
 
 #segnlp
 from segnlp.seg_model import SegModel
 from segnlp.data import Batch
+from segnlp import utils
+
 
 
 class LSTM_CRF(SegModel):
@@ -24,10 +29,15 @@ class LSTM_CRF(SegModel):
     def __init__(self,  *args, **kwargs) -> None:   
         super().__init__(*args, **kwargs)
 
+        self.word_embs = self.add_token_embedder(
+                                    layer = "FlairEmbeddings", 
+                                    hyperparamaters = self.hps.get("flair_embeddings", {}),
+                                )
+
         self.finetuner = self.add_token_encoder(
                                     layer = "Linear", 
                                     hyperparamaters = self.hps.get("LinearFineTuner", {}),
-                                    input_size = self.feature_dims["word_embs"],
+                                    input_size = self.word_embs.output_size,
                                 )
 
         self.lstm = self.add_token_encoder(    
@@ -57,21 +67,47 @@ class LSTM_CRF(SegModel):
 
     def token_rep(self, batch: Batch) -> dict:
 
-        embs = batch.get("token", "embs")
+        # embedd the tokens, returns a 3D tensor (n_sentence, n_toks, emb_size)
+        embs = self.word_embs(
+                            input=batch.get("sentence", "str", flat = True)
+                            )
 
+        ###  Three following small blocks are to convert (n_sentence, n_toks, embs_size)
+        ### to (batch_size, n_toks, embs_size). batch_size and n_sentences
+    
+        # as embs is based on sentences and is padded to the longest sentence in the dataset
+        # we simple remove the dims on axis 1 which are above the lenght of the longest sentence
+        # in the batch
+        max_sent_len = max(batch.get("sentence", "tok_length", flat = True))
+        embs = embs[:, :max_sent_len, :]
+
+        # we then create a mask for all sentences and then use the mask to select tokens from 
+        # the 2D version of embs. 
+        sent_tok_mask = utils.create_mask(batch.get("sentence", "tok_length", flat = True)).view(-1)
+        flat_embs = embs.view(embs.size(0)*embs.size(1), embs.size(2))
+        flat_embs = flat_embs[sent_tok_mask]
+        
+        # We then split the flat embs into size of our batch
+        embs = pad_sequence(torch.split(flat_embs,
+                                        utils.ensure_list(batch.get("token", "length"))
+                                        ),
+                            batch_first = True,
+                            )
+        
         # drop random tokens
         embs = self.binary_token_dropout(embs)
 
         # drop random paramaters
         embs = self.paramater_dropout(embs)
 
+
         #fine tune embedding via a linear layer
-        word_embs = self.finetuner(batch.get("token", "embs"))
+        embs = self.finetuner(embs)
 
         # lstm encoder
         lstm_out, _ = self.lstm(
-                                    input = word_embs, 
-                                    lengths = batch.get("token", "lengths")
+                                    input = embs, 
+                                    lengths = batch.get("token", "length")
                                 )
 
         # drop random tokens

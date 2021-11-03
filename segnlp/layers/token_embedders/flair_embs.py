@@ -1,7 +1,7 @@
 
 
 # basics
-from typing import List
+from typing import List, Sequence
 import h5py
 import json
 import numpy as np
@@ -23,7 +23,6 @@ from flair.data import Sentence
 import torch
 import torch.nn as nn
 from torch import Tensor
-from torch.nn.utils.rnn import pad_sequence
 
 # segnlp
 from segnlp import utils 
@@ -35,9 +34,9 @@ user_dir = pwd.getpwuid(os.getuid()).pw_dir
 
 class FlairEmbeddings(nn.Module):
 
-    def __init__(self, list_embs:list, h5py_cache=True) -> None:
+    def __init__(self, embs:str) -> None:
         super().__init__()
-        self._list_embs = list_embs
+        self._list_embs = embs.split("+")
         self.embedder = self.__create_embedder()
         self.output_size = self.embedder.embedding_length
         self.__init__h5py_storage()
@@ -54,7 +53,7 @@ class FlairEmbeddings(nn.Module):
             self._h5py_file = h5py.File(self._h5py_fp, "a")
             self._storage = self._h5py_file["embs"]
 
-            self._sent2idx = {sent:int(i) for sent,i in utils.read_file(self._sent2idx_fp, line_fn=lambda x: x.split(",") )}
+            self._sent2idx = {sent:int(i) for sent,i in utils.read_file(self._sent2idx_fp, line_fn=lambda x: x.split("\t") )}
 
             self.i = len(self._sent2idx_fp)
         else:
@@ -78,7 +77,7 @@ class FlairEmbeddings(nn.Module):
 
         @wraps(fn)
         def wrapper(self, sentence):
-
+            
             if sentence in self._sent2idx:
                 return torch.tensor(self._storage[self._sent2idx[sentence]])
             else:
@@ -93,7 +92,7 @@ class FlairEmbeddings(nn.Module):
 
                 # cache output
                 self._storage[self.i, :n_toks] = output
-                utils.write_data(self._sent2idx_fp, f"{sentence},{self.i}\n", mode = "a")
+                utils.write_data(self._sent2idx_fp, f"{sentence}\t{self.i}\n", mode = "a")
                 self._sent2idx[sentence] = self.i
 
 
@@ -140,8 +139,8 @@ class FlairEmbeddings(nn.Module):
         return torch.stack([t.embedding for t in flair_obj])
 
 
-    def forward(self, list_sentences: List[str]) -> Tensor:
-        return pad_sequence([self._process_sentence(sentence) for sentence in list_sentences], batch_first = True)
+    def forward(self, input: List[List[str]]) -> Tensor:
+        return torch.stack([self._process_sentence(sentence) for sentence in input], dim=0).type(torch.float)
     
 
 

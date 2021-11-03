@@ -5,12 +5,18 @@ from typing import Generator
 import itertools
 import numpy as np
 import random
+import os
+import pwd
 
 #sklearn
 from sklearn.model_selection import train_test_split
 
-#
+# segnlp
+from segnlp import utils
 from segnlp.data import Batch
+
+
+user_dir = pwd.getpwuid(os.getuid()).pw_dir
 
 
 class DataSet:
@@ -28,7 +34,6 @@ class DataSet:
                 about:str="",
                 url:str="",
                 download_url:str="",
-                dump_path:str="/tmp/",
                 ):
 
         self._name = name
@@ -39,7 +44,11 @@ class DataSet:
         self._supported_sample_levels = supported_sample_levels
         self._prediction_level = prediction_level
         self._sample_level = sample_level
-        self.dump_path = dump_path
+        self._path_to_dataset = f"{user_dir}/.segnlp/datasets/{'_'.join([self._name, self._sample_level, self._prediction_level, *tasks])}"
+        self._path_to_samples = os.path.join(self._path_to_dataset, "samples.pkl")
+        self._path_to_splits = os.path.join(self._path_to_dataset, "splits.pkl")
+
+
 
         self.url = url
         self.download_url = download_url
@@ -85,20 +94,28 @@ class DataSet:
         # set the seg task
         self._seg_task = None 
         if "seg" in  self._task_labels:
-            self._seg_task = sorted([t for t in  self._task_labels.keys() if "seg" in t], key = lambda x: len(x))
+            self._seg_task = sorted([t for t in  self._task_labels.keys() if "seg" in t], key = lambda x: len(x))[-1]
+            
 
+        if not os.path.exists(self._path_to_dataset):
 
-        # download data
-        data_dir = self._download_data()
+            os.makedirs(self._path_to_dataset, exist_ok= True)
 
-        # create samples
-        self._samples = self._process_data(data_dir)
+            # download data
+            data_dir = self._download_data()
 
-        # create splits
-        self._splits = self.__get_splits()
+            # create samples
+            self._samples = self._process_data(data_dir)
 
+            # create splits
+            self._splits = self.__get_splits()
 
+            utils.pickle_data(self._samples, self._path_to_samples)
+            utils.pickle_data(self._splits, self._path_to_splits)
 
+        else:
+            self._samples = utils.load_pickle_data(self._path_to_samples)
+            self._splits = utils.load_pickle_data(self._path_to_splits)
 
     
     def __len__(self):

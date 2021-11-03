@@ -7,7 +7,7 @@ from torch import optim
 from torch.optim import lr_scheduler
 
 
-def configure_lr_scheduler(self, opt : optim.Optimizer, config : dict) -> Union[None, lr_scheduler._LRScheduler]:
+def configure_lr_scheduler(opt : optim.Optimizer, config : dict) -> Union[None, lr_scheduler._LRScheduler]:
     
     # if we are not using any return None
     if config is None:
