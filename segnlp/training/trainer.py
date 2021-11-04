@@ -4,6 +4,7 @@ from tqdm.auto import tqdm
 from collections import Counter
 import pandas as pd
 import os
+import numpy as np
 
 
 # pytorch
@@ -123,7 +124,7 @@ class Trainer:
         # calculate the metrics
         # TEMPORARY SOLUTION
         target_df = pd.concat([s.df for s in batch._target_samples])
-        pred_df = pd.concat([s.df for s in batch._target_samples])
+        pred_df = pd.concat([s.df for s in batch._pred_samples])
         scores = self.metric_fn(
                                 target_df = target_df, 
                                 pred_df = pred_df, 
@@ -157,9 +158,9 @@ class Trainer:
             if self.overfit_batches_k:
                 break
 
-
         # average the scores
-        avrg_scores = sum_scores / (j+1)
+        avrg_score_values = np.array(list(sum_scores.values())) / (j+1)
+        avrg_scores = dict(zip(list(sum_scores.keys()), avrg_score_values))
       
 
         # log epoch
@@ -194,9 +195,9 @@ class Trainer:
                         position = 2, 
                         postfix = self.postfix,
                         leave = False,
-                        total = sum(1 for x in self.dataset.train_batches(self.batch_size))
-                                + sum(1 for x in self.dataset.val_batches(self.batch_size))
+                        total = int((len(self.dataset.splits["train"]) + len(self.dataset.splits["val"])) / self.batch_size)
                         )
+
 
         for epoch in range(self.max_epochs):
             
