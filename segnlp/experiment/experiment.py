@@ -17,7 +17,7 @@ import torch
 from .model_eval import ModelEval
 from .baselines import Baseline
 from .rank import Rank
-
+from segnlp import metrics
 from segnlp.datasets.base import DataSet
 import segnlp.utils as utils
 from segnlp.seg_model import SegModel
@@ -45,7 +45,7 @@ class Experiment(
         #general
         self.id : str = id
         self.evaluation_method : str = evaluation_method
-        self.metric : str = metric
+        self.metric_fn : str = getattr(metrics, metric)
         self.training : bool = True
         self.testing : bool = True
         self.root_dir = root_dir

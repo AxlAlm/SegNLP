@@ -84,7 +84,7 @@ class LSTM_CRF(SegModel):
         # we then create a mask for all sentences and then use the mask to select tokens from 
         # the 2D version of embs. 
         sent_tok_mask = utils.create_mask(batch.get("sentence", "tok_length", flat = True)).view(-1)
-        flat_embs = embs.view(embs.size(0)*embs.size(1), embs.size(2))
+        flat_embs = embs.reshape(embs.size(0)*embs.size(1), embs.size(2))
         flat_embs = flat_embs[sent_tok_mask]
         
         # We then split the flat embs into size of our batch

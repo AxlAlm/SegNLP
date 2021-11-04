@@ -1,9 +1,10 @@
 # basics
-from random import shuffle
 from typing import Callable
 from tqdm.auto import tqdm
 from collections import Counter
+import pandas as pd
 import os
+
 
 # pytorch
 import torch
@@ -120,8 +121,17 @@ class Trainer:
 
 
         # calculate the metrics
-        scores = self.metric_fn(batch)
-        scores["loss"] += loss.item()
+        # TEMPORARY SOLUTION
+        target_df = pd.concat([s.df for s in batch._target_samples])
+        pred_df = pd.concat([s.df for s in batch._target_samples])
+        scores = self.metric_fn(
+                                target_df = target_df, 
+                                pred_df = pred_df, 
+                                task_labels = batch.task_labels
+                                )
+
+        # add loss to metrics
+        scores["loss"] = loss.item()
 
         # update tqdm
         self.postfix[f"{self.split}_loss"] = loss.item()
@@ -183,13 +193,13 @@ class Trainer:
         self.epoch_tqdm = tqdm(
                         position = 2, 
                         postfix = self.postfix,
-                        leave = False
+                        leave = False,
+                        total = sum(1 for x in self.dataset.train_batches(self.batch_size))
+                                + sum(1 for x in self.dataset.val_batches(self.batch_size))
                         )
 
         for epoch in range(self.max_epochs):
             
-            print(epoch)
-
             # set the current epoch
             self.current_epoch = epoch
 

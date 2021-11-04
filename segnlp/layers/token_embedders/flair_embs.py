@@ -72,7 +72,6 @@ class FlairEmbeddings(nn.Module):
             self.i = 0
         
 
-
     def _h5py_cache(fn):
 
         @wraps(fn)
@@ -131,7 +130,7 @@ class FlairEmbeddings(nn.Module):
 
         return embedder
 
-    
+
     @_h5py_cache
     def _process_sentence(self, sentence:str) -> Tensor:
         flair_obj = Sentence(sentence, use_tokenizer=lambda x:x.split(" ")) 
