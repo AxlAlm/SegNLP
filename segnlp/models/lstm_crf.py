@@ -36,19 +36,19 @@ class LSTM_CRF(SegModel):
 
         self.finetuner = self.add_token_encoder(
                                     layer = "Linear", 
-                                    hyperparamaters = self.hps.get("LinearFineTuner", {}),
+                                    hyperparamaters = self.hps.get("linear_finetuner", {}),
                                     input_size = self.word_embs.output_size,
                                 )
 
         self.lstm = self.add_token_encoder(    
                                 layer = "LSTM", 
-                                hyperparamaters = self.hps.get("LSTM", {}),
+                                hyperparamaters = self.hps.get("lstm", {}),
                                 input_size = self.finetuner.output_size,
                                 )
 
         self.crf = self.add_segmenter(
                                 layer = "CRF",
-                                hyperparamaters = self.hps.get("CRF", {}),
+                                hyperparamaters = self.hps.get("crf", {}),
                                 input_size = self.lstm.output_size,
                                 output_size = self.task_dims[self.seg_task],
                                 )
@@ -84,11 +84,13 @@ class LSTM_CRF(SegModel):
         # we then create a mask for all sentences and then use the mask to select tokens from 
         # the 2D version of embs. 
         sent_tok_mask = utils.create_mask(batch.get("sentence", "tok_length", flat = True)).view(-1)
+
         flat_embs = embs.reshape(embs.size(0)*embs.size(1), embs.size(2))
         flat_embs = flat_embs[sent_tok_mask]
         
         # We then split the flat embs into size of our batch
-        embs = pad_sequence(torch.split(flat_embs,
+        embs = pad_sequence(torch.split(
+                                        flat_embs,
                                         utils.ensure_list(batch.get("token", "length"))
                                         ),
                             batch_first = True,
@@ -100,9 +102,17 @@ class LSTM_CRF(SegModel):
         # drop random paramaters
         embs = self.paramater_dropout(embs)
 
+        #print("___________")
+
+        #print(embs[0])
 
         #fine tune embedding via a linear layer
         embs = self.finetuner(embs)
+
+
+        #print(embs[0])
+
+        #print(embs.shape, batch.get("token", "length"))
 
         # lstm encoder
         lstm_out, _ = self.lstm(
@@ -110,11 +120,16 @@ class LSTM_CRF(SegModel):
                                     lengths = batch.get("token", "length")
                                 )
 
+        #print(embs[0])
+
         # drop random tokens
         lstm_out = self.binary_token_dropout(lstm_out)
 
         # drop random paramaters
         lstm_out = self.paramater_dropout(lstm_out)
+
+
+        #print(embs[0])
 
         return {
                 "lstm_out": lstm_out
@@ -123,11 +138,10 @@ class LSTM_CRF(SegModel):
 
     def token_clf(self, batch: Batch, token_rep_out:dict) -> dict:
         logits, preds  = self.crf(
-                                input=token_rep_out["lstm_out"],
-                                mask=batch.get("token", "mask"),
+                                input = token_rep_out["lstm_out"],
+                                mask = batch.get("token", "mask"),
                                 )
 
-        #add/save predictions 
         batch.add("token", self.seg_task, preds)
 
         return {"logits" : logits}

@@ -1,5 +1,6 @@
 
 #basics
+from math import log
 import shutil
 from typing import List, Tuple, Dict, Callable, Union
 import json
@@ -17,6 +18,7 @@ import torch
 from .model_eval import ModelEval
 from .baselines import Baseline
 from .rank import Rank
+from .prediction import Predict
 from segnlp import metrics
 from segnlp.datasets.base import DataSet
 import segnlp.utils as utils
@@ -29,7 +31,8 @@ user_dir = pwd.getpwuid(os.getuid()).pw_dir
 class Experiment(
                 ModelEval,
                 Baseline,
-                Rank
+                Rank,
+                Predict
                 ):
     
     def __init__(self,
@@ -100,15 +103,14 @@ class Experiment(
         self._path_to_rankings : str = os.path.join(self._path, "rankings.csv") # for hp history
 
 
-    @property
-    def hp_ids(self):
-        hp_ids = [fp.replace(".json","") for fp in os.listdir(self._path_to_hps)]
-        return hp_ids
+    # @property
+    # def hp_ids(self):
+    #     hp_ids = [fp.replace(".json","") for fp in os.listdir(self._path_to_hps)]
+    #     return hp_ids
 
 
-    @property
-    def hp_configs(self):
-        return [utils.load_json(fp) for fp in glob(self._path_to_hps + "/*.json")]
+    def hp_configs(self, model:str):
+        return [utils.load_json(fp) for fp in glob(os.path.join(self._path_to_hps, model + "/*.json"))]
 
 
     def __check_config(self, config:dict):
@@ -152,26 +154,35 @@ class Experiment(
         return config
 
 
-    def _load_logs(self) -> pd.DataFrame:
+    def _load_logs(self, model:str, split:str) -> pd.DataFrame:
+
     
         log_dfs = {}
-        for hp_id in self.hp_ids:
+        hp_ids = [fp.replace(".json","") for fp in os.listdir(os.path.join(self._path_to_hps, model))]
+
+        for hp_id in hp_ids:
 
             # log folder
-            log_folder_path = os.path.join(self._path_to_logs, hp_id)
+            log_folder_path = os.path.join(self._path_to_logs, model, hp_id)
 
             # log files 
             split_dfs = {}
-            for split in ["train", "val", "test"]:
-                log_files = glob(log_folder_path + f"/{split}/*")
+
+            #for split in ["train", "val", "test"]:
+            log_files = glob(log_folder_path + f"/*/{split}.log")
+            
+            
+            if not log_files:
+                continue
 
 
-                if not log_files:
-                    continue
+            log_dicts = []
+            for fp in log_files:
+                random_seed = fp.split("/")[-2]
+                log_dict = pd.read_csv(fp).to_dict('records')
+                log_dict[0]["random_seed"] = random_seed
+                log_dicts.extend(log_dict)
 
-                # log dataframes
-                split_dfs[split] = pd.concat([pd.read_csv(fp) for fp in log_files])
-
-            log_dfs[hp_id] = split_dfs
+            log_dfs[hp_id] = log_dicts
 
         return log_dfs

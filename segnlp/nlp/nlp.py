@@ -91,7 +91,7 @@ class NLP:
             The top parent text and the closest parent text
             
         """
-        parents = self.level2parents[level]
+        parents = self.level2parents['level']
         closest_parent_text = self._level_row_cache[parents[0]]["str"]
         top_parent_text = self._level_row_cache[parents[-1]]["str"]
         return top_parent_text, closest_parent_text
@@ -354,7 +354,6 @@ class NLP:
 
         See __build_tokens() documentation for a more detailed example of format.
         """
-
         parent_info = self.__get_structure_info("paragraph")
         doc, _ = self.__get_parent_text("paragraph")
         current_para_idx = self.__get_char_idx("paragraph")

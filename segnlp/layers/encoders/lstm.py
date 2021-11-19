@@ -80,17 +80,18 @@ class LSTM(nn.Module):
         return input, h_0, c_0, pass_states
 
 
-    def __sort_input(self, input:Tensor, lengths:int) -> Tensor:
+    def __sort_input(self, input:Tensor, lengths:int) -> Tuple[Tensor, Tensor, Tensor, bool]:
         
         sorted_lengths, sorted_idxs = torch.sort(lengths, descending=True)
-        sorted = torch.equal(sorted_lengths, lengths)
+        need_sorting = not torch.equal(sorted_lengths, lengths)
 
-        if not sorted:
+        original_idxs = None
+        if need_sorting:
             lengths = sorted_lengths
             _ , original_idxs = torch.sort(sorted_idxs, descending=False)
             input = input[sorted_idxs]
 
-        return input, lengths, original_idxs
+        return input, lengths, original_idxs, need_sorting
 
 
     def forward(self, input:Union[Tensor, Sequence[Tensor]], lengths:Tensor, padding_value=0.0) -> Tuple[Tensor,Tuple[Tensor,Tensor]]:
@@ -99,19 +100,19 @@ class LSTM(nn.Module):
         input, h_0,c_0, pass_states =  self.__solve_input(input)
 
         # sort the input tensors by lengths
-        input, lengths, original_idxs = self.__sort_input(input, lengths)
+        input, lengths, original_idxs, sorting_done = self.__sort_input(input, lengths)
 
         # if a sample is length == 0, we assume its filled with zeros. So, we remove the sample,
         # and then extend the dims later
         non_zero_lens = lengths != 0
-
+        
         # remove paddings and pack it, turn to 2d
         packed_embs = pack_padded_sequence(
                                             input[non_zero_lens], 
                                             utils.ensure_numpy(lengths[non_zero_lens]),
                                             batch_first=True
                                             )
-
+        
         #if we are given states this are also passed
         if pass_states:
             lstm_packed, states = self.lstm(packed_embs, (h_0, c_0))
@@ -125,6 +126,7 @@ class LSTM(nn.Module):
                                             padding_value=padding_value,
                                             )
 
+
         # If we had sample of 0 length, we pad outputs so we are back to the original shape
         # we pad on the ends of dim 0 and dim 1
         output = pad(   
@@ -135,7 +137,7 @@ class LSTM(nn.Module):
                     )
 
 
-        if not sorted:
+        if sorting_done:
             output = output[original_idxs]
    
 

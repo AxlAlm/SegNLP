@@ -57,7 +57,7 @@ class Trainer:
         self.device = device
 
         # init logger
-        self.logger = CSVLogger(log_file = os.path.join(path_to_logs, f"{name}.log"))
+        self.logger = CSVLogger(path_to_logs = os.path.join(path_to_logs, name))
 
         # set up a checkpoint class to save best models
         self.checkpointer = SaveBest(model_file = os.path.join(path_to_models, f"{name}.ckpt"))
@@ -125,43 +125,65 @@ class Trainer:
         # TEMPORARY SOLUTION
         target_df = pd.concat([s.df for s in batch._target_samples])
         pred_df = pd.concat([s.df for s in batch._pred_samples])
+
+        #print(batch._target_samples[0].df)
+        #print(batch._pred_samples[0].df)
         scores = self.metric_fn(
                                 target_df = target_df, 
                                 pred_df = pred_df, 
                                 task_labels = batch.task_labels
                                 )
-
+        
         # add loss to metrics
         scores["loss"] = loss.item()
-
-        # update tqdm
-        self.postfix[f"{self.split}_loss"] = loss.item()
-        self.epoch_tqdm.set_postfix(self.postfix)
-        self.epoch_tqdm.update(1)
 
         return scores
 
 
     def epoch(self) -> dict:
-        
-        # collect the sum of all scores
-        sum_scores = Counter()
-        
+
+
+        n_batches  = int(len(self.dataset.splits[self.split]) / self.batch_size)
+
+        #setup tqmd
+        epoch_tqdm = tqdm(
+                        position = 2, 
+                        postfix = self.postfix,
+                        leave = False,
+                        total = n_batches
+                        )
+
         # get iterator of batches, will shuffle the data before batching
         batches = getattr(self.dataset, f"{self.split}_batches")(batch_size = self.batch_size, shuffle=True)
 
+        
         for j, batch in enumerate(batches):
-            
-            sum_scores += self.step(batch)
 
             # for debugging purposes
             if self.overfit_batches_k:
                 break
+            
+            batch_scores = self.step(batch)
+
+            if j == 0:
+                sum_scores = np.array(list(batch_scores.values()))
+                score_keys = list(batch_scores.keys())
+                continue
+
+            sum_scores += np.array(list(batch_scores.values()))
+
+
+            # update tqdm
+            self.postfix[f"{self.split}_loss"] = batch_scores["loss"]
+            self.postfix[f"{self.split}_{self.monitor_metric}"] = batch_scores[self.monitor_metric]
+            epoch_tqdm.set_postfix(self.postfix)
+            epoch_tqdm.update(1)
+
 
         # average the scores
-        avrg_score_values = np.array(list(sum_scores.values())) / (j+1)
-        avrg_scores = dict(zip(list(sum_scores.keys()), avrg_score_values))
-      
+        avrg_score_values = sum_scores / n_batches
+        avrg_scores = dict(zip(score_keys, avrg_score_values))
+
 
         # log epoch
         self.logger.log(
@@ -183,22 +205,13 @@ class Trainer:
 
         # keeping track of scores
         self.postfix = { 
+                    "epoch": 0,
                     "train_loss" : 0.0, 
                     "val_loss": 0.0, 
                     f"train_{self.monitor_metric}":0.0,
                     f"val_{self.monitor_metric}":0.0,
-                    f"top_val_{self.monitor_metric}": 0.0
                     }
         
-        #setup tqmd
-        self.epoch_tqdm = tqdm(
-                        position = 2, 
-                        postfix = self.postfix,
-                        leave = False,
-                        total = int((len(self.dataset.splits["train"]) + len(self.dataset.splits["val"])) / self.batch_size)
-                        )
-
-
         for epoch in range(self.max_epochs):
             
             # set the current epoch
@@ -235,7 +248,7 @@ class Trainer:
                 self.lr_scheduler.step(monitor_score)
 
             # if we are pretraining segmentation or using target segmentation we dont update stuff
-            if self.seg_pretraining or self.use_target_segs:
+            if not (self.seg_pretraining or self.use_target_segs):
 
                 # save best model
                 self.checkpointer(self.model, monitor_score)
@@ -247,12 +260,19 @@ class Trainer:
                 if self.early_stopper(monitor_score):
                     break
             
-            self.epoch_tqdm.set_postfix(self.postfix)
-            self.epoch_tqdm.update(1)
 
+            self.postfix["epoch"] += 1
+   
 
     def test(self) -> None:
         self.split = "test"
+        self.postfix = {}
+
+        #if we are pretraining or not
+        self.seg_pretraining = False 
+        self.use_target_segs = False
+
+        # set the current epoch
+        self.current_epoch = 0
+
         self.epoch()
-
-

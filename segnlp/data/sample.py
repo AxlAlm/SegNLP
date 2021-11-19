@@ -11,7 +11,7 @@ from spacy import util
 
 #pytorch
 import torch
-from torch import Tensor
+from torch import Tensor, is_deterministic
 
 # segnlp
 from segnlp.utils import create_uid
@@ -44,6 +44,14 @@ class Sample:
 
     def __repr__(self) -> str:
         return " ".join(self.df["str"])
+
+
+    # def __eq__(self, sample: "Sample") -> bool:
+        
+    #     if not isinstance(sample, "Sample"):
+    #         raise RuntimeError("can only compare Samples with Samples")
+
+    #     return self.df["str"].equals(sample.df["str"])
 
 
     def copy(self, clean:bool =  False, df : pd.DataFrame = None) -> "Sample":
@@ -186,6 +194,9 @@ class Sample:
             return span_labels.get(int(row["char_end"]),{})
 
         self.df = pd.concat([self.df, self.df.apply(label_f, axis=1, result_type="expand", args=(span_labels,))], axis=1)
+
+        # make nicer??
+        self.df["seg_id"][self.df["seg_id"].isna()] = -1
 
 
     def __fuse_tasks(self):
@@ -453,7 +464,7 @@ class Sample:
         data = ensure_numpy(data)
 
         if level == "token":
-            self.df[key] = data
+            self.df[key] = data[:len(self)]
 
             if "seg" not in key:
                 self.__ensure_homogeneous(key)

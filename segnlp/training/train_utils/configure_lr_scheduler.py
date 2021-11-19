@@ -1,7 +1,9 @@
 
+#basics
+from typing import Union
+from copy import deepcopy
 
 # pytorch
-from typing import Union
 import torch
 from torch import optim
 from torch.optim import lr_scheduler
@@ -12,6 +14,8 @@ def configure_lr_scheduler(opt : optim.Optimizer, config : dict) -> Union[None, 
     # if we are not using any return None
     if config is None:
         return None
+
+    config = deepcopy(config)
 
     lrs_name = config.pop("name")
 

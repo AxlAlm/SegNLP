@@ -101,7 +101,7 @@ class Batch:
                 
                 # for creatin keys we get string
                 try:
-                    data = pad_sequence(data, batch_first = True, padding_value = 0)
+                    data = pad_sequence(data, batch_first = True, padding_value = -1 if key in self.task_labels else 0)
                 except TypeError:
                     pass
 
@@ -126,7 +126,8 @@ class Batch:
         if key not in self.task_labels:
             raise KeyError(f"cannot add values to key ='{key}'")
 
-        (sample.add(level, key, data) for sample in self._pred_samples)
+        for i,sample in enumerate(self._pred_samples):
+            sample.add(level, key, data[i]) 
 
 
     def to(self, device):

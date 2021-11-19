@@ -35,7 +35,7 @@ class Rank:
 
     @property
     def best_hp(self):
-        return self.rankings.iloc[0]["id"]
+        return 0 #self.rankings.iloc[0]["id"]
 
 
     def __get_score_dists(self, monitor_metric: str, split:str):

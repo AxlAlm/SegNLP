@@ -1,6 +1,7 @@
 
 
 # basics
+from segnlp.data import batch
 from typing import List, Sequence
 import h5py
 import json
@@ -17,16 +18,22 @@ from flair.embeddings import TransformerWordEmbeddings
 from flair.embeddings import StackedEmbeddings
 from flair.embeddings import Embeddings as FlairBaseEmbeddings
 from flair.data import Sentence
+import flair 
 
 
 # pytorch
 import torch
 import torch.nn as nn
 from torch import Tensor
+from torch.nn.utils.rnn import pad_sequence
 
 # segnlp
 from segnlp import utils 
 
+
+# TEMPORARY
+# NOTE! tie to set device
+flair.device = torch.device('cpu') 
 
 
 user_dir = pwd.getpwuid(os.getuid()).pw_dir
@@ -40,6 +47,10 @@ class FlairEmbeddings(nn.Module):
         self.embedder = self.__create_embedder()
         self.output_size = self.embedder.embedding_length
         self.__init__h5py_storage()
+
+        #freeze all of the paramaters
+        for name, param in self.named_parameters():
+            param.requires_grad = False
 
 
     def __init__h5py_storage(self):
@@ -61,8 +72,6 @@ class FlairEmbeddings(nn.Module):
             self._storage = self._h5py_file.create_dataset(
                                             "embs",
                                             data=np.zeros((0,0, self.output_size)), 
-                                            #compression="gzip", 
-                                            #chunks=True, 
                                             maxshape=(None,None, None),
                                             dtype=np.float,
                                             fillvalue = 0
@@ -139,7 +148,15 @@ class FlairEmbeddings(nn.Module):
 
 
     def forward(self, input: List[List[str]]) -> Tensor:
-        return torch.stack([self._process_sentence(sentence) for sentence in input], dim=0).type(torch.float)
+        try:
+            return torch.stack([self._process_sentence(sentence) for sentence in input], dim=0).type(torch.float)
+        except RuntimeError:
+            return pad_sequence(
+                            [self._process_sentence(sentence) for sentence in input], 
+                            batch_first=True,
+                            padding_value=0.0
+                            ).type(torch.float)
+
     
 
 

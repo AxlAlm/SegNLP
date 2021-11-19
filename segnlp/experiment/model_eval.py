@@ -15,6 +15,8 @@ import torch
 #segnlp
 import segnlp.utils as utils
 from segnlp.training import Trainer
+from segnlp.seg_model.seg_model import SegModel
+
 
 
 class ModelEval:
@@ -61,13 +63,13 @@ class ModelEval:
         return list(zip(hp_uids, set_hyperparamaters))
 
 
-    def __filter_and_setup_hp_configs(self, identifed_hps: List[Tuple[str, dict]]) -> List[Tuple[str, dict]]:
+    def __filter_and_setup_hp_configs(self, identifed_hps: List[Tuple[str, dict]], model:str) -> List[Tuple[str, dict]]:
         """
         check which hyperparamaters ids already exist and remove them  
         """
 
         # get all configs
-        uid2config = {c["uid"]:c for c in self.hp_configs}
+        uid2config = {c["uid"]:c for c in self.hp_configs(model)}
 
         hp_configs = []
         hp_id = len(uid2config)
@@ -89,8 +91,8 @@ class ModelEval:
                         "hyperparamaters": deepcopy(hp),
                         "random_seeds_todo" : utils.random_ints(self.n_random_seeds),
                         "random_seeds_done" : [],
-                        "path_to_models": os.path.join(self._path_to_models, str(hp_id)),
-                        "path_to_logs": os.path.join(self._path_to_logs, str(hp_id)),
+                        "path_to_models": os.path.join(self._path_to_models, model, str(hp_id)),
+                        "path_to_logs": os.path.join(self._path_to_logs, model, str(hp_id)),
                         "done": False
                         }
                 hp_id += 1
@@ -98,19 +100,10 @@ class ModelEval:
             hp_configs.append(config)
 
         return hp_configs
-
-
-    def __dump_hp_config(self, config:dict):
-
-        #create file for the hyperparamaters
-        fp = os.path.join(self._path_to_hps, config["id"] + ".json")
-
-        #save config
-        utils.save_json(config, fp)
    
 
     def train(self,
-                model : torch.nn.Module,
+                model : SegModel,
                 hyperparamaters : dict,
                 monitor_metric : str = "val_f1",
                 gpus : Union[list, int] = None,
@@ -121,7 +114,7 @@ class ModelEval:
 
         hp_sets = self.__get_hyperparam_sets(hyperparamaters)
         uid_hps_set = self.__get_hyperparamaters_uid(hp_sets)
-        hp_configs = self.__filter_and_setup_hp_configs(uid_hps_set)
+        hp_configs = self.__filter_and_setup_hp_configs(uid_hps_set, model.name())
 
 
         device  = "cpu"
@@ -138,17 +131,23 @@ class ModelEval:
             #make a folder in models for the model
             os.makedirs(hp_config["path_to_models"], exist_ok=True)
 
+            # make a folder for model hps
+            model_hp_dir = os.path.join(self._path_to_hps, model.name())
+            path_to_model_hps = os.path.join(model_hp_dir, f'{hp_config["id"]}.json')
+            os.makedirs(model_hp_dir, exist_ok=True)
+
+
             random_seeds = hp_config["random_seeds_todo"].copy()
             for random_seed in tqdm(random_seeds, desc = "Random Seeds", position=1, leave = False):
                 
                 hyperparamaters = hp_config["hyperparamaters"]
 
                 # init model
-                model = model(
-                                hyperparamaters  = hyperparamaters,
-                                task_dims = self.dataset.task_dims,
-                                seg_task = self.dataset.seg_task
-                                )
+                m = model(
+                            hyperparamaters  = hyperparamaters,
+                            task_dims = self.dataset.task_dims,
+                            seg_task = self.dataset.seg_task
+                            )
 
                 # init folders
                 os.makedirs(hp_config["path_to_logs"], exist_ok = True)
@@ -158,7 +157,7 @@ class ModelEval:
                 # init trainer
                 trainer = Trainer(  
                                 name = str(random_seed),
-                                model = model,
+                                model = m,
                                 dataset = self.dataset,
                                 metric_fn = self.metric_fn,
                                 monitor_metric = monitor_metric, 
@@ -189,12 +188,12 @@ class ModelEval:
                         hp_config["done"]
 
                     # write hyperparamters along with timestamps to a json
-                    self.__dump_hp_config(hp_config)
+                    utils.save_json(hp_config, path_to_model_hps)
 
                 except BaseException as e:
                     
                     files_to_remove = glob(os.path.join(hp_config["path_to_models"], str(random_seed) + "*.ckpt"))
-                    files_to_remove += glob(os.path.join(self._path_to_logs, str(hp_config["id"]), str(random_seed) + "*.log"))
+                    files_to_remove += glob(os.path.join(hp_config["path_to_logs"], str(random_seed), "/*.log"))
 
                     for fp in files_to_remove:
                         os.remove(fp)
@@ -202,12 +201,15 @@ class ModelEval:
                     raise e
 
 
-        self.rank_hps(
-                            monitor_metric = monitor_metric
-                        )
+        print(" _______________  Val Scores  _______________")
+        print(pd.DataFrame(self._load_logs(model.name(), split = "val")["0"]).T)
+
+
+
 
 
     def test(self, 
+            model : SegModel,
             monitor_metric : str, 
             batch_size : int = 32,
             gpus : Union[list, str] = None
@@ -219,43 +221,42 @@ class ModelEval:
             gpu = gpus[0] if isinstance(gpus,list) else gpus
             device =  f"cuda:{gpu}"
         
-
-        # we only test the best hp setting
-        best_hp_id = self.best_hp
-
         # load hyperparamaters
-        hp_config = utils.load_json(os.path.join(self._path_to_hps, best_hp_id + ".json"))
+        hp_config = utils.load_json(os.path.join(self._path_to_hps, model.name(), "0.json"))
 
         hyperparamaters = hp_config["hyperparamaters"]
         random_seeds = hp_config["random_seeds_done"]
+        path_to_models =  hp_config["path_to_models"].rsplit("/",1)[0]
 
         #best_pred_dfs = None
         #top_score = 0
         for random_seed in tqdm(random_seeds, desc= "random_seeds"):
 
             #model path 
-            model_path = glob(os.path.join(self._path_to_models, best_hp_id, f"{random_seed}*"))[0]
+            model_path = glob(os.path.join(path_to_models, "0", f"{random_seed}*"))[0]
             
-            #setup model
-            model = self.model(
-                        hyperparamaters  = deepcopy(hyperparamaters),
-                        label_encoder = self.label_encoder,
-                        feature_dims = self.feature2dim,
-                        )
-            
+            # init model
+            m = model(
+                            hyperparamaters  = hyperparamaters,
+                            task_dims = self.dataset.task_dims,
+                            seg_task = self.dataset.seg_task
+                            )
+        
             #load model weights
-            model.load_state_dict(torch.load(model_path))
+            m.load_state_dict(torch.load(model_path))
 
-            #init trainer
+            # init trainer
             trainer = Trainer(  
                             name = str(random_seed),
-                            model = model,
+                            model = m,
                             dataset = self.dataset,
                             metric_fn = self.metric_fn,
                             monitor_metric = monitor_metric, 
                             optimizer_config = hyperparamaters["general"]["optimizer"], 
                             max_epochs = hyperparamaters["general"]["max_epochs"],
+                            batch_size = hyperparamaters["general"]["batch_size"],
                             patience = hyperparamaters["general"].get("patience", None),
+                            gradient_clip_val = hyperparamaters["general"].get("gradient_clip_val", None),
                             lr_scheduler_config = hyperparamaters["general"].get("lr_scheduler", None),
                             ground_truth_sampling_k = hyperparamaters["general"].get("ground_truth_sampling_k", None),
                             pretrain_segmenation_k = hyperparamaters["general"].get("pretrain_segmentation_k", None),
@@ -264,20 +265,26 @@ class ModelEval:
                             device = device
                             )
 
+
             # test
             trainer.test()
 
+        print(" _______________  Test Scores  _______________")
+        print(pd.DataFrame(self._load_logs(model.name(), split = "test")["0"]).T)
 
 
-        self.rank_test(monitor_metric)
 
-        print(" _______________  Mean Scores  _______________")
-        mean_df = pd.DataFrame(self._load_logs()[self.best_hp]["test"]).mean().to_frame()
-        filter_list = set(["epoch", "hp_id", "random_seed", "cv", "use_target_segs", "freeze_segment_module"])
-        index = [c for c in mean_df.index if c not in filter_list]
-        mean_df = mean_df.loc[index]
 
-        for baseline in self._baselines:
-            mean_df[baseline] = pd.DataFrame(self.baseline_scores()["test"][baseline]).mean()
+
+        # #self.rank_test(monitor_metric)
+
+        # print(" _______________  Mean Scores  _______________")
+        # mean_df = pd.DataFrame(self._load_logs()[self.best_hp]["test"]).mean().to_frame()
+        # filter_list = set(["epoch", "hp_id", "random_seed", "cv", "use_target_segs", "freeze_segment_module"])
+        # index = [c for c in mean_df.index if c not in filter_list]
+        # mean_df = mean_df.loc[index]
+
+        # #for baseline in self._baselines:
+        # #    mean_df[baseline] = pd.DataFrame(self.baseline_scores()["test"][baseline]).mean()
             
-        print(mean_df)
+        # print(mean_df)

@@ -42,8 +42,8 @@ class CRF(nn.Module):
 
         logits = self.clf(input)
         preds = self.crf.viterbi_tags(
-                                logits=logits,
-                                mask=mask,
+                                logits = logits,
+                                mask = mask,
                                 #top_k=1
                                 )
         preds = [p[0] for p in preds]

@@ -1,4 +1,6 @@
 
+# basics
+from copy import deepcopy
 
 # pytorch
 import torch
@@ -7,6 +9,8 @@ import torch.nn as nn
 
 
 def configure_optimizer(model: nn.Module, config:dict) -> optim.Optimizer:
+
+    config = deepcopy(config)
 
     # get the name
     opt_name = config.pop("name")
